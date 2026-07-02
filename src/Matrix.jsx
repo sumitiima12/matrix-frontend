@@ -475,6 +475,7 @@ const Y_SPECIAL = {
   NIFTY50: "^NSEI", BANKNIFTY: "^NSEBANK", SENSEX: "^BSESN", FINNIFTY: "^NSEFIN", INDIAVIX: "^INDIAVIX",
   SPX: "^GSPC", NDX: "^NDX", DJI: "^DJI", VIX: "^VIX",
   GOLD: "GC=F", SILVER: "SI=F", CRUDE: "CL=F", NATGAS: "NG=F", COPPER: "HG=F",
+  ZOMATO: "ETERNAL.NS", // NSE renamed Zomato Ltd -> Eternal Ltd (Mar 2025); old ZOMATO.NS ticker no longer resolves
 };
 function yahooSymbol(sym) {
   if (Y_SPECIAL[sym]) return Y_SPECIAL[sym];
@@ -492,6 +493,36 @@ async function fetchLiveQuotes(appSyms) {
   if (!r.ok) throw new Error("quote " + r.status);
   const d = await r.json();
   return (d.quotes || []).map((q) => ({ sym: map[q.sym] || q.sym, price: q.price, chg: q.chg })).filter((x) => x.sym && x.price != null);
+}
+
+/* ------------------------------ AUTH (backend) ------------------------------ */
+const AUTH_KEY = "matrix_user"; // localStorage key holding the logged-in session
+async function apiSignup(identifier, name, pin) {
+  const r = await fetch(`${BACKEND_URL}/api/auth/signup`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identifier, name, pin }),
+  });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error || "Signup failed");
+  return d.user;
+}
+async function apiLogin(identifier, pin) {
+  const r = await fetch(`${BACKEND_URL}/api/auth/login`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identifier, pin }),
+  });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error || "Login failed");
+  return d.user;
+}
+async function apiSaveProfile(identifier, profile) {
+  const r = await fetch(`${BACKEND_URL}/api/auth/profile`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identifier, profile }),
+  });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error || "Could not save profile");
+  return d.user;
 }
 
 async function askMatrix(messages, system, maxTokens = 1000) {
@@ -2268,6 +2299,98 @@ function SearchOverlay({ onClose, onOpen }) {
   );
 }
 
+/* ============================== AUTH (signup / login) ============================== */
+function AuthScreen({ onAuthed }) {
+  const [mode, setMode] = useState("login"); // "login" | "signup"
+  const [step, setStep] = useState(0); // signup: 0=identifier,1=name,2=pin
+  const [identifier, setIdentifier] = useState("");
+  const [name, setName] = useState("");
+  const [pin, setPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const validIdentifier = /^\S+@\S+\.\S+$/.test(identifier.trim()) || /^\+?\d{7,15}$/.test(identifier.trim());
+
+  const reset = () => { setStep(0); setIdentifier(""); setName(""); setPin(""); setConfirmPin(""); setErr(""); };
+  const switchMode = (m) => { setMode(m); reset(); };
+
+  const doLogin = async () => {
+    setErr(""); setBusy(true);
+    try {
+      const user = await apiLogin(identifier.trim(), pin);
+      localStorage.setItem(AUTH_KEY, JSON.stringify(user));
+      onAuthed(user);
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const doSignup = async () => {
+    if (pin !== confirmPin) { setErr("PINs don't match"); return; }
+    setErr(""); setBusy(true);
+    try {
+      const user = await apiSignup(identifier.trim(), name.trim(), pin);
+      localStorage.setItem(AUTH_KEY, JSON.stringify(user));
+      onAuthed(user);
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+
+  const inputStyle = { width: "100%", padding: "15px 16px", borderRadius: 16, border: "1.5px solid var(--line)", background: "var(--surface)", fontSize: 15, color: "var(--ink)" };
+  const btnStyle = { width: "100%", padding: 15, borderRadius: 16, border: "none", background: "linear-gradient(120deg,var(--primary),var(--primary-2))", color: "#fff", fontWeight: 700, fontSize: 15, marginTop: 6 };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 90, background: "var(--bg)", maxWidth: 460, margin: "0 auto", padding: 24, display: "flex", flexDirection: "column" }} className="mx">
+      <div className="disp" style={{ fontWeight: 700, fontSize: 26, marginTop: 30, display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ color: "var(--primary)" }}>✦</span> <span className="gradtext">Matrix</span>
+      </div>
+      <div style={{ fontSize: 13.5, color: "var(--muted)", marginTop: 6, marginBottom: 30 }}>
+        {mode === "login" ? "Welcome back. Log in to continue." : "Create your account to get started."}
+      </div>
+
+      {mode === "login" ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <input style={inputStyle} placeholder="Mobile number or email" value={identifier} onChange={(e) => setIdentifier(e.target.value)} />
+          <input style={inputStyle} placeholder="4-6 digit PIN" type="password" inputMode="numeric" maxLength={6} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} />
+          {err && <div style={{ color: "var(--down)", fontSize: 13 }}>{err}</div>}
+          <button disabled={busy || !identifier.trim() || pin.length < 4} onClick={doLogin} className="tap" style={{ ...btnStyle, opacity: busy || !identifier.trim() || pin.length < 4 ? 0.6 : 1 }}>{busy ? "Logging in…" : "Log In"}</button>
+          <div style={{ textAlign: "center", fontSize: 13, color: "var(--muted)", marginTop: 8 }}>
+            New here? <span className="tap" style={{ color: "var(--primary)", fontWeight: 700 }} onClick={() => switchMode("signup")}>Create an account</span>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", gap: 5, marginBottom: 6 }}>{[0, 1, 2].map((i) => <div key={i} style={{ flex: 1, height: 4, borderRadius: 4, background: i <= step ? "var(--primary)" : "var(--line)" }} />)}</div>
+
+          {step === 0 && (
+            <>
+              <input autoFocus style={inputStyle} placeholder="Mobile number or email" value={identifier} onChange={(e) => setIdentifier(e.target.value)} />
+              {err && <div style={{ color: "var(--down)", fontSize: 13 }}>{err}</div>}
+              <button disabled={!validIdentifier} onClick={() => { setErr(""); setStep(1); }} className="tap" style={{ ...btnStyle, opacity: validIdentifier ? 1 : 0.6 }}>Continue</button>
+            </>
+          )}
+          {step === 1 && (
+            <>
+              <input autoFocus style={inputStyle} placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
+              {err && <div style={{ color: "var(--down)", fontSize: 13 }}>{err}</div>}
+              <button disabled={!name.trim()} onClick={() => { setErr(""); setStep(2); }} className="tap" style={{ ...btnStyle, opacity: name.trim() ? 1 : 0.6 }}>Continue</button>
+            </>
+          )}
+          {step === 2 && (
+            <>
+              <input autoFocus style={inputStyle} placeholder="Set a 4-6 digit PIN" type="password" inputMode="numeric" maxLength={6} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} />
+              <input style={inputStyle} placeholder="Confirm PIN" type="password" inputMode="numeric" maxLength={6} value={confirmPin} onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ""))} />
+              {err && <div style={{ color: "var(--down)", fontSize: 13 }}>{err}</div>}
+              <button disabled={busy || pin.length < 4 || confirmPin.length < 4} onClick={doSignup} className="tap" style={{ ...btnStyle, opacity: busy || pin.length < 4 || confirmPin.length < 4 ? 0.6 : 1 }}>{busy ? "Creating account…" : "Create Account"}</button>
+            </>
+          )}
+
+          <div style={{ textAlign: "center", fontSize: 13, color: "var(--muted)", marginTop: 8 }}>
+            Already have an account? <span className="tap" style={{ color: "var(--primary)", fontWeight: 700 }} onClick={() => switchMode("login")}>Log in</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ============================== ONBOARDING ============================== */
 function Onboarding({ onDone }) {
   const [step, setStep] = useState(0);
@@ -2314,14 +2437,14 @@ function Onboarding({ onDone }) {
 }
 
 /* ============================== PROFILE SHEET ============================== */
-function ProfileSheet({ profile, wallet, onClose }) {
+function ProfileSheet({ profile, wallet, onClose, user, onLogout }) {
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(10,10,20,.32)", zIndex: 60, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
       <div onClick={(e) => e.stopPropagation()} className="sheet card" style={{ width: "100%", maxWidth: 460, borderRadius: "24px 24px 0 0", padding: 20 }}>
         <div style={{ width: 40, height: 4, background: "var(--line)", borderRadius: 9, margin: "0 auto 16px" }} />
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 52, height: 52, borderRadius: 16, background: "linear-gradient(135deg,var(--primary),var(--primary-2))", display: "grid", placeItems: "center", color: "#fff", fontWeight: 700, fontSize: 20 }} className="disp">M</div>
-          <div><div className="disp" style={{ fontWeight: 700, fontSize: 17 }}>My Profile</div><div style={{ fontSize: 12.5, color: "var(--muted)" }}>Virtual investor</div></div>
+          <div style={{ width: 52, height: 52, borderRadius: 16, background: "linear-gradient(135deg,var(--primary),var(--primary-2))", display: "grid", placeItems: "center", color: "#fff", fontWeight: 700, fontSize: 20 }} className="disp">{(user?.name || "M")[0].toUpperCase()}</div>
+          <div><div className="disp" style={{ fontWeight: 700, fontSize: 17 }}>{user?.name || "My Profile"}</div><div style={{ fontSize: 12.5, color: "var(--muted)" }}>{user?.identifier || "Virtual investor"}</div></div>
         </div>
         <div className="card" style={{ marginTop: 16, padding: 14, background: "var(--bg)" }}>
           <div style={{ fontSize: 12, color: "var(--muted)" }}>Virtual wallet</div>
@@ -2334,6 +2457,9 @@ function ProfileSheet({ profile, wallet, onClose }) {
             ))}
           </div>
         ) : <div style={{ marginTop: 14, fontSize: 13, color: "var(--muted)" }}>Personalisation skipped. Reopen the app to set preferences.</div>}
+        {onLogout && (
+          <button onClick={onLogout} className="tap" style={{ width: "100%", marginTop: 18, padding: 14, borderRadius: 16, border: "1px solid var(--line)", background: "var(--surface)", fontWeight: 700, color: "var(--down)" }}>Log Out</button>
+        )}
       </div>
     </div>
   );
@@ -2342,7 +2468,9 @@ function ProfileSheet({ profile, wallet, onClose }) {
 /* ============================== ROOT ============================== */
 export default function App() {
   const [theme, setTheme] = useState("dark");
-  const [onboard, setOnboard] = useState(true);
+  const [user, setUser] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [onboard, setOnboard] = useState(false);
   const [profile, setProfile] = useState(null);
   const [tab, setTab] = useState("home");
   const [market, setMarket] = useState("IN");
@@ -2359,6 +2487,20 @@ export default function App() {
   const [live, setLive] = useState(false);
   const [liveAt, setLiveAt] = useState(null);
   const [, setLiveTick] = useState(0);
+
+  // Restore a logged-in session from localStorage on load.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(AUTH_KEY);
+      if (raw) {
+        const u = JSON.parse(raw);
+        setUser(u);
+        setProfile(u.profile || null);
+        setOnboard(!u.onboarded); // only show personalization if it hasn't been done before
+      }
+    } catch { /* corrupted/no session -> stay logged out */ }
+    setAuthChecked(true);
+  }, []);
 
   // Overlay real Yahoo prices (via the proxy) onto the universe when configured.
   useEffect(() => {
@@ -2400,12 +2542,37 @@ export default function App() {
 
   const nav = [["home", Home, "Home"], ["trade", Repeat, "Trade"], ["ideas", Lightbulb, "Ideas"], ["automation", Bolt, "Auto"], ["portfolio", Briefcase, "Portfolio"], ["watchlist", Star, "Watch"], ["ask", Bot, "Ask"]];
 
+  const handleLogout = () => {
+    localStorage.removeItem(AUTH_KEY);
+    setUser(null); setProfile(null); setOnboard(false); setShowProfile(false);
+  };
+  const handleOnboardDone = async (p) => {
+    setProfile(p); setOnboard(false);
+    if (user) {
+      try {
+        const updated = await apiSaveProfile(user.identifier, p);
+        localStorage.setItem(AUTH_KEY, JSON.stringify(updated));
+        setUser(updated);
+      } catch { /* profile still applies locally even if the save call fails */ }
+    }
+  };
+
+  if (!authChecked) return <div className={"mx theme-" + theme} style={{ background: "var(--app-bg, var(--bg))", minHeight: "100vh" }}><style>{CSS}</style></div>;
+  if (!user) {
+    return (
+      <div className={"mx theme-" + theme} style={{ background: "var(--app-bg, var(--bg))", minHeight: "100vh" }}>
+        <style>{CSS}</style>
+        <AuthScreen onAuthed={(u) => { setUser(u); setProfile(u.profile || null); setOnboard(!u.onboarded); }} />
+      </div>
+    );
+  }
+
   return (
     <div className={"mx theme-" + theme} style={{ background: "var(--app-bg, var(--bg))", minHeight: "100vh" }}>
       <style>{CSS}</style>
       {/* fixed gradient backdrop so it stays behind scroll */}
       <div style={{ position: "fixed", inset: 0, background: "var(--app-bg, var(--bg))", zIndex: 0, pointerEvents: "none" }} />
-      {onboard && <Onboarding onDone={(p) => { setProfile(p); setOnboard(false); }} />}
+      {onboard && <Onboarding onDone={handleOnboardDone} />}
 
       <div style={{ maxWidth: 460, margin: "0 auto", minHeight: "100vh", position: "relative", zIndex: 1, paddingBottom: 86 }}>
         {/* ambient glow */}
@@ -2480,7 +2647,7 @@ export default function App() {
 
       {drawer && <Drawer s={drawer} onClose={() => setDrawer(null)} onDetails={openDetail} />}
       {search && <SearchOverlay onClose={() => setSearch(false)} onOpen={openStock} />}
-      {showProfile && <ProfileSheet profile={profile} wallet={wallet} onClose={() => setShowProfile(false)} />}
+      {showProfile && <ProfileSheet profile={profile} wallet={wallet} onClose={() => setShowProfile(false)} user={user} onLogout={handleLogout} />}
     </div>
   );
 }
