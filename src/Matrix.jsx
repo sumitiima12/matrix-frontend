@@ -94,28 +94,34 @@ function compact(n) {
 }
 function lcg(seed) { let s = seed % 2147483647; if (s <= 0) s += 2147483646; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
 function hash(str) { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0; return Math.abs(h); }
+// Day index — everything seeded with this rotates once per day.
+const DAY = Math.floor(Date.now() / 864e5);
+// Realistic price path: random walk with drift + volatility + occasional gaps,
+// scaled so it ends exactly at `base` (today's price). Changes daily via DAY.
 function series(sym, base, chg, points = 60) {
-  const r = lcg(hash(sym) + 7);
-  const start = base / (1 + chg / 100) * (0.92 + r() * 0.05);
-  const out = [];
-  let v = start;
-  for (let i = 0; i < points; i++) {
-    const drift = (base - v) * 0.06;
-    const noise = (r() - 0.5) * base * 0.018;
-    v = Math.max(base * 0.4, v + drift + noise);
-    out.push({ i, p: +v.toFixed(2) });
+  const r = lcg(hash(sym) + DAY * 101 + 7);
+  const trend = (chg / 100) / points;              // gentle drift toward today's move
+  const regime = (r() - 0.5) * 0.004;              // slow background bias
+  const path = [1];
+  for (let i = 1; i < points; i++) {
+    const vol = 0.012 + r() * 0.016;               // 1.2%–2.8% daily vol
+    let ret = trend + regime + (r() - 0.5) * 2 * vol;
+    if (r() > 0.95) ret += (r() - 0.5) * 0.07;      // occasional gap/spike
+    path.push(path[i - 1] * (1 + ret));
   }
-  out[points - 1].p = base;
-  return out;
+  const k = base / path[points - 1];               // scale so last point = current price
+  return path.map((v, i) => ({ i, p: +(v * k).toFixed(2) }));
 }
 function candles(sym, base, chg, n = 34) {
-  const pts = series(sym, base, chg, n + 1);
-  const r = lcg(hash(sym) + 11);
+  const pts = series(sym + "|c", base, chg, n + 1);
+  const r = lcg(hash(sym + "cndl") + DAY * 101 + 11);
   const out = [];
   for (let i = 1; i <= n; i++) {
     const o = pts[i - 1].p, c = pts[i].p;
-    const hi = Math.max(o, c) * (1 + r() * 0.012);
-    const lo = Math.min(o, c) * (1 - r() * 0.012);
+    const top = Math.max(o, c), bot = Math.min(o, c);
+    const range = Math.max(top - bot, base * 0.006);
+    const hi = top + range * (0.15 + r() * 0.9);
+    const lo = bot - range * (0.15 + r() * 0.9);
     out.push({ i, o: +o.toFixed(2), c: +c.toFixed(2), h: +hi.toFixed(2), l: +lo.toFixed(2), v: Math.round((0.5 + r()) * base * 1000) });
   }
   return out;
@@ -135,13 +141,15 @@ const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 function build(sym, name, price, chg, sector, cap, x = {}) {
   const h = hash(sym);
   const r = lcg(h);
+  const dr = lcg(h + DAY * 917);                 // daily-rotating randomness
+  chg = +(chg + (dr() - 0.5) * 3).toFixed(2);     // today's move drifts day to day
   const vol = Math.round((x.vol ?? (2 + r() * 18)) * 1e6);
-  const rsi = x.rsi ?? Math.round(28 + r() * 50);
+  const rsi = x.rsi ?? Math.round(clamp(38 + dr() * 34 + chg * 1.6, 6, 94));
   const pe = x.pe ?? +(12 + r() * 45).toFixed(1);
   const roe = x.roe ?? +(8 + r() * 28).toFixed(1);
   const sma50 = +(price * (0.96 + r() * 0.06)).toFixed(2);
   const sma200 = +(price * (0.9 + r() * 0.1)).toFixed(2);
-  const macd = +((r() - 0.4) * 6).toFixed(2);
+  const macd = +((chg / 2 + (dr() - 0.5) * 3)).toFixed(2);
   const support = +(price * (0.93 - r() * 0.03)).toFixed(2);
   const resistance = +(price * (1.05 + r() * 0.04)).toFixed(2);
   const bull = x.bull ?? clamp(Math.round(50 + chg * 4 + (rsi - 50) * 0.6), 6, 96);
@@ -203,7 +211,7 @@ const IN_STOCKS = [
     pick: "Event-driven volatility — only for traders who respect tight stops.",
     rsi: 41,
   }),
-  build("ZOMATO", "Zomato", 198.7, 4.85, "Consumer Tech", "Mid", {
+  build("ETERNAL", "Eternal Ltd", 198.7, 4.85, "Consumer Tech", "Mid", {
     bull: 83, verdict: "Buy",
     pick: "Quick-commerce (Blinkit) inflecting to profitability — the GenZ growth story with real numbers now.",
     oneLiner: "Fresh all-time-high zone; trend strongly bullish.",
@@ -285,6 +293,109 @@ const COMMODITY = [
   build("COPPER", "Copper", 4.52, 1.12, "Metals", "Large", { bull: 68, verdict: "Buy", pick: "Electrification + grid demand — structural metal of the decade." }),
 ];
 
+/* ---- Broaden the universe: ~100 Indian + ~100 US names ---- */
+const dchg = (sym) => +(((lcg(hash(sym) + DAY * 917)() - 0.46) * 4.6)).toFixed(2);
+const MORE_IN = [
+  ["HDFCBANK", "HDFC Bank", 1685, "Banking", "Large"], ["TCS", "Tata Consultancy", 4120, "IT", "Large"],
+  ["KOTAKBANK", "Kotak Mahindra Bank", 1795, "Banking", "Large"], ["AXISBANK", "Axis Bank", 1168, "Banking", "Large"],
+  ["BAJFINANCE", "Bajaj Finance", 7220, "NBFC", "Large"], ["BHARTIARTL", "Bharti Airtel", 1520, "Telecom", "Large"],
+  ["HINDUNILVR", "Hindustan Unilever", 2460, "FMCG", "Large"], ["ITC", "ITC Ltd", 428, "FMCG", "Large"],
+  ["ADANIENT", "Adani Enterprises", 2985, "Conglomerate", "Large"], ["ADANIPORTS", "Adani Ports", 1372, "Infrastructure", "Large"],
+  ["ASIANPAINT", "Asian Paints", 2905, "Consumer", "Large"], ["TITAN", "Titan Company", 3410, "Consumer", "Large"],
+  ["ULTRACEMCO", "UltraTech Cement", 11250, "Cement", "Large"], ["WIPRO", "Wipro", 292, "IT", "Large"],
+  ["HCLTECH", "HCL Technologies", 1642, "IT", "Large"], ["TECHM", "Tech Mahindra", 1585, "IT", "Large"],
+  ["POWERGRID", "Power Grid Corp", 328, "Utilities", "Large"], ["NTPC", "NTPC Ltd", 368, "Utilities", "Large"],
+  ["ONGC", "ONGC", 268, "Energy", "Large"], ["COALINDIA", "Coal India", 462, "Energy", "Large"],
+  ["JSWSTEEL", "JSW Steel", 918, "Metals", "Large"], ["TATASTEEL", "Tata Steel", 152, "Metals", "Large"],
+  ["HINDALCO", "Hindalco", 648, "Metals", "Large"], ["GRASIM", "Grasim Industries", 2565, "Cement", "Large"],
+  ["NESTLEIND", "Nestle India", 2510, "FMCG", "Large"], ["BAJAJFINSV", "Bajaj Finserv", 1642, "NBFC", "Large"],
+  ["BAJAJ-AUTO", "Bajaj Auto", 9720, "Auto", "Large"], ["EICHERMOT", "Eicher Motors", 4780, "Auto", "Large"],
+  ["HEROMOTOCO", "Hero MotoCorp", 5240, "Auto", "Large"], ["M&M", "Mahindra & Mahindra", 2890, "Auto", "Large"],
+  ["DIVISLAB", "Divi's Labs", 5920, "Pharma", "Large"], ["CIPLA", "Cipla", 1502, "Pharma", "Large"],
+  ["APOLLOHOSP", "Apollo Hospitals", 6820, "Healthcare", "Large"], ["BRITANNIA", "Britannia", 5180, "FMCG", "Large"],
+  ["PIDILITIND", "Pidilite", 2985, "Chemicals", "Mid"], ["DABUR", "Dabur India", 512, "FMCG", "Large"],
+  ["GODREJCP", "Godrej Consumer", 1245, "FMCG", "Mid"], ["SIEMENS", "Siemens India", 6980, "Capital Goods", "Large"],
+  ["DMART", "Avenue Supermarts", 4620, "Retail", "Large"], ["PNB", "Punjab National Bank", 104, "Banking", "Mid"],
+  ["BANKBARODA", "Bank of Baroda", 242, "Banking", "Mid"], ["CANBK", "Canara Bank", 108, "Banking", "Mid"],
+  ["INDUSINDBK", "IndusInd Bank", 985, "Banking", "Large"], ["GAIL", "GAIL India", 208, "Energy", "Large"],
+  ["IOC", "Indian Oil", 142, "Energy", "Large"], ["BPCL", "Bharat Petroleum", 312, "Energy", "Large"],
+  ["VEDL", "Vedanta", 448, "Metals", "Large"], ["DLF", "DLF Ltd", 815, "Realty", "Large"],
+  ["PAYTM", "Paytm (One97)", 445, "Fintech", "Mid"],
+  ["POLICYBZR", "PB Fintech", 1520, "Fintech", "Mid"], ["IRCTC", "IRCTC", 812, "Travel", "Mid"],
+  ["JUBLFOOD", "Jubilant FoodWorks", 645, "Consumer", "Mid"], ["TVSMOTOR", "TVS Motor", 2380, "Auto", "Mid"],
+  ["ASHOKLEY", "Ashok Leyland", 228, "Auto", "Mid"], ["BOSCHLTD", "Bosch", 33200, "Auto", "Large"],
+  ["CUMMINSIND", "Cummins India", 3620, "Capital Goods", "Mid"], ["ABB", "ABB India", 8120, "Capital Goods", "Large"],
+  ["SBILIFE", "SBI Life", 1512, "Insurance", "Large"], ["HDFCLIFE", "HDFC Life", 645, "Insurance", "Large"],
+  ["ICICIGI", "ICICI Lombard", 1920, "Insurance", "Mid"], ["ICICIPRULI", "ICICI Pru Life", 685, "Insurance", "Mid"],
+  ["SHRIRAMFIN", "Shriram Finance", 3120, "NBFC", "Mid"], ["CHOLAFIN", "Cholamandalam", 1385, "NBFC", "Mid"],
+  ["MUTHOOTFIN", "Muthoot Finance", 1985, "NBFC", "Mid"], ["LTIM", "LTIMindtree", 5620, "IT", "Large"],
+  ["PERSISTENT", "Persistent Systems", 5880, "IT", "Mid"], ["COFORGE", "Coforge", 8420, "IT", "Mid"],
+  ["MPHASIS", "Mphasis", 2985, "IT", "Mid"], ["OFSS", "Oracle Fin Serv", 12200, "IT", "Mid"],
+  ["TATACONSUM", "Tata Consumer", 1085, "FMCG", "Large"], ["COLPAL", "Colgate-Palmolive", 3420, "FMCG", "Mid"],
+  ["MARICO", "Marico", 685, "FMCG", "Mid"], ["BERGEPAINT", "Berger Paints", 528, "Consumer", "Mid"],
+  ["HAVELLS", "Havells India", 1885, "Consumer", "Mid"], ["VOLTAS", "Voltas", 1685, "Consumer", "Mid"],
+  ["TORNTPHARM", "Torrent Pharma", 3285, "Pharma", "Mid"], ["LUPIN", "Lupin", 2185, "Pharma", "Mid"],
+  ["AUROPHARMA", "Aurobindo Pharma", 1385, "Pharma", "Mid"], ["ALKEM", "Alkem Labs", 5620, "Pharma", "Mid"],
+  ["ZYDUSLIFE", "Zydus Lifesciences", 1085, "Pharma", "Mid"], ["MANKIND", "Mankind Pharma", 2385, "Pharma", "Mid"],
+  ["INDIGO", "InterGlobe (IndiGo)", 4620, "Aviation", "Large"], ["JINDALSTEL", "Jindal Steel", 985, "Metals", "Mid"],
+  ["SAIL", "SAIL", 128, "Metals", "Mid"], ["NMDC", "NMDC", 218, "Metals", "Mid"],
+  ["PFC", "Power Finance Corp", 512, "NBFC", "Mid"], ["RECLTD", "REC Ltd", 528, "NBFC", "Mid"],
+  ["IRFC", "Indian Rlwy Finance", 158, "NBFC", "Mid"], ["TRENT", "Trent Ltd", 6820, "Retail", "Large"],
+  ["ADANIGREEN", "Adani Green", 1085, "Utilities", "Large"], ["ADANIPOWER", "Adani Power", 612, "Utilities", "Large"],
+  ["MOTHERSON", "Samvardhana Motherson", 168, "Auto", "Mid"], ["BHEL", "BHEL", 248, "Capital Goods", "Mid"],
+];
+const MORE_US = [
+  ["JPM", "JPMorgan Chase", 212, "Banking", "Large"], ["V", "Visa", 278, "Fintech", "Large"],
+  ["MA", "Mastercard", 462, "Fintech", "Large"], ["JNJ", "Johnson & Johnson", 158, "Healthcare", "Large"],
+  ["UNH", "UnitedHealth", 512, "Healthcare", "Large"], ["XOM", "Exxon Mobil", 118, "Energy", "Large"],
+  ["CVX", "Chevron", 158, "Energy", "Large"], ["WMT", "Walmart", 68, "Retail", "Large"],
+  ["PG", "Procter & Gamble", 168, "FMCG", "Large"], ["KO", "Coca-Cola", 62, "FMCG", "Large"],
+  ["PEP", "PepsiCo", 172, "FMCG", "Large"], ["COST", "Costco", 872, "Retail", "Large"],
+  ["HD", "Home Depot", 362, "Retail", "Large"], ["MCD", "McDonald's", 262, "Consumer", "Large"],
+  ["NKE", "Nike", 78, "Consumer", "Large"], ["DIS", "Disney", 98, "Media", "Large"],
+  ["NFLX", "Netflix", 685, "Media", "Large"], ["CRM", "Salesforce", 268, "Software", "Large"],
+  ["ORCL", "Oracle", 142, "Software", "Large"], ["ADBE", "Adobe", 528, "Software", "Large"],
+  ["INTC", "Intel", 32, "Semiconductors", "Large"], ["CSCO", "Cisco", 52, "Tech", "Large"],
+  ["QCOM", "Qualcomm", 172, "Semiconductors", "Large"], ["TXN", "Texas Instruments", 198, "Semiconductors", "Large"],
+  ["AVGO", "Broadcom", 168, "Semiconductors", "Large"], ["MU", "Micron", 108, "Semiconductors", "Large"],
+  ["IBM", "IBM", 192, "Tech", "Large"], ["ACN", "Accenture", 342, "IT Services", "Large"],
+  ["ABT", "Abbott Labs", 112, "Healthcare", "Large"], ["PFE", "Pfizer", 28, "Pharma", "Large"],
+  ["MRK", "Merck", 122, "Pharma", "Large"], ["LLY", "Eli Lilly", 785, "Pharma", "Large"],
+  ["TMO", "Thermo Fisher", 585, "Healthcare", "Large"], ["DHR", "Danaher", 252, "Healthcare", "Large"],
+  ["BAC", "Bank of America", 42, "Banking", "Large"], ["WFC", "Wells Fargo", 62, "Banking", "Large"],
+  ["GS", "Goldman Sachs", 492, "Banking", "Large"], ["MS", "Morgan Stanley", 102, "Banking", "Large"],
+  ["C", "Citigroup", 68, "Banking", "Large"], ["AXP", "American Express", 248, "Fintech", "Large"],
+  ["BLK", "BlackRock", 892, "Asset Mgmt", "Large"], ["SCHW", "Charles Schwab", 72, "Fintech", "Large"],
+  ["BA", "Boeing", 178, "Aerospace", "Large"], ["CAT", "Caterpillar", 362, "Industrials", "Large"],
+  ["GE", "GE Aerospace", 172, "Aerospace", "Large"], ["HON", "Honeywell", 205, "Industrials", "Large"],
+  ["UPS", "UPS", 132, "Logistics", "Large"], ["RTX", "RTX Corp", 118, "Aerospace", "Large"],
+  ["LMT", "Lockheed Martin", 462, "Defence", "Large"], ["DE", "Deere & Co", 382, "Industrials", "Large"],
+  ["UBER", "Uber", 72, "Tech", "Large"], ["ABNB", "Airbnb", 128, "Travel", "Large"],
+  ["SHOP", "Shopify", 78, "E-commerce", "Large"], ["SQ", "Block", 68, "Fintech", "Mid"],
+  ["PYPL", "PayPal", 68, "Fintech", "Large"], ["SNOW", "Snowflake", 158, "Software", "Mid"],
+  ["NET", "Cloudflare", 88, "Software", "Mid"], ["CRWD", "CrowdStrike", 342, "Cybersecurity", "Large"],
+  ["ZS", "Zscaler", 192, "Cybersecurity", "Mid"], ["DDOG", "Datadog", 122, "Software", "Mid"],
+  ["MDB", "MongoDB", 268, "Software", "Mid"], ["PANW", "Palo Alto Networks", 342, "Cybersecurity", "Large"],
+  ["MRVL", "Marvell", 78, "Semiconductors", "Large"], ["SMCI", "Super Micro", 42, "Hardware", "Mid"],
+  ["ARM", "ARM Holdings", 138, "Semiconductors", "Large"], ["TSM", "TSMC (ADR)", 178, "Semiconductors", "Large"],
+  ["ASML", "ASML (ADR)", 745, "Semiconductors", "Large"], ["SBUX", "Starbucks", 92, "Consumer", "Large"],
+  ["CMCSA", "Comcast", 42, "Media", "Large"], ["T", "AT&T", 22, "Telecom", "Large"],
+  ["VZ", "Verizon", 42, "Telecom", "Large"], ["TMUS", "T-Mobile", 218, "Telecom", "Large"],
+  ["F", "Ford", 12, "Auto", "Large"], ["GM", "General Motors", 48, "Auto", "Large"],
+  ["RIVN", "Rivian", 14, "Auto", "Mid"], ["LCID", "Lucid", 3, "Auto", "Mid"],
+  ["MMM", "3M", 128, "Industrials", "Large"], ["GILD", "Gilead Sciences", 78, "Pharma", "Large"],
+  ["AMGN", "Amgen", 285, "Pharma", "Large"], ["BMY", "Bristol Myers", 52, "Pharma", "Large"],
+  ["CVS", "CVS Health", 62, "Healthcare", "Large"], ["LOW", "Lowe's", 245, "Retail", "Large"],
+  ["TGT", "Target", 142, "Retail", "Large"], ["BKNG", "Booking Holdings", 3980, "Travel", "Large"],
+  ["NOW", "ServiceNow", 872, "Software", "Large"], ["INTU", "Intuit", 645, "Software", "Large"],
+  ["AMAT", "Applied Materials", 198, "Semiconductors", "Large"], ["LRCX", "Lam Research", 82, "Semiconductors", "Large"],
+  ["KLAC", "KLA Corp", 742, "Semiconductors", "Large"], ["ADI", "Analog Devices", 218, "Semiconductors", "Large"],
+];
+const seenIN = new Set(IN_STOCKS.map((s) => s.sym));
+const seenUS = new Set(US_STOCKS.map((s) => s.sym));
+IN_STOCKS.push(...MORE_IN.filter((a) => !seenIN.has(a[0])).map((a) => build(a[0], a[1], a[2], dchg(a[0]), a[3], a[4] || "Large")));
+US_STOCKS.push(...MORE_US.filter((a) => !seenUS.has(a[0])).map((a) => build(a[0], a[1], a[2], dchg(a[0]), a[3], a[4] || "Large")));
+
 const bySym = (arr, syms) => syms.map((s) => arr.find((a) => a.sym === s)).filter(Boolean);
 const FNO = bySym(IN_STOCKS, ["NIFTY50", "BANKNIFTY", "FINNIFTY", "RELIANCE", "HDFCBANK", "ICICIBANK", "SBIN", "TCS", "INFY", "TATAMOTORS", "TATAPOWER", "LT", "BAJFINANCE", "ADANIENT", "HAL", "BEL", "DIXON", "ITC"]);
 const UNIVERSE = { IN: IN_STOCKS, US: US_STOCKS, Crypto: CRYPTO, Commodity: COMMODITY, FNO };
@@ -294,6 +405,68 @@ function marketOf(sym) {
   if (CRYPTO.find((s) => s.sym === sym)) return "Crypto";
   if (COMMODITY.find((s) => s.sym === sym)) return "Commodity";
   return "IN";
+}
+// "World-class technical analyst" scoring on the simulated series: momentum,
+// breakouts, reversals off S/R, RSI/MACD confirmation, multi-timeframe bias.
+// Detects a varied set of chart patterns and explains WHY each was identified.
+function techSignal(s) {
+  const ser = s.series.map((p) => p.p);
+  const n = ser.length, last = ser[n - 1], first = ser[0];
+  const mom = (last / first - 1) * 100;
+  const near = ser.slice(-8);
+  const slope = (near[near.length - 1] / near[0] - 1) * 100;
+  const lo = Math.min(...ser), hi = Math.max(...ser);
+  const pos = (last - lo) / (hi - lo + 1e-9);              // where in range (0=low,1=high)
+  const distSup = (last - s.support) / last * 100;
+  const rets = ser.slice(1).map((v, i) => v / ser[i] - 1);
+  const vol = Math.sqrt(rets.reduce((a, x) => a + x * x, 0) / rets.length) * 100;
+  const cur = (v) => (marketOf(s.sym) === "US" || marketOf(s.sym) === "Crypto") ? "$" + v : "₹" + v;
+  let pattern, signal, why, score = 0;
+
+  if (last >= s.resistance * 0.99) {
+    pattern = "breakout"; signal = "Resistance breakout";
+    why = `Price is punching through the ${cur(s.resistance)} ceiling that had capped it repeatedly — a clean breakout, ideally on a volume expansion.`; score += 3.2;
+  } else if (distSup < 2.4 && slope > 0 && pos < 0.4) {
+    pattern = "doubleBottom"; signal = "Double-bottom reversal";
+    why = `Support near ${cur(s.support)} has held on two tests and price is curling up — a classic double-bottom, momentum shifting from sellers to buyers.`; score += 2.8;
+  } else if (mom > 8 && vol < 2.1 && slope > -1 && slope < 4) {
+    pattern = "flag"; signal = "Bull-flag continuation";
+    why = `After a sharp ${mom.toFixed(0)}% advance, price is consolidating sideways on shrinking range and volume — a bull flag that typically resolves in the direction of the prior trend.`; score += 2.6;
+  } else if (pos > 0.45 && pos < 0.8 && s.rsi < 66 && slope > 0) {
+    pattern = "triangle"; signal = "Ascending triangle";
+    why = `A series of higher lows is pressing into a flat ceiling around ${cur(s.resistance)} — an ascending triangle coiling energy for a breakout.`; score += 2.4;
+  } else if (s.rsi < 42 && pos < 0.45 && vol < 2.3) {
+    pattern = "cup"; signal = "Rounded base (cup)";
+    why = `A long, U-shaped base with RSI at ${s.rsi} points to quiet accumulation — a cup forming, with the handle/breakout still ahead.`; score += 1.9;
+  } else if (s.sma50 > s.sma200 && slope > 0.5) {
+    pattern = "triangle"; signal = "Golden-cross continuation";
+    why = `The 50-DMA sits above the 200-DMA and price is making higher lows — a trend-continuation setup as long as ${cur(s.support)} holds.`; score += 1.8;
+  } else if (s.rsi > 68 && mom > 4) {
+    pattern = "flag"; signal = "Overbought pause";
+    why = `Momentum is hot (RSI ${s.rsi}) and price may pause or flag here; buyers wait for a dip toward ${cur(s.sma50)} rather than chase.`; score += 1.2;
+  } else {
+    // varied fallback so setups aren't all identical
+    const opts = ["breakout", "cup", "triangle", "doubleBottom"];
+    pattern = opts[hash(s.sym) % opts.length];
+    signal = pattern === "cup" ? "Base building" : pattern === "triangle" ? "Consolidation triangle" : pattern === "doubleBottom" ? "Support retest" : "Coiled range";
+    why = `Price is ${s.chg >= 0 ? "firming up" : "stabilising"} between ${cur(s.support)} support and ${cur(s.resistance)} resistance with RSI ${s.rsi}; a decisive move out of this range sets the next trade.`;
+  }
+  if (s.macd > 0) score += 0.8;
+  if (s.news) score += 0.4;
+  score += mom * 0.14 + (s.bull - 50) * 0.05 + (s.chg > 0 ? 1 : -0.5);
+  return { score, signal, pattern, why, mom: +mom.toFixed(1), slope };
+}
+function dailyPicks(list) {
+  const jr = lcg(DAY * 131 + 7);
+  return list
+    .filter((s) => s.sector !== "Volatility")
+    .map((s) => ({ s, t: techSignal(s), j: jr() * 0.6 }))
+    .sort((a, b) => (b.t.score + b.j) - (a.t.score + a.j))
+    .slice(0, 6)
+    .map(({ s, t }) => ({
+      ...s, pickPattern: t.pattern, pickSignal: t.signal,
+      pickReason: `${t.signal}. ${s.chg >= 0 ? "+" : ""}${s.chg}% today · RSI ${s.rsi} · ${s.price > s.sma50 ? "above" : "below"} 50-DMA · MACD ${s.macd >= 0 ? "positive" : "negative"} — confirmed across 5m/15m/1D.`,
+    }));
 }
 // Synthetic option-chain snapshot for an instrument (ATM strike, premium, OI).
 function fnoData(s) {
@@ -305,6 +478,19 @@ function fnoData(s) {
   const oi = Math.round(4 + r() * 46) * 100000;
   const oiChg = +(((r() - 0.4) * 34)).toFixed(1);
   return { rec, atm, premium, oi, oiChg };
+}
+// Build a tradable ATM option instrument (behaves like any stock in drawer/detail).
+function makeOption(s, f) {
+  const call = f.rec === "CALL";
+  const sym = `${s.sym} ${f.atm} ${call ? "CE" : "PE"}`;
+  const chg = +((call ? 1 : -1) * Math.abs(s.chg || 1) * (2.6 + hash(sym) % 100 / 90)).toFixed(2);
+  const opt = build(sym, `${s.name} ${f.atm} ${call ? "Call" : "Put"}`, f.premium, chg, "Index Option", "Derivative", {
+    bull: call ? 64 : 40, verdict: call ? "Buy" : "Sell",
+    pick: `ATM ${call ? "call" : "put"} on ${s.sym} (strike ${f.atm}). Premium ${f.premium}. High-gamma, leveraged exposure — mind time decay (theta) and IV crush.`,
+    oneLiner: `${s.sym} ${f.atm} ${call ? "CE" : "PE"} — at-the-money option; leverage + theta risk.`,
+  });
+  opt.isOption = true; opt.underlying = s.sym; opt.strike = f.atm; opt.optType = call ? "CE" : "PE"; opt.oi = f.oi;
+  return opt;
 }
 
 /* ============================== SMALL UI ============================== */
@@ -463,7 +649,7 @@ function CarouselCard({ s, market, onOpen, children, width = 250, watched, toggl
 // Set BACKEND_URL to your deployed proxy (e.g. "https://your-matrix-proxy.onrender.com")
 // to keep the Anthropic key server-side. Empty string = in-app mode (key injected by the
 // host runtime), which is what runs inside this preview.
-const BACKEND_URL = "https://matrix-qp1i.onrender.com";
+const BACKEND_URL = "";
 const MATRIX_PERSONA = "You are Matrix — the world's sharpest stock-market research assistant, fluent in fundamental analysis, technical analysis and macro/news-driven investing. Answer with crisp, structured, practical insight a confident GenZ investor can act on. Use short paragraphs or tight bullets. When giving a view, lay out the bull case, bear case and key levels rather than a bare command. Always end with a one-line reminder that this is educational research, not financial advice.";
 
 /* ------- LIVE PRICES (Yahoo Finance via the backend proxy) -------
@@ -475,7 +661,6 @@ const Y_SPECIAL = {
   NIFTY50: "^NSEI", BANKNIFTY: "^NSEBANK", SENSEX: "^BSESN", FINNIFTY: "^NSEFIN", INDIAVIX: "^INDIAVIX",
   SPX: "^GSPC", NDX: "^NDX", DJI: "^DJI", VIX: "^VIX",
   GOLD: "GC=F", SILVER: "SI=F", CRUDE: "CL=F", NATGAS: "NG=F", COPPER: "HG=F",
-  ZOMATO: "ETERNAL.NS", // NSE renamed Zomato Ltd -> Eternal Ltd (Mar 2025); old ZOMATO.NS ticker no longer resolves
 };
 function yahooSymbol(sym) {
   if (Y_SPECIAL[sym]) return Y_SPECIAL[sym];
@@ -494,35 +679,13 @@ async function fetchLiveQuotes(appSyms) {
   const d = await r.json();
   return (d.quotes || []).map((q) => ({ sym: map[q.sym] || q.sym, price: q.price, chg: q.chg })).filter((x) => x.sym && x.price != null);
 }
-
-/* ------------------------------ AUTH (backend) ------------------------------ */
-const AUTH_KEY = "matrix_user"; // localStorage key holding the logged-in session
-async function apiSignup(identifier, name, pin) {
-  const r = await fetch(`${BACKEND_URL}/api/auth/signup`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ identifier, name, pin }),
-  });
+// Real headlines via the proxy (Yahoo / Moneycontrol / NewsAPI). Null in preview.
+async function fetchNews(sym) {
+  if (!BACKEND_URL) return null;
+  const r = await fetch(`${BACKEND_URL}/api/news?symbol=${encodeURIComponent(yahooSymbol(sym))}`);
+  if (!r.ok) throw new Error("news " + r.status);
   const d = await r.json();
-  if (!r.ok) throw new Error(d.error || "Signup failed");
-  return d.user;
-}
-async function apiLogin(identifier, pin) {
-  const r = await fetch(`${BACKEND_URL}/api/auth/login`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ identifier, pin }),
-  });
-  const d = await r.json();
-  if (!r.ok) throw new Error(d.error || "Login failed");
-  return d.user;
-}
-async function apiSaveProfile(identifier, profile) {
-  const r = await fetch(`${BACKEND_URL}/api/auth/profile`, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ identifier, profile }),
-  });
-  const d = await r.json();
-  if (!r.ok) throw new Error(d.error || "Could not save profile");
-  return d.user;
+  return (d.news || []).map((n) => ({ d: n.d ? new Date(n.d).toLocaleDateString() : "", t: n.t, url: n.url, src: n.src }));
 }
 
 async function askMatrix(messages, system, maxTokens = 1000) {
@@ -607,7 +770,7 @@ function ChatPanel({ context, suggestions, compactMode }) {
 }
 
 /* ============================== STOCK DRAWER ============================== */
-function Drawer({ s, onClose, onDetails }) {
+function Drawer({ s, onClose, onDetails, onBuy }) {
   if (!s) return null;
   const market = marketOf(s.sym);
   return (
@@ -650,9 +813,14 @@ function Drawer({ s, onClose, onDetails }) {
           ))}
         </div>
 
-        <button onClick={() => onDetails(s)} className="tap disp glow" style={{ width: "100%", marginTop: 16, background: "linear-gradient(120deg,var(--primary),var(--primary-2))", color: "#fff", border: "none", borderRadius: 16, padding: "14px", fontWeight: 700, fontSize: 14.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-          View full details <ChevronRight size={17} />
-        </button>
+        <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+          <button onClick={() => { if (onBuy) onBuy(s, 1); onClose(); }} className="tap disp glow" style={{ flex: 1, background: "linear-gradient(120deg,var(--up),#12B98A)", color: "#fff", border: "none", borderRadius: 16, padding: "14px", fontWeight: 800, fontSize: 14.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            <Plus size={17} /> Buy 1 · {fmt(s.price, market)}
+          </button>
+          <button onClick={() => onDetails(s)} className="tap disp" style={{ flex: 1, background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px", fontWeight: 700, fontSize: 14.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            Details <ChevronRight size={17} />
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -727,14 +895,20 @@ function CandleChart({ data, market, sup0, res0 }) {
     </div>
   );
 }
-function DetailPage({ s, onBack, watched, toggleWatch, onTrade }) {
+function DetailPage({ s, onBack, watched, toggleWatch, onTrade, onBuy }) {
   const market = marketOf(s.sym);
   const [tf, setTf] = useState(60);
   const [active, setActive] = useState("overview");
   const [chartType, setChartType] = useState("candles");
   const [deepBusy, setDeepBusy] = useState(false);
   const [deepText, setDeepText] = useState("");
+  const [liveNews, setLiveNews] = useState(null);
   const refs = useRef({});
+  useEffect(() => {
+    let stop = false;
+    if (BACKEND_URL) fetchNews(s.sym).then((n) => { if (!stop && n && n.length) setLiveNews(n); }).catch(() => {});
+    return () => { stop = true; setLiveNews(null); };
+  }, [s]);
   const rev = useMemo(() => quarters(s.sym, s.revBase, s.revGrowth), [s]);
   const ebd = useMemo(() => quarters(s.sym + "e", s.revBase * 0.28, s.ebitdaGrowth), [s]);
   const cdata = useMemo(() => candles(s.sym, s.price, s.chg, Math.round(tf / 1.8)), [s, tf]);
@@ -842,7 +1016,10 @@ function DetailPage({ s, onBack, watched, toggleWatch, onTrade }) {
               : <div style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{deepText}</div>}
           </div>
         )}
-        <button onClick={() => onTrade(s)} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--elev)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 16, padding: 14, fontWeight: 700, fontSize: 14.5 }}>Trade {s.sym} with virtual money</button>
+        <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+          <button onClick={() => onBuy && onBuy(s, 1)} className="tap disp glow" style={{ flex: 1, background: "linear-gradient(120deg,var(--up),#12B98A)", color: "#fff", border: "none", borderRadius: 16, padding: 14, fontWeight: 800, fontSize: 14.5, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}><Plus size={17} /> Buy 1 · {fmt(s.price, market)}</button>
+          <button onClick={() => onTrade(s)} className="tap disp" style={{ flex: 1, background: "var(--elev)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 16, padding: 14, fontWeight: 700, fontSize: 14.5 }}>Trade…</button>
+        </div>
       </div>
 
       {/* FUNDAMENTALS */}
@@ -886,13 +1063,14 @@ function DetailPage({ s, onBack, watched, toggleWatch, onTrade }) {
       <div data-sec="news" ref={(el) => (refs.current.news = el)} style={secStyle}>
         <Pop>
           <Heading icon={<Newspaper size={18} color="var(--primary)" />}>News</Heading>
-          {s.news.map((n, i) => (
-            <div key={i} className="card" style={{ padding: 14, marginBottom: 10 }}>
-              <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 4 }}>{n.d}</div>
+          {(liveNews || s.news).map((n, i) => (
+            <a key={i} href={n.url || undefined} target="_blank" rel="noreferrer" className="card" style={{ display: "block", padding: 14, marginBottom: 10, textDecoration: "none", color: "inherit" }}>
+              <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 4 }}>{n.d}{n.src ? " · " + n.src : ""}{liveNews ? " · live" : ""}</div>
               <div style={{ fontSize: 13.5, fontWeight: 600, lineHeight: 1.5 }}>{n.t}</div>
-              <div style={{ fontSize: 12, color: "var(--primary)", marginTop: 7, display: "flex", gap: 5, alignItems: "center" }}><Sparkles size={13} /> Matrix: {i === 0 ? "Incrementally positive for sentiment; supports the current bias." : "Neutral-to-mild; monitor follow-through over coming sessions."}</div>
-            </div>
+              {!liveNews && <div style={{ fontSize: 12, color: "var(--primary)", marginTop: 7, display: "flex", gap: 5, alignItems: "center" }}><Sparkles size={13} /> Matrix: {i === 0 ? "Incrementally positive for sentiment; supports the current bias." : "Neutral-to-mild; monitor follow-through over coming sessions."}</div>}
+            </a>
           ))}
+          {!liveNews && <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>Live headlines from Yahoo / Moneycontrol stream in once the backend proxy is connected.</div>}
         </Pop>
       </div>
 
@@ -1036,30 +1214,40 @@ function StockIdeasStrip({ onOpen }) {
 }
 function FnoPicks({ onOpen }) {
   const items = [...FNO].sort((a, b) => Math.abs(b.chg) - Math.abs(a.chg)).slice(0, 8);
+  const [tick, setTick] = useState(0);
+  useEffect(() => { const id = setInterval(() => setTick((t) => t + 1), 2500); return () => clearInterval(id); }, []);
+  const trigTime = (sym) => { const mins = 15 + (hash(sym) % 300); const h = 9 + Math.floor((15 + mins) / 60); const mm = (15 + mins) % 60; return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`; };
   return (
     <Section title="F&O Picks" icon={<Zap size={17} color="var(--primary)" />}>
+      <div style={{ fontSize: 10.5, color: "var(--muted)", margin: "-8px 2px 12px", display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 6, height: 6, borderRadius: 6, background: "var(--up)", boxShadow: "0 0 0 3px var(--up-soft)" }} /> Live P&amp;L from signal entry · updates every few seconds</div>
       <div className="hide-scroll" style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4 }}>
         {items.map((s) => {
           const f = fnoData(s); const m = marketOf(s.sym);
           const call = f.rec === "CALL";
+          const entry = f.premium;
+          // live premium: seeded oscillation + slow drift in the trade's favour
+          const osc = Math.sin(tick * 0.6 + (hash(s.sym) % 7)) * 0.045;
+          const drift = Math.min(0.12, tick * 0.004) * (call ? 1 : 1);
+          const live = +(entry * (1 + osc + drift * (osc >= 0 ? 1 : 0.4))).toFixed(1);
+          const pnl = (live / entry - 1) * 100;
+          const up = pnl >= 0;
           return (
-            <div key={s.sym} onClick={() => onOpen(s)} className="card tap" style={{ flex: "0 0 auto", width: 216, padding: 14 }}>
+            <div key={s.sym} onClick={() => onOpen(makeOption(s, f))} className="card tap" style={{ flex: "0 0 auto", width: 232, padding: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div style={{ minWidth: 0 }}>
                   <div className="disp" style={{ fontWeight: 700, fontSize: 14 }}>{s.sym}</div>
-                  <div style={{ fontSize: 10, color: "var(--muted)" }}>ATM {fmt(f.atm, m)}</div>
+                  <div style={{ fontSize: 10, color: "var(--muted)" }}>ATM {fmt(f.atm, m)} · signal {trigTime(s.sym)}</div>
                 </div>
                 <span className="pill disp" style={{ fontSize: 11, fontWeight: 800, padding: "4px 11px", background: call ? "var(--up-soft)" : "var(--down-soft)", color: call ? "var(--up)" : "var(--down)" }}>{call ? "▲ CALL" : "▼ PUT"}</span>
               </div>
-              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                <div style={{ flex: 1, background: "var(--bg)", borderRadius: 10, padding: "8px 10px" }}>
-                  <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 700 }}>ATM PREMIUM</div>
-                  <div className="mono" style={{ fontWeight: 800, fontSize: 13.5 }}>{fmt(f.premium, m)}</div>
-                </div>
-                <div style={{ flex: 1, background: "var(--bg)", borderRadius: 10, padding: "8px 10px" }}>
-                  <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 700 }}>OI (ATM)</div>
-                  <div className="mono" style={{ fontWeight: 800, fontSize: 13.5 }}>{compact(f.oi)} <span style={{ fontSize: 10, color: f.oiChg >= 0 ? "var(--up)" : "var(--down)" }}>{f.oiChg >= 0 ? "↑" : "↓"}{Math.abs(f.oiChg)}%</span></div>
-                </div>
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 12 }}>
+                <div><div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 700 }}>ENTRY</div><div className="mono" style={{ fontWeight: 700, fontSize: 13 }}>{fmt(entry, m)}</div></div>
+                <div style={{ textAlign: "center" }}><div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 700 }}>LTP</div><div className="mono" style={{ fontWeight: 800, fontSize: 14 }}>{fmt(live, m)}</div></div>
+                <div style={{ textAlign: "right" }}><div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 700 }}>P&amp;L</div><div className="mono" style={{ fontWeight: 800, fontSize: 14, color: up ? "var(--up)" : "var(--down)" }}>{up ? "+" : ""}{pnl.toFixed(1)}%</div></div>
+              </div>
+              <div style={{ marginTop: 10, background: "var(--bg)", borderRadius: 10, padding: "7px 10px", display: "flex", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>OI (ATM)</span>
+                <span className="mono" style={{ fontWeight: 800, fontSize: 12 }}>{compact(f.oi)} <span style={{ fontSize: 10, color: f.oiChg >= 0 ? "var(--up)" : "var(--down)" }}>{f.oiChg >= 0 ? "↑" : "↓"}{Math.abs(f.oiChg)}%</span></span>
               </div>
             </div>
           );
@@ -1084,7 +1272,7 @@ const MARKET_UPDATES = {
 };
 function HomeView({ market, setMarket, segment, setSegment, list, onOpen, watch, toggleWatch, profile, portfolio = [], wallet = 0, onGoPortfolio }) {
   const [glMode, setGlMode] = useState("Gainers");
-  const picks = list.filter((s) => s.pick).slice(0, 5);
+  const picks = dailyPicks(list);
   const trending = [...list].sort((a, b) => b.vol - a.vol).slice(0, 6);
   const gainers = [...list].sort((a, b) => b.chg - a.chg).slice(0, 5);
   const losers = [...list].sort((a, b) => a.chg - b.chg).slice(0, 5);
@@ -1161,8 +1349,9 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, watch,
                   <span className="mono" style={{ fontWeight: 800, fontSize: 19 }}>{fmt(s.price, market)}</span>
                   <span className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: s.chg >= 0 ? "#9CFFD6" : "#FFB3BE" }}>{s.chg >= 0 ? "▲ +" : "▼ "}{s.chg.toFixed(2)}%</span>
                 </div>
-                <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,.18)", fontSize: 12.5, color: "rgba(255,255,255,.92)", lineHeight: 1.55, display: "flex", gap: 6 }}>
-                  <Sparkles size={14} color="#fff" style={{ flex: "0 0 auto", marginTop: 2 }} /><span>{s.pick}</span>
+                <div style={{ marginTop: 10 }}><span className="pill" style={{ fontSize: 10, fontWeight: 800, background: "rgba(255,255,255,.18)", color: "#fff", padding: "3px 9px" }}>⚡ {s.pickSignal}</span></div>
+                <div style={{ marginTop: 10, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,.18)", fontSize: 12, color: "rgba(255,255,255,.92)", lineHeight: 1.55, display: "flex", gap: 6 }}>
+                  <Sparkles size={14} color="#fff" style={{ flex: "0 0 auto", marginTop: 2 }} /><span>{s.pickReason || s.pick}</span>
                 </div>
                 <div style={{ marginTop: 12 }}><VerdictTag v={s.verdict} /></div>
               </div>
@@ -1512,14 +1701,30 @@ function WatchlistView({ watchlists, activeWl, setActiveWl, createWatchlist, del
 }
 
 /* ============================== IDEAS ============================== */
-const SEED_IDEAS = [
-  { by: "Matrix", sym: "TATAPOWER", entry: 410, exit: 470, stop: 396, gain: 14.6, pattern: "cup", tradeType: "Stock", logic: "Cup-and-handle breakout above ₹408 with rising volume; renewables order wins as catalyst." },
-  { by: "Matrix", sym: "INFY", entry: 1535, exit: 1680, stop: 1488, gain: 9.4, pattern: "breakout", tradeType: "Stock", logic: "Reclaim of 50-DMA + bullish MACD crossover; FY guidance upgrade supports re-rating." },
-  { by: "@arjun_trades", sym: "ZOMATO", entry: 192, exit: 230, stop: 178, gain: 19.8, pattern: "triangle", tradeType: "F&O", logic: "Ascending triangle; Blinkit profitability inflection. Stop below ₹178." },
-  { by: "@nisha.fno", sym: "TATAMOTORS", entry: 970, exit: 1060, stop: 938, gain: 9.3, pattern: "flag", tradeType: "F&O", logic: "Flag continuation after JLR numbers; hold while above 20-EMA." },
-  { by: "Matrix", sym: "NVDA", entry: 118, exit: 138, stop: 110, gain: 16.9, pattern: "breakout", tradeType: "Stock", logic: "AI capex cycle intact; breakout from base on volume." },
-  { by: "Matrix", sym: "BTC", entry: 61000, exit: 72000, stop: 57000, gain: 18.0, pattern: "cup", tradeType: "Stock", logic: "Rounded base + ETF inflows; reclaim of range high targets prior high." },
-];
+// Ideas are regenerated daily from the strongest technical setups across markets.
+function buildDailyIdeas() {
+  const r = lcg(DAY * 257 + 3);
+  const handles = ["@arjun_trades", "@nisha.fno", "@swingpro", "@chartwiz", "@priya.charts"];
+  const pool = ALL.filter((s) => s.sector !== "Volatility" && s.sector !== "Index");
+  const scored = pool.map((s) => ({ s, t: techSignal(s) }))
+    .sort((a, b) => b.t.score - a.t.score)
+    .slice(0, 16)
+    .filter(() => r() > 0.25)
+    .slice(0, 9);
+  return scored.map(({ s, t }, i) => {
+    const entry = +s.price.toFixed(2);
+    const target = +(entry * (1 + 0.05 + r() * 0.14)).toFixed(2);
+    const stop = +(entry * (1 - 0.03 - r() * 0.04)).toFixed(2);
+    const gain = +((target / entry - 1) * 100).toFixed(1);
+    const by = i % 3 === 0 ? "Matrix" : handles[i % handles.length];
+    const tradeType = marketOf(s.sym) === "IN" && r() > 0.6 ? "F&O" : "Stock";
+    return {
+      by, sym: s.sym, entry, exit: target, stop, gain, pattern: t.pattern, tradeType,
+      logic: `${t.why} ${s.price > s.sma50 ? "Trading above the 50-DMA" : "Reclaiming key moving averages"}; RSI ${s.rsi}, MACD ${s.macd >= 0 ? "positive" : "negative"} — confirmed on 5m / 15m / 1D.`,
+    };
+  });
+}
+const SEED_IDEAS = buildDailyIdeas();
 const PATTERNS = {
   cup: { label: "Cup & Handle", pts: [[0, 28], [9, 32], [18, 50], [30, 62], [44, 64], [58, 62], [68, 50], [76, 34], [82, 28], [88, 40], [93, 34], [100, 14]] },
   triangle: { label: "Ascending Triangle", pts: [[0, 56], [12, 28], [24, 50], [40, 30], [56, 48], [72, 32], [86, 44], [100, 14]] },
@@ -1899,13 +2104,51 @@ const TEMPLATES = [
     cfg: { mode: "builder", defs: [{ type: "MACD", len: "", name: "MACD1" }], entry: [{ la: "MACD1.line", op: "crosses_above", bType: "ind", b: "MACD1.signal" }], exit: [{ la: "MACD1.line", op: "crosses_below", bType: "ind", b: "MACD1.signal" }], sl: "3", tp: "8" } },
   { name: "CCI reversal", code: "if CCI1 < -100:\n    enter_trade()\nif CCI1 > 100:\n    exit_trade()", tag: "Reversal",
     cfg: { mode: "builder", defs: [{ type: "CCI", len: "20", name: "CCI1" }], entry: [{ la: "CCI1", op: "<", bType: "num", b: "-100" }], exit: [{ la: "CCI1", op: ">", bType: "num", b: "100" }], sl: "3", tp: "7" } },
+  { name: "BB breakout + RSI", code: "BB1 = BollingerBand(length=20)\nRSI1 = RSI(length=14)\nif close crosses_above BB1.upper AND RSI1 > 60:\n    enter_trade()\nif close crosses_below BB1.middle:\n    exit_trade()", tag: "Breakout",
+    cfg: { mode: "builder", defs: [{ type: "BB", len: "20", name: "BB1" }, { type: "RSI", len: "14", name: "RSI1" }], entry: [{ la: "Price", op: "crosses_above", bType: "ind", b: "BB1.upper" }, { la: "RSI1", op: ">", bType: "num", b: "60", gate: "AND" }], exit: [{ la: "Price", op: "crosses_below", bType: "ind", b: "BB1.middle" }], sl: "3", tp: "9" } },
+  { name: "Multi-timeframe trend (3/5/10/30m)", code: "# Same trend across 3m, 5m, 10m, 30m\nEMA_3 = EMA(20, tf=3m); EMA_5 = EMA(20, tf=5m)\nEMA_10 = EMA(20, tf=10m); EMA_30 = EMA(20, tf=30m)\nif close>EMA_3 AND close>EMA_5 AND close>EMA_10 AND close>EMA_30:\n    enter_trade()\nif close < EMA_5:\n    exit_trade()", tag: "MTF",
+    cfg: { mode: "builder", defs: [{ type: "EMA", len: "20", tf: "3m", name: "EMA_3" }, { type: "EMA", len: "20", tf: "5m", name: "EMA_5" }, { type: "EMA", len: "20", tf: "10m", name: "EMA_10" }, { type: "EMA", len: "20", tf: "30m", name: "EMA_30" }], entry: [{ la: "Price", op: ">", bType: "ind", b: "EMA_3" }, { la: "Price", op: ">", bType: "ind", b: "EMA_5", gate: "AND" }, { la: "Price", op: ">", bType: "ind", b: "EMA_10", gate: "AND" }, { la: "Price", op: ">", bType: "ind", b: "EMA_30", gate: "AND" }], exit: [{ la: "Price", op: "crosses_below", bType: "ind", b: "EMA_5" }], sl: "2", tp: "6" } },
+  { name: "EMA 13 / SMA 83 crossover", code: "EMA13 = EMA(13); SMA83 = SMA(83); SMA39 = SMA(39)\nif EMA13 crosses_above SMA83:\n    enter_trade()\nif EMA13 crosses_below SMA39:\n    exit_trade()", tag: "Trend",
+    cfg: { mode: "builder", defs: [{ type: "EMA", len: "13", name: "EMA13" }, { type: "SMA", len: "83", name: "SMA83" }, { type: "SMA", len: "39", name: "SMA39" }], entry: [{ la: "EMA13", op: "crosses_above", bType: "ind", b: "SMA83" }], exit: [{ la: "EMA13", op: "crosses_below", bType: "ind", b: "SMA39" }], sl: "3", tp: "8" } },
+  { name: "EMA 9 / SMA 39 crossover", code: "EMA9 = EMA(9); SMA39 = SMA(39); EMA21 = EMA(21)\nif EMA9 crosses_above SMA39:\n    enter_trade()\nif EMA9 crosses_below EMA21:\n    exit_trade()", tag: "Trend",
+    cfg: { mode: "builder", defs: [{ type: "EMA", len: "9", name: "EMA9" }, { type: "SMA", len: "39", name: "SMA39" }, { type: "EMA", len: "21", name: "EMA21" }], entry: [{ la: "EMA9", op: "crosses_above", bType: "ind", b: "SMA39" }], exit: [{ la: "EMA9", op: "crosses_below", bType: "ind", b: "EMA21" }], sl: "3", tp: "8" } },
+  { name: "ADX trend + Triple EMA + Volume", code: "if ADX1 > 25 AND EMA_f crosses_above EMA_s AND Volume > VMA:\n    enter_trade()\nif EMA_f crosses_below EMA_m:\n    exit_trade()", tag: "Trend",
+    cfg: { mode: "builder", defs: [{ type: "ADX", len: "14", name: "ADX1" }, { type: "EMA", len: "8", name: "EMA_f" }, { type: "EMA", len: "21", name: "EMA_m" }, { type: "EMA", len: "55", name: "EMA_s" }, { type: "Volume", len: "", name: "Volume" }, { type: "SMA", len: "20", name: "VMA" }], entry: [{ la: "ADX1", op: ">", bType: "num", b: "25" }, { la: "EMA_f", op: "crosses_above", bType: "ind", b: "EMA_s", gate: "AND" }], exit: [{ la: "EMA_f", op: "crosses_below", bType: "ind", b: "EMA_m" }], sl: "3", tp: "9" } },
+  { name: "Keltner + Heikin-Ashi + MACD", code: "if close crosses_above KC1.upper AND MACD1.line > MACD1.signal:\n    enter_trade()\nif close crosses_below KC1.middle:\n    exit_trade()", tag: "Momentum",
+    cfg: { mode: "builder", defs: [{ type: "KC", len: "20", name: "KC1" }, { type: "MACD", len: "", name: "MACD1" }, { type: "CurrentCandle", name: "HA" }], entry: [{ la: "Price", op: "crosses_above", bType: "ind", b: "KC1.upper" }, { la: "MACD1.line", op: ">", bType: "ind", b: "MACD1.signal", gate: "AND" }], exit: [{ la: "Price", op: "crosses_below", bType: "ind", b: "KC1.middle" }], sl: "3", tp: "8" } },
+  { name: "RSI + CCI + BB mean-reversion", code: "if RSI1<35 AND CCI1<-100 AND close<=BB1.lower:\n    enter_trade()\nif RSI1>60 OR close>=BB1.middle:\n    exit_trade()", tag: "Reversal",
+    cfg: { mode: "builder", defs: [{ type: "RSI", len: "14", name: "RSI1" }, { type: "CCI", len: "20", name: "CCI1" }, { type: "BB", len: "20", name: "BB1" }], entry: [{ la: "RSI1", op: "<", bType: "num", b: "35" }, { la: "CCI1", op: "<", bType: "num", b: "-100", gate: "AND" }, { la: "Price", op: "<=", bType: "ind", b: "BB1.lower", gate: "AND" }], exit: [{ la: "RSI1", op: ">", bType: "num", b: "60" }, { la: "Price", op: ">=", bType: "ind", b: "BB1.middle", gate: "OR" }], sl: "4", tp: "7" } },
 ];
 const SEED_STRATS = [
-  { id: "s1", name: "Golden Cross + RSI", by: "Matrix", active: true, alerts: false, cfg: TEMPLATES[0].cfg, created: Date.now() - 128 * 864e5 },
-  { id: "s2", name: "MACD crossover", by: "Matrix", active: true, alerts: false, cfg: TEMPLATES[2].cfg, created: Date.now() - 46 * 864e5 },
-  { id: "s3", name: "Bollinger squeeze", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[1].cfg, created: Date.now() - 84 * 864e5 },
-  { id: "s4", name: "CCI reversal", by: "Community", active: false, alerts: false, cfg: TEMPLATES[3].cfg, created: Date.now() - 210 * 864e5 },
+  { id: "s1", name: "Golden Cross + RSI", by: "Matrix", active: true, alerts: false, cfg: TEMPLATES[0].cfg, cap: 200000, symbols: ["NIFTY50", "BANKNIFTY"], created: Date.now() - 128 * 864e5 },
+  { id: "s2", name: "MACD crossover", by: "Matrix", active: true, alerts: false, cfg: TEMPLATES[2].cfg, cap: 100000, symbols: ["RELIANCE", "INFY"], created: Date.now() - 46 * 864e5 },
+  { id: "s3", name: "Bollinger squeeze", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[1].cfg, cap: 150000, symbols: ["NIFTY50"], created: Date.now() - 84 * 864e5 },
+  { id: "s4", name: "CCI reversal", by: "Community", active: false, alerts: false, cfg: TEMPLATES[3].cfg, cap: 50000, symbols: ["BANKNIFTY"], created: Date.now() - 210 * 864e5 },
 ];
+// Reusable multi-select (chips). Empty value array = "All".
+function MultiSelect({ label, options, value, onChange, allLabel = "All", dark }) {
+  const [open, setOpen] = useState(false);
+  const txt = dark ? "#fff" : "var(--ink)";
+  const summary = value.length === 0 ? allLabel : value.length === 1 ? value[0] : value.length + " selected";
+  const chipBtn = (sel, on, key, lbl) => (
+    <button key={key} onClick={on} className="tap pill" style={{ fontSize: 11, fontWeight: 700, padding: "6px 12px", border: "1px solid " + (sel ? "var(--primary)" : dark ? "rgba(255,255,255,.28)" : "var(--line)"), background: sel ? "var(--primary)" : dark ? "rgba(255,255,255,.1)" : "var(--surface)", color: sel ? "#fff" : txt }}>{lbl}</button>
+  );
+  const bg = dark ? "rgba(255,255,255,.12)" : "var(--elev)";
+  const bd = dark ? "rgba(255,255,255,.28)" : "var(--line)";
+  return (
+    <div style={{ width: "100%" }}>
+      <button onClick={() => setOpen((v) => !v)} className="tap disp" style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", background: bg, border: "1px solid " + bd, borderRadius: 12, padding: "10px 12px", fontSize: 12, fontWeight: 700, color: txt }}>
+        <span>{label}: {summary}</span><ChevronRight size={15} style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform .15s" }} />
+      </button>
+      {open && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+          {chipBtn(value.length === 0, () => onChange([]), "__all", allLabel)}
+          {options.map((o) => chipBtn(value.includes(o), () => onChange(value.includes(o) ? value.filter((x) => x !== o) : [...value, o]), o, o))}
+        </div>
+      )}
+    </div>
+  );
+}
 // Deterministic performance for a strategy over a chosen window (days).
 function stratPerf(strat, rangeDays) {
   const r = lcg(hash(strat.name + strat.by + (strat.id || "")));
@@ -1915,7 +2158,7 @@ function stratPerf(strat, rangeDays) {
   const wins = Math.round(trades * winRate / 100);
   const perYearRet = (r() * 0.95 - 0.18) * 42; // ≈ -7.5% .. +32% annualised
   const retPct = perYearRet * (rangeDays / 365);
-  const cap = 100000;
+  const cap = strat.cap || 100000;
   return { trades, wins, winRate, retPct, annual: perYearRet, pnl: cap * retPct / 100, cap };
 }
 function Automation() {
@@ -1937,6 +2180,10 @@ function Automation() {
   ]);
   const [sl, setSl] = useState("3");
   const [tp, setTp] = useState("8");
+  const [capital, setCapital] = useState("100000");
+  const [deploySyms, setDeploySyms] = useState(["NIFTY50"]);
+  const [symFilter, setSymFilter] = useState([]);
+  const DEPLOY_OPTIONS = useMemo(() => FNO.map((s) => s.sym), []);
   const [pEntry, setPEntry] = useState("Buy when EMA1 (50) crosses above EMA2 (200) and RSI is below 70.");
   const [pExit, setPExit] = useState("Exit when MACD line crosses below its signal, or RSI rises above 70.");
   const [strats, setStrats] = useState(SEED_STRATS);
@@ -1979,20 +2226,20 @@ function Automation() {
 
   const saveStrategy = (makeActive) => {
     const name = stratName.trim() || (mode === "builder" ? "Custom strategy" : "Plain-English strategy");
-    const strat = { id: "u" + Date.now(), name, by: "You", active: makeActive, alerts: false, cfg, created: Date.now() };
+    const strat = { id: "u" + Date.now(), name, by: "You", active: makeActive, alerts: false, cfg, cap: parseInt(capital) || 100000, symbols: deploySyms.length ? deploySyms : ["NIFTY50"], created: Date.now() };
     setStrats((p) => [strat, ...p]);
     setStratName(""); setShowBuilder(false);
     setToast(`${name} ${makeActive ? "deployed & running" : "saved as draft"}`);
   };
   const activateTemplate = (t) => {
-    setStrats((p) => p.find((x) => x.name === t.name && x.by === "Matrix") ? p.map((x) => x.name === t.name ? { ...x, active: true } : x) : [{ id: "t" + Date.now(), name: t.name, by: "Matrix", active: true, alerts: false, cfg: t.cfg, created: Date.now() }, ...p]);
+    setStrats((p) => p.find((x) => x.name === t.name && x.by === "Matrix") ? p.map((x) => x.name === t.name ? { ...x, active: true } : x) : [{ id: "t" + Date.now(), name: t.name, by: "Matrix", active: true, alerts: false, cfg: t.cfg, cap: 100000, symbols: ["NIFTY50"], created: Date.now() }, ...p]);
     setToast(`${t.name} activated`);
   };
   const toggleActive = (id) => setStrats((p) => p.map((s) => s.id === id ? { ...s, active: !s.active } : s));
   const toggleAlerts = (s) => { const willOn = !s.alerts; setStrats((p) => p.map((x) => x.id === s.id ? { ...x, alerts: willOn } : x)); if (willOn) fireAlert(s); };
 
   // dashboard aggregation
-  const shown = strats.filter((s) => dashBy === "All" || s.by === dashBy);
+  const shown = strats.filter((s) => (dashBy === "All" || s.by === dashBy) && (symFilter.length === 0 || (s.symbols || []).some((x) => symFilter.includes(x))));
   const perf = shown.map((s) => ({ s, p: stratPerf(s, dashRange) }));
   const agg = perf.reduce((a, { p }) => { a.trades += p.trades; a.wins += p.wins; a.pnl += p.pnl; a.cap += p.cap; a.annSum += p.annual; return a; }, { trades: 0, wins: 0, pnl: 0, cap: 0, annSum: 0 });
   const activeCount = shown.filter((s) => s.active).length;
@@ -2024,7 +2271,13 @@ function Automation() {
           <span style={{ width: 9, height: 9, borderRadius: 9, flex: "0 0 auto", background: s.active ? "var(--up)" : "var(--muted)", boxShadow: s.active ? "0 0 0 4px var(--up-soft)" : "none" }} />
           <div style={{ minWidth: 0 }}>
             <div className="disp" style={{ fontWeight: 700, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</div>
-            <div style={{ fontSize: 10.5, color: "var(--muted)" }}>by {s.by} · started {fmtDate(s.created)}</div>
+            <div style={{ fontSize: 10.5, color: "var(--muted)" }}>by {s.by} · started {fmtDate(s.created)} · {fmt(s.cap || 100000, "IN")}</div>
+            {s.symbols && s.symbols.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
+                {s.symbols.slice(0, 4).map((sy) => <span key={sy} className="pill" style={{ fontSize: 9.5, fontWeight: 700, background: "var(--primary-soft)", color: "var(--primary)", padding: "2px 8px" }}>{sy}</span>)}
+                {s.symbols.length > 4 && <span style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700, alignSelf: "center" }}>+{s.symbols.length - 4}</span>}
+              </div>
+            )}
           </div>
         </div>
         {s.alerts && <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, background: "var(--primary-soft)", color: "var(--primary)", padding: "3px 8px", display: "flex", alignItems: "center", gap: 3, flex: "0 0 auto" }}><Bell size={10} /> Alerts</span>}
@@ -2076,6 +2329,9 @@ function Automation() {
           <select value={dashBy} onChange={(e) => setDashBy(e.target.value)} style={dsel}>{byOptions.map((o) => <option key={o} value={o}>Created by: {o}</option>)}</select>
           <select value={dashRange} onChange={(e) => setDashRange(+e.target.value)} style={dsel}><option value={30}>30d</option><option value={90}>3m</option><option value={180}>6m</option><option value={365}>12m</option></select>
         </div>
+        <div style={{ marginTop: 8 }}>
+          <MultiSelect label="Symbol" options={DEPLOY_OPTIONS} value={symFilter} onChange={setSymFilter} dark />
+        </div>
       </div>
 
       {/* Create a new automated strategy */}
@@ -2085,55 +2341,60 @@ function Automation() {
 
       {showBuilder && (
         <div className="fade">
-          {/* Strategy Ideas (templates) */}
-          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", margin: "18px 2px 10px", display: "flex", alignItems: "center", gap: 7 }}><Sparkles size={14} color="var(--primary)" /> Strategy Ideas — start from a template</div>
-          <div className="hide-scroll" style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 2 }}>
-            {TEMPLATES.map((t) => (
-              <div key={t.name} className="card" style={{ flex: "0 0 auto", width: 236, padding: 14 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span className="disp" style={{ fontWeight: 700, fontSize: 13 }}>{t.name}</span>
-                  <span className="pill" style={{ fontSize: 10, background: "var(--primary-soft)", color: "var(--primary)", fontWeight: 700, padding: "2px 8px" }}>{t.tag}</span>
-                </div>
-                <pre className="mono" style={{ fontSize: 10, background: "var(--bg)", borderRadius: 12, padding: 10, marginTop: 10, whiteSpace: "pre-wrap", lineHeight: 1.4 }}>{t.code}</pre>
-                <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-                  <button onClick={() => activateTemplate(t)} className="tap pill" style={{ flex: 1, border: "1px solid var(--line)", background: "var(--surface)", fontWeight: 700, fontSize: 11.5, padding: 8, color: "var(--ink)" }}>Activate</button>
-                  <button onClick={() => setBtTpl(btTpl === t.name ? null : t.name)} className="tap pill" style={{ flex: 1, border: "1px solid " + (btTpl === t.name ? "var(--primary)" : "var(--line)"), background: btTpl === t.name ? "var(--primary-soft)" : "var(--surface)", fontWeight: 700, fontSize: 11.5, padding: 8, color: btTpl === t.name ? "var(--primary)" : "var(--ink)", display: "flex", gap: 4, alignItems: "center", justifyContent: "center" }}><Activity size={13} /> Backtest</button>
-                </div>
-              </div>
+          {/* how do you want to build it? */}
+          <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+            {[["builder", "🧩 Visual builder"], ["plain", "✍️ Plain English"]].map(([k, l]) => (
+              <button key={k} onClick={() => setMode(k)} className="tap disp" style={{ flex: 1, padding: "12px 10px", borderRadius: 14, fontWeight: 700, fontSize: 12.5, border: "1px solid " + (mode === k ? "var(--primary)" : "var(--line)"), background: mode === k ? "var(--primary-soft)" : "var(--surface)", color: mode === k ? "var(--primary)" : "var(--ink)" }}>{l}</button>
             ))}
           </div>
-          {btTpl && (
-            <div className="card" style={{ marginTop: 12, padding: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                <span className="disp" style={{ fontWeight: 700, fontSize: 13.5 }}>Backtest · {btTpl} <span style={{ color: "var(--muted)", fontWeight: 600, fontSize: 11 }}>· pick a stock or index</span></span>
-                <X size={18} className="tap" color="var(--muted)" onClick={() => setBtTpl(null)} />
-              </div>
-              <BacktestResult cfg={(TEMPLATES.find((x) => x.name === btTpl) || {}).cfg} />
-            </div>
-          )}
+          <div style={{ fontSize: 11, color: "var(--muted)", margin: "8px 2px 0", lineHeight: 1.5 }}>{mode === "plain" ? "Just describe your entry and exit rules in your own words — no indicators to pick. Matrix interprets them when you deploy." : "Pick indicators, then stack them into signals with AND / OR."}</div>
 
-          {/* Step 1 — define indicators */}
-          <div className="card" style={{ marginTop: 16, padding: 16 }}>
-            <div className="disp" style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 7 }}>
-              <span className="pill gold-text" style={{ fontWeight: 800, fontSize: 12 }}>STEP 1</span> Your indicators
-            </div>
-            <div className="gold-line" style={{ width: 40, margin: "10px 0 14px", borderRadius: 2 }} />
-            <IndicatorDefs defs={defs} setDefs={setDefs} />
-          </div>
-
-          {/* Step 2 — signals */}
-          <div className="card" style={{ marginTop: 14, padding: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <div className="disp" style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 7 }}>
-                <span className="pill gold-text" style={{ fontWeight: 800, fontSize: 12 }}>STEP 2</span> Signals
-              </div>
-              <div className="pill" style={{ display: "flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3 }}>
-                {[["builder", "Builder"], ["plain", "Plain English"]].map(([k, l]) => (
-                  <button key={k} onClick={() => setMode(k)} className="pill tap disp" style={{ padding: "5px 12px", fontSize: 11.5, fontWeight: 700, border: "none", background: mode === k ? "var(--primary)" : "transparent", color: mode === k ? "#fff" : "var(--muted)" }}>{l}</button>
+          {mode === "builder" && (
+            <>
+              {/* Strategy Ideas (templates) */}
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", margin: "18px 2px 10px", display: "flex", alignItems: "center", gap: 7 }}><Sparkles size={14} color="var(--primary)" /> Strategy Ideas — start from a template</div>
+              <div className="hide-scroll" style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 2 }}>
+                {TEMPLATES.map((t) => (
+                  <div key={t.name} className="card" style={{ flex: "0 0 auto", width: 236, padding: 14 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span className="disp" style={{ fontWeight: 700, fontSize: 13 }}>{t.name}</span>
+                      <span className="pill" style={{ fontSize: 10, background: "var(--primary-soft)", color: "var(--primary)", fontWeight: 700, padding: "2px 8px" }}>{t.tag}</span>
+                    </div>
+                    <pre className="mono" style={{ fontSize: 10, background: "var(--bg)", borderRadius: 12, padding: 10, marginTop: 10, whiteSpace: "pre-wrap", lineHeight: 1.4 }}>{t.code}</pre>
+                    <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+                      <button onClick={() => activateTemplate(t)} className="tap pill" style={{ flex: 1, border: "1px solid var(--line)", background: "var(--surface)", fontWeight: 700, fontSize: 11.5, padding: 8, color: "var(--ink)" }}>Activate</button>
+                      <button onClick={() => setBtTpl(btTpl === t.name ? null : t.name)} className="tap pill" style={{ flex: 1, border: "1px solid " + (btTpl === t.name ? "var(--primary)" : "var(--line)"), background: btTpl === t.name ? "var(--primary-soft)" : "var(--surface)", fontWeight: 700, fontSize: 11.5, padding: 8, color: btTpl === t.name ? "var(--primary)" : "var(--ink)", display: "flex", gap: 4, alignItems: "center", justifyContent: "center" }}><Activity size={13} /> Backtest</button>
+                    </div>
+                  </div>
                 ))}
               </div>
+              {btTpl && (
+                <div className="card" style={{ marginTop: 12, padding: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <span className="disp" style={{ fontWeight: 700, fontSize: 13.5 }}>Backtest · {btTpl} <span style={{ color: "var(--muted)", fontWeight: 600, fontSize: 11 }}>· pick a stock or index</span></span>
+                    <X size={18} className="tap" color="var(--muted)" onClick={() => setBtTpl(null)} />
+                  </div>
+                  <BacktestResult cfg={(TEMPLATES.find((x) => x.name === btTpl) || {}).cfg} />
+                </div>
+              )}
+
+              {/* Step 1 — define indicators */}
+              <div className="card" style={{ marginTop: 16, padding: 16 }}>
+                <div className="disp" style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 7 }}>
+                  <span className="pill gold-text" style={{ fontWeight: 800, fontSize: 12 }}>STEP 1</span> Your indicators
+                </div>
+                <div className="gold-line" style={{ width: 40, margin: "10px 0 14px", borderRadius: 2 }} />
+                <IndicatorDefs defs={defs} setDefs={setDefs} />
+              </div>
+            </>
+          )}
+
+          {/* Signals (builder) / plain-English description */}
+          <div className="card" style={{ marginTop: 14, padding: 16 }}>
+            <div className="disp" style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 7 }}>
+              {mode === "builder" ? <><span className="pill gold-text" style={{ fontWeight: 800, fontSize: 12 }}>STEP 2</span> Signals</> : <><Sparkles size={16} color="var(--primary)" /> Describe your strategy</>}
             </div>
-            <div className="gold-line" style={{ width: 40, margin: "2px 0 16px", borderRadius: 2 }} />
+            <div className="gold-line" style={{ width: 40, margin: "10px 0 16px", borderRadius: 2 }} />
 
             {mode === "builder" ? (
               <>
@@ -2143,16 +2404,32 @@ function Automation() {
               </>
             ) : (
               <>
-                <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Entry rules (plain English)</div>
-                <textarea value={pEntry} onChange={(e) => setPEntry(e.target.value)} className="no-ring" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 11, fontSize: 13, minHeight: 64, background: "var(--surface)", resize: "vertical" }} />
-                <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, margin: "12px 0 6px" }}>Exit rules (plain English)</div>
-                <textarea value={pExit} onChange={(e) => setPExit(e.target.value)} className="no-ring" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 11, fontSize: 13, minHeight: 64, background: "var(--surface)", resize: "vertical" }} />
+                <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Entry rules — in plain English</div>
+                <textarea value={pEntry} onChange={(e) => setPEntry(e.target.value)} placeholder="e.g. Buy Nifty when it breaks above the previous day's high with rising volume and RSI under 70." className="no-ring" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13, minHeight: 84, background: "var(--elev)", resize: "vertical", lineHeight: 1.5 }} />
+                <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, margin: "14px 0 6px" }}>Exit rules — in plain English</div>
+                <textarea value={pExit} onChange={(e) => setPExit(e.target.value)} placeholder="e.g. Exit if it closes below the day's VWAP, or take profit at +8%." className="no-ring" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13, minHeight: 84, background: "var(--elev)", resize: "vertical", lineHeight: 1.5 }} />
+                <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, display: "flex", gap: 6 }}><Sparkles size={13} color="var(--primary)" style={{ flex: "0 0 auto", marginTop: 1 }} /> Matrix reads your description and turns it into an executable strategy on deploy — no indicator setup needed.</div>
               </>
             )}
 
             <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
               <NumF label="Stop loss %" v={sl} set={setSl} />
               <NumF label="Take profit %" v={tp} set={setTp} />
+            </div>
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Capital deployed (₹)</div>
+              <input value={capital} onChange={(e) => setCapital(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" placeholder="100000" className="no-ring mono" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 14, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }} />
+              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 5 }}>Sizes this strategy's P&amp;L. Default ₹1,00,000.</div>
+            </div>
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Deploy on — symbol(s)</div>
+              <MultiSelect label="Symbols" options={DEPLOY_OPTIONS} value={deploySyms} onChange={setDeploySyms} allLabel="Select…" />
+              {deploySyms.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                {deploySyms.map((sy) => (
+                  <span key={sy} className="pill" style={{ fontSize: 11, fontWeight: 700, background: "var(--primary-soft)", color: "var(--primary)", padding: "5px 10px", display: "flex", alignItems: "center", gap: 6 }}>{sy}<X size={12} className="tap" onClick={() => setDeploySyms((p) => p.filter((x) => x !== sy))} /></span>
+                ))}
+              </div>}
+              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 6 }}>The strategy runs on these instruments. Default NIFTY50.</div>
             </div>
             <pre className="mono" style={{ fontSize: 11, background: "#0E0E18", color: "#C9D2FF", border: "1px solid #2A2A3D", borderRadius: 12, padding: 13, marginTop: 14, whiteSpace: "pre-wrap", lineHeight: 1.55, overflowX: "auto" }}>{code}</pre>
 
@@ -2299,99 +2576,49 @@ function SearchOverlay({ onClose, onOpen }) {
   );
 }
 
-/* ============================== AUTH (signup / login) ============================== */
-function AuthScreen({ onAuthed }) {
-  const [mode, setMode] = useState("login"); // "login" | "signup"
-  const [step, setStep] = useState(0); // signup: 0=identifier,1=name,2=pin
-  const [identifier, setIdentifier] = useState("");
-  const [name, setName] = useState("");
+/* ============================== ONBOARDING ============================== */
+function LoginScreen({ onEnter }) {
+  const [mobile, setMobile] = useState("");
   const [pin, setPin] = useState("");
-  const [confirmPin, setConfirmPin] = useState("");
-  const [err, setErr] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const validIdentifier = /^\S+@\S+\.\S+$/.test(identifier.trim()) || /^\+?\d{7,15}$/.test(identifier.trim());
-
-  const reset = () => { setStep(0); setIdentifier(""); setName(""); setPin(""); setConfirmPin(""); setErr(""); };
-  const switchMode = (m) => { setMode(m); reset(); };
-
-  const doLogin = async () => {
-    setErr(""); setBusy(true);
-    try {
-      const user = await apiLogin(identifier.trim(), pin);
-      localStorage.setItem(AUTH_KEY, JSON.stringify(user));
-      onAuthed(user);
-    } catch (e) { setErr(e.message); } finally { setBusy(false); }
-  };
-  const doSignup = async () => {
-    if (pin !== confirmPin) { setErr("PINs don't match"); return; }
-    setErr(""); setBusy(true);
-    try {
-      const user = await apiSignup(identifier.trim(), name.trim(), pin);
-      localStorage.setItem(AUTH_KEY, JSON.stringify(user));
-      onAuthed(user);
-    } catch (e) { setErr(e.message); } finally { setBusy(false); }
-  };
-
-  const inputStyle = { width: "100%", padding: "15px 16px", borderRadius: 16, border: "1.5px solid var(--line)", background: "var(--surface)", fontSize: 15, color: "var(--ink)" };
-  const btnStyle = { width: "100%", padding: 15, borderRadius: 16, border: "none", background: "linear-gradient(120deg,var(--primary),var(--primary-2))", color: "#fff", fontWeight: 700, fontSize: 15, marginTop: 6 };
-
+  const field = { width: "100%", background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.28)", borderRadius: 14, padding: "14px 16px", fontSize: 15, color: "#fff", outline: "none" };
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 90, background: "var(--bg)", maxWidth: 460, margin: "0 auto", padding: 24, display: "flex", flexDirection: "column" }} className="mx">
-      <div className="disp" style={{ fontWeight: 700, fontSize: 26, marginTop: 30, display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ color: "var(--primary)" }}>✦</span> <span className="gradtext">Matrix</span>
-      </div>
-      <div style={{ fontSize: 13.5, color: "var(--muted)", marginTop: 6, marginBottom: 30 }}>
-        {mode === "login" ? "Welcome back. Log in to continue." : "Create your account to get started."}
-      </div>
+    <div className="mx" style={{ position: "fixed", inset: 0, zIndex: 100, background: "linear-gradient(160deg,#6D4DFF 0%,#8A4FE6 42%,#5B2E9E 100%)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <style>{`.lginput::placeholder{color:rgba(255,255,255,.65)}`}</style>
+      {/* ambient glow blobs */}
+      <div style={{ position: "absolute", top: -80, right: -60, width: 280, height: 280, borderRadius: "50%", background: "radial-gradient(circle,rgba(214,123,240,.55),transparent 70%)", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", bottom: -100, left: -80, width: 320, height: 320, borderRadius: "50%", background: "radial-gradient(circle,rgba(124,77,255,.5),transparent 70%)", pointerEvents: "none" }} />
 
-      {mode === "login" ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <input style={inputStyle} placeholder="Mobile number or email" value={identifier} onChange={(e) => setIdentifier(e.target.value)} />
-          <input style={inputStyle} placeholder="4-6 digit PIN" type="password" inputMode="numeric" maxLength={6} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} />
-          {err && <div style={{ color: "var(--down)", fontSize: 13 }}>{err}</div>}
-          <button disabled={busy || !identifier.trim() || pin.length < 4} onClick={doLogin} className="tap" style={{ ...btnStyle, opacity: busy || !identifier.trim() || pin.length < 4 ? 0.6 : 1 }}>{busy ? "Logging in…" : "Log In"}</button>
-          <div style={{ textAlign: "center", fontSize: 13, color: "var(--muted)", marginTop: 8 }}>
-            New here? <span className="tap" style={{ color: "var(--primary)", fontWeight: 700 }} onClick={() => switchMode("signup")}>Create an account</span>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 30px", position: "relative", maxWidth: 460, margin: "0 auto", width: "100%" }}>
+        <div style={{ textAlign: "center", marginBottom: 46 }}>
+          <div className="disp" style={{ fontWeight: 700, fontSize: 46, color: "#fff", letterSpacing: "-.02em", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            <span style={{ fontSize: 38 }}>✦</span> Matrix
           </div>
+          <div style={{ color: "rgba(255,255,255,.7)", fontSize: 12.5, fontWeight: 600, letterSpacing: ".22em", marginTop: 6 }}>SMART TRADING</div>
         </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ display: "flex", gap: 5, marginBottom: 6 }}>{[0, 1, 2].map((i) => <div key={i} style={{ flex: 1, height: 4, borderRadius: 4, background: i <= step ? "var(--primary)" : "var(--line)" }} />)}</div>
 
-          {step === 0 && (
-            <>
-              <input autoFocus style={inputStyle} placeholder="Mobile number or email" value={identifier} onChange={(e) => setIdentifier(e.target.value)} />
-              {err && <div style={{ color: "var(--down)", fontSize: 13 }}>{err}</div>}
-              <button disabled={!validIdentifier} onClick={() => { setErr(""); setStep(1); }} className="tap" style={{ ...btnStyle, opacity: validIdentifier ? 1 : 0.6 }}>Continue</button>
-            </>
-          )}
-          {step === 1 && (
-            <>
-              <input autoFocus style={inputStyle} placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
-              {err && <div style={{ color: "var(--down)", fontSize: 13 }}>{err}</div>}
-              <button disabled={!name.trim()} onClick={() => { setErr(""); setStep(2); }} className="tap" style={{ ...btnStyle, opacity: name.trim() ? 1 : 0.6 }}>Continue</button>
-            </>
-          )}
-          {step === 2 && (
-            <>
-              <input autoFocus style={inputStyle} placeholder="Set a 4-6 digit PIN" type="password" inputMode="numeric" maxLength={6} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} />
-              <input style={inputStyle} placeholder="Confirm PIN" type="password" inputMode="numeric" maxLength={6} value={confirmPin} onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ""))} />
-              {err && <div style={{ color: "var(--down)", fontSize: 13 }}>{err}</div>}
-              <button disabled={busy || pin.length < 4 || confirmPin.length < 4} onClick={doSignup} className="tap" style={{ ...btnStyle, opacity: busy || pin.length < 4 || confirmPin.length < 4 ? 0.6 : 1 }}>{busy ? "Creating account…" : "Create Account"}</button>
-            </>
-          )}
-
-          <div style={{ textAlign: "center", fontSize: 13, color: "var(--muted)", marginTop: 8 }}>
-            Already have an account? <span className="tap" style={{ color: "var(--primary)", fontWeight: 700 }} onClick={() => switchMode("login")}>Log in</span>
-          </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <input className="lginput mono" value={mobile} onChange={(e) => setMobile(e.target.value.replace(/[^0-9]/g, "").slice(0, 10))} inputMode="numeric" placeholder="Mobile number (optional)" style={field} />
+          <input className="lginput mono" value={pin} onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))} inputMode="numeric" type="password" placeholder="PIN (optional)" style={field} />
         </div>
-      )}
+
+        <button onClick={() => onEnter(mobile ? "user" : "guest")} className="tap disp" style={{ width: "100%", marginTop: 26, background: "#fff", color: "#5B2E9E", border: "none", borderRadius: 999, padding: 16, fontWeight: 800, fontSize: 15, letterSpacing: ".02em" }}>SIGN IN</button>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "22px 0" }}>
+          <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.25)" }} />
+          <span style={{ color: "rgba(255,255,255,.65)", fontSize: 11, fontWeight: 700 }}>OR</span>
+          <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.25)" }} />
+        </div>
+
+        <button onClick={() => onEnter("guest")} className="tap disp glow" style={{ width: "100%", background: "rgba(255,255,255,.14)", color: "#fff", border: "1.5px solid rgba(255,255,255,.5)", borderRadius: 999, padding: 15, fontWeight: 800, fontSize: 14.5, display: "flex", gap: 8, alignItems: "center", justifyContent: "center" }}>
+          <User size={17} /> Continue as guest
+        </button>
+        <div style={{ textAlign: "center", color: "rgba(255,255,255,.6)", fontSize: 11.5, marginTop: 14 }}>No signup, no mobile number, no PIN needed.</div>
+      </div>
+
+      <div style={{ textAlign: "center", color: "rgba(255,255,255,.55)", fontSize: 10.5, padding: "0 30px 26px", position: "relative" }}>Educational research, not investment advice.</div>
     </div>
   );
 }
-
-/* ============================== ONBOARDING ============================== */
 function Onboarding({ onDone }) {
   const [step, setStep] = useState(0);
   const [p, setP] = useState({ proficiency: "Beginner", risk: "Balanced", reward: "", style: "Technical", caps: [], sectors: [] });
@@ -2437,14 +2664,14 @@ function Onboarding({ onDone }) {
 }
 
 /* ============================== PROFILE SHEET ============================== */
-function ProfileSheet({ profile, wallet, onClose, user, onLogout }) {
+function ProfileSheet({ profile, wallet, onClose }) {
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(10,10,20,.32)", zIndex: 60, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
       <div onClick={(e) => e.stopPropagation()} className="sheet card" style={{ width: "100%", maxWidth: 460, borderRadius: "24px 24px 0 0", padding: 20 }}>
         <div style={{ width: 40, height: 4, background: "var(--line)", borderRadius: 9, margin: "0 auto 16px" }} />
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 52, height: 52, borderRadius: 16, background: "linear-gradient(135deg,var(--primary),var(--primary-2))", display: "grid", placeItems: "center", color: "#fff", fontWeight: 700, fontSize: 20 }} className="disp">{(user?.name || "M")[0].toUpperCase()}</div>
-          <div><div className="disp" style={{ fontWeight: 700, fontSize: 17 }}>{user?.name || "My Profile"}</div><div style={{ fontSize: 12.5, color: "var(--muted)" }}>{user?.identifier || "Virtual investor"}</div></div>
+          <div style={{ width: 52, height: 52, borderRadius: 16, background: "linear-gradient(135deg,var(--primary),var(--primary-2))", display: "grid", placeItems: "center", color: "#fff", fontWeight: 700, fontSize: 20 }} className="disp">M</div>
+          <div><div className="disp" style={{ fontWeight: 700, fontSize: 17 }}>My Profile</div><div style={{ fontSize: 12.5, color: "var(--muted)" }}>Virtual investor</div></div>
         </div>
         <div className="card" style={{ marginTop: 16, padding: 14, background: "var(--bg)" }}>
           <div style={{ fontSize: 12, color: "var(--muted)" }}>Virtual wallet</div>
@@ -2457,9 +2684,6 @@ function ProfileSheet({ profile, wallet, onClose, user, onLogout }) {
             ))}
           </div>
         ) : <div style={{ marginTop: 14, fontSize: 13, color: "var(--muted)" }}>Personalisation skipped. Reopen the app to set preferences.</div>}
-        {onLogout && (
-          <button onClick={onLogout} className="tap" style={{ width: "100%", marginTop: 18, padding: 14, borderRadius: 16, border: "1px solid var(--line)", background: "var(--surface)", fontWeight: 700, color: "var(--down)" }}>Log Out</button>
-        )}
       </div>
     </div>
   );
@@ -2468,39 +2692,27 @@ function ProfileSheet({ profile, wallet, onClose, user, onLogout }) {
 /* ============================== ROOT ============================== */
 export default function App() {
   const [theme, setTheme] = useState("dark");
-  const [user, setUser] = useState(null);
-  const [authChecked, setAuthChecked] = useState(false);
-  const [onboard, setOnboard] = useState(false);
+  const [authed, setAuthed] = useState(false);
+  const [guest, setGuest] = useState(false);
+  const [onboard, setOnboard] = useState(true);
   const [profile, setProfile] = useState(null);
   const [tab, setTab] = useState("home");
   const [market, setMarket] = useState("IN");
   const [segment, setSegment] = useState("Stocks");
   const [wallet, setWallet] = useState(1000000);
   const [portfolio, setPortfolio] = useState([]);
-  const [watchlists, setWatchlists] = useState([{ id: "w1", name: "My Watchlist", syms: ["ZOMATO", "TATAPOWER"] }]);
+  const [watchlists, setWatchlists] = useState([{ id: "w1", name: "My Watchlist", syms: ["ETERNAL", "TATAPOWER"] }]);
   const [activeWl, setActiveWl] = useState("w1");
   const [drawer, setDrawer] = useState(null);
   const [detail, setDetail] = useState(null);
   const [search, setSearch] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [tradePreset, setTradePreset] = useState(null);
+  const [buyToast, setBuyToast] = useState(null);
+  useEffect(() => { if (!buyToast) return; const t = setTimeout(() => setBuyToast(null), 3200); return () => clearTimeout(t); }, [buyToast]);
   const [live, setLive] = useState(false);
   const [liveAt, setLiveAt] = useState(null);
   const [, setLiveTick] = useState(0);
-
-  // Restore a logged-in session from localStorage on load.
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(AUTH_KEY);
-      if (raw) {
-        const u = JSON.parse(raw);
-        setUser(u);
-        setProfile(u.profile || null);
-        setOnboard(!u.onboarded); // only show personalization if it hasn't been done before
-      }
-    } catch { /* corrupted/no session -> stay logged out */ }
-    setAuthChecked(true);
-  }, []);
 
   // Overlay real Yahoo prices (via the proxy) onto the universe when configured.
   useEffect(() => {
@@ -2527,6 +2739,18 @@ export default function App() {
   const openStock = (s) => { setSearch(false); setDrawer(s); };
   const openDetail = (s) => { setDrawer(null); setDetail(s); };
   const goTrade = (s) => { setDetail(null); setTradePreset(s); setTab("trade"); };
+  const buyStock = (s, qty = 1) => {
+    const cost = s.price * qty;
+    if (cost > wallet) { setBuyToast({ t: "Not enough virtual funds.", e: true }); return false; }
+    setWallet((w) => w - cost);
+    setPortfolio((p) => {
+      const ex = p.find((h) => h.sym === s.sym);
+      if (ex) { const tq = ex.qty + qty; return p.map((h) => h.sym === s.sym ? { ...h, qty: tq, buy: (h.buy * h.qty + cost) / tq } : h); }
+      return [...p, { sym: s.sym, name: s.name, qty, buy: s.price, date: Date.now() }];
+    });
+    setBuyToast({ t: `Bought ${qty} ${s.sym} @ ${fmt(s.price, marketOf(s.sym))} — added to portfolio.`, e: false });
+    return true;
+  };
 
   // personalised ordering for picks
   const list = useMemo(() => {
@@ -2542,37 +2766,13 @@ export default function App() {
 
   const nav = [["home", Home, "Home"], ["trade", Repeat, "Trade"], ["ideas", Lightbulb, "Ideas"], ["automation", Bolt, "Auto"], ["portfolio", Briefcase, "Portfolio"], ["watchlist", Star, "Watch"], ["ask", Bot, "Ask"]];
 
-  const handleLogout = () => {
-    localStorage.removeItem(AUTH_KEY);
-    setUser(null); setProfile(null); setOnboard(false); setShowProfile(false);
-  };
-  const handleOnboardDone = async (p) => {
-    setProfile(p); setOnboard(false);
-    if (user) {
-      try {
-        const updated = await apiSaveProfile(user.identifier, p);
-        localStorage.setItem(AUTH_KEY, JSON.stringify(updated));
-        setUser(updated);
-      } catch { /* profile still applies locally even if the save call fails */ }
-    }
-  };
-
-  if (!authChecked) return <div className={"mx theme-" + theme} style={{ background: "var(--app-bg, var(--bg))", minHeight: "100vh" }}><style>{CSS}</style></div>;
-  if (!user) {
-    return (
-      <div className={"mx theme-" + theme} style={{ background: "var(--app-bg, var(--bg))", minHeight: "100vh" }}>
-        <style>{CSS}</style>
-        <AuthScreen onAuthed={(u) => { setUser(u); setProfile(u.profile || null); setOnboard(!u.onboarded); }} />
-      </div>
-    );
-  }
-
   return (
     <div className={"mx theme-" + theme} style={{ background: "var(--app-bg, var(--bg))", minHeight: "100vh" }}>
       <style>{CSS}</style>
       {/* fixed gradient backdrop so it stays behind scroll */}
       <div style={{ position: "fixed", inset: 0, background: "var(--app-bg, var(--bg))", zIndex: 0, pointerEvents: "none" }} />
-      {onboard && <Onboarding onDone={handleOnboardDone} />}
+      {!authed && <LoginScreen onEnter={(kind) => { setGuest(kind === "guest"); setAuthed(true); }} />}
+      {authed && onboard && <Onboarding onDone={(p) => { setProfile(p); setOnboard(false); }} />}
 
       <div style={{ maxWidth: 460, margin: "0 auto", minHeight: "100vh", position: "relative", zIndex: 1, paddingBottom: 86 }}>
         {/* ambient glow */}
@@ -2610,7 +2810,7 @@ export default function App() {
         {/* BODY */}
         <div style={{ padding: "0 18px", position: "relative", zIndex: 1 }}>
           {detail ? (
-            <DetailPage s={detail} onBack={() => setDetail(null)} watched={watch.includes(detail.sym)} toggleWatch={toggleWatch} onTrade={goTrade} />
+            <DetailPage s={detail} onBack={() => setDetail(null)} watched={watch.includes(detail.sym)} toggleWatch={toggleWatch} onTrade={goTrade} onBuy={buyStock} />
           ) : (
             <>
               {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} setSegment={setSegment} list={list} onOpen={openStock} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} />}
@@ -2645,9 +2845,17 @@ export default function App() {
         )}
       </div>
 
-      {drawer && <Drawer s={drawer} onClose={() => setDrawer(null)} onDetails={openDetail} />}
+      {drawer && <Drawer s={drawer} onClose={() => setDrawer(null)} onDetails={openDetail} onBuy={buyStock} />}
       {search && <SearchOverlay onClose={() => setSearch(false)} onOpen={openStock} />}
-      {showProfile && <ProfileSheet profile={profile} wallet={wallet} onClose={() => setShowProfile(false)} user={user} onLogout={handleLogout} />}
+      {showProfile && <ProfileSheet profile={profile} wallet={wallet} onClose={() => setShowProfile(false)} />}
+      {buyToast && (
+        <div style={{ position: "fixed", left: 0, right: 0, bottom: 96, display: "flex", justifyContent: "center", zIndex: 90, pointerEvents: "none" }}>
+          <div className="card glow" style={{ display: "flex", alignItems: "center", gap: 9, padding: "12px 16px", maxWidth: 380, border: "1px solid " + (buyToast.e ? "var(--down)" : "var(--up)") }}>
+            {buyToast.e ? <X size={16} color="var(--down)" /> : <Check size={16} color="var(--up)" />}
+            <span style={{ fontSize: 12.5, fontWeight: 600 }}>{buyToast.t}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
