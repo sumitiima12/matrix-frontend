@@ -14,33 +14,34 @@ import {
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&family=Nunito:wght@400;500;600;700;800&display=swap');
 .theme-dark{
-  --bg:#160E2B; --surface:#1E1638; --elev:#281E48; --ink:#F5F2FC; --ink-soft:#CBC3E0;
-  --muted:#948BB4; --line:#342A54; --primary:#9A6CFF; --primary-2:#D07BF2;
-  --primary-soft:rgba(154,108,255,.18); --up:#2FE0A6; --up-soft:rgba(47,224,166,.15);
-  --down:#FF6B93; --down-soft:rgba(255,107,147,.15); --gold:#D07BF2; --gold-soft:rgba(154,108,255,.2);
-  --lime:#C9FF3D; --grid:rgba(160,150,200,.14); --back:#0F0920;
-  --shadow:0 1px 0 rgba(255,255,255,.06) inset, 0 30px 64px -24px rgba(10,0,30,.9), 0 12px 28px rgba(90,40,150,.28);
-  --glow:0 20px 50px rgba(160,90,255,.55);
-  --gold-grad:linear-gradient(120deg,#9A6CFF,#C06CF2 50%,#EC77E0);
+  --bg:#0B0B0D; --surface:#151517; --elev:#1D1D20; --ink:#F4F4F6; --ink-soft:#C2C2C8;
+  --muted:#86868E; --line:#28282C; --primary:#E8E8EC; --primary-2:#9A9AA2;
+  --primary-soft:rgba(232,232,236,.12); --up:#22C55E; --up-soft:rgba(34,197,94,.14);
+  --down:#EF4444; --down-soft:rgba(239,68,68,.14); --gold:#C9C9D0; --gold-soft:rgba(200,200,208,.14);
+  --lime:#C9FF3D; --grid:rgba(180,180,190,.10); --back:#08080A; --amber:#F59E0B;
+  --shadow:0 1px 0 rgba(255,255,255,.05) inset, 0 24px 56px -22px rgba(0,0,0,.85), 0 8px 20px rgba(0,0,0,.4);
+  --glow:0 16px 40px rgba(0,0,0,.5);
+  --gold-grad:linear-gradient(120deg,#8A8A92,#D8D8DE 45%,#F4F4F6 55%,#A8A8B0);
   --silver-grad:linear-gradient(135deg,#6E6E78 0%,#C9C9D4 30%,#F4F4F8 50%,#B7B7C2 72%,#6E6E78 100%);
-  --card-grad:linear-gradient(160deg,#241B42,#1A1230);
-  --feature-grad:linear-gradient(145deg,#7C4DFF 0%,#A855F7 55%,#D06BEF 100%);
-  --app-bg:radial-gradient(120% 60% at 50% -8%, #2A1B54 0%, #1B1136 42%, #140C26 100%);
-  --header-bg:rgba(20,12,40,.72);
+  --card-grad:linear-gradient(160deg,#17171A,#111113);
+  --feature-grad:linear-gradient(150deg,#2A2A2E 0%,#3C3C42 55%,#1A1A1D 100%);
+  --app-bg:radial-gradient(120% 60% at 50% -10%, #1A1A1D 0%, #0E0E10 50%, #08080A 100%);
+  --header-bg:rgba(11,11,13,.72);
 }
 .theme-light{
-  --bg:#F3EFFC; --surface:#FFFFFF; --elev:#FBF9FF; --ink:#1A1330; --ink-soft:#5A5274;
-  --muted:#8A82A4; --line:#EBE5F8; --primary:#7C4DFF; --primary-2:#B85CF0;
-  --primary-soft:#F0E8FF; --up:#12B98A; --up-soft:#E4F8F1;
-  --down:#FF4D7D; --down-soft:#FFE9F0; --gold:#7C4DFF; --gold-soft:#F0E8FF;
-  --lime:#C9FF3D; --grid:rgba(140,120,180,.14); --back:#EDE7FA;
-  --shadow:0 1px 0 rgba(255,255,255,.9) inset, 0 24px 50px -24px rgba(100,60,180,.26), 0 8px 18px rgba(100,60,180,.08);
-  --glow:0 16px 38px rgba(124,77,255,.3);
-  --gold-grad:linear-gradient(120deg,#7C4DFF,#A85CF2 50%,#DE6BE6);
+  --bg:#F7F7F8; --surface:#FFFFFF; --elev:#FBFBFC; --ink:#141416; --ink-soft:#55555C;
+  --muted:#9A9AA2; --line:#ECECEE; --primary:#1A1A1D; --primary-2:#8A8A92;
+  --primary-soft:#F1F1F3; --up:#10B981; --up-soft:#E6F7F0;
+  --down:#EF4444; --down-soft:#FDECEC; --gold:#6E6E78; --gold-soft:#F1F1F3;
+  --lime:#C9FF3D; --grid:rgba(20,20,25,.06); --back:#F1F1F3; --amber:#F59E0B;
+  --shadow:0 1px 0 rgba(255,255,255,.9) inset, 0 18px 44px -22px rgba(20,20,30,.16), 0 6px 16px rgba(20,20,30,.05);
+  --glow:0 14px 32px rgba(20,20,30,.12);
+  --gold-grad:linear-gradient(120deg,#9A9AA2,#C9C9D0 45%,#6E6E78);
   --silver-grad:linear-gradient(135deg,#9A9AA6 0%,#CFCFDA 30%,#FFFFFF 50%,#BFBFCC 72%,#9A9AA6 100%);
-  --card-grad:linear-gradient(170deg,#FFFFFF,#F7F2FE);
-  --feature-grad:linear-gradient(145deg,#7C4DFF 0%,#A855F7 55%,#D06BEF 100%);
-  --app-bg:radial-gradient(120% 55% at 50% -6%, #EAE0FF 0%, #F3EEFC 45%, #F1EBFB 100%);
+  --card-grad:linear-gradient(170deg,#FFFFFF,#FBFBFC);
+  --feature-grad:linear-gradient(150deg,#232327 0%,#3A3A40 55%,#1A1A1D 100%);
+  --app-bg:linear-gradient(180deg,#FAFAFB 0%,#F5F5F7 100%);
+  --header-bg:rgba(247,247,248,.8);
   --header-bg:rgba(255,255,255,.78);
 }
 *{box-sizing:border-box}
@@ -60,7 +61,7 @@ const CSS = `
 @keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
 .sheet{animation:sheetUp .28s cubic-bezier(.22,1,.36,1) both}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
-.shine{background:linear-gradient(90deg,rgba(255,255,255,0) 0%,rgba(150,80,240,.65) 50%,rgba(255,255,255,0) 100%);background-size:200% 100%;animation:shimmer 2.6s infinite}
+.shine{background:linear-gradient(90deg,rgba(255,255,255,0) 0%,rgba(160,160,170,.55) 50%,rgba(255,255,255,0) 100%);background-size:200% 100%;animation:shimmer 2.6s infinite}
 .gradtext{background:linear-gradient(120deg,var(--primary),var(--primary-2));-webkit-background-clip:text;background-clip:text;color:transparent}
 .gold-text{background:var(--gold-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
 .gold-line{height:1px;background:var(--gold-grad);opacity:.85}
@@ -284,6 +285,20 @@ const CRYPTO = [
   build("XRP", "XRP", 0.61, 1.18, "Crypto", "Large", { bull: 58, verdict: "Hold" }),
   build("BNB", "BNB", 592.0, 0.84, "Crypto", "Large", { bull: 62, verdict: "Buy" }),
   build("AVAX", "Avalanche", 36.2, 3.42, "Crypto", "Mid", { bull: 67, verdict: "Buy", pick: "Subnet adoption + RWA tokenization narrative.", rsi: 65 }),
+  build("WIF", "dogwifhat", 2.85, 9.4, "Crypto", "Mid", { bull: 74, vol: 8, pick: "High-beta meme momentum; sharp two-way swings.", rsi: 71 }),
+  build("PEPE", "Pepe", 0.0000121, 12.6, "Crypto", "Mid", { bull: 72, vol: 22, pick: "Meme volatility leader — momentum + volume spikes.", rsi: 73 }),
+  build("BONK", "Bonk", 0.0000268, -7.8, "Crypto", "Small", { bull: 48, vol: 14, oneLiner: "Meme volatility; strictly momentum trades with tight stops." }),
+  build("INJ", "Injective", 26.4, 6.2, "Crypto", "Mid", { bull: 70, vol: 4, pick: "DeFi throughput narrative with strong trend.", rsi: 68 }),
+  build("SEI", "Sei", 0.58, 8.1, "Crypto", "Mid", { bull: 69, vol: 5, pick: "Fast L1 with high realized volatility.", rsi: 70 }),
+  build("TIA", "Celestia", 8.9, 5.4, "Crypto", "Mid", { bull: 66, vol: 3, rsi: 64 }),
+  build("RNDR", "Render", 9.2, 7.3, "Crypto", "Mid", { bull: 71, vol: 3, pick: "AI-compute narrative; high momentum.", rsi: 69 }),
+  build("FET", "Artificial Superintelligence", 1.62, 6.8, "Crypto", "Mid", { bull: 70, vol: 4, pick: "AI-agent momentum leader.", rsi: 68 }),
+  build("ARB", "Arbitrum", 0.94, -4.2, "Crypto", "Mid", { bull: 52, vol: 6 }),
+  build("OP", "Optimism", 1.78, 4.6, "Crypto", "Mid", { bull: 64, vol: 4, rsi: 63 }),
+  build("JUP", "Jupiter", 1.12, 5.9, "Crypto", "Mid", { bull: 67, vol: 3, rsi: 66 }),
+  build("LAB", "LayerZero Labs (LABUSD)", 3.42, 14.8, "Crypto", "Small", { bull: 76, vol: 9, pick: "Explosive momentum + high volatility — pure trader's coin.", rsi: 75 }),
+  build("RAVE", "Rave (RAVEUSD)", 0.084, 18.3, "Crypto", "Small", { bull: 78, vol: 7, pick: "Very high volatility micro-cap; strong momentum burst.", rsi: 74 }),
+  build("SHIB", "Shiba Inu", 0.0000242, -3.1, "Crypto", "Small", { bull: 46, vol: 12 }),
 ];
 const COMMODITY = [
   build("GOLD", "Gold (per oz)", 2358.0, 0.54, "Metals", "Large", { bull: 66, verdict: "Buy", pick: "Rate-cut hopes + central-bank buying — classic risk-off ballast." }),
@@ -460,8 +475,14 @@ function dailyPicks(list) {
   const jr = lcg(DAY * 131 + 7);
   return list
     .filter((s) => s.sector !== "Volatility")
-    .map((s) => ({ s, t: techSignal(s), j: jr() * 0.6 }))
-    .sort((a, b) => (b.t.score + b.j) - (a.t.score + a.j))
+    .filter((s) => marketOf(s.sym) !== "Crypto" || s.vol > 1_000_000)   // crypto: only liquid names
+    .map((s) => {
+      const t = techSignal(s);
+      // crypto: reward momentum + volatility so hot alts surface
+      const cryptoBoost = marketOf(s.sym) === "Crypto" ? Math.abs(s.chg) * 0.25 + (s.vol / 1e6) * 0.03 : 0;
+      return { s, t, sc: t.score + cryptoBoost, j: jr() * 0.6 };
+    })
+    .sort((a, b) => (b.sc + b.j) - (a.sc + a.j))
     .slice(0, 6)
     .map(({ s, t }) => ({
       ...s, pickPattern: t.pattern, pickSignal: t.signal,
@@ -873,9 +894,9 @@ function CandleChart({ data, market, sup0, res0 }) {
       <div ref={box} style={{ width: "100%", touchAction: "none", cursor: "ns-resize" }}>
         <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none"
           onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerLeave={up}>
-          {data.map((d) => {
-            const x = d.i * 11 - 5.5, up = d.c >= d.o;
-            const col = up ? "#1FE08C" : "#FF5C77";
+          {data.map((d, k) => {
+            const x = (k + 0.5) * 11, isUp = d.c >= d.o;
+            const col = isUp ? "var(--up)" : "var(--down)";
             const yO = yOf(d.o), yC = yOf(d.c);
             return (
               <g key={d.i}>
@@ -884,12 +905,12 @@ function CandleChart({ data, market, sup0, res0 }) {
               </g>
             );
           })}
-          {/* resistance (purple) */}
-          <line x1="0" x2={W} y1={yOf(res)} y2={yOf(res)} stroke="#A99BFF" strokeWidth="1.4" strokeDasharray="6 4" />
-          <rect x={W - 26} y={yOf(res) - 7} width="26" height="14" rx="3" fill="#A99BFF" />
-          {/* support (silver) */}
-          <line x1="0" x2={W} y1={yOf(sup)} y2={yOf(sup)} stroke="#C9C9D4" strokeWidth="1.4" strokeDasharray="6 4" />
-          <rect x={W - 26} y={yOf(sup) - 7} width="26" height="14" rx="3" fill="#C9C9D4" />
+          {/* resistance */}
+          <line x1="0" x2={W} y1={yOf(res)} y2={yOf(res)} stroke="var(--amber)" strokeWidth="1.4" strokeDasharray="6 4" />
+          <rect x={W - 26} y={yOf(res) - 7} width="26" height="14" rx="3" fill="var(--amber)" />
+          {/* support */}
+          <line x1="0" x2={W} y1={yOf(sup)} y2={yOf(sup)} stroke="var(--primary-2)" strokeWidth="1.4" strokeDasharray="6 4" />
+          <rect x={W - 26} y={yOf(sup) - 7} width="26" height="14" rx="3" fill="var(--primary-2)" />
         </svg>
       </div>
     </div>
@@ -1186,8 +1207,10 @@ function MarketPulseStrip({ market, list, onOpen }) {
     </div>
   );
 }
-function StockIdeasStrip({ onOpen }) {
-  const top = SEED_IDEAS.slice(0, 6);
+function StockIdeasStrip({ onOpen, onBuy, market }) {
+  const mkt = market === "FNO" ? "IN" : market;
+  const all = SEED_IDEAS.filter((i) => marketOf(i.sym) === mkt);
+  const top = (all.length ? all : SEED_IDEAS).slice(0, 6);
   return (
     <Section title="Stock Ideas" icon={<Lightbulb size={17} color="var(--primary)" />}>
       <div className="hide-scroll" style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4 }}>
@@ -1205,6 +1228,7 @@ function StockIdeasStrip({ onOpen }) {
                 <div><div style={{ color: "var(--muted)", fontSize: 9.5 }}>Target</div><span className="mono" style={{ fontWeight: 700 }}>{fmt(idea.exit, m)}</span></div>
                 <span className="pill" style={{ alignSelf: "center", background: "var(--up-soft)", color: "var(--up)", fontWeight: 800, fontSize: 11, padding: "3px 9px" }}>+{idea.gain}%</span>
               </div>
+              {s && onBuy && <button onClick={(e) => { e.stopPropagation(); onBuy(s, 1); }} className="tap disp" style={{ width: "100%", marginTop: 10, background: "linear-gradient(120deg,var(--up),#0EA968)", color: "#fff", border: "none", borderRadius: 11, padding: 9, fontWeight: 800, fontSize: 12, display: "flex", gap: 5, alignItems: "center", justifyContent: "center" }}><Plus size={14} /> Buy {idea.sym}</button>}
             </div>
           );
         })}
@@ -1270,7 +1294,7 @@ const MARKET_UPDATES = {
   Crypto: "Crypto is firm on steady spot-ETF inflows and a post-halving supply backdrop. Bitcoin dominance is easing as majors like ETH and SOL outperform on app activity. Expect sharp two-way swings around macro prints and liquidity shifts.",
   Commodity: "Commodities are mixed: precious metals firm on rate-cut hopes and central-bank buying, while energy chops on supply-demand crosscurrents. Industrial metals catch a bid from electrification demand. Watch the dollar and real yields for direction.",
 };
-function HomeView({ market, setMarket, segment, setSegment, list, onOpen, watch, toggleWatch, profile, portfolio = [], wallet = 0, onGoPortfolio }) {
+function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, watch, toggleWatch, profile, portfolio = [], wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats }) {
   const [glMode, setGlMode] = useState("Gainers");
   const picks = dailyPicks(list);
   const trending = [...list].sort((a, b) => b.vol - a.vol).slice(0, 6);
@@ -1293,6 +1317,17 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, watch,
   const annPct = dash.inv ? (dash.annNum / dash.inv) * 100 : 0;
   const upd = MARKET_UPDATES[market];
 
+  // Auto-Buy Matrix's picks: buy today's picks, exit at +1% target or −0.3% stop
+  const [dashView, setDashView] = useState("auto");
+  const [autoOn, setAutoOn] = useState(false);
+  const PER = 10000;
+  const autoPicks = useMemo(() => dailyPicks(list).slice(0, 6), [list]);
+  const autoTrades = autoPicks.map((s) => { const win = lcg(hash(s.sym) + DAY * 7)() > 0.34; return { sym: s.sym, entry: s.price, m: marketOf(s.sym), win, pnl: win ? PER * 0.01 : -PER * 0.003, status: win ? "🎯 Target +1.0%" : "⛔ Stop −0.3%" }; });
+  const autoDeployed = autoTrades.length * PER;
+  const autoPnl = autoOn ? autoTrades.reduce((a, t) => a + t.pnl, 0) : 0;
+  const autoWins = autoTrades.filter((t) => t.win).length;
+  const autoWinRate = autoTrades.length ? autoWins / autoTrades.length * 100 : 0;
+
   return (
     <div>
       {/* Global markets live strip */}
@@ -1305,21 +1340,64 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, watch,
         ))}
       </div>
 
-      {/* Portfolio dashboard card */}
-      <div onClick={onGoPortfolio} className="card tap glow" style={{ marginTop: 14, padding: 16, border: "none", background: "var(--feature-grad)", color: "#fff", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 90% at 100% 0%, rgba(255,255,255,.16), transparent 50%)", pointerEvents: "none" }} />
+      {/* Portfolio / Auto-Buy dashboard card */}
+      <div className="card glow" style={{ marginTop: 14, padding: 16, border: "none", background: "var(--feature-grad)", color: "#fff", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 90% at 100% 0%, rgba(255,255,255,.14), transparent 50%)", pointerEvents: "none" }} />
         <div style={{ position: "relative" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 12, opacity: .85 }}>Current value</span>
-            <span className="pill" style={{ fontSize: 11, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "4px 10px", display: "flex", alignItems: "center", gap: 4 }}>My Portfolio <ChevronRight size={13} /></span>
+          {/* slider */}
+          <div className="pill" style={{ display: "inline-flex", background: "rgba(0,0,0,.28)", padding: 3, marginBottom: 14 }}>
+            {[["total", "Total"], ["auto", "Auto Buy"]].map(([k, l]) => (
+              <button key={k} onClick={() => setDashView(k)} className="pill tap disp" style={{ padding: "6px 16px", fontSize: 12, fontWeight: 800, border: "none", background: dashView === k ? "#fff" : "transparent", color: dashView === k ? "#141416" : "rgba(255,255,255,.8)" }}>{l}</button>
+            ))}
           </div>
-          <div className="mono" style={{ fontWeight: 800, fontSize: 27, marginTop: 2 }}>{fmt(dash.val, "IN")}</div>
-          <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
-            <DashStat k="Returns %" v={(retPct >= 0 ? "+" : "") + retPct.toFixed(2) + "%"} pos={retPct >= 0} />
-            <DashStat k="Net returns" v={(net >= 0 ? "+" : "") + fmt(net, "IN")} pos={net >= 0} />
-            <DashStat k="Annualised" v={(annPct >= 0 ? "+" : "") + annPct.toFixed(1) + "%"} pos={annPct >= 0} />
-          </div>
-          {portfolio.length === 0 && <div style={{ fontSize: 11.5, opacity: .8, marginTop: 10 }}>No holdings yet — buy your first stock in Virtual Trade.</div>}
+
+          {dashView === "total" ? (
+            <div onClick={onGoPortfolio} className="tap">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 12, opacity: .85 }}>Current value</span>
+                <span className="pill" style={{ fontSize: 11, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "4px 10px", display: "flex", alignItems: "center", gap: 4 }}>My Portfolio <ChevronRight size={13} /></span>
+              </div>
+              <div className="mono" style={{ fontWeight: 800, fontSize: 27, marginTop: 2 }}>{fmt(dash.val, "IN")}</div>
+              <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
+                <DashStat k="Returns %" v={(retPct >= 0 ? "+" : "") + retPct.toFixed(2) + "%"} pos={retPct >= 0} />
+                <DashStat k="Net returns" v={(net >= 0 ? "+" : "") + fmt(net, "IN")} pos={net >= 0} />
+                <DashStat k="Annualised" v={(annPct >= 0 ? "+" : "") + annPct.toFixed(1) + "%"} pos={annPct >= 0} />
+              </div>
+              {portfolio.length === 0 && <div style={{ fontSize: 11.5, opacity: .8, marginTop: 10 }}>No holdings yet — buy your first stock in Virtual Trade.</div>}
+            </div>
+          ) : (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 12, opacity: .85 }}>Auto-Buy P&amp;L today</span>
+                <label className="tap" style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11, fontWeight: 700 }}>
+                  {autoOn ? "On" : "Off"}
+                  <span onClick={() => setAutoOn((v) => !v)} style={{ width: 38, height: 22, borderRadius: 999, background: autoOn ? "#22C55E" : "rgba(255,255,255,.3)", position: "relative", transition: "background .2s" }}>
+                    <span style={{ position: "absolute", top: 2, left: autoOn ? 18 : 2, width: 18, height: 18, borderRadius: 999, background: "#fff", transition: "left .2s" }} />
+                  </span>
+                </label>
+              </div>
+              <div className="mono" style={{ fontWeight: 800, fontSize: 27, marginTop: 2, color: autoPnl >= 0 ? "#9CFFD6" : "#FFB3BE" }}>{autoOn ? (autoPnl >= 0 ? "+" : "") + fmt(autoPnl, "IN") : "—"}</div>
+              <div style={{ fontSize: 11, opacity: .85, marginTop: -1 }}>{autoOn ? `${autoTrades.length} picks auto-bought · ₹${(autoDeployed / 1000).toFixed(0)}k deployed · exit at +1% / −0.3%` : "Enable to auto-buy Matrix's Picks daily and auto-exit at +1% target / −0.3% stop."}</div>
+              {autoOn && (
+                <>
+                  <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
+                    <DashStat k="Trades" v={autoTrades.length} pos={true} />
+                    <DashStat k="Win rate" v={autoWinRate.toFixed(0) + "%"} pos={autoWinRate >= 50} />
+                    <DashStat k="Deployed" v={fmt(autoDeployed, "IN")} pos={true} />
+                  </div>
+                  <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,.18)", display: "flex", flexDirection: "column", gap: 6 }}>
+                    {autoTrades.map((t) => (
+                      <div key={t.sym} onClick={() => { const st = ALL.find((a) => a.sym === t.sym); st && onOpen(st); }} className="tap" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12 }}>
+                        <span className="disp" style={{ fontWeight: 700 }}>{t.sym}</span>
+                        <span style={{ opacity: .85, fontSize: 11 }}>{t.status}</span>
+                        <span className="mono" style={{ fontWeight: 800, color: t.win ? "#9CFFD6" : "#FFB3BE" }}>{t.pnl >= 0 ? "+" : ""}{fmt(t.pnl, "IN")}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1369,10 +1447,10 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, watch,
       </Pop>
 
       {/* Stock Ideas carousel */}
-      <StockIdeasStrip onOpen={onOpen} />
+      <StockIdeasStrip onOpen={onOpen} onBuy={onBuy} market={market} />
 
-      {/* F&O Picks */}
-      <FnoPicks onOpen={onOpen} />
+      {/* F&O Picks (Indian derivatives) */}
+      {(market === "IN" || market === "FNO") && <FnoPicks onOpen={onOpen} />}
 
       {/* Market pulse strip (VIX, index, hot stocks) */}
       <MarketPulseStrip market={market} list={list} onOpen={onOpen} />
@@ -1833,7 +1911,7 @@ function IdeasDashboard({ ideas }) {
     </div>
   );
 }
-function Ideas({ onOpen }) {
+function Ideas({ onOpen, onBuy }) {
   const [ideas, setIdeas] = useState(SEED_IDEAS);
   const [draft, setDraft] = useState({ sym: "NIFTY50", entry: "", exit: "", logic: "", pattern: "breakout" });
   const [open, setOpen] = useState(false);
@@ -1880,6 +1958,7 @@ function Ideas({ onOpen }) {
               <div><div style={{ fontSize: 10.5, color: "var(--muted)" }}>Exit / target</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(idea.exit, m)}</div></div>
             </div>
             <div style={{ fontSize: 12.5, color: "var(--ink-soft)", marginTop: 10, lineHeight: 1.55 }}>{idea.logic}</div>
+            {s && onBuy && <button onClick={() => onBuy(s, 1)} className="tap disp" style={{ width: "100%", marginTop: 12, background: "linear-gradient(120deg,var(--up),#0EA968)", color: "#fff", border: "none", borderRadius: 12, padding: 12, fontWeight: 800, fontSize: 13.5, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}><Plus size={16} /> Buy {idea.sym} @ {fmt(idea.entry, m)}</button>}
           </div>
         );
       })}
@@ -2095,7 +2174,74 @@ function defOperands(defs) {
   });
   return out;
 }
-const TEMPLATES = [
+
+/* -------- Plain-English → executable rules parser --------
+ * Turns sentences like "exit when RSI crosses above 85 or MACD histogram
+ * becomes negative or MACD line crosses below MACD signal line" into structured,
+ * backtestable conditions the engine understands. */
+const MACD_DEF = { type: "MACD", len: "", name: "MACD" };
+const BB_DEF = { type: "BB", len: "20", name: "BB" };
+function mapToken(tok) {
+  const t = tok.toLowerCase();
+  if (/hist/.test(t)) return { operand: "MACD.hist", def: MACD_DEF };
+  if (/signal/.test(t)) return { operand: "MACD.signal", def: MACD_DEF };
+  if (/macd/.test(t)) return { operand: "MACD.line", def: MACD_DEF };
+  let m;
+  if ((m = t.match(/(\d+)\s*[- ]?\s*ema|ema\s*\(?\s*(\d+)?/))) { const len = m[1] || m[2] || "20"; return { operand: "EMA" + len, def: { type: "EMA", len, name: "EMA" + len } }; }
+  if ((m = t.match(/(\d+)\s*[- ]?\s*sma|sma\s*\(?\s*(\d+)?/))) { const len = m[1] || m[2] || "50"; return { operand: "SMA" + len, def: { type: "SMA", len, name: "SMA" + len } }; }
+  if (/upper/.test(t)) return { operand: "BB.upper", def: BB_DEF };
+  if (/lower/.test(t)) return { operand: "BB.lower", def: BB_DEF };
+  if (/middle|bollinger|\bbb\b/.test(t)) return { operand: "BB.middle", def: BB_DEF };
+  if (/rsi/.test(t)) return { operand: "RSI", def: { type: "RSI", len: "14", name: "RSI" } };
+  if (/adx/.test(t)) return { operand: "ADX", def: { type: "ADX", len: "14", name: "ADX" } };
+  if (/cci/.test(t)) return { operand: "CCI", def: { type: "CCI", len: "20", name: "CCI" } };
+  if (/vwap/.test(t)) return { operand: "VWAP", def: { type: "VWAP", len: "", name: "VWAP" } };
+  if (/volume/.test(t)) return { operand: "Volume", def: { type: "Volume", len: "", name: "Volume" } };
+  if (/price|close|ltp|spot/.test(t)) return { operand: "Price", def: null };
+  return null;
+}
+const TOKEN_RE = /macd\s*hist\w*|macd\s*signal\w*|signal\s*line|macd\s*line|macd|\d+\s*[- ]?\s*ema|ema\s*\(?\s*\d*\s*\)?|\d+\s*[- ]?\s*sma|sma\s*\(?\s*\d*\s*\)?|upper\s*band|lower\s*band|middle\s*band|bollinger\s*\w*|\brsi\b|\badx\b|\bcci\b|\bvwap\b|\bvolume\b|\bprice\b|\bclose\b|\bltp\b/gi;
+function detectOp(clause) {
+  const c = clause.toLowerCase();
+  if (/cross(es|ing)?\s*(above|over)/.test(c)) return { op: "crosses_above" };
+  if (/cross(es|ing)?\s*(below|under)/.test(c)) return { op: "crosses_below" };
+  if (/(become|becomes|turn|turns|goes|going)\s*(negative|below\s*zero)/.test(c)) return { op: "<", rhs: "0" };
+  if (/(become|becomes|turn|turns|goes|going)\s*(positive|above\s*zero)/.test(c)) return { op: ">", rhs: "0" };
+  if (/greater\s*than\s*or\s*equal|at\s*least|>=/.test(c)) return { op: ">=" };
+  if (/less\s*than\s*or\s*equal|at\s*most|<=/.test(c)) return { op: "<=" };
+  if (/greater\s*than|more\s*than|above|exceed|exceeds|rises?\s*above|goes?\s*above|breaks?\s*above|>/.test(c)) return { op: ">" };
+  if (/less\s*than|below|under|drops?\s*below|falls?\s*below|dips?\s*below|breaks?\s*below|</.test(c)) return { op: "<" };
+  if (/equal|reaches|reach|hits|hit|==|=/.test(c)) return { op: "==" };
+  return null;
+}
+function parseClause(clause) {
+  const toks = [...clause.matchAll(TOKEN_RE)].map((mm) => ({ idx: mm.index, ...(mapToken(mm[0]) || {}) })).filter((t) => t.operand);
+  const opi = detectOp(clause);
+  if (!toks.length || !opi) return null;
+  const left = toks[0];
+  let b, bType, rdef = null;
+  if (opi.rhs !== undefined) { b = opi.rhs; bType = "num"; }
+  else if (toks[1]) { b = toks[1].operand; bType = "ind"; rdef = toks[1].def; }
+  else { const nums = clause.match(/-?\d+(\.\d+)?/g); b = nums ? nums[nums.length - 1] : "0"; bType = "num"; }
+  return { cond: { la: left.operand, op: opi.op, b, bType }, defs: [left.def, rdef].filter(Boolean) };
+}
+function parseRules(text) {
+  if (!text || !text.trim()) return { conds: [], defs: [], unparsed: [] };
+  const cleaned = text.replace(/^\s*(buy|sell|enter|exit|go long|short|when|if)\b[:,]?\s*/i, "");
+  const parts = cleaned.split(/\s+(and|or)\s+/i);
+  const conds = [], defs = [], unparsed = [];
+  for (let i = 0; i < parts.length; i += 2) {
+    const clause = parts[i];
+    const gate = i === 0 ? undefined : (parts[i - 1].toLowerCase() === "or" ? "OR" : "AND");
+    const p = parseClause(clause);
+    if (p) { if (gate) p.cond.gate = gate; conds.push(p.cond); p.defs.forEach((d) => { if (d && !defs.find((x) => x.name === d.name)) defs.push(d); }); }
+    else if (clause.trim()) unparsed.push(clause.trim());
+  }
+  return { conds, defs, unparsed };
+}
+function condCode(c) { return `${c.la} ${c.op} ${c.b}`; }
+function chainCode(conds) { return conds.map((c, i) => `${i ? " " + (c.gate || "AND") + " " : ""}${condCode(c)}`).join(""); }
+
   { name: "Golden Cross + RSI", code: "EMA1 = EMA(length=50, tf=1D)\nEMA2 = EMA(length=200, tf=1D)\nif EMA1 > EMA2 AND RSI1 < 70:\n    enter_trade()", tag: "Trend",
     cfg: { mode: "builder", defs: [{ type: "EMA", len: "50", name: "EMA1" }, { type: "EMA", len: "200", name: "EMA2" }, { type: "RSI", len: "14", name: "RSI1" }], entry: [{ la: "EMA1", op: ">", bType: "ind", b: "EMA2" }, { la: "RSI1", op: "<", bType: "num", b: "70", gate: "AND" }], exit: [{ la: "EMA1", op: "crosses_below", bType: "ind", b: "EMA2" }], sl: "3", tp: "8" } },
   { name: "Bollinger squeeze", code: "if Price <= BB1.lower:\n    enter_trade()\nif Price >= BB1.upper:\n    exit_trade()", tag: "Volatility",
@@ -2161,6 +2307,27 @@ function stratPerf(strat, rangeDays) {
   const cap = strat.cap || 100000;
   return { trades, wins, winRate, retPct, annual: perYearRet, pnl: cap * retPct / 100, cap };
 }
+function TemplateCard({ t, onActivate, onToggleBt, btActive }) {
+  const [sym, setSym] = useState("");
+  return (
+    <div className="card" style={{ flex: "0 0 auto", width: 244, padding: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span className="disp" style={{ fontWeight: 700, fontSize: 13 }}>{t.name}</span>
+        <span className="pill" style={{ fontSize: 10, background: "var(--primary-soft)", color: "var(--primary)", fontWeight: 700, padding: "2px 8px" }}>{t.tag}</span>
+      </div>
+      <pre className="mono" style={{ fontSize: 10, background: "var(--bg)", borderRadius: 12, padding: 10, marginTop: 10, whiteSpace: "pre-wrap", lineHeight: 1.4 }}>{t.code}</pre>
+      <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, margin: "10px 0 4px" }}>Select symbol to activate</div>
+      <select value={sym} onChange={(e) => setSym(e.target.value)} style={{ ...selStyle, width: "100%", fontSize: 12 }}>
+        <option value="">Choose stock / index…</option>
+        {ALL.map((a) => <option key={a.sym} value={a.sym}>{a.sym} — {a.name}</option>)}
+      </select>
+      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+        <button disabled={!sym} onClick={() => sym && onActivate(t, [sym])} className="tap pill" style={{ flex: 1, border: "none", background: sym ? "linear-gradient(120deg,var(--primary),var(--primary-2))" : "var(--elev)", color: sym ? "#fff" : "var(--muted)", fontWeight: 700, fontSize: 11.5, padding: 9, cursor: sym ? "pointer" : "not-allowed", opacity: sym ? 1 : 0.7 }}>Activate</button>
+        <button onClick={() => onToggleBt(t.name)} className="tap pill" style={{ flex: "0 0 auto", border: "1px solid " + (btActive ? "var(--primary)" : "var(--line)"), background: btActive ? "var(--primary-soft)" : "var(--surface)", fontWeight: 700, fontSize: 11.5, padding: "9px 11px", color: btActive ? "var(--primary)" : "var(--ink)", display: "flex", gap: 4, alignItems: "center" }}><Activity size={13} /> Test</button>
+      </div>
+    </div>
+  );
+}
 function Automation() {
   const [mode, setMode] = useState("builder");
   const [defs, setDefs] = useState([
@@ -2181,11 +2348,12 @@ function Automation() {
   const [sl, setSl] = useState("3");
   const [tp, setTp] = useState("8");
   const [capital, setCapital] = useState("100000");
+  const [tf, setTf] = useState("5m");
   const [deploySyms, setDeploySyms] = useState(["NIFTY50"]);
   const [symFilter, setSymFilter] = useState([]);
   const DEPLOY_OPTIONS = useMemo(() => FNO.map((s) => s.sym), []);
-  const [pEntry, setPEntry] = useState("Buy when EMA1 (50) crosses above EMA2 (200) and RSI is below 70.");
-  const [pExit, setPExit] = useState("Exit when MACD line crosses below its signal, or RSI rises above 70.");
+  const [pEntry, setPEntry] = useState("Buy when EMA 9 crosses above EMA 21 and RSI is above 55.");
+  const [pExit, setPExit] = useState("Exit when RSI crosses above 85 or MACD histogram becomes negative or MACD line crosses below MACD signal line.");
   const [strats, setStrats] = useState(SEED_STRATS);
   const [stratName, setStratName] = useState("");
   const [showBuilder, setShowBuilder] = useState(false);
@@ -2210,7 +2378,13 @@ function Automation() {
     setToast(text);
   }
 
-  const cfg = { mode, defs, entry: entryConds, exit: exitConds, sl, tp };
+  // Plain-English → executable rules
+  const eParsed = useMemo(() => parseRules(pEntry), [pEntry]);
+  const xParsed = useMemo(() => parseRules(pExit), [pExit]);
+  const plainDefs = useMemo(() => { const d = []; [...eParsed.defs, ...xParsed.defs].forEach((x) => { if (x && !d.find((y) => y.name === x.name)) d.push(x); }); return d; }, [eParsed, xParsed]);
+  const cfg = mode === "builder"
+    ? { mode: "builder", tf, defs, entry: entryConds, exit: exitConds, sl, tp }
+    : { mode: "builder", tf, defs: plainDefs.map((d) => ({ ...d, tf })), entry: eParsed.conds, exit: xParsed.conds, sl, tp };
   const condStr = (c) => `${c.la} ${c.op} ${c.b}`;
   const chain = (conds) => conds.map((c, i) => `${i ? " " + (c.gate || "AND") + " " : ""}${condStr(c)}`).join("");
   const defLines = defs.map((d) => {
@@ -2220,9 +2394,11 @@ function Automation() {
     args.push(`tf=${d.tf}`);
     return `${d.name} = ${d.type}(${args.join(", ")})`;
   }).join("\n");
+  const plainDefLines = plainDefs.map((d) => `${d.name} = ${d.type}(${d.len ? "length=" + d.len + ", " : ""}tf=${tf})`).join("\n");
+  const unparsed = [...eParsed.unparsed, ...xParsed.unparsed];
   const code = mode === "builder"
     ? `# Indicators\n${defLines}\n\n# Entry\nif ${chain(entryConds)}:\n    enter_trade(stop_loss=${sl}%, take_profit=${tp}%)\n\n# Exit\nif ${chain(exitConds)}:\n    exit_trade()`
-    : `# Indicators\n${defLines}\n\n# Plain English\n# ENTRY: ${pEntry}\n# EXIT:  ${pExit}\n# risk:  stop_loss=${sl}%  take_profit=${tp}%`;
+    : `# Timeframe: ${tf}\n# Indicators (auto-detected from your text)\n${plainDefLines || "# (none detected yet)"}\n\n# ENTRY\nif ${chainCode(eParsed.conds) || "<describe entry rules>"}:\n    enter_trade(stop_loss=${sl}%, take_profit=${tp}%)\n\n# EXIT\nif ${chainCode(xParsed.conds) || "<describe exit rules>"}:\n    exit_trade()`;
 
   const saveStrategy = (makeActive) => {
     const name = stratName.trim() || (mode === "builder" ? "Custom strategy" : "Plain-English strategy");
@@ -2231,12 +2407,16 @@ function Automation() {
     setStratName(""); setShowBuilder(false);
     setToast(`${name} ${makeActive ? "deployed & running" : "saved as draft"}`);
   };
-  const activateTemplate = (t) => {
-    setStrats((p) => p.find((x) => x.name === t.name && x.by === "Matrix") ? p.map((x) => x.name === t.name ? { ...x, active: true } : x) : [{ id: "t" + Date.now(), name: t.name, by: "Matrix", active: true, alerts: false, cfg: t.cfg, cap: 100000, symbols: ["NIFTY50"], created: Date.now() }, ...p]);
-    setToast(`${t.name} activated`);
+  const activateTemplate = (t, syms) => {
+    const symbols = syms && syms.length ? syms : ["NIFTY50"];
+    setStrats((p) => [{ id: "t" + Date.now(), name: t.name, by: "Matrix", active: true, alerts: false, cfg: t.cfg, cap: 100000, symbols, created: Date.now() }, ...p]);
+    setToast(`${t.name} activated on ${symbols.join(", ")}`);
   };
   const toggleActive = (id) => setStrats((p) => p.map((s) => s.id === id ? { ...s, active: !s.active } : s));
   const toggleAlerts = (s) => { const willOn = !s.alerts; setStrats((p) => p.map((x) => x.id === s.id ? { ...x, alerts: willOn } : x)); if (willOn) fireAlert(s); };
+  const updateStrat = (id, patch) => setStrats((p) => p.map((s) => s.id === id ? { ...s, ...patch } : s));
+  const [editStrat, setEditStrat] = useState(null);
+  const TF_OPTS = ["3m", "5m", "10m", "15m", "30m", "1h", "1D"];
 
   // dashboard aggregation
   const shown = strats.filter((s) => (dashBy === "All" || s.by === dashBy) && (symFilter.length === 0 || (s.symbols || []).some((x) => symFilter.includes(x))));
@@ -2290,12 +2470,26 @@ function Automation() {
         <MetricMini k="Annualised" v={(p.annual >= 0 ? "+" : "") + p.annual.toFixed(1) + "%"} c={p.annual >= 0 ? "var(--up)" : "var(--down)"} />
       </div>
       <div style={{ display: "flex", gap: 7, marginTop: 12 }}>
+        <button onClick={() => setEditStrat(editStrat === s.id ? null : s.id)} className="tap" title="Edit symbols & timeframe" style={{ border: "1px solid " + (editStrat === s.id ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: editStrat === s.id ? "var(--primary-soft)" : "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: editStrat === s.id ? "var(--primary)" : "var(--ink)" }}><SlidersHorizontal size={14} /></button>
         <button onClick={() => toggleAlerts(s)} className="tap" title="Alert on entry/exit signal" style={{ border: "1px solid " + (s.alerts ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: s.alerts ? "var(--primary)" : "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: s.alerts ? "#fff" : "var(--ink)" }}><Bell size={14} /></button>
-        <button onClick={() => setBtOpen(btOpen === s.id ? null : s.id)} className="tap" style={{ border: "1px solid " + (btOpen === s.id ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: btOpen === s.id ? "var(--primary-soft)" : "var(--surface)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 700, color: btOpen === s.id ? "var(--primary)" : "var(--ink)" }}><Activity size={13} /> Backtest</button>
-        <button onClick={() => toggleActive(s.id)} className="tap" style={{ flex: 1, border: "1px solid var(--line)", borderRadius: 11, background: "var(--surface)", padding: "7px 10px", display: "flex", gap: 5, alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "var(--ink)" }}>
+        <button onClick={() => setBtOpen(btOpen === s.id ? null : s.id)} className="tap" style={{ border: "1px solid " + (btOpen === s.id ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: btOpen === s.id ? "var(--primary-soft)" : "var(--surface)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 700, color: btOpen === s.id ? "var(--primary)" : "var(--ink)" }}><Activity size={13} /> Test</button>
+        <button onClick={() => toggleActive(s.id)} className="tap disp" style={{ flex: 1, borderRadius: 11, background: s.active ? "var(--surface)" : "linear-gradient(120deg,var(--up),#0EA968)", color: s.active ? "var(--ink)" : "#fff", boxShadow: s.active ? "none" : "0 6px 16px rgba(16,185,129,.3)", padding: "7px 10px", display: "flex", gap: 5, alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800, border: s.active ? "1px solid var(--line)" : "none" }}>
           {s.active ? <><Pause size={13} /> Deactivate</> : <><Play size={13} /> Activate</>}
         </button>
       </div>
+      {editStrat === s.id && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+          <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Symbols</div>
+          <MultiSelect label="Symbols" options={DEPLOY_OPTIONS} value={s.symbols || []} onChange={(v) => updateStrat(s.id, { symbols: v })} allLabel="Select…" />
+          <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, margin: "12px 0 6px" }}>Timeframe</div>
+          <div className="hide-scroll" style={{ display: "flex", gap: 6, overflowX: "auto" }}>
+            {TF_OPTS.map((x) => (
+              <button key={x} onClick={() => updateStrat(s.id, { tf: x })} className="pill tap disp" style={{ flex: "0 0 auto", padding: "6px 13px", fontSize: 11.5, fontWeight: 700, border: "1px solid " + ((s.tf || "5m") === x ? "var(--primary)" : "var(--line)"), background: (s.tf || "5m") === x ? "var(--primary)" : "var(--surface)", color: (s.tf || "5m") === x ? "#fff" : "var(--ink)" }}>{x}</button>
+            ))}
+          </div>
+          <button onClick={() => setEditStrat(null)} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--primary)", color: "#fff", border: "none", borderRadius: 11, padding: 10, fontWeight: 700, fontSize: 12.5 }}>Done</button>
+        </div>
+      )}
       {btOpen === s.id && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
           <BacktestResult cfg={s.cfg || { mode: "plain" }} />
@@ -2352,20 +2546,10 @@ function Automation() {
           {mode === "builder" && (
             <>
               {/* Strategy Ideas (templates) */}
-              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", margin: "18px 2px 10px", display: "flex", alignItems: "center", gap: 7 }}><Sparkles size={14} color="var(--primary)" /> Strategy Ideas — start from a template</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", margin: "18px 2px 10px", display: "flex", alignItems: "center", gap: 7 }}><Sparkles size={14} color="var(--primary)" /> Strategy Ideas — pick a symbol, then activate</div>
               <div className="hide-scroll" style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 2 }}>
                 {TEMPLATES.map((t) => (
-                  <div key={t.name} className="card" style={{ flex: "0 0 auto", width: 236, padding: 14 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span className="disp" style={{ fontWeight: 700, fontSize: 13 }}>{t.name}</span>
-                      <span className="pill" style={{ fontSize: 10, background: "var(--primary-soft)", color: "var(--primary)", fontWeight: 700, padding: "2px 8px" }}>{t.tag}</span>
-                    </div>
-                    <pre className="mono" style={{ fontSize: 10, background: "var(--bg)", borderRadius: 12, padding: 10, marginTop: 10, whiteSpace: "pre-wrap", lineHeight: 1.4 }}>{t.code}</pre>
-                    <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-                      <button onClick={() => activateTemplate(t)} className="tap pill" style={{ flex: 1, border: "1px solid var(--line)", background: "var(--surface)", fontWeight: 700, fontSize: 11.5, padding: 8, color: "var(--ink)" }}>Activate</button>
-                      <button onClick={() => setBtTpl(btTpl === t.name ? null : t.name)} className="tap pill" style={{ flex: 1, border: "1px solid " + (btTpl === t.name ? "var(--primary)" : "var(--line)"), background: btTpl === t.name ? "var(--primary-soft)" : "var(--surface)", fontWeight: 700, fontSize: 11.5, padding: 8, color: btTpl === t.name ? "var(--primary)" : "var(--ink)", display: "flex", gap: 4, alignItems: "center", justifyContent: "center" }}><Activity size={13} /> Backtest</button>
-                    </div>
-                  </div>
+                  <TemplateCard key={t.name} t={t} onActivate={activateTemplate} onToggleBt={(n) => setBtTpl(btTpl === n ? null : n)} btActive={btTpl === t.name} />
                 ))}
               </div>
               {btTpl && (
@@ -2404,11 +2588,20 @@ function Automation() {
               </>
             ) : (
               <>
+                <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Timeframe</div>
+                <div className="hide-scroll" style={{ display: "flex", gap: 6, overflowX: "auto", marginBottom: 14 }}>
+                  {["3m", "5m", "10m", "15m", "30m", "1h", "1D"].map((x) => (
+                    <button key={x} onClick={() => setTf(x)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "7px 14px", fontSize: 12, fontWeight: 700, border: "1px solid " + (tf === x ? "var(--primary)" : "var(--line)"), background: tf === x ? "var(--primary)" : "var(--surface)", color: tf === x ? "#fff" : "var(--ink)" }}>{x}</button>
+                  ))}
+                </div>
                 <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Entry rules — in plain English</div>
-                <textarea value={pEntry} onChange={(e) => setPEntry(e.target.value)} placeholder="e.g. Buy Nifty when it breaks above the previous day's high with rising volume and RSI under 70." className="no-ring" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13, minHeight: 84, background: "var(--elev)", resize: "vertical", lineHeight: 1.5 }} />
+                <textarea value={pEntry} onChange={(e) => setPEntry(e.target.value)} placeholder="e.g. Buy when EMA 9 crosses above EMA 21 and RSI is above 55." className="no-ring" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13, minHeight: 84, background: "var(--elev)", resize: "vertical", lineHeight: 1.5 }} />
+                {eParsed.conds.length > 0 && <div style={{ fontSize: 10.5, color: "var(--up)", marginTop: 6, fontWeight: 700 }}>✓ Parsed: {chainCode(eParsed.conds)}</div>}
                 <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, margin: "14px 0 6px" }}>Exit rules — in plain English</div>
-                <textarea value={pExit} onChange={(e) => setPExit(e.target.value)} placeholder="e.g. Exit if it closes below the day's VWAP, or take profit at +8%." className="no-ring" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13, minHeight: 84, background: "var(--elev)", resize: "vertical", lineHeight: 1.5 }} />
-                <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, display: "flex", gap: 6 }}><Sparkles size={13} color="var(--primary)" style={{ flex: "0 0 auto", marginTop: 1 }} /> Matrix reads your description and turns it into an executable strategy on deploy — no indicator setup needed.</div>
+                <textarea value={pExit} onChange={(e) => setPExit(e.target.value)} placeholder="e.g. Exit when RSI crosses above 85 or MACD histogram becomes negative or MACD line crosses below MACD signal line." className="no-ring" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13, minHeight: 84, background: "var(--elev)", resize: "vertical", lineHeight: 1.5 }} />
+                {xParsed.conds.length > 0 && <div style={{ fontSize: 10.5, color: "var(--up)", marginTop: 6, fontWeight: 700 }}>✓ Parsed: {chainCode(xParsed.conds)}</div>}
+                {unparsed.length > 0 && <div style={{ fontSize: 10.5, color: "#F59E42", marginTop: 8, fontWeight: 600 }}>⚠ Couldn't parse: "{unparsed.join('", "')}". Try phrasing like "RSI crosses above 85" or "EMA 9 crosses above SMA 39".</div>}
+                <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, display: "flex", gap: 6 }}><Sparkles size={13} color="var(--primary)" style={{ flex: "0 0 auto", marginTop: 1 }} /> Matrix converts your text into the executable code below on the <b style={{ margin: "0 3px" }}>{tf}</b> timeframe — recognises RSI, MACD (line/signal/histogram), EMA/SMA(n), Bollinger bands, ADX, CCI, VWAP, volume, price, with crosses-above/below, greater/less-than and becomes-positive/negative.</div>
               </>
             )}
 
@@ -2478,11 +2671,11 @@ function Automation() {
 
       <div style={{ fontSize: 11.5, fontWeight: 800, color: "var(--up)", letterSpacing: ".04em", margin: "4px 2px 10px", display: "flex", alignItems: "center", gap: 6 }}>● ACTIVE <span style={{ color: "var(--muted)", fontWeight: 700 }}>({activeStrats.length})</span></div>
       {activeStrats.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 12 }}>No active strategies for this filter.</div>
-        : activeStrats.map(({ s, p }) => <StrategyCard key={s.id} s={s} p={p} />)}
+        : activeStrats.map(({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>)}
 
       <div style={{ fontSize: 11.5, fontWeight: 800, color: "var(--muted)", letterSpacing: ".04em", margin: "16px 2px 10px", display: "flex", alignItems: "center", gap: 6 }}>● INACTIVE <span style={{ fontWeight: 700 }}>({inactiveStrats.length})</span></div>
       {inactiveStrats.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--muted)" }}>No inactive strategies for this filter.</div>
-        : inactiveStrats.map(({ s, p }) => <StrategyCard key={s.id} s={s} p={p} />)}
+        : inactiveStrats.map(({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>)}
 
       {toast && (
         <div style={{ position: "fixed", left: 0, right: 0, bottom: 96, display: "flex", justifyContent: "center", zIndex: 80, pointerEvents: "none" }}>
@@ -2582,11 +2775,11 @@ function LoginScreen({ onEnter }) {
   const [pin, setPin] = useState("");
   const field = { width: "100%", background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.28)", borderRadius: 14, padding: "14px 16px", fontSize: 15, color: "#fff", outline: "none" };
   return (
-    <div className="mx" style={{ position: "fixed", inset: 0, zIndex: 100, background: "linear-gradient(160deg,#6D4DFF 0%,#8A4FE6 42%,#5B2E9E 100%)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      <style>{`.lginput::placeholder{color:rgba(255,255,255,.65)}`}</style>
+    <div className="mx" style={{ position: "fixed", inset: 0, zIndex: 100, background: "linear-gradient(165deg,#232327 0%,#161619 55%,#0C0C0E 100%)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <style>{`.lginput::placeholder{color:rgba(255,255,255,.55)}`}</style>
       {/* ambient glow blobs */}
-      <div style={{ position: "absolute", top: -80, right: -60, width: 280, height: 280, borderRadius: "50%", background: "radial-gradient(circle,rgba(214,123,240,.55),transparent 70%)", pointerEvents: "none" }} />
-      <div style={{ position: "absolute", bottom: -100, left: -80, width: 320, height: 320, borderRadius: "50%", background: "radial-gradient(circle,rgba(124,77,255,.5),transparent 70%)", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", top: -80, right: -60, width: 280, height: 280, borderRadius: "50%", background: "radial-gradient(circle,rgba(255,255,255,.14),transparent 70%)", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", bottom: -100, left: -80, width: 320, height: 320, borderRadius: "50%", background: "radial-gradient(circle,rgba(200,200,210,.12),transparent 70%)", pointerEvents: "none" }} />
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 30px", position: "relative", maxWidth: 460, margin: "0 auto", width: "100%" }}>
         <div style={{ textAlign: "center", marginBottom: 46 }}>
@@ -2601,7 +2794,7 @@ function LoginScreen({ onEnter }) {
           <input className="lginput mono" value={pin} onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))} inputMode="numeric" type="password" placeholder="PIN (optional)" style={field} />
         </div>
 
-        <button onClick={() => onEnter(mobile ? "user" : "guest")} className="tap disp" style={{ width: "100%", marginTop: 26, background: "#fff", color: "#5B2E9E", border: "none", borderRadius: 999, padding: 16, fontWeight: 800, fontSize: 15, letterSpacing: ".02em" }}>SIGN IN</button>
+        <button onClick={() => onEnter(mobile ? "user" : "guest")} className="tap disp" style={{ width: "100%", marginTop: 26, background: "#fff", color: "#141416", border: "none", borderRadius: 999, padding: 16, fontWeight: 800, fontSize: 15, letterSpacing: ".02em" }}>SIGN IN</button>
 
         <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "22px 0" }}>
           <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.25)" }} />
@@ -2691,7 +2884,7 @@ function ProfileSheet({ profile, wallet, onClose }) {
 
 /* ============================== ROOT ============================== */
 export default function App() {
-  const [theme, setTheme] = useState("dark");
+  const [theme, setTheme] = useState("light");
   const [authed, setAuthed] = useState(false);
   const [guest, setGuest] = useState(false);
   const [onboard, setOnboard] = useState(true);
@@ -2776,7 +2969,7 @@ export default function App() {
 
       <div style={{ maxWidth: 460, margin: "0 auto", minHeight: "100vh", position: "relative", zIndex: 1, paddingBottom: 86 }}>
         {/* ambient glow */}
-        <div style={{ position: "absolute", top: -80, left: "50%", transform: "translateX(-50%)", width: 420, height: 320, background: "radial-gradient(circle, rgba(154,108,255,.28), transparent 70%)", pointerEvents: "none", zIndex: 0 }} />
+        <div style={{ position: "absolute", top: -80, left: "50%", transform: "translateX(-50%)", width: 420, height: 320, background: "radial-gradient(circle, rgba(150,150,160,.12), transparent 70%)", pointerEvents: "none", zIndex: 0 }} />
         {/* HEADER */}
         <div className="glass" style={{ position: "sticky", top: 0, zIndex: 30, background: "var(--header-bg)", borderBottom: "1px solid var(--line)" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px 8px" }}>
@@ -2813,9 +3006,9 @@ export default function App() {
             <DetailPage s={detail} onBack={() => setDetail(null)} watched={watch.includes(detail.sym)} toggleWatch={toggleWatch} onTrade={goTrade} onBuy={buyStock} />
           ) : (
             <>
-              {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} setSegment={setSegment} list={list} onOpen={openStock} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} />}
+              {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} />}
               {tab === "trade" && <TradeView wallet={wallet} setWallet={setWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} />}
-              {tab === "ideas" && <Ideas onOpen={openStock} />}
+              {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} />}
               {tab === "automation" && <Automation />}
               {tab === "portfolio" && <Portfolio portfolio={portfolio} wallet={wallet} />}
               {tab === "watchlist" && <WatchlistView watchlists={watchlists} activeWl={activeWl} setActiveWl={setActiveWl} createWatchlist={createWatchlist} deleteWatchlist={deleteWatchlist} toggleWatch={toggleWatch} onOpen={openStock} />}
