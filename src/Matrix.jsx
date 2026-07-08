@@ -3,7 +3,7 @@ import {
   Search, User, Wallet, Home, Repeat, Lightbulb, Bot, Bolt, Briefcase,
   Star, TrendingUp, TrendingDown, X, ChevronRight, Send, Plus, Trash2,
   ArrowUpRight, ArrowDownRight, Sparkles, SlidersHorizontal, Check,
-  Activity, Newspaper, Building2, Filter, Play, Pause, ChevronLeft, Zap, Sun, Moon, Bell
+  Activity, Newspaper, Building2, Filter, Play, Pause, ChevronLeft, Zap, Sun, Moon, Bell, Pencil
 } from "lucide-react";
 import {
   AreaChart, Area, BarChart, Bar, ResponsiveContainer, XAxis, YAxis,
@@ -24,9 +24,10 @@ const CSS = `
   --gold-grad:linear-gradient(120deg,#8A8A92,#D8D8DE 45%,#F4F4F6 55%,#A8A8B0);
   --silver-grad:linear-gradient(135deg,#6E6E78 0%,#C9C9D4 30%,#F4F4F8 50%,#B7B7C2 72%,#6E6E78 100%);
   --card-grad:linear-gradient(160deg,#17171A,#111113);
-  --feature-grad:linear-gradient(150deg,#2A2A2E 0%,#3C3C42 55%,#1A1A1D 100%);
+  --feature-grad:linear-gradient(135deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,0) 24%), repeating-linear-gradient(116deg, rgba(255,255,255,.022) 0px, rgba(255,255,255,.022) 1px, rgba(0,0,0,.05) 2px, rgba(0,0,0,.05) 3px), linear-gradient(158deg,#36363c 0%,#1d1d21 46%,#0b0b0d 100%);
   --app-bg:radial-gradient(120% 60% at 50% -10%, #1A1A1D 0%, #0E0E10 50%, #08080A 100%);
   --header-bg:rgba(11,11,13,.72);
+  --on-primary:#141416;
 }
 .theme-light{
   --bg:#F7F7F8; --surface:#FFFFFF; --elev:#FBFBFC; --ink:#141416; --ink-soft:#55555C;
@@ -39,9 +40,10 @@ const CSS = `
   --gold-grad:linear-gradient(120deg,#9A9AA2,#C9C9D0 45%,#6E6E78);
   --silver-grad:linear-gradient(135deg,#9A9AA6 0%,#CFCFDA 30%,#FFFFFF 50%,#BFBFCC 72%,#9A9AA6 100%);
   --card-grad:linear-gradient(170deg,#FFFFFF,#FBFBFC);
-  --feature-grad:linear-gradient(150deg,#232327 0%,#3A3A40 55%,#1A1A1D 100%);
+  --feature-grad:linear-gradient(135deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,0) 24%), repeating-linear-gradient(116deg, rgba(255,255,255,.022) 0px, rgba(255,255,255,.022) 1px, rgba(0,0,0,.05) 2px, rgba(0,0,0,.05) 3px), linear-gradient(158deg,#36363c 0%,#1d1d21 46%,#0b0b0d 100%);
   --app-bg:linear-gradient(180deg,#FAFAFB 0%,#F5F5F7 100%);
   --header-bg:rgba(247,247,248,.8);
+  --on-primary:#FFFFFF;
   --header-bg:rgba(255,255,255,.78);
 }
 *{box-sizing:border-box}
@@ -56,6 +58,8 @@ const CSS = `
 .tap{cursor:pointer;transition:transform .12s ease, box-shadow .12s ease, background .15s ease, opacity .15s}
 .tap:active{transform:scale(.97)}
 .glow{box-shadow:var(--glow)}
+.metal{position:relative;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.16), inset 0 0 0 1px rgba(255,255,255,.06), 0 22px 48px -20px rgba(0,0,0,.72)}
+.metal::before{content:"";position:absolute;top:0;left:-30%;width:35%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.10) 50%,transparent);transform:skewX(-16deg);pointer-events:none}
 @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .fade{animation:fadeUp .3s ease both}
 @keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
@@ -421,6 +425,22 @@ function marketOf(sym) {
   if (COMMODITY.find((s) => s.sym === sym)) return "Commodity";
   return "IN";
 }
+// Market hours in IST (regardless of the device's own timezone).
+function istParts() {
+  const d = new Date(Date.now() + new Date().getTimezoneOffset() * 60000 + 5.5 * 3600000);
+  return { day: d.getDay(), mins: d.getHours() * 60 + d.getMinutes() };
+}
+function marketOpen(market) {
+  const { day, mins } = istParts();
+  const weekday = day >= 1 && day <= 5;
+  if (market === "Crypto") return true;                                   // 24×7
+  if (market === "US") return weekday && (mins >= 19 * 60 + 30 || mins <= 90);   // 7:30pm–1:30am IST
+  if (market === "Commodity") return weekday && mins >= 9 * 60 && mins <= 20 * 60 + 30; // 9:00am–8:30pm
+  return weekday && mins >= 9 * 60 + 15 && mins <= 15 * 60 + 30;          // IN / F&O 9:15am–3:30pm
+}
+function marketHoursLabel(market) {
+  return market === "Crypto" ? "24×7" : market === "US" ? "7:30pm–1:30am IST" : market === "Commodity" ? "9:00am–8:30pm IST" : "9:15am–3:30pm IST";
+}
 // "World-class technical analyst" scoring on the simulated series: momentum,
 // breakouts, reversals off S/R, RSI/MACD confirmation, multi-timeframe bias.
 // Detects a varied set of chart patterns and explains WHY each was identified.
@@ -534,9 +554,58 @@ function Spark({ data, up }) {
             <stop offset="100%" stopColor={up ? "#0FB97D" : "#FF4D67"} stopOpacity={0} />
           </linearGradient>
         </defs>
+        <YAxis hide domain={["dataMin", "dataMax"]} />
         <Area type="monotone" dataKey="p" stroke={up ? "#0FB97D" : "#FF4D67"} strokeWidth={2} fill={`url(#${up ? "gu" : "gd"})`} />
       </AreaChart>
     </ResponsiveContainer>
+  );
+}
+// Compact candlestick chart (OHLC) with switchable timeframe, for cards & drawers.
+const TF_LIST = ["3m", "5m", "30m", "1h", "4h", "1d"];
+const TF_N = { "3m": 40, "5m": 36, "30m": 30, "1h": 28, "4h": 24, "1d": 22 };
+function MiniCandles({ sym, price, chg, defaultTf = "1d", height = 130, showTf = true, pattern }) {
+  const [tf, setTf] = useState(defaultTf);
+  const [liveData, setLiveData] = useState(null);
+  useEffect(() => {
+    let stop = false; setLiveData(null);
+    if (BACKEND_URL) fetchHistory(sym, tf).then((d) => { if (!stop && d && d.length > 4) setLiveData(d.slice(-(TF_N[tf] || 26)).map((c, i) => ({ ...c, i }))); }).catch(() => {});
+    return () => { stop = true; };
+  }, [sym, tf]);
+  const synthetic = useMemo(() => candles(sym + "|" + tf, price, chg, TF_N[tf] || 26), [sym, price, chg, tf]);
+  const data = liveData && liveData.length ? liveData : synthetic;
+  const W = 340, H = height, padT = 8, padB = 8;
+  const min = Math.min(...data.map((d) => d.l)), max = Math.max(...data.map((d) => d.h));
+  const span = max - min || 1;
+  const yOf = (p) => padT + (max - p) / span * (H - padT - padB);
+  const cw = W / data.length;
+  const patLabel = pattern && PATTERNS[pattern] ? PATTERNS[pattern].label : pattern;
+  return (
+    <div>
+      <div style={{ position: "relative" }}>
+        {patLabel && <span className="pill" style={{ position: "absolute", top: 6, left: 6, zIndex: 2, fontSize: 9.5, fontWeight: 800, background: "var(--primary-soft)", color: "var(--primary)", padding: "3px 8px" }}>◫ {patLabel}</span>}
+        {liveData && liveData.length ? <span className="pill" style={{ position: "absolute", top: 6, right: 6, zIndex: 2, fontSize: 8, fontWeight: 800, background: "var(--up-soft)", color: "var(--up)", padding: "2px 6px" }}>● LIVE</span> : null}
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none">
+          {data.map((d, k) => {
+            const x = (k + 0.5) * cw, isUp = d.c >= d.o;
+            const col = isUp ? "var(--up)" : "var(--down)";
+            const yO = yOf(d.o), yC = yOf(d.c), bw = Math.max(2.5, cw * 0.62);
+            return (
+              <g key={k}>
+                <line x1={x} x2={x} y1={yOf(d.h)} y2={yOf(d.l)} stroke={col} strokeWidth="1" />
+                <rect x={x - bw / 2} y={Math.min(yO, yC)} width={bw} height={Math.max(1.5, Math.abs(yC - yO))} fill={col} rx="0.5" />
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+      {showTf && (
+        <div className="hide-scroll" style={{ display: "flex", gap: 5, marginTop: 7, overflowX: "auto" }}>
+          {TF_LIST.map((x) => (
+            <button key={x} onClick={(e) => { e.stopPropagation(); setTf(x); }} className="pill tap" style={{ flex: "0 0 auto", padding: "5px 11px", fontSize: 10.5, fontWeight: 700, border: "1px solid " + (tf === x ? "var(--primary)" : "var(--line)"), background: tf === x ? "var(--primary)" : "var(--surface)", color: tf === x ? "var(--on-primary)" : "var(--ink)" }}>{x}</button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 function Gauge({ value, label }) {
@@ -708,6 +777,18 @@ async function fetchNews(sym) {
   const d = await r.json();
   return (d.news || []).map((n) => ({ d: n.d ? new Date(n.d).toLocaleDateString() : "", t: n.t, url: n.url, src: n.src }));
 }
+// Map app timeframes → Yahoo range/interval (Yahoo lacks 3m/4h, so use nearest supported).
+const TF_YF = { "3m": { i: "2m", r: "1d" }, "5m": { i: "5m", r: "5d" }, "30m": { i: "30m", r: "1mo" }, "1h": { i: "60m", r: "3mo" }, "4h": { i: "90m", r: "6mo" }, "1d": { i: "1d", r: "1y" } };
+async function fetchHistory(sym, tf) {
+  if (!BACKEND_URL) return null;
+  const m = TF_YF[tf] || TF_YF["1d"];
+  const r = await fetch(`${BACKEND_URL}/api/history?symbol=${encodeURIComponent(yahooSymbol(sym))}&range=${m.r}&interval=${m.i}`);
+  if (!r.ok) throw new Error("history " + r.status);
+  const d = await r.json();
+  return (d.candles || [])
+    .filter((c) => c.o != null && c.c != null && c.h != null && c.l != null)
+    .map((c, i) => ({ i, o: +(+c.o).toFixed(2), h: +(+c.h).toFixed(2), l: +(+c.l).toFixed(2), c: +(+c.c).toFixed(2), v: c.v }));
+}
 
 async function askMatrix(messages, system, maxTokens = 1000) {
   if (BACKEND_URL) {
@@ -764,7 +845,7 @@ function ChatPanel({ context, suggestions, compactMode }) {
           <div key={i} style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "86%" }}>
             <div className="pill" style={{
               background: m.role === "user" ? "var(--primary)" : "var(--surface)",
-              color: m.role === "user" ? "#fff" : "var(--ink)",
+              color: m.role === "user" ? "var(--on-primary)" : "var(--ink)",
               border: m.role === "user" ? "none" : "1px solid var(--line)",
               borderRadius: m.role === "user" ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
               padding: "10px 13px", fontSize: 13.5, lineHeight: 1.5, whiteSpace: "pre-wrap",
@@ -809,7 +890,10 @@ function Drawer({ s, onClose, onDetails, onBuy }) {
           <span className="mono" style={{ fontWeight: 700, fontSize: 26 }}>{fmt(s.price, market)}</span>
           <Change v={s.chg} big />
         </div>
-        <div style={{ height: 70, marginTop: 8 }}><Spark data={s.series} up={s.chg >= 0} /></div>
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, marginBottom: 4 }}>Price action · candles</div>
+          <MiniCandles sym={s.sym} price={s.price} chg={s.chg} defaultTf={market === "Crypto" ? "1h" : "1d"} showTf pattern={s.pickPattern} />
+        </div>
 
         <Block title="Key news / event" icon={<Newspaper size={14} />}>{s.news[0].t}</Block>
         <Block title="Technical summary" icon={<Activity size={14} />}>
@@ -924,15 +1008,23 @@ function DetailPage({ s, onBack, watched, toggleWatch, onTrade, onBuy }) {
   const [deepBusy, setDeepBusy] = useState(false);
   const [deepText, setDeepText] = useState("");
   const [liveNews, setLiveNews] = useState(null);
+  const [liveCandles, setLiveCandles] = useState(null);
   const refs = useRef({});
   useEffect(() => {
-    let stop = false;
-    if (BACKEND_URL) fetchNews(s.sym).then((n) => { if (!stop && n && n.length) setLiveNews(n); }).catch(() => {});
-    return () => { stop = true; setLiveNews(null); };
+    let stop = false; setLiveNews(null); setLiveCandles(null);
+    if (BACKEND_URL) {
+      fetchNews(s.sym).then((n) => { if (!stop && n && n.length) setLiveNews(n); }).catch(() => {});
+      fetchHistory(s.sym, "1d").then((d) => { if (!stop && d && d.length > 4) setLiveCandles(d); }).catch(() => {});
+    }
+    return () => { stop = true; };
   }, [s]);
   const rev = useMemo(() => quarters(s.sym, s.revBase, s.revGrowth), [s]);
   const ebd = useMemo(() => quarters(s.sym + "e", s.revBase * 0.28, s.ebitdaGrowth), [s]);
-  const cdata = useMemo(() => candles(s.sym, s.price, s.chg, Math.round(tf / 1.8)), [s, tf]);
+  const cdata = useMemo(() => {
+    const n = Math.round(tf / 1.8);
+    if (liveCandles && liveCandles.length) return liveCandles.slice(-n).map((c, i) => ({ ...c, i: i + 1 }));
+    return candles(s.sym, s.price, s.chg, n);
+  }, [s, tf, liveCandles]);
   const data = s.series.slice(-tf);
   const tabs = [["overview", "Overview"], ["fund", "Fundamentals"], ["tech", "Technicals"], ["news", "News"], ["ask", "Ask Matrix"]];
   const ctx = `Stock: ${s.name} (${s.sym}), market ${market}. Price ${fmt(s.price, market)} (${s.chg >= 0 ? "+" : ""}${s.chg}% today). RSI ${s.rsi}, P/E ${s.pe}, ROE ${s.roe}%, 50-DMA ${s.sma50}, 200-DMA ${s.sma200}, support ${s.support}, resistance ${s.resistance}. Revenue growth ${s.revGrowth}%, EBITDA growth ${s.ebitdaGrowth}%. Latest quarter: ${s.qSummary} MD commentary: ${s.mdSpeech} Recent news: ${s.news.map((n) => n.t).join(" | ")}. Matrix bull/bear score ${s.bull}/100, verdict ${s.verdict}.`;
@@ -980,7 +1072,7 @@ function DetailPage({ s, onBack, watched, toggleWatch, onTrade, onBuy }) {
         </div>
         <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", marginTop: 10 }}>
           {tabs.map(([k, l]) => (
-            <button key={k} onClick={() => jump(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "7px 14px", fontSize: 12.5, fontWeight: 700, border: "1px solid " + (active === k ? "var(--primary)" : "var(--line)"), background: active === k ? "var(--primary)" : "var(--surface)", color: active === k ? "#fff" : "var(--ink)" }}>{l}</button>
+            <button key={k} onClick={() => jump(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "7px 14px", fontSize: 12.5, fontWeight: 700, border: "1px solid " + (active === k ? "var(--primary)" : "var(--line)"), background: active === k ? "var(--primary)" : "var(--surface)", color: active === k ? "var(--on-primary)" : "var(--ink)" }}>{l}</button>
           ))}
         </div>
       </div>
@@ -995,7 +1087,7 @@ function DetailPage({ s, onBack, watched, toggleWatch, onTrade, onBuy }) {
         <div className="card" style={{ padding: 14 }}>
           <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
             {[["candles", "Candles"], ["area", "Area"]].map(([k, l]) => (
-              <button key={k} onClick={() => setChartType(k)} className="pill tap disp" style={{ fontSize: 11.5, fontWeight: 700, padding: "5px 13px", border: "1px solid " + (chartType === k ? "var(--primary)" : "var(--line)"), background: chartType === k ? "var(--primary)" : "transparent", color: chartType === k ? "#fff" : "var(--muted)" }}>{l}</button>
+              <button key={k} onClick={() => setChartType(k)} className="pill tap disp" style={{ fontSize: 11.5, fontWeight: 700, padding: "5px 13px", border: "1px solid " + (chartType === k ? "var(--primary)" : "var(--line)"), background: chartType === k ? "var(--primary)" : "transparent", color: chartType === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
             ))}
             <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
               {[[24, "1M"], [40, "3M"], [60, "6M"]].map(([n, l]) => (
@@ -1216,19 +1308,22 @@ function StockIdeasStrip({ onOpen, onBuy, market }) {
       <div className="hide-scroll" style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4 }}>
         {top.map((idea, i) => {
           const s = ALL.find((a) => a.sym === idea.sym); const m = marketOf(idea.sym);
+          const cur = s ? s.price : idea.entry;
+          const potLeft = ((idea.exit - cur) / cur) * 100;
           return (
-            <div key={i} onClick={() => s && onOpen(s)} className="card tap" style={{ flex: "0 0 auto", width: 220, padding: 13 }}>
+            <div key={i} onClick={() => s && onOpen(s)} className="card tap" style={{ flex: "0 0 auto", width: 236, padding: 13 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span className="disp" style={{ fontWeight: 700, fontSize: 14 }}>{idea.sym}</span>
                 <span className="pill" style={{ fontSize: 10, background: idea.by === "Matrix" ? "var(--primary-soft)" : "var(--bg)", color: idea.by === "Matrix" ? "var(--primary)" : "var(--ink-soft)", fontWeight: 700, padding: "2px 8px" }}>{idea.by === "Matrix" ? "✦ Matrix" : idea.by}</span>
               </div>
-              <PatternChart type={idea.pattern} />
-              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontSize: 11 }}>
-                <div><div style={{ color: "var(--muted)", fontSize: 9.5 }}>Entry</div><span className="mono" style={{ fontWeight: 700 }}>{fmt(idea.entry, m)}</span></div>
-                <div><div style={{ color: "var(--muted)", fontSize: 9.5 }}>Target</div><span className="mono" style={{ fontWeight: 700 }}>{fmt(idea.exit, m)}</span></div>
-                <span className="pill" style={{ alignSelf: "center", background: "var(--up-soft)", color: "var(--up)", fontWeight: 800, fontSize: 11, padding: "3px 9px" }}>+{idea.gain}%</span>
+              <div style={{ marginTop: 8 }}><MiniCandles sym={idea.sym} price={cur} chg={s ? s.chg : 0} height={92} showTf={false} defaultTf={m === "Crypto" ? "1h" : "1d"} pattern={idea.pattern} /></div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 9, fontSize: 10.5, gap: 4 }}>
+                <div><div style={{ color: "var(--muted)", fontSize: 9 }}>Entry</div><span className="mono" style={{ fontWeight: 700 }}>{fmt(idea.entry, m)}</span></div>
+                <div><div style={{ color: "var(--muted)", fontSize: 9 }}>Current</div><span className="mono" style={{ fontWeight: 800 }}>{fmt(cur, m)}</span></div>
+                <div><div style={{ color: "var(--muted)", fontSize: 9 }}>Target</div><span className="mono" style={{ fontWeight: 700 }}>{fmt(idea.exit, m)}</span></div>
+                <div style={{ textAlign: "right" }}><div style={{ color: "var(--muted)", fontSize: 9 }}>Left</div><span className="mono" style={{ fontWeight: 800, color: potLeft >= 0 ? "var(--up)" : "var(--muted)" }}>{potLeft >= 0 ? "+" + potLeft.toFixed(1) + "%" : "hit"}</span></div>
               </div>
-              {s && onBuy && <button onClick={(e) => { e.stopPropagation(); onBuy(s, 1); }} className="tap disp" style={{ width: "100%", marginTop: 10, background: "linear-gradient(120deg,var(--up),#0EA968)", color: "#fff", border: "none", borderRadius: 11, padding: 9, fontWeight: 800, fontSize: 12, display: "flex", gap: 5, alignItems: "center", justifyContent: "center" }}><Plus size={14} /> Buy {idea.sym}</button>}
+              {s && onBuy && <button onClick={(e) => { e.stopPropagation(); onBuy(s, 1); }} className="tap disp" style={{ width: "100%", marginTop: 10, background: "linear-gradient(120deg,var(--up),#0EA968)", color: "#fff", border: "none", borderRadius: 11, padding: 9, fontWeight: 800, fontSize: 12, display: "flex", gap: 5, alignItems: "center", justifyContent: "center" }}><Plus size={14} /> Buy Now</button>}
             </div>
           );
         })}
@@ -1317,32 +1412,66 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy,
   const annPct = dash.inv ? (dash.annNum / dash.inv) * 100 : 0;
   const upd = MARKET_UPDATES[market];
 
-  // Auto-Buy Matrix's picks: buy today's picks, exit at +1% target or −0.3% stop
+  // Auto-Buy Matrix's picks — for the market selected at the top; each market keeps its own on/off
   const [dashView, setDashView] = useState("auto");
-  const [autoOn, setAutoOn] = useState(false);
-  const PER = 10000;
-  const autoPicks = useMemo(() => dailyPicks(list).slice(0, 6), [list]);
-  const autoTrades = autoPicks.map((s) => { const win = lcg(hash(s.sym) + DAY * 7)() > 0.34; return { sym: s.sym, entry: s.price, m: marketOf(s.sym), win, pnl: win ? PER * 0.01 : -PER * 0.003, status: win ? "🎯 Target +1.0%" : "⛔ Stop −0.3%" }; });
-  const autoDeployed = autoTrades.length * PER;
-  const autoPnl = autoOn ? autoTrades.reduce((a, t) => a + t.pnl, 0) : 0;
-  const autoWins = autoTrades.filter((t) => t.win).length;
-  const autoWinRate = autoTrades.length ? autoWins / autoTrades.length * 100 : 0;
+  const [autoOnMap, setAutoOnMap] = useState({ IN: false, US: false, Crypto: false, Commodity: false, FNO: false });
+  const [deployCapital, setDeployCapital] = useState("100000");
+  const [plPeriod, setPlPeriod] = useState("today");
+  const [autoOverrides, setAutoOverrides] = useState({});   // sym -> {tp, sl}
+  const [editSym, setEditSym] = useState(null);
+  const MKT_LABEL = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", Commodity: "🪙 Commodity", FNO: "⚡ F&O" };
+  const autoOn = !!autoOnMap[market];                       // on/off for the currently selected market
+  const anyOn = autoOn;
+  const capNum = Math.max(1000, parseInt(deployCapital) || 100000);
+  const aggCur = market === "FNO" ? "IN" : market;          // currency of the selected market
+  const dayStr = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+  const mkTime = (addMin) => { const base = 9 * 60 + 15 + addMin; const h = Math.floor(base / 60), mm = base % 60; return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`; };
+  const autoTargets = (s) => {
+    const t = techSignal(s);
+    let tp = clamp(((s.resistance - s.price) / s.price) * 100, 0.8, 6);
+    let sl = clamp(((s.price - s.support) / s.price) * 100, 0.3, 3);
+    if (t.pattern === "breakout") tp = clamp(tp * 1.3 + 1, 1.5, 8);
+    else if (t.pattern === "flag") tp = clamp(tp + 0.6, 1.2, 6.5);
+    else if (t.pattern === "doubleBottom" || t.pattern === "cup") tp = clamp(tp + 0.4, 1.5, 7);
+    if (marketOf(s.sym) === "Crypto") { tp = clamp(tp * 2, 2, 16); sl = clamp(sl * 1.6, 1, 9); }
+    return { tp: +tp.toFixed(1), sl: +sl.toFixed(1) };
+  };
+  const autoPicks = useMemo(() => dailyPicks(UNIVERSE[market]).slice(0, 6), [market]);
+  const perCap = capNum / Math.max(1, autoPicks.length);
+  const autoTrades = autoPicks.map((s) => {
+    const r = lcg(hash(s.sym) + DAY * 7);
+    const win = r() > 0.42;
+    const m = marketOf(s.sym);
+    const auto = autoTargets(s);
+    const ov = autoOverrides[s.sym];
+    const tpPct = ov ? ov.tp : auto.tp;
+    const slPct = ov ? ov.sl : auto.sl;
+    const entry = s.price;
+    const qty = Math.max(1, Math.floor(perCap / entry));
+    const dp = entry < 10 ? 4 : 2;
+    const exit = +(win ? entry * (1 + tpPct / 100) : entry * (1 - slPct / 100)).toFixed(dp);
+    const pnl = +((exit - entry) * qty).toFixed(2);
+    const entryMin = Math.floor(r() * 120), holdMin = 20 + Math.floor(r() * 160);
+    return { sym: s.sym, m, qty, entry, exit, pnl, win, tpPct, slPct, auto, entryTime: mkTime(entryMin), exitTime: mkTime(entryMin + holdMin) };
+  });
+  const setOv = (t, field, val) => setAutoOverrides((o) => { const cur = o[t.sym] || { tp: t.tpPct, sl: t.slPct }; return { ...o, [t.sym]: { ...cur, [field]: val === "" ? cur[field] : +val } }; });
+  // period stats
+  const bizDaysThisMonth = () => { const now = new Date(); let c = 0; for (let d = 1; d <= now.getDate(); d++) { const wd = new Date(now.getFullYear(), now.getMonth(), d).getDay(); if (wd >= 1 && wd <= 5) c++; } return c; };
+  const aggFor = (nTrades) => { const r = lcg(hash("hist" + DAY + market) + nTrades); let pnl = 0, wins = 0; for (let i = 0; i < nTrades; i++) { const w = r() > 0.44; if (w) wins++; const tp = 1 + r() * 4, sl = 0.4 + r() * 1.7; pnl += w ? perCap * tp / 100 : -perCap * sl / 100; } return { pnl: +pnl.toFixed(0), trades: nTrades, wins }; };
+  const nToday = autoTrades.length;
+  const todayStats = { pnl: autoTrades.reduce((a, t) => a + t.pnl, 0), trades: nToday, wins: autoTrades.filter((t) => t.win).length };
+  const periodStats = !anyOn ? { pnl: 0, trades: 0, wins: 0 } : plPeriod === "today" ? todayStats : plPeriod === "month" ? aggFor(nToday * bizDaysThisMonth()) : aggFor(nToday * 250);
+  const autoPnl = periodStats.pnl;
+  const autoWinRate = periodStats.trades ? periodStats.wins / periodStats.trades * 100 : 0;
+  const periodLabel = plPeriod === "today" ? "today" : plPeriod === "month" ? "this month" : "last 12 months";
 
   return (
     <div>
       {/* Global markets live strip */}
       <GlobalStrip />
 
-      {/* market category tabs (F&O is now a tab) */}
-      <div className="hide-scroll" style={{ display: "flex", gap: 8, overflowX: "auto", marginTop: 14 }}>
-        {[["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["FNO", "⚡ F&O"], ["Commodity", "🪙 Commodity"]].map(([k, l]) => (
-          <button key={k} onClick={() => setMarket(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "9px 15px", fontWeight: 700, fontSize: 12.5, border: "1px solid " + (market === k ? "var(--primary)" : "var(--line)"), background: market === k ? "var(--primary)" : "var(--surface)", color: market === k ? "#fff" : "var(--ink)" }}>{l}</button>
-        ))}
-      </div>
-
       {/* Portfolio / Auto-Buy dashboard card */}
-      <div className="card glow" style={{ marginTop: 14, padding: 16, border: "none", background: "var(--feature-grad)", color: "#fff", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 90% at 100% 0%, rgba(255,255,255,.14), transparent 50%)", pointerEvents: "none" }} />
+      <div className="card glow metal" style={{ marginTop: 14, padding: 16, border: "none", background: "var(--feature-grad)", color: "#fff", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "relative" }}>
           {/* slider */}
           <div className="pill" style={{ display: "inline-flex", background: "rgba(0,0,0,.28)", padding: 3, marginBottom: 14 }}>
@@ -1367,33 +1496,79 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy,
             </div>
           ) : (
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 12, opacity: .85 }}>Auto-Buy P&amp;L today</span>
-                <label className="tap" style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11, fontWeight: 700 }}>
-                  {autoOn ? "On" : "Off"}
-                  <span onClick={() => setAutoOn((v) => !v)} style={{ width: 38, height: 22, borderRadius: 999, background: autoOn ? "#22C55E" : "rgba(255,255,255,.3)", position: "relative", transition: "background .2s" }}>
-                    <span style={{ position: "absolute", top: 2, left: autoOn ? 18 : 2, width: 18, height: 18, borderRadius: 999, background: "#fff", transition: "left .2s" }} />
-                  </span>
-                </label>
-              </div>
-              <div className="mono" style={{ fontWeight: 800, fontSize: 27, marginTop: 2, color: autoPnl >= 0 ? "#9CFFD6" : "#FFB3BE" }}>{autoOn ? (autoPnl >= 0 ? "+" : "") + fmt(autoPnl, "IN") : "—"}</div>
-              <div style={{ fontSize: 11, opacity: .85, marginTop: -1 }}>{autoOn ? `${autoTrades.length} picks auto-bought · ₹${(autoDeployed / 1000).toFixed(0)}k deployed · exit at +1% / −0.3%` : "Enable to auto-buy Matrix's Picks daily and auto-exit at +1% target / −0.3% stop."}</div>
-              {autoOn && (
-                <>
-                  <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
-                    <DashStat k="Trades" v={autoTrades.length} pos={true} />
-                    <DashStat k="Win rate" v={autoWinRate.toFixed(0) + "%"} pos={autoWinRate >= 50} />
-                    <DashStat k="Deployed" v={fmt(autoDeployed, "IN")} pos={true} />
-                  </div>
-                  <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,.18)", display: "flex", flexDirection: "column", gap: 6 }}>
-                    {autoTrades.map((t) => (
-                      <div key={t.sym} onClick={() => { const st = ALL.find((a) => a.sym === t.sym); st && onOpen(st); }} className="tap" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12 }}>
-                        <span className="disp" style={{ fontWeight: 700 }}>{t.sym}</span>
-                        <span style={{ opacity: .85, fontSize: 11 }}>{t.status}</span>
-                        <span className="mono" style={{ fontWeight: 800, color: t.win ? "#9CFFD6" : "#FFB3BE" }}>{t.pnl >= 0 ? "+" : ""}{fmt(t.pnl, "IN")}</span>
-                      </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12, opacity: .85 }}>Auto-Buy · {MKT_LABEL[market]}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div className="pill" style={{ display: "inline-flex", background: "rgba(0,0,0,.28)", padding: 2 }}>
+                    {[["today", "Today"], ["month", "Month"], ["lifetime", "Lifetime"]].map(([k, l]) => (
+                      <button key={k} onClick={() => setPlPeriod(k)} className="pill tap disp" style={{ padding: "5px 10px", fontSize: 10, fontWeight: 800, border: "none", background: plPeriod === k ? "#fff" : "transparent", color: plPeriod === k ? "#141416" : "rgba(255,255,255,.8)" }}>{l}</button>
                     ))}
                   </div>
+                  <label className="tap" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700 }}>
+                    {autoOn ? "On" : "Off"}
+                    <span onClick={() => setAutoOnMap((m) => ({ ...m, [market]: !m[market] }))} style={{ width: 38, height: 22, borderRadius: 999, background: autoOn ? "#22C55E" : "rgba(255,255,255,.3)", position: "relative", transition: "background .2s", flexShrink: 0 }}>
+                      <span style={{ position: "absolute", top: 2, left: autoOn ? 18 : 2, width: 18, height: 18, borderRadius: 999, background: "#fff", transition: "left .2s" }} />
+                    </span>
+                  </label>
+                </div>
+              </div>
+              <div style={{ fontSize: 10, opacity: .7, marginTop: 2 }}>P&amp;L · {periodLabel}</div>
+              <div className="mono" style={{ fontWeight: 800, fontSize: 27, marginTop: 3, color: autoPnl >= 0 ? "#9CFFD6" : "#FFB3BE" }}>{anyOn ? (autoPnl >= 0 ? "+" : "") + fmt(autoPnl, aggCur) : "—"}</div>
+              <div style={{ fontSize: 11, opacity: .85 }}>{anyOn ? `${periodStats.trades} trades · ${autoWinRate.toFixed(0)}% win rate · ${CUR[aggCur]}${(capNum / 1000).toFixed(0)}k capital` : `Turn on Auto-Buy to let Matrix trade today's ${MKT_LABEL[market]} picks automatically.`}</div>
+
+              {/* capital */}
+              <div style={{ marginTop: 10, background: "rgba(0,0,0,.25)", borderRadius: 12, padding: "8px 12px" }}>
+                <div style={{ fontSize: 9.5, opacity: .8, fontWeight: 700 }}>CAPITAL TO DEPLOY ({CUR[aggCur]})</div>
+                <input value={deployCapital} onChange={(e) => setDeployCapital(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" placeholder="100000" className="no-ring mono" style={{ width: "100%", background: "transparent", border: "none", color: "#fff", fontSize: 17, fontWeight: 800, marginTop: 2 }} />
+              </div>
+
+              {anyOn && (
+                <>
+                  <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
+                    <DashStat k="Trades" v={periodStats.trades} pos={true} />
+                    <DashStat k="Win rate" v={autoWinRate.toFixed(0) + "%"} pos={autoWinRate >= 50} />
+                    <DashStat k="Capital" v={fmt(capNum, aggCur)} pos={true} />
+                  </div>
+
+                  {plPeriod === "today" ? (
+                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,.18)", display: "flex", flexDirection: "column", gap: 10 }}>
+                      {autoTrades.map((t) => (
+                        <div key={t.sym} style={{ background: "rgba(0,0,0,.22)", borderRadius: 12, padding: "10px 12px" }}>
+                          <div onClick={() => { const st = ALL.find((a) => a.sym === t.sym); st && onOpen(st); }} className="tap" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <span className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{t.sym} <span style={{ fontSize: 10, opacity: .7, fontWeight: 600 }}>×{t.qty}</span></span>
+                            <span style={{ fontSize: 10, opacity: .85, fontWeight: 700 }}>{t.win ? "🎯 Target" : "⛔ Stop"}</span>
+                            <span className="mono" style={{ fontWeight: 800, fontSize: 13, color: t.win ? "#9CFFD6" : "#FFB3BE" }}>{t.pnl >= 0 ? "+" : ""}{fmt(t.pnl, t.m)}</span>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 7, fontSize: 10, opacity: .82 }}>
+                            <div><div style={{ opacity: .7 }}>Entry</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.entry, t.m)}</div><div style={{ opacity: .7 }}>{t.entryTime} · {dayStr}</div></div>
+                            <div style={{ textAlign: "right" }}><div style={{ opacity: .7 }}>Exit</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.exit, t.m)}</div><div style={{ opacity: .7 }}>{t.exitTime} · {dayStr}</div></div>
+                          </div>
+                          {/* target / stop with pencil edit */}
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.12)" }}>
+                            <span style={{ fontSize: 10.5, fontWeight: 700 }}>🎯 Target <span style={{ color: "#9CFFD6" }}>+{t.tpPct}%</span> · 🛑 Stop <span style={{ color: "#FFB3BE" }}>−{t.slPct}%</span>{autoOverrides[t.sym] ? " · edited" : ""}</span>
+                            <button onClick={() => setEditSym(editSym === t.sym ? null : t.sym)} className="tap" style={{ border: "none", background: "rgba(255,255,255,.14)", borderRadius: 8, padding: 6, display: "grid", placeItems: "center", color: "#fff" }}><Pencil size={12} /></button>
+                          </div>
+                          {editSym === t.sym && (
+                            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                              <div style={{ flex: 1, background: "rgba(0,0,0,.3)", borderRadius: 10, padding: "6px 9px" }}>
+                                <div style={{ fontSize: 8.5, opacity: .8, fontWeight: 700 }}>TARGET %</div>
+                                <input defaultValue={t.tpPct} onChange={(e) => setOv(t, "tp", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={{ width: "100%", background: "transparent", border: "none", color: "#fff", fontSize: 13, fontWeight: 800 }} />
+                              </div>
+                              <div style={{ flex: 1, background: "rgba(0,0,0,.3)", borderRadius: 10, padding: "6px 9px" }}>
+                                <div style={{ fontSize: 8.5, opacity: .8, fontWeight: 700 }}>STOP %</div>
+                                <input defaultValue={t.slPct} onChange={(e) => setOv(t, "sl", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={{ width: "100%", background: "transparent", border: "none", color: "#fff", fontSize: 13, fontWeight: 800 }} />
+                              </div>
+                              <button onClick={() => setEditSym(null)} className="tap disp" style={{ alignSelf: "stretch", border: "none", background: "#fff", color: "#141416", borderRadius: 10, padding: "0 14px", fontWeight: 800, fontSize: 12 }}>Done</button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,.18)", fontSize: 11, opacity: .82, lineHeight: 1.6 }}>
+                      Aggregated across {periodStats.trades} auto-trades {plPeriod === "month" ? "so far this month" : "over the last 12 months"} on {MKT_LABEL[market]}. Each trade auto-exited at its target or stop. Switch to <b>Today</b> to see and edit individual positions.
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -1402,7 +1577,7 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy,
       </div>
 
       {profile && (
-        <div className="card" style={{ marginTop: 14, padding: 14, background: "linear-gradient(110deg,var(--primary),var(--primary-2))", border: "none", color: "#fff" }}>
+        <div className="card metal" style={{ marginTop: 14, padding: 14, background: "var(--feature-grad)", border: "none", color: "#fff" }}>
           <div style={{ fontSize: 12, opacity: .9 }}>Tuned for you</div>
           <div className="disp" style={{ fontWeight: 700, fontSize: 15, marginTop: 2 }}>{profile.style} investor · {profile.risk} risk</div>
           <div style={{ fontSize: 12, opacity: .92, marginTop: 4 }}>Picks below are weighted toward {profile.caps.join(", ") || "all caps"}{profile.sectors.length ? ` and ${profile.sectors.join(", ")}` : ""}.</div>
@@ -1413,7 +1588,7 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy,
       <Section title="Matrix's Picks" icon={<Sparkles size={17} color="var(--primary-2)" />}>
         <div className="hide-scroll" style={{ display: "flex", gap: 13, overflowX: "auto", paddingBottom: 8, paddingTop: 2 }}>
           {picks.map((s) => (
-            <div key={s.sym} onClick={() => onOpen(s)} className="card tap glow" style={{ flex: "0 0 auto", width: 272, padding: 0, position: "relative", overflow: "hidden", border: "none", background: "var(--feature-grad)" }}>
+            <div key={s.sym} onClick={() => onOpen(s)} className="card tap glow metal" style={{ flex: "0 0 auto", width: 272, padding: 0, position: "relative", overflow: "hidden", border: "none", background: "var(--feature-grad)" }}>
               <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 80% at 0% 0%, rgba(255,255,255,.18), transparent 45%)", pointerEvents: "none" }} />
               <button onClick={(e) => { e.stopPropagation(); toggleWatch(s.sym); }} className="tap" style={{ position: "absolute", top: 12, right: 12, width: 30, height: 30, borderRadius: 10, border: "1px solid rgba(255,255,255,.3)", background: "rgba(255,255,255,.14)", color: "#fff", display: "grid", placeItems: "center", zIndex: 2 }}>
                 {watch.includes(s.sym) ? <Check size={16} /> : <Plus size={17} />}
@@ -1472,7 +1647,7 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy,
         right={
           <div className="pill" style={{ display: "flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3 }}>
             {["Gainers", "Losers"].map((m) => (
-              <button key={m} onClick={() => setGlMode(m)} className="pill tap disp" style={{ padding: "5px 13px", fontSize: 11.5, fontWeight: 700, border: "none", background: glMode === m ? (m === "Gainers" ? "var(--up)" : "var(--down)") : "transparent", color: glMode === m ? "#fff" : "var(--muted)" }}>{m}</button>
+              <button key={m} onClick={() => setGlMode(m)} className="pill tap disp" style={{ padding: "5px 13px", fontSize: 11.5, fontWeight: 700, border: "none", background: glMode === m ? (m === "Gainers" ? "var(--up)" : "var(--down)") : "transparent", color: glMode === m ? "var(--on-primary)" : "var(--muted)" }}>{m}</button>
             ))}
           </div>
         }>
@@ -1642,7 +1817,7 @@ function TradeView({ wallet, setWallet, portfolio, setPortfolio, preset, market 
 
         <div className="pill" style={{ display: "flex", background: "var(--bg)", padding: 4, marginTop: 14 }}>
           {["Buy", "Sell"].map((x) => (
-            <button key={x} onClick={() => setSide(x)} className="pill tap disp" style={{ flex: 1, padding: 10, border: "none", fontWeight: 700, fontSize: 13.5, background: side === x ? (x === "Buy" ? "var(--up)" : "var(--down)") : "transparent", color: side === x ? "#fff" : "var(--muted)" }}>{x}</button>
+            <button key={x} onClick={() => setSide(x)} className="pill tap disp" style={{ flex: 1, padding: 10, border: "none", fontWeight: 700, fontSize: 13.5, background: side === x ? (x === "Buy" ? "var(--up)" : "var(--down)") : "transparent", color: side === x ? "var(--on-primary)" : "var(--muted)" }}>{x}</button>
           ))}
         </div>
 
@@ -1668,8 +1843,10 @@ function TradeView({ wallet, setWallet, portfolio, setPortfolio, preset, market 
 const qBtn = { width: 34, height: 34, borderRadius: 10, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 18, fontWeight: 700, color: "var(--ink)" };
 
 /* ============================== PORTFOLIO ============================== */
-function Portfolio({ portfolio, wallet }) {
-  const rows = portfolio.map((h) => {
+function Portfolio({ portfolio, wallet, market = "IN" }) {
+  const mkt = market === "FNO" ? "IN" : market;
+  const mLabel = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", FNO: "⚡ F&O", Commodity: "🪙 Commodity" }[market];
+  const rows = portfolio.filter((h) => marketOf(h.sym) === mkt).map((h) => {
     const s = ALL.find((a) => a.sym === h.sym) || { price: h.buy, chg: 0 };
     const m = marketOf(h.sym);
     const cur = s.price, inv = h.buy * h.qty, val = cur * h.qty;
@@ -1684,18 +1861,19 @@ function Portfolio({ portfolio, wallet }) {
   return (
     <div className="mx fade">
       <div className="disp" style={{ fontWeight: 700, fontSize: 20, marginTop: 6 }}>Virtual Portfolio</div>
-      <div className="card" style={{ marginTop: 12, padding: 16, background: "linear-gradient(120deg,#0E0E14,#2A2342)", border: "none", color: "#fff" }}>
+      <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 1 }}>{mLabel} holdings</div>
+      <div className="card metal" style={{ marginTop: 12, padding: 16, background: "var(--feature-grad)", border: "none", color: "#fff" }}>
         <div style={{ fontSize: 12, opacity: .8 }}>Holdings value</div>
-        <div className="mono" style={{ fontWeight: 700, fontSize: 28, marginTop: 2 }}>{fmt(totalVal, "IN")}</div>
+        <div className="mono" style={{ fontWeight: 700, fontSize: 28, marginTop: 2 }}>{fmt(totalVal, mkt)}</div>
         <div style={{ display: "flex", gap: 18, marginTop: 10, fontSize: 12.5 }}>
           <div><div style={{ opacity: .7 }}>Cash</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(wallet, "IN")}</div></div>
-          <div><div style={{ opacity: .7 }}>Invested</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(totalInv, "IN")}</div></div>
-          <div><div style={{ opacity: .7 }}>Total P/L</div><div className="mono" style={{ fontWeight: 700, color: totalPL >= 0 ? "#5CF0B5" : "#FF8FA0" }}>{totalPL >= 0 ? "+" : ""}{fmt(totalPL, "IN")}</div></div>
+          <div><div style={{ opacity: .7 }}>Invested</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(totalInv, mkt)}</div></div>
+          <div><div style={{ opacity: .7 }}>Total P/L</div><div className="mono" style={{ fontWeight: 700, color: totalPL >= 0 ? "#5CF0B5" : "#FF8FA0" }}>{totalPL >= 0 ? "+" : ""}{fmt(totalPL, mkt)}</div></div>
         </div>
       </div>
       {rows.length === 0 ? (
         <div className="card" style={{ marginTop: 16, padding: 30, textAlign: "center", color: "var(--muted)" }}>
-          <Briefcase size={28} color="var(--muted)" /><div style={{ marginTop: 8, fontSize: 13.5 }}>No holdings yet. Head to Virtual Trade to buy your first stock.</div>
+          <Briefcase size={28} color="var(--muted)" /><div style={{ marginTop: 8, fontSize: 13.5 }}>No {mLabel} holdings yet. Buy from this market, or switch markets from the tabs above.</div>
         </div>
       ) : rows.map((r) => (
         <div key={r.sym} className="card" style={{ marginTop: 12, padding: 14 }}>
@@ -1740,7 +1918,7 @@ function WatchlistView({ watchlists, activeWl, setActiveWl, createWatchlist, del
       {/* list chips */}
       <div className="hide-scroll" style={{ display: "flex", gap: 8, overflowX: "auto", marginTop: 14, paddingBottom: 2 }}>
         {watchlists.map((w) => (
-          <button key={w.id} onClick={() => setActiveWl(w.id)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "8px 14px", fontWeight: 700, fontSize: 12.5, border: "1px solid " + (w.id === activeWl ? "var(--primary)" : "var(--line)"), background: w.id === activeWl ? "var(--primary)" : "var(--surface)", color: w.id === activeWl ? "#fff" : "var(--ink)", display: "flex", alignItems: "center", gap: 7 }}>
+          <button key={w.id} onClick={() => setActiveWl(w.id)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "8px 14px", fontWeight: 700, fontSize: 12.5, border: "1px solid " + (w.id === activeWl ? "var(--primary)" : "var(--line)"), background: w.id === activeWl ? "var(--primary)" : "var(--surface)", color: w.id === activeWl ? "var(--on-primary)" : "var(--ink)", display: "flex", alignItems: "center", gap: 7 }}>
             {w.name} <span style={{ opacity: .8, fontSize: 11 }}>{w.syms.length}</span>
           </button>
         ))}
@@ -1886,7 +2064,7 @@ function IdeasDashboard({ ideas }) {
     </div>
   );
   return (
-    <div className="card glow" style={{ marginTop: 14, padding: 16, border: "none", background: "var(--feature-grad)", color: "#fff" }}>
+    <div className="card glow metal" style={{ marginTop: 14, padding: 16, border: "none", background: "var(--feature-grad)", color: "#fff" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div className="disp" style={{ fontWeight: 700, fontSize: 15 }}>Ideas Dashboard</div>
         <span style={{ fontSize: 10.5, opacity: .85 }}>realized · last {range >= 365 ? "12 months" : range + "d"}</span>
@@ -1911,10 +2089,12 @@ function IdeasDashboard({ ideas }) {
     </div>
   );
 }
-function Ideas({ onOpen, onBuy }) {
+function Ideas({ onOpen, onBuy, market = "IN" }) {
   const [ideas, setIdeas] = useState(SEED_IDEAS);
   const [draft, setDraft] = useState({ sym: "NIFTY50", entry: "", exit: "", logic: "", pattern: "breakout" });
   const [open, setOpen] = useState(false);
+  const mkt = market === "FNO" ? "IN" : market;
+  const shown = ideas.filter((i) => marketOf(i.sym) === mkt);
   const post = () => {
     if (!draft.entry || !draft.exit || !draft.logic) return;
     const g = ((parseFloat(draft.exit) / parseFloat(draft.entry) - 1) * 100);
@@ -1924,11 +2104,11 @@ function Ideas({ onOpen, onBuy }) {
   return (
     <div className="mx fade">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
-        <div className="disp" style={{ fontWeight: 700, fontSize: 20 }}>Ideas</div>
+        <div><div className="disp" style={{ fontWeight: 700, fontSize: 20 }}>Ideas</div><div style={{ fontSize: 11.5, color: "var(--muted)" }}>{{ IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", FNO: "⚡ F&O", Commodity: "🪙 Commodity" }[market]}</div></div>
         <button onClick={() => setOpen(!open)} className="tap pill disp glow" style={{ background: "linear-gradient(120deg,var(--primary),var(--primary-2))", color: "#fff", border: "none", padding: "8px 14px", fontWeight: 700, fontSize: 12.5, display: "flex", gap: 5, alignItems: "center" }}><Plus size={15} /> Post idea</button>
       </div>
 
-      <IdeasDashboard ideas={ideas} />
+      <IdeasDashboard ideas={shown} />
       {open && (
         <div className="card" style={{ marginTop: 12, padding: 14 }}>
           <select value={draft.sym} onChange={(e) => setDraft({ ...draft, sym: e.target.value })} style={{ ...selStyle, width: "100%" }}>{ALL.map((a) => <option key={a.sym} value={a.sym}>{a.sym} — {a.name}</option>)}</select>
@@ -1941,7 +2121,8 @@ function Ideas({ onOpen, onBuy }) {
           <button onClick={post} className="tap disp" style={{ width: "100%", marginTop: 10, background: "var(--primary)", color: "#fff", border: "none", borderRadius: 12, padding: 12, fontWeight: 700 }}>Publish idea</button>
         </div>
       )}
-      {ideas.map((idea, i) => {
+      {shown.length === 0 && <div className="card" style={{ marginTop: 12, padding: 16, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No ideas for this market yet. Post one, or switch markets from the tabs above.</div>}
+      {shown.map((idea, i) => {
         const s = ALL.find((a) => a.sym === idea.sym); const m = marketOf(idea.sym);
         return (
           <div key={i} className="card" style={{ marginTop: 12, padding: 15 }}>
@@ -1952,13 +2133,15 @@ function Ideas({ onOpen, onBuy }) {
               </div>
               <span className="pill disp" style={{ background: "var(--up-soft)", color: "var(--up)", fontWeight: 700, fontSize: 12.5, padding: "4px 11px" }}>+{idea.gain}% potential</span>
             </div>
-            <PatternChart type={idea.pattern} />
-            <div style={{ display: "flex", gap: 18, marginTop: 12 }}>
-              <div><div style={{ fontSize: 10.5, color: "var(--muted)" }}>Entry</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(idea.entry, m)}</div></div>
-              <div><div style={{ fontSize: 10.5, color: "var(--muted)" }}>Exit / target</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(idea.exit, m)}</div></div>
+            <div style={{ marginTop: 10 }}><MiniCandles sym={idea.sym} price={s ? s.price : idea.entry} chg={s ? s.chg : 0} height={120} showTf defaultTf={m === "Crypto" ? "1h" : "1d"} pattern={idea.pattern} /></div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, gap: 8 }}>
+              <div><div style={{ fontSize: 10, color: "var(--muted)" }}>Entry</div><div className="mono" style={{ fontWeight: 700, fontSize: 13 }}>{fmt(idea.entry, m)}</div></div>
+              <div><div style={{ fontSize: 10, color: "var(--muted)" }}>Current</div><div className="mono" style={{ fontWeight: 800, fontSize: 13 }}>{fmt(s ? s.price : idea.entry, m)}</div></div>
+              <div><div style={{ fontSize: 10, color: "var(--muted)" }}>Target</div><div className="mono" style={{ fontWeight: 700, fontSize: 13 }}>{fmt(idea.exit, m)}</div></div>
+              <div style={{ textAlign: "right" }}><div style={{ fontSize: 10, color: "var(--muted)" }}>Potential left</div>{(() => { const cur = s ? s.price : idea.entry; const pl = (idea.exit - cur) / cur * 100; return <div className="mono" style={{ fontWeight: 800, fontSize: 13, color: pl >= 0 ? "var(--up)" : "var(--muted)" }}>{pl >= 0 ? "+" + pl.toFixed(1) + "%" : "target hit"}</div>; })()}</div>
             </div>
             <div style={{ fontSize: 12.5, color: "var(--ink-soft)", marginTop: 10, lineHeight: 1.55 }}>{idea.logic}</div>
-            {s && onBuy && <button onClick={() => onBuy(s, 1)} className="tap disp" style={{ width: "100%", marginTop: 12, background: "linear-gradient(120deg,var(--up),#0EA968)", color: "#fff", border: "none", borderRadius: 12, padding: 12, fontWeight: 800, fontSize: 13.5, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}><Plus size={16} /> Buy {idea.sym} @ {fmt(idea.entry, m)}</button>}
+            {s && onBuy && <button onClick={() => onBuy(s, 1)} className="tap disp" style={{ width: "100%", marginTop: 12, background: "linear-gradient(120deg,var(--up),#0EA968)", color: "#fff", border: "none", borderRadius: 12, padding: 12, fontWeight: 800, fontSize: 13.5, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}><Plus size={16} /> Buy Now</button>}
           </div>
         );
       })}
@@ -2092,7 +2275,7 @@ function BacktestResult({ cfg }) {
         <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, marginBottom: 3 }}>Range</div>
         <div className="pill hide-scroll" style={{ display: "flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3, marginBottom: 8, width: "fit-content", maxWidth: "100%", overflowX: "auto" }}>
           {[["1m", "1M"], ["3m", "3M"], ["6m", "6M"], ["1y", "1Y"], ["2y", "2Y"]].map(([k, l]) => (
-            <button key={k} onClick={() => applyPreset(k)} className="pill tap disp" style={{ padding: "5px 13px", fontSize: 11.5, fontWeight: 700, border: "none", background: preset === k ? "var(--primary)" : "transparent", color: preset === k ? "#fff" : "var(--muted)" }}>{l}</button>
+            <button key={k} onClick={() => applyPreset(k)} className="pill tap disp" style={{ padding: "5px 13px", fontSize: 11.5, fontWeight: 700, border: "none", background: preset === k ? "var(--primary)" : "transparent", color: preset === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
           ))}
         </div>
         <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
@@ -2207,11 +2390,11 @@ function detectOp(clause) {
   if (/cross(es|ing)?\s*(below|under)/.test(c)) return { op: "crosses_below" };
   if (/(become|becomes|turn|turns|goes|going)\s*(negative|below\s*zero)/.test(c)) return { op: "<", rhs: "0" };
   if (/(become|becomes|turn|turns|goes|going)\s*(positive|above\s*zero)/.test(c)) return { op: ">", rhs: "0" };
-  if (/greater\s*than\s*or\s*equal|at\s*least|>=/.test(c)) return { op: ">=" };
-  if (/less\s*than\s*or\s*equal|at\s*most|<=/.test(c)) return { op: "<=" };
-  if (/greater\s*than|more\s*than|above|exceed|exceeds|rises?\s*above|goes?\s*above|breaks?\s*above|>/.test(c)) return { op: ">" };
-  if (/less\s*than|below|under|drops?\s*below|falls?\s*below|dips?\s*below|breaks?\s*below|</.test(c)) return { op: "<" };
-  if (/equal|reaches|reach|hits|hit|==|=/.test(c)) return { op: "==" };
+  if (c.includes(">=") || /greater\s*than\s*or\s*equal|at\s*least/.test(c)) return { op: ">=" };
+  if (c.includes("<=") || /less\s*than\s*or\s*equal|at\s*most/.test(c)) return { op: "<=" };
+  if (c.includes(">") || /greater\s*than|more\s*than|above|exceed|exceeds|rises?\s*above|goes?\s*above|breaks?\s*above/.test(c)) return { op: ">" };
+  if (c.includes("<") || /less\s*than|below|under|drops?\s*below|falls?\s*below|dips?\s*below|breaks?\s*below/.test(c)) return { op: "<" };
+  if (c.includes("==") || c.includes("=") || /equal|reaches|reach|hits|hit/.test(c)) return { op: "==" };
   return null;
 }
 function parseClause(clause) {
@@ -2242,6 +2425,7 @@ function parseRules(text) {
 function condCode(c) { return `${c.la} ${c.op} ${c.b}`; }
 function chainCode(conds) { return conds.map((c, i) => `${i ? " " + (c.gate || "AND") + " " : ""}${condCode(c)}`).join(""); }
 
+const TEMPLATES = [
   { name: "Golden Cross + RSI", code: "EMA1 = EMA(length=50, tf=1D)\nEMA2 = EMA(length=200, tf=1D)\nif EMA1 > EMA2 AND RSI1 < 70:\n    enter_trade()", tag: "Trend",
     cfg: { mode: "builder", defs: [{ type: "EMA", len: "50", name: "EMA1" }, { type: "EMA", len: "200", name: "EMA2" }, { type: "RSI", len: "14", name: "RSI1" }], entry: [{ la: "EMA1", op: ">", bType: "ind", b: "EMA2" }, { la: "RSI1", op: "<", bType: "num", b: "70", gate: "AND" }], exit: [{ la: "EMA1", op: "crosses_below", bType: "ind", b: "EMA2" }], sl: "3", tp: "8" } },
   { name: "Bollinger squeeze", code: "if Price <= BB1.lower:\n    enter_trade()\nif Price >= BB1.upper:\n    exit_trade()", tag: "Volatility",
@@ -2274,7 +2458,7 @@ const SEED_STRATS = [
 // Reusable multi-select (chips). Empty value array = "All".
 function MultiSelect({ label, options, value, onChange, allLabel = "All", dark }) {
   const [open, setOpen] = useState(false);
-  const txt = dark ? "#fff" : "var(--ink)";
+  const txt = dark ? "var(--on-primary)" : "var(--ink)";
   const summary = value.length === 0 ? allLabel : value.length === 1 ? value[0] : value.length + " selected";
   const chipBtn = (sel, on, key, lbl) => (
     <button key={key} onClick={on} className="tap pill" style={{ fontSize: 11, fontWeight: 700, padding: "6px 12px", border: "1px solid " + (sel ? "var(--primary)" : dark ? "rgba(255,255,255,.28)" : "var(--line)"), background: sel ? "var(--primary)" : dark ? "rgba(255,255,255,.1)" : "var(--surface)", color: sel ? "#fff" : txt }}>{lbl}</button>
@@ -2307,28 +2491,26 @@ function stratPerf(strat, rangeDays) {
   const cap = strat.cap || 100000;
   return { trades, wins, winRate, retPct, annual: perYearRet, pnl: cap * retPct / 100, cap };
 }
+const ACTIVATE_SYMS = [...new Set([...FNO.map((s) => s.sym), "AAPL", "NVDA", "MSFT", "AMZN", "GOOGL", "META", "TSLA", "BTC", "ETH", "SOL", "DOGE"])].filter((sym) => ALL.some((a) => a.sym === sym));
 function TemplateCard({ t, onActivate, onToggleBt, btActive }) {
-  const [sym, setSym] = useState("");
+  const [syms, setSyms] = useState([]);
   return (
-    <div className="card" style={{ flex: "0 0 auto", width: 244, padding: 14 }}>
+    <div className="card" style={{ flex: "0 0 auto", width: 250, padding: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span className="disp" style={{ fontWeight: 700, fontSize: 13 }}>{t.name}</span>
         <span className="pill" style={{ fontSize: 10, background: "var(--primary-soft)", color: "var(--primary)", fontWeight: 700, padding: "2px 8px" }}>{t.tag}</span>
       </div>
       <pre className="mono" style={{ fontSize: 10, background: "var(--bg)", borderRadius: 12, padding: 10, marginTop: 10, whiteSpace: "pre-wrap", lineHeight: 1.4 }}>{t.code}</pre>
-      <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, margin: "10px 0 4px" }}>Select symbol to activate</div>
-      <select value={sym} onChange={(e) => setSym(e.target.value)} style={{ ...selStyle, width: "100%", fontSize: 12 }}>
-        <option value="">Choose stock / index…</option>
-        {ALL.map((a) => <option key={a.sym} value={a.sym}>{a.sym} — {a.name}</option>)}
-      </select>
-      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-        <button disabled={!sym} onClick={() => sym && onActivate(t, [sym])} className="tap pill" style={{ flex: 1, border: "none", background: sym ? "linear-gradient(120deg,var(--primary),var(--primary-2))" : "var(--elev)", color: sym ? "#fff" : "var(--muted)", fontWeight: 700, fontSize: 11.5, padding: 9, cursor: sym ? "pointer" : "not-allowed", opacity: sym ? 1 : 0.7 }}>Activate</button>
+      <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, margin: "10px 0 6px" }}>Select symbol(s) to activate on</div>
+      <MultiSelect label="Symbols" options={ACTIVATE_SYMS} value={syms} onChange={setSyms} allLabel="Choose…" />
+      <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+        <button disabled={!syms.length} onClick={() => syms.length && onActivate(t, syms)} className="tap pill" style={{ flex: 1, border: "none", background: syms.length ? "linear-gradient(120deg,var(--primary),var(--primary-2))" : "var(--elev)", color: syms.length ? "var(--on-primary)" : "var(--muted)", fontWeight: 700, fontSize: 11.5, padding: 9, cursor: syms.length ? "pointer" : "not-allowed", opacity: syms.length ? 1 : 0.7 }}>Activate{syms.length ? ` (${syms.length})` : ""}</button>
         <button onClick={() => onToggleBt(t.name)} className="tap pill" style={{ flex: "0 0 auto", border: "1px solid " + (btActive ? "var(--primary)" : "var(--line)"), background: btActive ? "var(--primary-soft)" : "var(--surface)", fontWeight: 700, fontSize: 11.5, padding: "9px 11px", color: btActive ? "var(--primary)" : "var(--ink)", display: "flex", gap: 4, alignItems: "center" }}><Activity size={13} /> Test</button>
       </div>
     </div>
   );
 }
-function Automation() {
+function Automation({ market = "IN" }) {
   const [mode, setMode] = useState("builder");
   const [defs, setDefs] = useState([
     { id: 1, type: "EMA", len: "50", tf: "1D", name: "EMA1" },
@@ -2418,8 +2600,10 @@ function Automation() {
   const [editStrat, setEditStrat] = useState(null);
   const TF_OPTS = ["3m", "5m", "10m", "15m", "30m", "1h", "1D"];
 
-  // dashboard aggregation
-  const shown = strats.filter((s) => (dashBy === "All" || s.by === dashBy) && (symFilter.length === 0 || (s.symbols || []).some((x) => symFilter.includes(x))));
+  // dashboard aggregation — scoped to the selected market
+  const amkt = market === "FNO" ? "IN" : market;
+  const inMkt = (s) => !(s.symbols && s.symbols.length) || s.symbols.some((x) => marketOf(x) === amkt);
+  const shown = strats.filter((s) => inMkt(s) && (dashBy === "All" || s.by === dashBy) && (symFilter.length === 0 || (s.symbols || []).some((x) => symFilter.includes(x))));
   const perf = shown.map((s) => ({ s, p: stratPerf(s, dashRange) }));
   const agg = perf.reduce((a, { p }) => { a.trades += p.trades; a.wins += p.wins; a.pnl += p.pnl; a.cap += p.cap; a.annSum += p.annual; return a; }, { trades: 0, wins: 0, pnl: 0, cap: 0, annSum: 0 });
   const activeCount = shown.filter((s) => s.active).length;
@@ -2471,7 +2655,7 @@ function Automation() {
       </div>
       <div style={{ display: "flex", gap: 7, marginTop: 12 }}>
         <button onClick={() => setEditStrat(editStrat === s.id ? null : s.id)} className="tap" title="Edit symbols & timeframe" style={{ border: "1px solid " + (editStrat === s.id ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: editStrat === s.id ? "var(--primary-soft)" : "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: editStrat === s.id ? "var(--primary)" : "var(--ink)" }}><SlidersHorizontal size={14} /></button>
-        <button onClick={() => toggleAlerts(s)} className="tap" title="Alert on entry/exit signal" style={{ border: "1px solid " + (s.alerts ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: s.alerts ? "var(--primary)" : "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: s.alerts ? "#fff" : "var(--ink)" }}><Bell size={14} /></button>
+        <button onClick={() => toggleAlerts(s)} className="tap" title="Alert on entry/exit signal" style={{ border: "1px solid " + (s.alerts ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: s.alerts ? "var(--primary)" : "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: s.alerts ? "var(--on-primary)" : "var(--ink)" }}><Bell size={14} /></button>
         <button onClick={() => setBtOpen(btOpen === s.id ? null : s.id)} className="tap" style={{ border: "1px solid " + (btOpen === s.id ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: btOpen === s.id ? "var(--primary-soft)" : "var(--surface)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 700, color: btOpen === s.id ? "var(--primary)" : "var(--ink)" }}><Activity size={13} /> Test</button>
         <button onClick={() => toggleActive(s.id)} className="tap disp" style={{ flex: 1, borderRadius: 11, background: s.active ? "var(--surface)" : "linear-gradient(120deg,var(--up),#0EA968)", color: s.active ? "var(--ink)" : "#fff", boxShadow: s.active ? "none" : "0 6px 16px rgba(16,185,129,.3)", padding: "7px 10px", display: "flex", gap: 5, alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800, border: s.active ? "1px solid var(--line)" : "none" }}>
           {s.active ? <><Pause size={13} /> Deactivate</> : <><Play size={13} /> Activate</>}
@@ -2484,7 +2668,7 @@ function Automation() {
           <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, margin: "12px 0 6px" }}>Timeframe</div>
           <div className="hide-scroll" style={{ display: "flex", gap: 6, overflowX: "auto" }}>
             {TF_OPTS.map((x) => (
-              <button key={x} onClick={() => updateStrat(s.id, { tf: x })} className="pill tap disp" style={{ flex: "0 0 auto", padding: "6px 13px", fontSize: 11.5, fontWeight: 700, border: "1px solid " + ((s.tf || "5m") === x ? "var(--primary)" : "var(--line)"), background: (s.tf || "5m") === x ? "var(--primary)" : "var(--surface)", color: (s.tf || "5m") === x ? "#fff" : "var(--ink)" }}>{x}</button>
+              <button key={x} onClick={() => updateStrat(s.id, { tf: x })} className="pill tap disp" style={{ flex: "0 0 auto", padding: "6px 13px", fontSize: 11.5, fontWeight: 700, border: "1px solid " + ((s.tf || "5m") === x ? "var(--primary)" : "var(--line)"), background: (s.tf || "5m") === x ? "var(--primary)" : "var(--surface)", color: (s.tf || "5m") === x ? "var(--on-primary)" : "var(--ink)" }}>{x}</button>
             ))}
           </div>
           <button onClick={() => setEditStrat(null)} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--primary)", color: "#fff", border: "none", borderRadius: 11, padding: 10, fontWeight: 700, fontSize: 12.5 }}>Done</button>
@@ -2501,10 +2685,10 @@ function Automation() {
   return (
     <div className="mx fade">
       <div className="disp" style={{ fontWeight: 700, fontSize: 22, marginTop: 8 }}>Trade Automation</div>
-      <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 2 }}>Track performance and manage your automated strategies.</div>
+      <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 2 }}>{{ IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", FNO: "⚡ F&O", Commodity: "🪙 Commodity" }[market]} strategies · track performance and manage automations.</div>
 
       {/* Automation dashboard */}
-      <div className="card glow" style={{ marginTop: 18, padding: 18, border: "none", background: "var(--feature-grad)", color: "#fff" }}>
+      <div className="card glow metal" style={{ marginTop: 18, padding: 18, border: "none", background: "var(--feature-grad)", color: "#fff" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div className="disp" style={{ fontWeight: 700, fontSize: 15 }}>Automation Dashboard</div>
           <span style={{ fontSize: 10.5, opacity: .85 }}>last {dashRange >= 365 ? "12 months" : dashRange + "d"}</span>
@@ -2591,7 +2775,7 @@ function Automation() {
                 <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Timeframe</div>
                 <div className="hide-scroll" style={{ display: "flex", gap: 6, overflowX: "auto", marginBottom: 14 }}>
                   {["3m", "5m", "10m", "15m", "30m", "1h", "1D"].map((x) => (
-                    <button key={x} onClick={() => setTf(x)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "7px 14px", fontSize: 12, fontWeight: 700, border: "1px solid " + (tf === x ? "var(--primary)" : "var(--line)"), background: tf === x ? "var(--primary)" : "var(--surface)", color: tf === x ? "#fff" : "var(--ink)" }}>{x}</button>
+                    <button key={x} onClick={() => setTf(x)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "7px 14px", fontSize: 12, fontWeight: 700, border: "1px solid " + (tf === x ? "var(--primary)" : "var(--line)"), background: tf === x ? "var(--primary)" : "var(--surface)", color: tf === x ? "var(--on-primary)" : "var(--ink)" }}>{x}</button>
                   ))}
                 </div>
                 <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Entry rules — in plain English</div>
@@ -2722,7 +2906,7 @@ function CondBuilder2({ label, conds, setConds, operands }) {
           {i > 0 && (
             <div style={{ display: "flex", gap: 6, margin: "8px 0" }}>
               {["AND", "OR"].map((g) => (
-                <button key={g} onClick={() => upd(i, "gate", g)} className="pill tap disp" style={{ fontSize: 10.5, fontWeight: 800, padding: "3px 14px", border: "1px solid var(--line)", background: (c.gate || "AND") === g ? "var(--primary)" : "transparent", color: (c.gate || "AND") === g ? "#fff" : "var(--muted)" }}>{g}</button>
+                <button key={g} onClick={() => upd(i, "gate", g)} className="pill tap disp" style={{ fontSize: 10.5, fontWeight: 800, padding: "3px 14px", border: "1px solid var(--line)", background: (c.gate || "AND") === g ? "var(--primary)" : "transparent", color: (c.gate || "AND") === g ? "var(--on-primary)" : "var(--muted)" }}>{g}</button>
               ))}
             </div>
           )}
@@ -2731,7 +2915,7 @@ function CondBuilder2({ label, conds, setConds, operands }) {
             <select value={c.op} onChange={(e) => upd(i, "op", e.target.value)} style={{ ...selStyle, flex: "1 1 96px" }}>{OPSET.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
             <div className="pill" style={{ display: "flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 2, flex: "0 0 auto" }}>
               {[["ind", "Ind"], ["num", "#"]].map(([k, l]) => (
-                <button key={k} onClick={() => upd(i, "bType", k)} className="pill tap" style={{ fontSize: 10.5, fontWeight: 800, padding: "4px 9px", border: "none", background: c.bType === k ? "var(--primary)" : "transparent", color: c.bType === k ? "#fff" : "var(--muted)" }}>{l}</button>
+                <button key={k} onClick={() => upd(i, "bType", k)} className="pill tap" style={{ fontSize: 10.5, fontWeight: 800, padding: "4px 9px", border: "none", background: c.bType === k ? "var(--primary)" : "transparent", color: c.bType === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
               ))}
             </div>
             {c.bType === "ind"
@@ -2907,21 +3091,35 @@ export default function App() {
   const [liveAt, setLiveAt] = useState(null);
   const [, setLiveTick] = useState(0);
 
-  // Overlay real Yahoo prices (via the proxy) onto the universe when configured.
+  // Refresh prices / indicators / news every 3 minutes.
+  const REFRESH_MS = 60000;   // 1 minute
   useEffect(() => {
-    if (!BACKEND_URL) return;
     let stop = false;
-    const pull = async () => {
+    const pullLive = async () => {
       try {
         const rows = await fetchLiveQuotes(ALL.map((a) => a.sym));
         if (stop || !rows || !rows.length) return;
         let n = 0;
         rows.forEach((r) => { const s = ALL.find((a) => a.sym === r.sym); if (s) { s.price = r.price; s.chg = r.chg; n++; } });
         if (n) { setLive(true); setLiveAt(Date.now()); setLiveTick((t) => t + 1); }
-      } catch { /* stay on simulated */ }
+      } catch { /* fall back to synthetic */ }
     };
-    pull();
-    const id = setInterval(pull, 30000);
+    // Synthetic refresh: nudge prices + indicators so the app updates live without a backend.
+    const tickSynthetic = () => {
+      const rr = lcg(Date.now() % 2147480000 + 1);
+      ALL.forEach((s) => {
+        if (!marketOpen(marketOf(s.sym))) return;      // respect market hours
+        const step = (rr() - 0.5) * 2 * (0.004 + rr() * 0.006);   // ±0.4%–1.0%
+        s.price = +(s.price * (1 + step)).toFixed(s.price < 10 ? 4 : 2);
+        s.chg = +(s.chg + step * 100).toFixed(2);
+        s.rsi = clamp(Math.round(s.rsi + (rr() - 0.5) * 6), 5, 95);
+        s.macd = +(s.macd + (rr() - 0.5) * 0.6).toFixed(2);
+      });
+      setLiveAt(Date.now()); setLiveTick((t) => t + 1);
+    };
+    const refresh = () => { if (BACKEND_URL) pullLive(); else tickSynthetic(); };
+    refresh();
+    const id = setInterval(refresh, REFRESH_MS);
     return () => { stop = true; clearInterval(id); };
   }, []);
 
@@ -2957,7 +3155,7 @@ export default function App() {
     return arr;
   }, [market, profile]);
 
-  const nav = [["home", Home, "Home"], ["trade", Repeat, "Trade"], ["ideas", Lightbulb, "Ideas"], ["automation", Bolt, "Auto"], ["portfolio", Briefcase, "Portfolio"], ["watchlist", Star, "Watch"], ["ask", Bot, "Ask"]];
+  const nav = [["home", Home, "Home"], ["trade", Repeat, "Trade"], ["ideas", Lightbulb, "Ideas"], ["automation", Bolt, "Auto"], ["portfolio", Briefcase, "Portfolio"], ["watchlist", Star, "Watch"]];
 
   return (
     <div className={"mx theme-" + theme} style={{ background: "var(--app-bg, var(--bg))", minHeight: "100vh" }}>
@@ -2972,25 +3170,25 @@ export default function App() {
         <div style={{ position: "absolute", top: -80, left: "50%", transform: "translateX(-50%)", width: 420, height: 320, background: "radial-gradient(circle, rgba(150,150,160,.12), transparent 70%)", pointerEvents: "none", zIndex: 0 }} />
         {/* HEADER */}
         <div className="glass" style={{ position: "sticky", top: 0, zIndex: 30, background: "var(--header-bg)", borderBottom: "1px solid var(--line)" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px 8px" }}>
-            <div onClick={() => { setTab("home"); setDetail(null); }} className="tap disp" style={{ fontWeight: 700, fontSize: 21, display: "flex", alignItems: "center", gap: 5 }}>
-              <span style={{ color: "var(--primary)", fontSize: 20 }}>✦</span><span className="gradtext">Matrix</span>
-              <span className="pill" title={live ? "Live prices via Yahoo Finance" : "Realistic simulated prices"} style={{ marginLeft: 4, fontSize: 8.5, fontWeight: 800, letterSpacing: ".05em", padding: "3px 7px", display: "flex", alignItems: "center", gap: 4, background: live ? "var(--up-soft)" : "var(--primary-soft)", color: live ? "var(--up)" : "var(--primary)" }}>
-                <span style={{ width: 5, height: 5, borderRadius: 5, background: live ? "var(--up)" : "var(--primary)", boxShadow: live ? "0 0 0 3px var(--up-soft)" : "none" }} />{live ? "LIVE" : "SIM"}
-              </span>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px 8px", gap: 8 }}>
+            <div onClick={() => { setTab("home"); setDetail(null); }} className="tap disp" style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+              <span style={{ color: "var(--primary)", fontSize: 19 }}>✦</span>
+              <span className="gradtext" style={{ fontWeight: 700, fontSize: 20 }}>Matrix</span>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 1, marginLeft: 3 }}>
+                <span className="pill" title={`${market} market ${marketOpen(market) ? "open" : "closed"} · ${marketHoursLabel(market)}. Prices refresh every 3 min.${live ? " Live Yahoo feed." : " Simulated feed — connect the proxy for real data."}`} style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".04em", padding: "2px 6px", display: "flex", alignItems: "center", gap: 3, background: marketOpen(market) ? "var(--up-soft)" : "var(--primary-soft)", color: marketOpen(market) ? "var(--up)" : "var(--muted)" }}>
+                  <span style={{ width: 4, height: 4, borderRadius: 4, background: marketOpen(market) ? "var(--up)" : "var(--muted)" }} />{live ? "LIVE" : marketOpen(market) ? "LIVE·SIM" : "CLOSED"}
+                </span>
+                {liveAt && <span style={{ fontSize: 8, color: "var(--muted)", fontWeight: 700, lineHeight: 1, marginLeft: 2 }}>{new Date(liveAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
+              </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-              {/* theme slider */}
-              <div className="pill tap" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                style={{ display: "flex", alignItems: "center", background: "var(--elev)", border: "1px solid var(--line)", padding: 3, position: "relative", width: 60, height: 30 }}>
-                <div className="pill" style={{ position: "absolute", top: 3, left: theme === "dark" ? 3 : 30, width: 24, height: 22, background: "var(--primary)", transition: "left .22s cubic-bezier(.22,1,.36,1)", boxShadow: "var(--glow)" }} />
-                <div style={{ flex: 1, display: "grid", placeItems: "center", zIndex: 1, color: theme === "dark" ? "#fff" : "var(--muted)" }}><Moon size={13} /></div>
-                <div style={{ flex: 1, display: "grid", placeItems: "center", zIndex: 1, color: theme === "light" ? "#fff" : "var(--muted)" }}><Sun size={14} /></div>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
+              <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className="tap pill" style={{ width: 34, height: 34, display: "grid", placeItems: "center", background: "var(--elev)", border: "1px solid var(--line)", color: "var(--ink)" }}>
+                {theme === "dark" ? <Sun size={16} /> : <Moon size={15} />}
+              </button>
+              <div onClick={() => setShowProfile(true)} className="tap pill gold-border" style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 11px", whiteSpace: "nowrap", flexShrink: 0 }}>
+                <Wallet size={14} color="var(--gold)" /><span className="mono gold-text" style={{ fontWeight: 800, fontSize: 12.5 }}>{compact(wallet)}</span>
               </div>
-              <div onClick={() => setShowProfile(true)} className="tap pill gold-border" style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 12px" }}>
-                <Wallet size={15} color="var(--gold)" /><span className="mono gold-text" style={{ fontWeight: 800, fontSize: 12.5 }}>{compact(wallet)}</span>
-              </div>
-              <div onClick={() => setShowProfile(true)} className="tap glow" style={{ width: 38, height: 38, borderRadius: 12, background: "linear-gradient(135deg,var(--primary),var(--primary-2))", display: "grid", placeItems: "center", color: "#fff" }}><User size={18} /></div>
+              <div onClick={() => setShowProfile(true)} className="tap glow" style={{ width: 34, height: 34, borderRadius: 11, background: "var(--feature-grad)", display: "grid", placeItems: "center", color: "#fff", flexShrink: 0 }}><User size={17} /></div>
             </div>
           </div>
           <div style={{ padding: "0 18px 14px" }}>
@@ -2998,6 +3196,13 @@ export default function App() {
               <Search size={17} /> Search any stock, crypto or commodity…
             </div>
           </div>
+          {!detail && ["home", "ideas", "automation", "portfolio"].includes(tab) && (
+            <div className="hide-scroll" style={{ display: "flex", gap: 8, overflowX: "auto", padding: "0 18px 12px" }}>
+              {[["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["FNO", "⚡ F&O"], ["Commodity", "🪙 Commodity"]].map(([k, l]) => (
+                <button key={k} onClick={() => setMarket(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "8px 14px", fontWeight: 700, fontSize: 12.5, border: "1px solid " + (market === k ? "var(--primary)" : "var(--line)"), background: market === k ? "var(--primary)" : "var(--surface)", color: market === k ? "var(--on-primary)" : "var(--ink)" }}>{l}</button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* BODY */}
@@ -3008,9 +3213,9 @@ export default function App() {
             <>
               {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} />}
               {tab === "trade" && <TradeView wallet={wallet} setWallet={setWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} />}
-              {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} />}
-              {tab === "automation" && <Automation />}
-              {tab === "portfolio" && <Portfolio portfolio={portfolio} wallet={wallet} />}
+              {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} market={market} />}
+              {tab === "automation" && <Automation market={market} />}
+              {tab === "portfolio" && <Portfolio portfolio={portfolio} wallet={wallet} market={market} />}
               {tab === "watchlist" && <WatchlistView watchlists={watchlists} activeWl={activeWl} setActiveWl={setActiveWl} createWatchlist={createWatchlist} deleteWatchlist={deleteWatchlist} toggleWatch={toggleWatch} onOpen={openStock} />}
               {tab === "ask" && (
                 <div className="fade">
