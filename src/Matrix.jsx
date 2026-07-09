@@ -24,7 +24,7 @@ const CSS = `
   --gold-grad:linear-gradient(120deg,#8A8A92,#D8D8DE 45%,#F4F4F6 55%,#A8A8B0);
   --silver-grad:linear-gradient(135deg,#6E6E78 0%,#C9C9D4 30%,#F4F4F8 50%,#B7B7C2 72%,#6E6E78 100%);
   --card-grad:linear-gradient(160deg,#17171A,#111113);
-  --feature-grad:linear-gradient(135deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,0) 24%), repeating-linear-gradient(116deg, rgba(255,255,255,.022) 0px, rgba(255,255,255,.022) 1px, rgba(0,0,0,.05) 2px, rgba(0,0,0,.05) 3px), linear-gradient(158deg,#36363c 0%,#1d1d21 46%,#0b0b0d 100%);
+  --feature-grad:linear-gradient(150deg,#33333a 0%,#232329 42%,#141417 78%,#0d0d10 100%);
   --app-bg:radial-gradient(120% 60% at 50% -10%, #1A1A1D 0%, #0E0E10 50%, #08080A 100%);
   --header-bg:rgba(11,11,13,.72);
   --on-primary:#141416;
@@ -40,7 +40,7 @@ const CSS = `
   --gold-grad:linear-gradient(120deg,#9A9AA2,#C9C9D0 45%,#6E6E78);
   --silver-grad:linear-gradient(135deg,#9A9AA6 0%,#CFCFDA 30%,#FFFFFF 50%,#BFBFCC 72%,#9A9AA6 100%);
   --card-grad:linear-gradient(170deg,#FFFFFF,#FBFBFC);
-  --feature-grad:linear-gradient(135deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,0) 24%), repeating-linear-gradient(116deg, rgba(255,255,255,.022) 0px, rgba(255,255,255,.022) 1px, rgba(0,0,0,.05) 2px, rgba(0,0,0,.05) 3px), linear-gradient(158deg,#36363c 0%,#1d1d21 46%,#0b0b0d 100%);
+  --feature-grad:linear-gradient(150deg,#33333a 0%,#232329 42%,#141417 78%,#0d0d10 100%);
   --app-bg:linear-gradient(180deg,#FAFAFB 0%,#F5F5F7 100%);
   --header-bg:rgba(247,247,248,.8);
   --on-primary:#FFFFFF;
@@ -83,12 +83,9 @@ const CUR = { IN: "₹", US: "$", Crypto: "$", Commodity: "$" };
 function fmt(n, market = "IN") {
   const c = CUR[market] || "₹";
   if (n == null || isNaN(n)) return c + "0";
-  const opts = market === "IN"
-    ? { maximumFractionDigits: 2 }
-    : { maximumFractionDigits: 2 };
-  const grouped = market === "IN"
-    ? Number(n).toLocaleString("en-IN", opts)
-    : Number(n).toLocaleString("en-US", opts);
+  const a = Math.abs(n);
+  const digits = a === 0 ? 2 : a < 0.001 ? 8 : a < 1 ? 4 : 2;
+  const grouped = Number(n).toLocaleString(market === "IN" ? "en-IN" : "en-US", { maximumFractionDigits: digits });
   return c + grouped;
 }
 function compact(n) {
@@ -310,6 +307,7 @@ const COMMODITY = [
   build("CRUDE", "Crude Oil (WTI)", 78.4, -0.88, "Energy", "Large", { bull: 48, oneLiner: "Range-bound on supply-demand tug; event-sensitive." }),
   build("NATGAS", "Natural Gas", 2.84, 2.06, "Energy", "Mid", { bull: 54, verdict: "Hold" }),
   build("COPPER", "Copper", 4.52, 1.12, "Metals", "Large", { bull: 68, verdict: "Buy", pick: "Electrification + grid demand — structural metal of the decade." }),
+  build("ALUMINIUM", "Aluminium", 2.48, 0.86, "Metals", "Mid", { bull: 60, verdict: "Hold", pick: "Supply discipline + green-transition demand." }),
 ];
 
 /* ---- Broaden the universe: ~100 Indian + ~100 US names ---- */
@@ -409,11 +407,32 @@ const MORE_US = [
   ["NOW", "ServiceNow", 872, "Software", "Large"], ["INTU", "Intuit", 645, "Software", "Large"],
   ["AMAT", "Applied Materials", 198, "Semiconductors", "Large"], ["LRCX", "Lam Research", 82, "Semiconductors", "Large"],
   ["KLAC", "KLA Corp", 742, "Semiconductors", "Large"], ["ADI", "Analog Devices", 218, "Semiconductors", "Large"],
+  ["MARA", "MARA Holdings", 18, "Crypto Miners", "Mid", { vol: 40 }], ["RIOT", "Riot Platforms", 11, "Crypto Miners", "Mid", { vol: 38 }],
+  ["PLUG", "Plug Power", 2.4, "Clean Energy", "Mid", { vol: 45 }], ["BE", "Bloom Energy", 22, "Clean Energy", "Mid", { vol: 20 }],
+  ["CVNA", "Carvana", 245, "E-commerce", "Mid", { vol: 22 }], ["HOOD", "Robinhood", 62, "Fintech", "Large", { vol: 48 }],
+  ["SNAP", "Snap", 11, "Media", "Mid", { vol: 42 }], ["APLD", "Applied Digital", 9.5, "Data Centers", "Small", { vol: 25 }],
 ];
 const seenIN = new Set(IN_STOCKS.map((s) => s.sym));
 const seenUS = new Set(US_STOCKS.map((s) => s.sym));
-IN_STOCKS.push(...MORE_IN.filter((a) => !seenIN.has(a[0])).map((a) => build(a[0], a[1], a[2], dchg(a[0]), a[3], a[4] || "Large")));
-US_STOCKS.push(...MORE_US.filter((a) => !seenUS.has(a[0])).map((a) => build(a[0], a[1], a[2], dchg(a[0]), a[3], a[4] || "Large")));
+IN_STOCKS.push(...MORE_IN.filter((a) => !seenIN.has(a[0])).map((a) => build(a[0], a[1], a[2], dchg(a[0]), a[3], a[4] || "Large", a[5] || {})));
+US_STOCKS.push(...MORE_US.filter((a) => !seenUS.has(a[0])).map((a) => build(a[0], a[1], a[2], dchg(a[0]), a[3], a[4] || "Large", a[5] || {})));
+
+/* -------- Trim each universe to the requested set -------- */
+const trimVol = (arr, n, keepSyms) => {
+  const keep = new Set(keepSyms);
+  const kept = arr.filter((s) => keep.has(s.sym));
+  const rest = arr.filter((s) => !keep.has(s.sym) && s.price > 0.1).sort((a, b) => b.vol - a.vol).slice(0, n);
+  const merged = [...kept, ...rest.filter((s) => s.price > 0.1)];
+  arr.length = 0; arr.push(...merged);
+};
+const IN_KEEP = ["NIFTY50", "BANKNIFTY", "SENSEX", "FINNIFTY", "INDIAVIX", "RELIANCE", "HDFCBANK", "ICICIBANK", "SBIN", "TCS", "INFY", "TATAMOTORS", "TATAPOWER", "LT", "BAJFINANCE", "ADANIENT", "HAL", "BEL", "DIXON", "ITC"];
+const US_KEEP = ["SPX", "NDX", "DJI", "VIX", "TSM", "PLTR", "MARA", "COIN", "RIOT", "PLUG", "BE", "INTC", "CVNA", "HOOD", "SHOP", "META", "GOOGL", "AAPL", "AMZN", "SNAP", "APLD", "SMCI", "NVDA"];
+trimVol(IN_STOCKS, 50, IN_KEEP);         // top 50 Indian by volume (+ indexes & F&O names)
+trimVol(US_STOCKS, 25, US_KEEP);         // top 25 US by volume (+ required names)
+trimVol(CRYPTO, 10, ["SPX"]);            // top 10 crypto by volume, price > 0.1
+// commodities: only the five requested
+const COMMO_KEEP = new Set(["GOLD", "SILVER", "ALUMINIUM", "COPPER", "CRUDE"]);
+{ const merged = COMMODITY.filter((s) => COMMO_KEEP.has(s.sym)); COMMODITY.length = 0; COMMODITY.push(...merged); }
 
 const bySym = (arr, syms) => syms.map((s) => arr.find((a) => a.sym === s)).filter(Boolean);
 const FNO = bySym(IN_STOCKS, ["NIFTY50", "BANKNIFTY", "FINNIFTY", "RELIANCE", "HDFCBANK", "ICICIBANK", "SBIN", "TCS", "INFY", "TATAMOTORS", "TATAPOWER", "LT", "BAJFINANCE", "ADANIENT", "HAL", "BEL", "DIXON", "ITC"]);
@@ -565,6 +584,7 @@ const TF_LIST = ["3m", "5m", "30m", "1h", "4h", "1d"];
 const TF_N = { "3m": 40, "5m": 36, "30m": 30, "1h": 28, "4h": 24, "1d": 22 };
 function MiniCandles({ sym, price, chg, defaultTf = "1d", height = 130, showTf = true, pattern }) {
   const [tf, setTf] = useState(defaultTf);
+  const [ctype, setCtype] = useState("line");     // default: line chart
   const [liveData, setLiveData] = useState(null);
   useEffect(() => {
     let stop = false; setLiveData(null);
@@ -579,13 +599,23 @@ function MiniCandles({ sym, price, chg, defaultTf = "1d", height = 130, showTf =
   const yOf = (p) => padT + (max - p) / span * (H - padT - padB);
   const cw = W / data.length;
   const patLabel = pattern && PATTERNS[pattern] ? PATTERNS[pattern].label : pattern;
+  const up = data[data.length - 1].c >= data[0].o;
+  const lineCol = up ? "var(--up)" : "var(--down)";
+  const linePts = data.map((d, k) => `${(k + 0.5) * cw},${yOf(d.c)}`).join(" ");
+  const areaPts = `0,${H} ${linePts} ${W},${H}`;
   return (
     <div>
       <div style={{ position: "relative" }}>
         {patLabel && <span className="pill" style={{ position: "absolute", top: 6, left: 6, zIndex: 2, fontSize: 9.5, fontWeight: 800, background: "var(--primary-soft)", color: "var(--primary)", padding: "3px 8px" }}>◫ {patLabel}</span>}
         {liveData && liveData.length ? <span className="pill" style={{ position: "absolute", top: 6, right: 6, zIndex: 2, fontSize: 8, fontWeight: 800, background: "var(--up-soft)", color: "var(--up)", padding: "2px 6px" }}>● LIVE</span> : null}
         <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none">
-          {data.map((d, k) => {
+          {ctype === "line" ? (
+            <>
+              <defs><linearGradient id={"mcg" + sym.replace(/\W/g, "") + tf} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={lineCol} stopOpacity="0.22" /><stop offset="100%" stopColor={lineCol} stopOpacity="0" /></linearGradient></defs>
+              <polygon points={areaPts} fill={`url(#mcg${sym.replace(/\W/g, "")}${tf})`} />
+              <polyline points={linePts} fill="none" stroke={lineCol} strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+            </>
+          ) : data.map((d, k) => {
             const x = (k + 0.5) * cw, isUp = d.c >= d.o;
             const col = isUp ? "var(--up)" : "var(--down)";
             const yO = yOf(d.o), yC = yOf(d.c), bw = Math.max(2.5, cw * 0.62);
@@ -598,13 +628,20 @@ function MiniCandles({ sym, price, chg, defaultTf = "1d", height = 130, showTf =
           })}
         </svg>
       </div>
-      {showTf && (
-        <div className="hide-scroll" style={{ display: "flex", gap: 5, marginTop: 7, overflowX: "auto" }}>
-          {TF_LIST.map((x) => (
-            <button key={x} onClick={(e) => { e.stopPropagation(); setTf(x); }} className="pill tap" style={{ flex: "0 0 auto", padding: "5px 11px", fontSize: 10.5, fontWeight: 700, border: "1px solid " + (tf === x ? "var(--primary)" : "var(--line)"), background: tf === x ? "var(--primary)" : "var(--surface)", color: tf === x ? "var(--on-primary)" : "var(--ink)" }}>{x}</button>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 7 }}>
+        {showTf ? (
+          <div className="hide-scroll" style={{ display: "flex", gap: 5, overflowX: "auto" }}>
+            {TF_LIST.map((x) => (
+              <button key={x} onClick={(e) => { e.stopPropagation(); setTf(x); }} className="pill tap" style={{ flex: "0 0 auto", padding: "5px 10px", fontSize: 10.5, fontWeight: 700, border: "1px solid " + (tf === x ? "var(--primary)" : "var(--line)"), background: tf === x ? "var(--primary)" : "var(--surface)", color: tf === x ? "var(--on-primary)" : "var(--ink)" }}>{x}</button>
+            ))}
+          </div>
+        ) : <span />}
+        <div className="pill" style={{ display: "inline-flex", flexShrink: 0, background: "var(--elev)", border: "1px solid var(--line)", padding: 2 }}>
+          {[["line", "Line"], ["candle", "Candle"]].map(([k, l]) => (
+            <button key={k} onClick={(e) => { e.stopPropagation(); setCtype(k); }} className="pill tap" style={{ padding: "4px 9px", fontSize: 9.5, fontWeight: 800, border: "none", background: ctype === k ? "var(--primary)" : "transparent", color: ctype === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
           ))}
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -750,7 +787,7 @@ const MATRIX_PERSONA = "You are Matrix — the world's sharpest stock-market res
 const Y_SPECIAL = {
   NIFTY50: "^NSEI", BANKNIFTY: "^NSEBANK", SENSEX: "^BSESN", FINNIFTY: "^NSEFIN", INDIAVIX: "^INDIAVIX",
   SPX: "^GSPC", NDX: "^NDX", DJI: "^DJI", VIX: "^VIX",
-  GOLD: "GC=F", SILVER: "SI=F", CRUDE: "CL=F", NATGAS: "NG=F", COPPER: "HG=F",
+  GOLD: "GC=F", SILVER: "SI=F", CRUDE: "CL=F", NATGAS: "NG=F", COPPER: "HG=F", ALUMINIUM: "ALI=F",
 };
 function yahooSymbol(sym) {
   if (Y_SPECIAL[sym]) return Y_SPECIAL[sym];
@@ -1419,11 +1456,14 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy,
   const [plPeriod, setPlPeriod] = useState("today");
   const [autoOverrides, setAutoOverrides] = useState({});   // sym -> {tp, sl}
   const [editSym, setEditSym] = useState(null);
+  const [showTrades, setShowTrades] = useState(false);
   const MKT_LABEL = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", Commodity: "🪙 Commodity", FNO: "⚡ F&O" };
   const autoOn = !!autoOnMap[market];                       // on/off for the currently selected market
-  const anyOn = autoOn;
   const capNum = Math.max(1000, parseInt(deployCapital) || 100000);
   const aggCur = market === "FNO" ? "IN" : market;          // currency of the selected market
+  const isFNO = market === "FNO";
+  const LOTS = { NIFTY50: 50, BANKNIFTY: 15, FINNIFTY: 40, RELIANCE: 250, HDFCBANK: 550, ICICIBANK: 700, SBIN: 750, TCS: 150, INFY: 400, TATAMOTORS: 800, TATAPOWER: 1500, LT: 150, BAJFINANCE: 125, ADANIENT: 300, HAL: 150, BEL: 2850, DIXON: 50, ITC: 1600 };
+  const lotSize = (sym) => LOTS[sym] || 500;
   const dayStr = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
   const mkTime = (addMin) => { const base = 9 * 60 + 15 + addMin; const h = Math.floor(base / 60), mm = base % 60; return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`; };
   const autoTargets = (s) => {
@@ -1442,25 +1482,40 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy,
     const r = lcg(hash(s.sym) + DAY * 7);
     const win = r() > 0.42;
     const m = marketOf(s.sym);
+    if (isFNO) {
+      // Buy the ATM CALL or PUT (per signal), qty = 1 lot; P&L on premium
+      const f = fnoData(s);
+      const call = f.rec === "CALL";
+      const label = `${s.sym} ${f.atm} ${call ? "CE" : "PE"}`;
+      const ov = autoOverrides[label];
+      const tpPct = ov ? ov.tp : (call ? 35 : 30);          // options: wider targets/stops
+      const slPct = ov ? ov.sl : 18;
+      const entry = f.premium;
+      const qty = lotSize(s.sym);
+      const exit = +(win ? entry * (1 + tpPct / 100) : entry * (1 - slPct / 100)).toFixed(2);
+      const pnl = +((exit - entry) * qty).toFixed(2);
+      const entryMin = Math.floor(r() * 120), holdMin = 20 + Math.floor(r() * 160);
+      return { sym: label, under: s.sym, opt: call ? "CE" : "PE", m: "IN", qty, entry, exit, pnl, win, tpPct, slPct, entryTime: mkTime(entryMin), exitTime: mkTime(entryMin + holdMin) };
+    }
     const auto = autoTargets(s);
     const ov = autoOverrides[s.sym];
     const tpPct = ov ? ov.tp : auto.tp;
     const slPct = ov ? ov.sl : auto.sl;
     const entry = s.price;
     const qty = Math.max(1, Math.floor(perCap / entry));
-    const dp = entry < 10 ? 4 : 2;
+    const dp = entry < 1 ? 6 : entry < 10 ? 4 : 2;
     const exit = +(win ? entry * (1 + tpPct / 100) : entry * (1 - slPct / 100)).toFixed(dp);
     const pnl = +((exit - entry) * qty).toFixed(2);
     const entryMin = Math.floor(r() * 120), holdMin = 20 + Math.floor(r() * 160);
     return { sym: s.sym, m, qty, entry, exit, pnl, win, tpPct, slPct, auto, entryTime: mkTime(entryMin), exitTime: mkTime(entryMin + holdMin) };
   });
   const setOv = (t, field, val) => setAutoOverrides((o) => { const cur = o[t.sym] || { tp: t.tpPct, sl: t.slPct }; return { ...o, [t.sym]: { ...cur, [field]: val === "" ? cur[field] : +val } }; });
-  // period stats
+  // period stats (shown regardless of on/off)
   const bizDaysThisMonth = () => { const now = new Date(); let c = 0; for (let d = 1; d <= now.getDate(); d++) { const wd = new Date(now.getFullYear(), now.getMonth(), d).getDay(); if (wd >= 1 && wd <= 5) c++; } return c; };
   const aggFor = (nTrades) => { const r = lcg(hash("hist" + DAY + market) + nTrades); let pnl = 0, wins = 0; for (let i = 0; i < nTrades; i++) { const w = r() > 0.44; if (w) wins++; const tp = 1 + r() * 4, sl = 0.4 + r() * 1.7; pnl += w ? perCap * tp / 100 : -perCap * sl / 100; } return { pnl: +pnl.toFixed(0), trades: nTrades, wins }; };
   const nToday = autoTrades.length;
   const todayStats = { pnl: autoTrades.reduce((a, t) => a + t.pnl, 0), trades: nToday, wins: autoTrades.filter((t) => t.win).length };
-  const periodStats = !anyOn ? { pnl: 0, trades: 0, wins: 0 } : plPeriod === "today" ? todayStats : plPeriod === "month" ? aggFor(nToday * bizDaysThisMonth()) : aggFor(nToday * 250);
+  const periodStats = plPeriod === "today" ? todayStats : plPeriod === "month" ? aggFor(nToday * bizDaysThisMonth()) : aggFor(nToday * 250);
   const autoPnl = periodStats.pnl;
   const autoWinRate = periodStats.trades ? periodStats.wins / periodStats.trades * 100 : 0;
   const periodLabel = plPeriod === "today" ? "today" : plPeriod === "month" ? "this month" : "last 12 months";
@@ -1512,65 +1567,65 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy,
                   </label>
                 </div>
               </div>
-              <div style={{ fontSize: 10, opacity: .7, marginTop: 2 }}>P&amp;L · {periodLabel}</div>
-              <div className="mono" style={{ fontWeight: 800, fontSize: 27, marginTop: 3, color: autoPnl >= 0 ? "#9CFFD6" : "#FFB3BE" }}>{anyOn ? (autoPnl >= 0 ? "+" : "") + fmt(autoPnl, aggCur) : "—"}</div>
-              <div style={{ fontSize: 11, opacity: .85 }}>{anyOn ? `${periodStats.trades} trades · ${autoWinRate.toFixed(0)}% win rate · ${CUR[aggCur]}${(capNum / 1000).toFixed(0)}k capital` : `Turn on Auto-Buy to let Matrix trade today's ${MKT_LABEL[market]} picks automatically.`}</div>
+              <div style={{ fontSize: 10, opacity: .7, marginTop: 2 }}>P&amp;L · {periodLabel} {autoOn ? "· auto-buy running" : "· preview (turn on to run)"}</div>
+              <div className="mono" style={{ fontWeight: 800, fontSize: 27, marginTop: 3, color: autoPnl >= 0 ? "#9CFFD6" : "#FFB3BE" }}>{(autoPnl >= 0 ? "+" : "") + fmt(autoPnl, aggCur)}</div>
+              <div style={{ fontSize: 11, opacity: .85 }}>{`${periodStats.trades} trades · ${autoWinRate.toFixed(0)}% win rate · ${CUR[aggCur]}${(capNum / 1000).toFixed(0)}k capital`}</div>
+
+              <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
+                <DashStat k="Trades" v={periodStats.trades} pos={true} />
+                <DashStat k="Win rate" v={autoWinRate.toFixed(0) + "%"} pos={autoWinRate >= 50} />
+                <DashStat k="Capital" v={fmt(capNum, aggCur)} pos={true} />
+              </div>
 
               {/* capital */}
-              <div style={{ marginTop: 10, background: "rgba(0,0,0,.25)", borderRadius: 12, padding: "8px 12px" }}>
+              <div style={{ marginTop: 12, background: "rgba(0,0,0,.25)", borderRadius: 12, padding: "8px 12px" }}>
                 <div style={{ fontSize: 9.5, opacity: .8, fontWeight: 700 }}>CAPITAL TO DEPLOY ({CUR[aggCur]})</div>
                 <input value={deployCapital} onChange={(e) => setDeployCapital(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" placeholder="100000" className="no-ring mono" style={{ width: "100%", background: "transparent", border: "none", color: "#fff", fontSize: 17, fontWeight: 800, marginTop: 2 }} />
               </div>
 
-              {anyOn && (
-                <>
-                  <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
-                    <DashStat k="Trades" v={periodStats.trades} pos={true} />
-                    <DashStat k="Win rate" v={autoWinRate.toFixed(0) + "%"} pos={autoWinRate >= 50} />
-                    <DashStat k="Capital" v={fmt(capNum, aggCur)} pos={true} />
-                  </div>
+              {/* collapsible trades */}
+              <button onClick={() => setShowTrades((v) => !v)} className="tap disp" style={{ width: "100%", marginTop: 12, background: "rgba(255,255,255,.12)", color: "#fff", border: "1px solid rgba(255,255,255,.22)", borderRadius: 12, padding: 11, fontWeight: 800, fontSize: 12.5, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}>
+                {showTrades ? "Hide today's trades" : `Show Today's Trades (${autoTrades.length})`}<ChevronRight size={15} style={{ transform: showTrades ? "rotate(-90deg)" : "rotate(90deg)", transition: "transform .2s" }} />
+              </button>
 
-                  {plPeriod === "today" ? (
-                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,.18)", display: "flex", flexDirection: "column", gap: 10 }}>
-                      {autoTrades.map((t) => (
-                        <div key={t.sym} style={{ background: "rgba(0,0,0,.22)", borderRadius: 12, padding: "10px 12px" }}>
-                          <div onClick={() => { const st = ALL.find((a) => a.sym === t.sym); st && onOpen(st); }} className="tap" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <span className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{t.sym} <span style={{ fontSize: 10, opacity: .7, fontWeight: 600 }}>×{t.qty}</span></span>
-                            <span style={{ fontSize: 10, opacity: .85, fontWeight: 700 }}>{t.win ? "🎯 Target" : "⛔ Stop"}</span>
-                            <span className="mono" style={{ fontWeight: 800, fontSize: 13, color: t.win ? "#9CFFD6" : "#FFB3BE" }}>{t.pnl >= 0 ? "+" : ""}{fmt(t.pnl, t.m)}</span>
+              {showTrades && (plPeriod === "today" ? (
+                <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+                  {autoTrades.map((t) => (
+                    <div key={t.sym} style={{ background: "rgba(0,0,0,.22)", borderRadius: 12, padding: "10px 12px" }}>
+                      <div onClick={() => { const st = ALL.find((a) => a.sym === (t.under || t.sym)); st && onOpen(st); }} className="tap" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
+                        <span className="disp" style={{ fontWeight: 800, fontSize: 12.5 }}>{t.sym} <span style={{ fontSize: 10, opacity: .7, fontWeight: 600 }}>×{t.qty}{isFNO ? " (1 lot)" : ""}</span></span>
+                        <span style={{ fontSize: 10, opacity: .85, fontWeight: 700 }}>{t.win ? "🎯 Target" : "⛔ Stop"}</span>
+                        <span className="mono" style={{ fontWeight: 800, fontSize: 13, color: t.win ? "#9CFFD6" : "#FFB3BE" }}>{t.pnl >= 0 ? "+" : ""}{fmt(t.pnl, t.m)}</span>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 7, fontSize: 10, opacity: .82 }}>
+                        <div><div style={{ opacity: .7 }}>Entry{isFNO ? " premium" : ""}</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.entry, t.m)}</div><div style={{ opacity: .7 }}>{t.entryTime} · {dayStr}</div></div>
+                        <div style={{ textAlign: "right" }}><div style={{ opacity: .7 }}>Exit{isFNO ? " premium" : ""}</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.exit, t.m)}</div><div style={{ opacity: .7 }}>{t.exitTime} · {dayStr}</div></div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.12)" }}>
+                        <span style={{ fontSize: 10.5, fontWeight: 700 }}>🎯 Target <span style={{ color: "#9CFFD6" }}>+{t.tpPct}%</span> · 🛑 Stop <span style={{ color: "#FFB3BE" }}>−{t.slPct}%</span>{autoOverrides[t.sym] ? " · edited" : ""}</span>
+                        <button onClick={() => setEditSym(editSym === t.sym ? null : t.sym)} className="tap" style={{ border: "none", background: "rgba(255,255,255,.14)", borderRadius: 8, padding: 6, display: "grid", placeItems: "center", color: "#fff" }}><Pencil size={12} /></button>
+                      </div>
+                      {editSym === t.sym && (
+                        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                          <div style={{ flex: 1, background: "rgba(0,0,0,.3)", borderRadius: 10, padding: "6px 9px" }}>
+                            <div style={{ fontSize: 8.5, opacity: .8, fontWeight: 700 }}>TARGET %</div>
+                            <input defaultValue={t.tpPct} onChange={(e) => setOv(t, "tp", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={{ width: "100%", background: "transparent", border: "none", color: "#fff", fontSize: 13, fontWeight: 800 }} />
                           </div>
-                          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 7, fontSize: 10, opacity: .82 }}>
-                            <div><div style={{ opacity: .7 }}>Entry</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.entry, t.m)}</div><div style={{ opacity: .7 }}>{t.entryTime} · {dayStr}</div></div>
-                            <div style={{ textAlign: "right" }}><div style={{ opacity: .7 }}>Exit</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.exit, t.m)}</div><div style={{ opacity: .7 }}>{t.exitTime} · {dayStr}</div></div>
+                          <div style={{ flex: 1, background: "rgba(0,0,0,.3)", borderRadius: 10, padding: "6px 9px" }}>
+                            <div style={{ fontSize: 8.5, opacity: .8, fontWeight: 700 }}>STOP %</div>
+                            <input defaultValue={t.slPct} onChange={(e) => setOv(t, "sl", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={{ width: "100%", background: "transparent", border: "none", color: "#fff", fontSize: 13, fontWeight: 800 }} />
                           </div>
-                          {/* target / stop with pencil edit */}
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.12)" }}>
-                            <span style={{ fontSize: 10.5, fontWeight: 700 }}>🎯 Target <span style={{ color: "#9CFFD6" }}>+{t.tpPct}%</span> · 🛑 Stop <span style={{ color: "#FFB3BE" }}>−{t.slPct}%</span>{autoOverrides[t.sym] ? " · edited" : ""}</span>
-                            <button onClick={() => setEditSym(editSym === t.sym ? null : t.sym)} className="tap" style={{ border: "none", background: "rgba(255,255,255,.14)", borderRadius: 8, padding: 6, display: "grid", placeItems: "center", color: "#fff" }}><Pencil size={12} /></button>
-                          </div>
-                          {editSym === t.sym && (
-                            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                              <div style={{ flex: 1, background: "rgba(0,0,0,.3)", borderRadius: 10, padding: "6px 9px" }}>
-                                <div style={{ fontSize: 8.5, opacity: .8, fontWeight: 700 }}>TARGET %</div>
-                                <input defaultValue={t.tpPct} onChange={(e) => setOv(t, "tp", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={{ width: "100%", background: "transparent", border: "none", color: "#fff", fontSize: 13, fontWeight: 800 }} />
-                              </div>
-                              <div style={{ flex: 1, background: "rgba(0,0,0,.3)", borderRadius: 10, padding: "6px 9px" }}>
-                                <div style={{ fontSize: 8.5, opacity: .8, fontWeight: 700 }}>STOP %</div>
-                                <input defaultValue={t.slPct} onChange={(e) => setOv(t, "sl", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={{ width: "100%", background: "transparent", border: "none", color: "#fff", fontSize: 13, fontWeight: 800 }} />
-                              </div>
-                              <button onClick={() => setEditSym(null)} className="tap disp" style={{ alignSelf: "stretch", border: "none", background: "#fff", color: "#141416", borderRadius: 10, padding: "0 14px", fontWeight: 800, fontSize: 12 }}>Done</button>
-                            </div>
-                          )}
+                          <button onClick={() => setEditSym(null)} className="tap disp" style={{ alignSelf: "stretch", border: "none", background: "#fff", color: "#141416", borderRadius: 10, padding: "0 14px", fontWeight: 800, fontSize: 12 }}>Done</button>
                         </div>
-                      ))}
+                      )}
                     </div>
-                  ) : (
-                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,.18)", fontSize: 11, opacity: .82, lineHeight: 1.6 }}>
-                      Aggregated across {periodStats.trades} auto-trades {plPeriod === "month" ? "so far this month" : "over the last 12 months"} on {MKT_LABEL[market]}. Each trade auto-exited at its target or stop. Switch to <b>Today</b> to see and edit individual positions.
-                    </div>
-                  )}
-                </>
-              )}
+                  ))}
+                </div>
+              ) : (
+                <div style={{ marginTop: 12, fontSize: 11, opacity: .82, lineHeight: 1.6 }}>
+                  Aggregated across {periodStats.trades} auto-trades {plPeriod === "month" ? "so far this month" : "over the last 12 months"} on {MKT_LABEL[market]}. Each trade auto-exited at its target or stop. Switch to <b>Today</b> to see and edit individual positions.
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -1709,10 +1764,47 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy,
 /* ============================== SCREENER ============================== */
 const METRICS = [["chg", "Day change %"], ["rsi", "RSI"], ["pe", "P/E"], ["price", "Price"], ["revGrowth", "Revenue growth %"], ["ebitdaGrowth", "EBITDA growth %"], ["roe", "ROE %"]];
 const OPS = [[">", ">"], ["<", "<"], [">=", "≥"], ["<=", "≤"]];
+// Parse a plain-English screen into sector/cap filters + numeric conditions.
+function parseScreen(text) {
+  const t = " " + text.toLowerCase() + " ";
+  const res = { sectors: [], caps: [], conds: [], dma: false, note: [] };
+  if (/\b(it|information technology|software|tech|semiconductor)\b/.test(t)) { res.sectors.push("it", "software", "semiconductor", "tech", "it services"); res.note.push("IT/Tech sector"); }
+  if (/\bpharma|healthcare|drug\b/.test(t)) { res.sectors.push("pharma", "healthcare"); res.note.push("Pharma"); }
+  if (/\bbank|banking\b/.test(t)) { res.sectors.push("bank"); res.note.push("Banking"); }
+  if (/\bfmcg|consumer\b/.test(t)) { res.sectors.push("fmcg", "consumer"); res.note.push("FMCG/Consumer"); }
+  if (/\bauto|automobile\b/.test(t)) { res.sectors.push("auto"); res.note.push("Auto"); }
+  if (/\benergy|oil|power\b/.test(t)) { res.sectors.push("energy", "utilities"); res.note.push("Energy"); }
+  if (/\bmetal|steel|mining\b/.test(t)) { res.sectors.push("metal"); res.note.push("Metals"); }
+  if (/large[\s-]?cap|\blarge\b/.test(t)) { res.caps.push("Large"); res.note.push("Large cap"); }
+  if (/mid[\s-]?cap|\bmid\b/.test(t)) { res.caps.push("Mid"); res.note.push("Mid cap"); }
+  if (/small[\s-]?cap|\bsmall\b/.test(t)) { res.caps.push("Small"); res.note.push("Small cap"); }
+  let m;
+  if ((m = t.match(/rsi\s*(?:>|greater than|more than|above|over)\s*(\d+)/))) { res.conds.push({ m: "rsi", o: ">", v: +m[1] }); res.note.push(`RSI > ${m[1]}`); }
+  if ((m = t.match(/rsi\s*(?:<|less than|under|below)\s*(\d+)/))) { res.conds.push({ m: "rsi", o: "<", v: +m[1] }); res.note.push(`RSI < ${m[1]}`); }
+  if ((m = t.match(/p\/?e\s*(?:<|less than|under|below)\s*(\d+)/))) { res.conds.push({ m: "pe", o: "<", v: +m[1] }); res.note.push(`P/E < ${m[1]}`); }
+  if ((m = t.match(/p\/?e\s*(?:>|more than|above|over)\s*(\d+)/))) { res.conds.push({ m: "pe", o: ">", v: +m[1] }); res.note.push(`P/E > ${m[1]}`); }
+  if ((m = t.match(/roe\s*(?:>|more than|above|over)\s*(\d+)/))) { res.conds.push({ m: "roe", o: ">", v: +m[1] }); res.note.push(`ROE > ${m[1]}`); }
+  if ((m = t.match(/price\s*(?:>|above|over|more than)\s*(\d+\.?\d*)/))) { res.conds.push({ m: "price", o: ">", v: +m[1] }); res.note.push(`Price > ${m[1]}`); }
+  if ((m = t.match(/price\s*(?:<|below|under|less than)\s*(\d+\.?\d*)/))) { res.conds.push({ m: "price", o: "<", v: +m[1] }); res.note.push(`Price < ${m[1]}`); }
+  if ((m = t.match(/(?:change|gain|up|return)\s*(?:>|above|over|more than)\s*(\d+\.?\d*)\s*%?/))) { res.conds.push({ m: "chg", o: ">", v: +m[1] }); res.note.push(`Change > ${m[1]}%`); }
+  if (/ebi?tda\s*(?:positive|>\s*0|is positive)|positive\s*ebi?tda/.test(t)) { res.conds.push({ m: "ebitdaGrowth", o: ">", v: 0 }); res.note.push("EBITDA positive"); }
+  if (/rising revenue|revenue growth|growing revenue|revenue rising|sales growth|revenue growing/.test(t)) { res.conds.push({ m: "revGrowth", o: ">", v: 0 }); res.note.push("Revenue rising"); }
+  if ((/\bdma\b|\bsma\b|moving average/.test(t) && /50/.test(t) && /(100|200)/.test(t)) || /golden cross/.test(t)) { res.dma = true; res.note.push("50-DMA > 200-DMA"); }
+  return res;
+}
+function matchScreen(list, res) {
+  return list.filter((s) => {
+    if (res.sectors.length && !res.sectors.some((sec) => (s.sector || "").toLowerCase().includes(sec))) return false;
+    if (res.caps.length && !res.caps.includes(s.cap)) return false;
+    if (res.dma && !(s.sma50 > s.sma200)) return false;
+    return res.conds.every((c) => { const x = s[c.m]; if (x == null || isNaN(x)) return false; return c.o === ">" ? x > c.v : c.o === "<" ? x < c.v : c.o === ">=" ? x >= c.v : x <= c.v; });
+  });
+}
 function Screener({ onOpen, market, list }) {
   const [filters, setFilters] = useState([{ m: "rsi", o: ">", v: "50" }]);
   const [text, setText] = useState("");
   const [results, setResults] = useState(null);
+  const [parsedNote, setParsedNote] = useState(null);
   const recommended = [
     { label: "Momentum movers", f: [{ m: "rsi", o: ">", v: "60" }, { m: "chg", o: ">", v: "1" }] },
     { label: "Value with growth", f: [{ m: "pe", o: "<", v: "30" }, { m: "revGrowth", o: ">", v: "8" }] },
@@ -1726,6 +1818,14 @@ function Screener({ onOpen, market, list }) {
       return f.o === ">" ? x > val : f.o === "<" ? x < val : f.o === ">=" ? x >= val : x <= val;
     }));
     setResults(ok);
+  };
+  const runScreener = () => {
+    if (text.trim()) {
+      const res = parseScreen(text);
+      if (!res.sectors.length && !res.caps.length && !res.conds.length && !res.dma) { setParsedNote("couldn't understand any conditions — try e.g. 'large-cap IT stocks with RSI > 60 and EBITDA positive'"); setResults([]); return; }
+      setParsedNote("Applied: " + res.note.join(" · "));
+      setResults(matchScreen(list, res));
+    } else { setParsedNote(null); apply(filters); }
   };
   const upd = (i, k, val) => setFilters((p) => p.map((f, j) => j === i ? { ...f, [k]: val } : f));
   return (
@@ -1756,7 +1856,8 @@ function Screener({ onOpen, market, list }) {
         <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. large-cap IT stocks with RSI under 40 and rising revenue" className="no-ring"
           style={{ width: "100%", marginTop: 6, border: "1px solid var(--line)", borderRadius: 12, padding: 11, fontSize: 13, minHeight: 60, resize: "vertical" }} />
 
-        <button onClick={() => apply(filters)} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--primary)", color: "#fff", border: "none", borderRadius: 14, padding: 13, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Filter size={16} /> Run screener</button>
+        <button onClick={runScreener} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--primary)", color: "var(--on-primary)", border: "none", borderRadius: 14, padding: 13, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Filter size={16} /> Run screener</button>
+        {parsedNote && <div style={{ fontSize: 11, color: parsedNote.startsWith("Applied") ? "var(--up)" : "var(--amber)", marginTop: 8, fontWeight: 600, lineHeight: 1.5 }}>{parsedNote.startsWith("Applied") ? "✓ " : "⚠ "}{parsedNote}</div>}
       </div>
 
       {results && (
@@ -1843,7 +1944,7 @@ function TradeView({ wallet, setWallet, portfolio, setPortfolio, preset, market 
 const qBtn = { width: 34, height: 34, borderRadius: 10, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 18, fontWeight: 700, color: "var(--ink)" };
 
 /* ============================== PORTFOLIO ============================== */
-function Portfolio({ portfolio, wallet, market = "IN" }) {
+function Portfolio({ portfolio, wallet, market = "IN", onGoHome }) {
   const mkt = market === "FNO" ? "IN" : market;
   const mLabel = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", FNO: "⚡ F&O", Commodity: "🪙 Commodity" }[market];
   const rows = portfolio.filter((h) => marketOf(h.sym) === mkt).map((h) => {
@@ -1874,6 +1975,7 @@ function Portfolio({ portfolio, wallet, market = "IN" }) {
       {rows.length === 0 ? (
         <div className="card" style={{ marginTop: 16, padding: 30, textAlign: "center", color: "var(--muted)" }}>
           <Briefcase size={28} color="var(--muted)" /><div style={{ marginTop: 8, fontSize: 13.5 }}>No {mLabel} holdings yet. Buy from this market, or switch markets from the tabs above.</div>
+          <button onClick={() => onGoHome && onGoHome()} className="tap disp glow" style={{ marginTop: 16, background: "linear-gradient(120deg,var(--primary),var(--primary-2))", color: "var(--on-primary)", border: "none", borderRadius: 14, padding: "12px 22px", fontWeight: 800, fontSize: 13.5, display: "inline-flex", gap: 7, alignItems: "center" }}><Home size={16} /> Go to Home</button>
         </div>
       ) : rows.map((r) => (
         <div key={r.sym} className="card" style={{ marginTop: 12, padding: 14 }}>
@@ -3091,26 +3193,26 @@ export default function App() {
   const [liveAt, setLiveAt] = useState(null);
   const [, setLiveTick] = useState(0);
 
-  // Refresh prices / indicators / news every 3 minutes.
+  // Refresh prices / indicators / news every 1 minute (only the selected market's symbols).
   const REFRESH_MS = 60000;   // 1 minute
   useEffect(() => {
     let stop = false;
+    const syms = (UNIVERSE[market] || []).map((a) => a.sym);
     const pullLive = async () => {
       try {
-        const rows = await fetchLiveQuotes(ALL.map((a) => a.sym));
-        if (stop || !rows || !rows.length) return;
+        const rows = await fetchLiveQuotes(syms);
+        if (stop || !rows || !rows.length) { setLive(false); return; }
         let n = 0;
         rows.forEach((r) => { const s = ALL.find((a) => a.sym === r.sym); if (s) { s.price = r.price; s.chg = r.chg; n++; } });
-        if (n) { setLive(true); setLiveAt(Date.now()); setLiveTick((t) => t + 1); }
-      } catch { /* fall back to synthetic */ }
+        if (n) { setLive(true); setLiveAt(Date.now()); setLiveTick((t) => t + 1); } else setLive(false);
+      } catch { setLive(false); }
     };
-    // Synthetic refresh: nudge prices + indicators so the app updates live without a backend.
     const tickSynthetic = () => {
       const rr = lcg(Date.now() % 2147480000 + 1);
-      ALL.forEach((s) => {
+      (UNIVERSE[market] || []).forEach((s) => {
         if (!marketOpen(marketOf(s.sym))) return;      // respect market hours
         const step = (rr() - 0.5) * 2 * (0.004 + rr() * 0.006);   // ±0.4%–1.0%
-        s.price = +(s.price * (1 + step)).toFixed(s.price < 10 ? 4 : 2);
+        s.price = +(s.price * (1 + step)).toFixed(s.price < 1 ? 6 : s.price < 10 ? 4 : 2);
         s.chg = +(s.chg + step * 100).toFixed(2);
         s.rsi = clamp(Math.round(s.rsi + (rr() - 0.5) * 6), 5, 95);
         s.macd = +(s.macd + (rr() - 0.5) * 0.6).toFixed(2);
@@ -3121,7 +3223,7 @@ export default function App() {
     refresh();
     const id = setInterval(refresh, REFRESH_MS);
     return () => { stop = true; clearInterval(id); };
-  }, []);
+  }, [market]);
 
   const watch = useMemo(() => (watchlists.find((w) => w.id === activeWl)?.syms) || [], [watchlists, activeWl]);
   const toggleWatch = (sym) => setWatchlists((p) => p.map((w) => w.id === activeWl ? { ...w, syms: w.syms.includes(sym) ? w.syms.filter((x) => x !== sym) : [...w.syms, sym] } : w));
@@ -3174,11 +3276,11 @@ export default function App() {
             <div onClick={() => { setTab("home"); setDetail(null); }} className="tap disp" style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
               <span style={{ color: "var(--primary)", fontSize: 19 }}>✦</span>
               <span className="gradtext" style={{ fontWeight: 700, fontSize: 20 }}>Matrix</span>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 1, marginLeft: 3 }}>
-                <span className="pill" title={`${market} market ${marketOpen(market) ? "open" : "closed"} · ${marketHoursLabel(market)}. Prices refresh every 3 min.${live ? " Live Yahoo feed." : " Simulated feed — connect the proxy for real data."}`} style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".04em", padding: "2px 6px", display: "flex", alignItems: "center", gap: 3, background: marketOpen(market) ? "var(--up-soft)" : "var(--primary-soft)", color: marketOpen(market) ? "var(--up)" : "var(--muted)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: 3 }}>
+                <span className="pill" title={`${market} market ${marketOpen(market) ? "open" : "closed"} · ${marketHoursLabel(market)}. Prices refresh every minute.${live ? " Live Yahoo feed." : " Simulated feed — connect the proxy for real data."}`} style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".04em", padding: "2px 6px", display: "flex", alignItems: "center", gap: 3, background: marketOpen(market) ? "var(--up-soft)" : "var(--primary-soft)", color: marketOpen(market) ? "var(--up)" : "var(--muted)" }}>
                   <span style={{ width: 4, height: 4, borderRadius: 4, background: marketOpen(market) ? "var(--up)" : "var(--muted)" }} />{live ? "LIVE" : marketOpen(market) ? "LIVE·SIM" : "CLOSED"}
                 </span>
-                {liveAt && <span style={{ fontSize: 8, color: "var(--muted)", fontWeight: 700, lineHeight: 1, marginLeft: 2 }}>{new Date(liveAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
+                {liveAt && <span style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 700 }}>{new Date(liveAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
@@ -3215,7 +3317,7 @@ export default function App() {
               {tab === "trade" && <TradeView wallet={wallet} setWallet={setWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} />}
               {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} market={market} />}
               {tab === "automation" && <Automation market={market} />}
-              {tab === "portfolio" && <Portfolio portfolio={portfolio} wallet={wallet} market={market} />}
+              {tab === "portfolio" && <Portfolio portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} />}
               {tab === "watchlist" && <WatchlistView watchlists={watchlists} activeWl={activeWl} setActiveWl={setActiveWl} createWatchlist={createWatchlist} deleteWatchlist={deleteWatchlist} toggleWatch={toggleWatch} onOpen={openStock} />}
               {tab === "ask" && (
                 <div className="fade">
