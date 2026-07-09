@@ -957,7 +957,7 @@ function Drawer({ s, onClose, onDetails, onBuy }) {
 
         <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
           <button onClick={() => { if (onBuy) onBuy(s, 1); onClose(); }} className="tap disp glow" style={{ flex: 1, background: "linear-gradient(120deg,var(--up),#12B98A)", color: "#fff", border: "none", borderRadius: 16, padding: "14px", fontWeight: 800, fontSize: 14.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-            <Plus size={17} /> Buy 1 · {fmt(s.price, market)}
+            <Plus size={17} /> Buy
           </button>
           <button onClick={() => onDetails(s)} className="tap disp" style={{ flex: 1, background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px", fontWeight: 700, fontSize: 14.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
             Details <ChevronRight size={17} />
@@ -1167,7 +1167,7 @@ function DetailPage({ s, onBack, watched, toggleWatch, onTrade, onBuy }) {
           </div>
         )}
         <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-          <button onClick={() => onBuy && onBuy(s, 1)} className="tap disp glow" style={{ flex: 1, background: "linear-gradient(120deg,var(--up),#12B98A)", color: "#fff", border: "none", borderRadius: 16, padding: 14, fontWeight: 800, fontSize: 14.5, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}><Plus size={17} /> Buy 1 · {fmt(s.price, market)}</button>
+          <button onClick={() => onBuy && onBuy(s, 1)} className="tap disp glow" style={{ flex: 1, background: "linear-gradient(120deg,var(--up),#12B98A)", color: "#fff", border: "none", borderRadius: 16, padding: 14, fontWeight: 800, fontSize: 14.5, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}><Plus size={17} /> Buy</button>
           <button onClick={() => onTrade(s)} className="tap disp" style={{ flex: 1, background: "var(--elev)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 16, padding: 14, fontWeight: 700, fontSize: 14.5 }}>Trade…</button>
         </div>
       </div>
@@ -1811,6 +1811,14 @@ function Screener({ onOpen, market, list }) {
     { label: "Oversold bounce", f: [{ m: "rsi", o: "<", v: "35" }] },
     { label: "High-margin growth", f: [{ m: "ebitdaGrowth", o: ">", v: "15" }] },
   ];
+  const patternRecs = [
+    { label: "Golden crossover", fn: (s) => s.sma50 > s.sma200 },
+    { label: "Cup & Handle", fn: (s) => techSignal(s).pattern === "cup" },
+    { label: "EMA crossover", fn: (s) => s.macd > 0 && s.price > s.sma50 },
+    { label: "Breakout", fn: (s) => techSignal(s).pattern === "breakout" },
+    { label: "Double bottom", fn: (s) => techSignal(s).pattern === "doubleBottom" },
+    { label: "Bull flag", fn: (s) => techSignal(s).pattern === "flag" },
+  ];
   const apply = (fs) => {
     const ok = list.filter((s) => fs.every((f) => {
       const x = s[f.m === "price" ? "price" : f.m]; const val = parseFloat(f.v);
@@ -1836,7 +1844,14 @@ function Screener({ onOpen, market, list }) {
       <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", margin: "16px 2px 8px" }}>Recommended</div>
       <div className="hide-scroll" style={{ display: "flex", gap: 8, overflowX: "auto" }}>
         {recommended.map((r) => (
-          <button key={r.label} onClick={() => { setFilters(r.f); apply(r.f); }} className="pill tap" style={{ flex: "0 0 auto", border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", fontSize: 12.5, fontWeight: 600, padding: "9px 14px" }}>{r.label}</button>
+          <button key={r.label} onClick={() => { setFilters(r.f); setText(""); setParsedNote(null); apply(r.f); }} className="pill tap" style={{ flex: "0 0 auto", border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", fontSize: 12.5, fontWeight: 600, padding: "9px 14px" }}>{r.label}</button>
+        ))}
+      </div>
+
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", margin: "14px 2px 8px" }}>Chart patterns</div>
+      <div className="hide-scroll" style={{ display: "flex", gap: 8, overflowX: "auto" }}>
+        {patternRecs.map((r) => (
+          <button key={r.label} onClick={() => { setText(""); setParsedNote("Applied: " + r.label + " pattern"); setResults(list.filter(r.fn)); }} className="pill tap" style={{ flex: "0 0 auto", border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", fontSize: 12.5, fontWeight: 700, padding: "9px 14px", display: "flex", gap: 5, alignItems: "center" }}>◫ {r.label}</button>
         ))}
       </div>
 
@@ -1879,26 +1894,33 @@ function TradeView({ wallet, setWallet, portfolio, setPortfolio, preset, market 
   const [sel, setSel] = useState(preset || ALL[0]);
   const [qty, setQty] = useState(1);
   const [side, setSide] = useState("Buy");
+  const [ordType, setOrdType] = useState("Market");
+  const [limitPx, setLimitPx] = useState("");
+  const [sl, setSl] = useState(""); const [tsl, setTsl] = useState(""); const [tp, setTp] = useState("");
   const [msg, setMsg] = useState(null);
   useEffect(() => { if (preset) setSel(preset); }, [preset]);
   const m = marketOf(sel.sym);
-  const cost = sel.price * qty;
   const holding = portfolio.find((p) => p.sym === sel.sym);
+  useEffect(() => { if (side === "Sell" && !holding) setSide("Buy"); }, [sel, holding, side]);
+  const needsPx = ordType === "Limit" || ordType === "Stop-limit";
+  const execPx = needsPx && limitPx !== "" && !isNaN(+limitPx) ? +limitPx : sel.price;
+  const cost = execPx * qty;
+  const risk = { ...(sl !== "" ? { sl: +sl } : {}), ...(tsl !== "" ? { tsl: +tsl } : {}), ...(tp !== "" ? { tp: +tp } : {}), ordType };
   const exec = () => {
     if (side === "Buy") {
       if (cost > wallet) { setMsg({ t: "Not enough virtual funds for this order.", e: true }); return; }
       setWallet((w) => w - cost);
       setPortfolio((p) => {
         const ex = p.find((h) => h.sym === sel.sym);
-        if (ex) { const tq = ex.qty + qty; return p.map((h) => h.sym === sel.sym ? { ...h, qty: tq, buy: (h.buy * h.qty + cost) / tq } : h); }
-        return [...p, { sym: sel.sym, name: sel.name, qty, buy: sel.price, date: Date.now() }];
+        if (ex) { const tq = ex.qty + qty; return p.map((h) => h.sym === sel.sym ? { ...h, qty: tq, buy: (h.buy * h.qty + cost) / tq, ...risk } : h); }
+        return [...p, { sym: sel.sym, name: sel.name, qty, buy: execPx, date: Date.now(), ...risk }];
       });
-      setMsg({ t: `Bought ${qty} ${sel.sym} at ${fmt(sel.price, m)}.`, e: false });
+      setMsg({ t: `${ordType} buy: ${qty} ${sel.sym} @ ${fmt(execPx, m)}${sl || tsl || tp ? " · risk orders set" : ""}.`, e: false });
     } else {
       if (!holding || holding.qty < qty) { setMsg({ t: "You don't hold enough units to sell.", e: true }); return; }
       setWallet((w) => w + cost);
       setPortfolio((p) => p.map((h) => h.sym === sel.sym ? { ...h, qty: h.qty - qty } : h).filter((h) => h.qty > 0));
-      setMsg({ t: `Sold ${qty} ${sel.sym} at ${fmt(sel.price, m)}.`, e: false });
+      setMsg({ t: `Sold ${qty} ${sel.sym} at ${fmt(execPx, m)} — credited to wallet.`, e: false });
     }
     setQty(1);
   };
@@ -1917,10 +1939,28 @@ function TradeView({ wallet, setWallet, portfolio, setPortfolio, preset, market 
         </div>
 
         <div className="pill" style={{ display: "flex", background: "var(--bg)", padding: 4, marginTop: 14 }}>
-          {["Buy", "Sell"].map((x) => (
-            <button key={x} onClick={() => setSide(x)} className="pill tap disp" style={{ flex: 1, padding: 10, border: "none", fontWeight: 700, fontSize: 13.5, background: side === x ? (x === "Buy" ? "var(--up)" : "var(--down)") : "transparent", color: side === x ? "var(--on-primary)" : "var(--muted)" }}>{x}</button>
+          {["Buy", "Sell"].map((x) => {
+            const disabled = x === "Sell" && !holding;
+            return (
+              <button key={x} disabled={disabled} onClick={() => !disabled && setSide(x)} className="pill tap disp" title={disabled ? "You can only sell stocks you hold" : ""} style={{ flex: 1, padding: 10, border: "none", fontWeight: 700, fontSize: 13.5, cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.4 : 1, background: side === x ? (x === "Buy" ? "var(--up)" : "var(--down)") : "transparent", color: side === x ? "var(--on-primary)" : "var(--muted)" }}>{x}</button>
+            );
+          })}
+        </div>
+        {!holding && <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6 }}>Sell is available only for instruments you already hold.</div>}
+
+        {/* order type */}
+        <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 14 }}>Order type</div>
+        <div className="hide-scroll" style={{ display: "flex", gap: 6, overflowX: "auto", marginTop: 6 }}>
+          {["Market", "Limit", "Stop-limit", "Trailing-stop"].map((x) => (
+            <button key={x} onClick={() => setOrdType(x)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "8px 13px", fontSize: 12, fontWeight: 700, border: "1px solid " + (ordType === x ? "var(--primary)" : "var(--line)"), background: ordType === x ? "var(--primary)" : "var(--surface)", color: ordType === x ? "var(--on-primary)" : "var(--ink)" }}>{x}</button>
           ))}
         </div>
+        {needsPx && (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600 }}>{ordType === "Stop-limit" ? "Trigger / limit price" : "Limit price"} ({CUR[m] || "₹"})</div>
+            <input value={limitPx} onChange={(e) => setLimitPx(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder={String(sel.price)} className="no-ring mono" style={{ width: "100%", marginTop: 4, border: "1px solid var(--line)", borderRadius: 10, padding: 10, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }} />
+          </div>
+        )}
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14 }}>
           <span style={{ fontSize: 13, fontWeight: 600 }}>Quantity</span>
@@ -1932,10 +1972,21 @@ function TradeView({ wallet, setWallet, portfolio, setPortfolio, preset, market 
         </div>
         {holding && <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 6 }}>You hold {holding.qty} units @ avg {fmt(holding.buy, m)}</div>}
 
+        {/* risk orders */}
+        <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 14 }}>Risk orders (optional, %)</div>
+        <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+          {[["Stop loss", sl, setSl], ["Trailing SL", tsl, setTsl], ["Take profit", tp, setTp]].map(([lbl, val, setter]) => (
+            <div key={lbl} style={{ flex: 1, border: "1px solid var(--line)", borderRadius: 10, padding: "7px 9px", background: "var(--elev)" }}>
+              <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 700 }}>{lbl} %</div>
+              <input value={val} onChange={(e) => setter(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="—" className="no-ring mono" style={{ width: "100%", background: "transparent", border: "none", color: "var(--ink)", fontWeight: 800, fontSize: 14, marginTop: 2 }} />
+            </div>
+          ))}
+        </div>
+
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 14, fontSize: 14 }}>
           <span style={{ color: "var(--muted)" }}>Order value</span><span className="mono" style={{ fontWeight: 700 }}>{fmt(cost, m)}</span>
         </div>
-        <button onClick={exec} className="tap disp glow" style={{ width: "100%", marginTop: 14, background: "linear-gradient(120deg,var(--primary),var(--primary-2))", color: "#fff", border: "none", borderRadius: 14, padding: 14, fontWeight: 700, fontSize: 15 }}>{side} {sel.sym}</button>
+        <button onClick={exec} className="tap disp glow" style={{ width: "100%", marginTop: 14, background: side === "Buy" ? "linear-gradient(120deg,var(--up),#0EA968)" : "linear-gradient(120deg,var(--down),#D93A4E)", color: "#fff", border: "none", borderRadius: 14, padding: 14, fontWeight: 800, fontSize: 15 }}>{side} {sel.sym} · {ordType}</button>
         {msg && <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 600, color: msg.e ? "var(--down)" : "var(--up)", textAlign: "center" }}>{msg.t}</div>}
       </div>
     </div>
@@ -1944,10 +1995,12 @@ function TradeView({ wallet, setWallet, portfolio, setPortfolio, preset, market 
 const qBtn = { width: 34, height: 34, borderRadius: 10, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 18, fontWeight: 700, color: "var(--ink)" };
 
 /* ============================== PORTFOLIO ============================== */
-function Portfolio({ portfolio, wallet, market = "IN", onGoHome }) {
+function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, onUpdate }) {
+  const [expand, setExpand] = useState(null);   // sym with open trade panel
   const mkt = market === "FNO" ? "IN" : market;
   const mLabel = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", FNO: "⚡ F&O", Commodity: "🪙 Commodity" }[market];
-  const rows = portfolio.filter((h) => marketOf(h.sym) === mkt).map((h) => {
+  // F&O portfolio shows only F&O (futures/options) positions — never plain stock holdings
+  const rows = portfolio.filter((h) => market === "FNO" ? h.fno : (marketOf(h.sym) === mkt && !h.fno)).map((h) => {
     const s = ALL.find((a) => a.sym === h.sym) || { price: h.buy, chg: 0 };
     const m = marketOf(h.sym);
     const cur = s.price, inv = h.buy * h.qty, val = cur * h.qty;
@@ -1974,23 +2027,65 @@ function Portfolio({ portfolio, wallet, market = "IN", onGoHome }) {
       </div>
       {rows.length === 0 ? (
         <div className="card" style={{ marginTop: 16, padding: 30, textAlign: "center", color: "var(--muted)" }}>
-          <Briefcase size={28} color="var(--muted)" /><div style={{ marginTop: 8, fontSize: 13.5 }}>No {mLabel} holdings yet. Buy from this market, or switch markets from the tabs above.</div>
+          <Briefcase size={28} color="var(--muted)" /><div style={{ marginTop: 8, fontSize: 13.5 }}>{market === "FNO" ? "No F&O positions. Futures & options you trade will show here — stock holdings stay under their own market." : `No ${mLabel} holdings yet. Buy from this market, or switch markets from the tabs above.`}</div>
           <button onClick={() => onGoHome && onGoHome()} className="tap disp glow" style={{ marginTop: 16, background: "linear-gradient(120deg,var(--primary),var(--primary-2))", color: "var(--on-primary)", border: "none", borderRadius: 14, padding: "12px 22px", fontWeight: 800, fontSize: 13.5, display: "inline-flex", gap: 7, alignItems: "center" }}><Home size={16} /> Go to Home</button>
         </div>
-      ) : rows.map((r) => (
-        <div key={r.sym} className="card" style={{ marginTop: 12, padding: 14 }}>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <div><div className="disp" style={{ fontWeight: 700, fontSize: 14 }}>{r.sym}</div><div style={{ fontSize: 11, color: "var(--muted)" }}>{r.qty} units · held {r.days}d</div></div>
-            <div style={{ textAlign: "right" }}>
-              <div className="mono" style={{ fontWeight: 700, fontSize: 14, color: r.pl >= 0 ? "var(--up)" : "var(--down)" }}>{r.pl >= 0 ? "+" : ""}{fmt(r.pl, r.m)}</div>
-              <div className="mono" style={{ fontSize: 12, color: r.pl >= 0 ? "var(--up)" : "var(--down)" }}>{r.plp >= 0 ? "+" : ""}{r.plp.toFixed(2)}%</div>
+      ) : rows.map((r) => {
+        const st = ALL.find((a) => a.sym === r.sym) || { sym: r.sym, name: r.name, price: r.cur };
+        return (
+          <div key={r.sym} className="card" style={{ marginTop: 12, padding: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <div><div className="disp" style={{ fontWeight: 700, fontSize: 14 }}>{r.sym}</div><div style={{ fontSize: 11, color: "var(--muted)" }}>{r.qty} units · held {r.days}d</div></div>
+              <div style={{ textAlign: "right" }}>
+                <div className="mono" style={{ fontWeight: 700, fontSize: 14, color: r.pl >= 0 ? "var(--up)" : "var(--down)" }}>{r.pl >= 0 ? "+" : ""}{fmt(r.pl, r.m)}</div>
+                <div className="mono" style={{ fontSize: 12, color: r.pl >= 0 ? "var(--up)" : "var(--down)" }}>{r.plp >= 0 ? "+" : ""}{r.plp.toFixed(2)}%</div>
+              </div>
             </div>
+            <div style={{ display: "flex", gap: 14, marginTop: 10, fontSize: 11.5 }}>
+              <Stat k="Buy" v={fmt(r.buy, r.m)} /><Stat k="Current" v={fmt(r.cur, r.m)} /><Stat k="Annualised" v={(r.ann >= 0 ? "+" : "") + r.ann.toFixed(1) + "%"} c={r.ann >= 0 ? "var(--up)" : "var(--down)"} />
+            </div>
+            {(r.sl || r.tsl || r.tp) && <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, fontWeight: 600 }}>{r.tp ? `🎯 TP +${r.tp}% ` : ""}{r.sl ? `· 🛑 SL −${r.sl}% ` : ""}{r.tsl ? `· 🔻 TSL ${r.tsl}%` : ""}</div>}
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <button onClick={() => onBuy && onBuy(st, 1)} className="tap disp" style={{ flex: 1, background: "linear-gradient(120deg,var(--up),#0EA968)", color: "#fff", border: "none", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5 }}>Buy</button>
+              <button onClick={() => setExpand(expand === r.sym ? null : r.sym)} className="tap disp" style={{ flex: 1, background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, display: "flex", gap: 5, alignItems: "center", justifyContent: "center" }}><SlidersHorizontal size={13} /> Manage</button>
+            </div>
+            {expand === r.sym && <ManageHolding r={r} st={st} onBuy={onBuy} onSell={onSell} onUpdate={onUpdate} onClose={() => setExpand(null)} />}
           </div>
-          <div style={{ display: "flex", gap: 14, marginTop: 10, fontSize: 11.5 }}>
-            <Stat k="Buy" v={fmt(r.buy, r.m)} /><Stat k="Current" v={fmt(r.cur, r.m)} /><Stat k="Annualised" v={(r.ann >= 0 ? "+" : "") + r.ann.toFixed(1) + "%"} c={r.ann >= 0 ? "var(--up)" : "var(--down)"} />
-          </div>
+        );
+      })}
+    </div>
+  );
+}
+function ManageHolding({ r, st, onBuy, onSell, onUpdate, onClose }) {
+  const [qty, setQty] = useState(1);
+  const [sl, setSl] = useState(r.sl ? String(r.sl) : "");
+  const [tsl, setTsl] = useState(r.tsl ? String(r.tsl) : "");
+  const [tp, setTp] = useState(r.tp ? String(r.tp) : "");
+  const saveRisk = () => { onUpdate && onUpdate(r.sym, { sl: sl === "" ? undefined : +sl, tsl: tsl === "" ? undefined : +tsl, tp: tp === "" ? undefined : +tp }); onClose && onClose(); };
+  return (
+    <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 12, fontWeight: 700 }}>Quantity</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="tap" style={{ ...qBtn, width: 30, height: 30, fontSize: 16 }}>–</button>
+          <input value={qty} onChange={(e) => setQty(Math.max(1, parseInt(e.target.value) || 1))} className="no-ring mono" style={{ width: 48, textAlign: "center", border: "1px solid var(--line)", borderRadius: 9, padding: 6, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }} />
+          <button onClick={() => setQty((q) => Math.min(r.qty, q + 1))} className="tap" style={{ ...qBtn, width: 30, height: 30, fontSize: 16 }}>+</button>
         </div>
-      ))}
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+        <button onClick={() => onBuy && onBuy(st, qty)} className="tap disp" style={{ flex: 1, background: "var(--up)", color: "#fff", border: "none", borderRadius: 10, padding: 9, fontWeight: 800, fontSize: 12.5 }}>Buy {qty}</button>
+        <button onClick={() => { onSell && onSell(st, qty); onClose && onClose(); }} className="tap disp" style={{ flex: 1, background: "var(--down)", color: "#fff", border: "none", borderRadius: 10, padding: 9, fontWeight: 800, fontSize: 12.5 }}>Sell {qty}</button>
+      </div>
+      <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600, margin: "12px 0 6px" }}>Risk orders (%)</div>
+      <div style={{ display: "flex", gap: 8 }}>
+        {[["Stop loss", sl, setSl], ["Trailing SL", tsl, setTsl], ["Take profit", tp, setTp]].map(([lbl, val, setter]) => (
+          <div key={lbl} style={{ flex: 1, border: "1px solid var(--line)", borderRadius: 10, padding: "7px 9px", background: "var(--elev)" }}>
+            <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 700 }}>{lbl} %</div>
+            <input value={val} onChange={(e) => setter(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="—" className="no-ring mono" style={{ width: "100%", background: "transparent", border: "none", color: "var(--ink)", fontWeight: 800, fontSize: 14, marginTop: 2 }} />
+          </div>
+        ))}
+      </div>
+      <button onClick={saveRisk} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--primary)", color: "var(--on-primary)", border: "none", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5 }}>Save risk orders</button>
     </div>
   );
 }
@@ -3232,18 +3327,29 @@ export default function App() {
   const openStock = (s) => { setSearch(false); setDrawer(s); };
   const openDetail = (s) => { setDrawer(null); setDetail(s); };
   const goTrade = (s) => { setDetail(null); setTradePreset(s); setTab("trade"); };
-  const buyStock = (s, qty = 1) => {
+  const buyStock = (s, qty = 1, opts = {}) => {
     const cost = s.price * qty;
     if (cost > wallet) { setBuyToast({ t: "Not enough virtual funds.", e: true }); return false; }
     setWallet((w) => w - cost);
     setPortfolio((p) => {
       const ex = p.find((h) => h.sym === s.sym);
-      if (ex) { const tq = ex.qty + qty; return p.map((h) => h.sym === s.sym ? { ...h, qty: tq, buy: (h.buy * h.qty + cost) / tq } : h); }
-      return [...p, { sym: s.sym, name: s.name, qty, buy: s.price, date: Date.now() }];
+      if (ex) { const tq = ex.qty + qty; return p.map((h) => h.sym === s.sym ? { ...h, qty: tq, buy: (h.buy * h.qty + cost) / tq, ...opts } : h); }
+      return [...p, { sym: s.sym, name: s.name, qty, buy: s.price, date: Date.now(), ...opts }];
     });
     setBuyToast({ t: `Bought ${qty} ${s.sym} @ ${fmt(s.price, marketOf(s.sym))} — added to portfolio.`, e: false });
     return true;
   };
+  const sellStock = (s, qty = 1) => {
+    const held = portfolio.find((h) => h.sym === s.sym);
+    if (!held || held.qty < 1) { setBuyToast({ t: `You don't hold ${s.sym}.`, e: true }); return false; }
+    const sellQty = Math.min(qty, held.qty);
+    const proceeds = s.price * sellQty;
+    setWallet((w) => w + proceeds);
+    setPortfolio((p) => p.map((h) => h.sym === s.sym ? { ...h, qty: h.qty - sellQty } : h).filter((h) => h.qty > 0));
+    setBuyToast({ t: `Sold ${sellQty} ${s.sym} @ ${fmt(s.price, marketOf(s.sym))} — credited to wallet.`, e: false });
+    return true;
+  };
+  const updateHolding = (sym, patch) => setPortfolio((p) => p.map((h) => h.sym === sym ? { ...h, ...patch } : h));
 
   // personalised ordering for picks
   const list = useMemo(() => {
@@ -3317,7 +3423,7 @@ export default function App() {
               {tab === "trade" && <TradeView wallet={wallet} setWallet={setWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} />}
               {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} market={market} />}
               {tab === "automation" && <Automation market={market} />}
-              {tab === "portfolio" && <Portfolio portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} />}
+              {tab === "portfolio" && <Portfolio portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} onBuy={buyStock} onSell={sellStock} onUpdate={updateHolding} />}
               {tab === "watchlist" && <WatchlistView watchlists={watchlists} activeWl={activeWl} setActiveWl={setActiveWl} createWatchlist={createWatchlist} deleteWatchlist={deleteWatchlist} toggleWatch={toggleWatch} onOpen={openStock} />}
               {tab === "ask" && (
                 <div className="fade">
