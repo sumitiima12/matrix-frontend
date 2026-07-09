@@ -514,6 +514,7 @@ function dailyPicks(list) {
   const jr = lcg(DAY * 131 + 7);
   return list
     .filter((s) => s.sector !== "Volatility")
+    .filter((s) => s.verdict === "Buy" && s.chg > 0)   // only Buy-rated names currently above previous close
     .filter((s) => marketOf(s.sym) !== "Crypto" || s.vol > 1_000_000)   // crypto: only liquid names
     .map((s) => {
       const t = techSignal(s);
@@ -776,7 +777,7 @@ function CarouselCard({ s, market, onOpen, children, width = 250, watched, toggl
 // Set BACKEND_URL to your deployed proxy (e.g. "https://your-matrix-proxy.onrender.com")
 // to keep the Anthropic key server-side. Empty string = in-app mode (key injected by the
 // host runtime), which is what runs inside this preview.
-const BACKEND_URL = "https://matrix-qp1i.onrender.com";
+const BACKEND_URL = "";
 const MATRIX_PERSONA = "You are Matrix — the world's sharpest stock-market research assistant, fluent in fundamental analysis, technical analysis and macro/news-driven investing. Answer with crisp, structured, practical insight a confident GenZ investor can act on. Use short paragraphs or tight bullets. When giving a view, lay out the bull case, bear case and key levels rather than a bare command. Always end with a one-line reminder that this is educational research, not financial advice.";
 
 /* ------- LIVE PRICES (Yahoo Finance via the backend proxy) -------
