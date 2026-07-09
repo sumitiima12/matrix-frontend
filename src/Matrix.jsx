@@ -47,6 +47,8 @@ const CSS = `
   --header-bg:rgba(255,255,255,.78);
 }
 *{box-sizing:border-box}
+html,body{overscroll-behavior-x:none;overflow-x:hidden}
+.mx{overscroll-behavior-x:none}
 .mx{font-family:'Nunito',system-ui,sans-serif;color:var(--ink)}
 .disp{font-family:'Quicksand','Nunito',sans-serif;letter-spacing:-.01em}
 .mono{font-family:'Nunito',sans-serif;font-variant-numeric:tabular-nums;font-feature-settings:'tnum' 1}
