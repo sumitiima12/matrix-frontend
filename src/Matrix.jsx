@@ -930,6 +930,23 @@ function localDeepAnalysis(s) {
     `Educational research, not financial advice.`,
   ].join("\n\n");
 }
+// Fallback interpreter: turns plain English into structured screener conditions
+// using the LLM proxy (Groq first). Returns null if it can't (or no backend).
+async function aiInterpretScreen(text) {
+  const metrics = METRICS.map((m) => m[0]).join(", ");
+  const system = `You convert a plain-English stock screen into JSON. Available metric fields: ${metrics}. Operators: ">","<",">=","<=". Output ONLY a JSON array (no prose, no markdown). Each item: {"m":<field>,"o":<op>,"rhsType":"value" or "indicator","v":<number when value>,"rhs":<field when indicator>,"tf":"3m"|"5m"|"15m"|"30m"|"1h"|"1d"}. For "EMA21 > EMA50" use ema20 vs ema50 with rhsType "indicator". Default tf "1d".`;
+  try {
+    const out = await askMatrix([{ role: "user", content: text }], system, 500);
+    const arr = JSON.parse((out || "").replace(/```json|```/g, "").trim());
+    if (Array.isArray(arr)) return arr.filter((c) => c && c.m && c.o).map((c) => ({ m: c.m, o: c.o, rhsType: c.rhsType === "indicator" ? "indicator" : "value", v: c.v != null ? String(c.v) : "", rhs: c.rhs || "sma50", tf: c.tf || "1d" }));
+  } catch { /* fall through */ }
+  return null;
+}
+// Fallback interpreter for automation plain-English → readable entry/exit summary.
+async function aiInterpretStrategy(text) {
+  const system = `You are a trading-strategy interpreter. Given a plain-English rule, respond with a short structured summary in this exact shape (no markdown):\nENTRY: <one line>\nEXIT: <one line>\nSTOP: <n>%\nTARGET: <n>%\nKeep it crisp and only use indicators the user mentioned.`;
+  try { const out = await askMatrix([{ role: "user", content: text }], system, 400); return (out || "").trim() || null; } catch { return null; }
+}
 function useMatrixChat(context, stock) {
   const [msgs, setMsgs] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -1918,6 +1935,16 @@ function parseScreen(text) {
   if ((/\bdma\b|\bsma\b|moving average/.test(t) && /50/.test(t) && /(100|200)/.test(t)) || /golden cross/.test(t)) { res.dma = true; res.note.push("50-DMA > 200-DMA"); }
   return res;
 }
+const SCREEN_TFS = [["3m", "3 min"], ["5m", "5 min"], ["15m", "15 min"], ["30m", "30 min"], ["1h", "1 hour"], ["1d", "1 day"]];
+const TF_ADJ = { "3m": 0.99, "5m": 0.995, "15m": 1.0, "30m": 1.005, "1h": 1.01, "1d": 1.0 };
+// Deterministic per-timeframe value for an indicator field (sim: same base, tf-seeded wobble).
+function indAt(s, field, tf) {
+  const base = s[field];
+  if (base == null || isNaN(base)) return base;
+  if (!tf || tf === "1d") return base;
+  const r = lcg(hash(s.sym + "|" + field + "|" + tf))();
+  return +(base * ((TF_ADJ[tf] || 1) + (r - 0.5) * 0.04)).toFixed(4);
+}
 function matchScreen(list, res) {
   return list.filter((s) => {
     if (res.sectors.length && !res.sectors.some((sec) => (s.sector || "").toLowerCase().includes(sec))) return false;
@@ -1927,32 +1954,49 @@ function matchScreen(list, res) {
   });
 }
 function Screener({ onOpen, market, list, watchlists, addToWatch, createWatchlist }) {
-  const [filters, setFilters] = useState([{ m: "rsi", o: ">", v: "50" }]);
+  const [filters, setFilters] = useState([{ m: "rsi", o: ">", rhsType: "value", v: "50", rhs: "sma50", tf: "1d" }]);
   const [text, setText] = useState("");
   const [results, setResults] = useState(null);
   const [parsedNote, setParsedNote] = useState(null);
+  const [aiBusy, setAiBusy] = useState(false);
   const recommended = [
     { label: "Momentum movers", f: [{ m: "rsi", o: ">", v: "60" }, { m: "chg", o: ">", v: "1" }] },
     { label: "Value with growth", f: [{ m: "pe", o: "<", v: "30" }, { m: "revGrowth", o: ">", v: "8" }] },
     { label: "Oversold bounce", f: [{ m: "rsi", o: "<", v: "35" }] },
-    { label: "High-margin growth", f: [{ m: "ebitdaGrowth", o: ">", v: "15" }] },
+    { label: "EMA 21 > EMA 50", f: [{ m: "ema20", o: ">", rhsType: "indicator", rhs: "ema50", tf: "1d" }] },
   ];
   const [selRec, setSelRec] = useState(null);
+  const cmp = (o, x, y) => o === ">" ? x > y : o === "<" ? x < y : o === ">=" ? x >= y : o === "<=" ? x <= y : Math.abs(x - y) < 1e-6;
   const apply = (fs) => {
     const ok = list.filter((s) => fs.every((f) => {
-      const x = s[f.m === "price" ? "price" : f.m]; const val = parseFloat(f.v);
-      if (isNaN(val)) return true;
-      return f.o === ">" ? x > val : f.o === "<" ? x < val : f.o === ">=" ? x >= val : x <= val;
+      const x = indAt(s, f.m, f.tf);
+      const y = f.rhsType === "indicator" ? indAt(s, f.rhs, f.tf) : parseFloat(f.v);
+      if (x == null || isNaN(x) || y == null || isNaN(y)) return true;
+      return cmp(f.o, x, y);
     }));
     setResults(ok);
   };
-  const runScreener = () => {
+  const runScreener = async () => {
     if (text.trim()) {
       setSelRec(null);
       const res = parseScreen(text);
-      if (!res.sectors.length && !res.caps.length && !res.conds.length && !res.dma) { setParsedNote("couldn't understand any conditions — try e.g. 'large-cap IT stocks with RSI > 60 and EBITDA positive'"); setResults([]); return; }
-      setParsedNote("Applied: " + res.note.join(" · "));
-      setResults(matchScreen(list, res));
+      if (res.sectors.length || res.caps.length || res.conds.length || res.dma) {
+        setParsedNote("Applied: " + res.note.join(" · "));
+        setResults(matchScreen(list, res));
+        return;
+      }
+      // Fallback: ask the LLM (Groq) to interpret the plain text into conditions.
+      setAiBusy(true); setParsedNote("Asking Matrix to interpret…");
+      const conds = await aiInterpretScreen(text);
+      setAiBusy(false);
+      if (conds && conds.length) {
+        setFilters(conds);
+        setParsedNote("AI interpreted: " + conds.map((c) => `${c.m} ${c.o} ${c.rhsType === "indicator" ? c.rhs : c.v}${c.tf && c.tf !== "1d" ? " · " + c.tf : ""}`).join(" · "));
+        apply(conds);
+      } else {
+        setParsedNote("Couldn't understand — try the builder above, or e.g. 'EMA21 > EMA50 with RSI > 60 on 15m'. (AI interpretation needs the backend + a Groq key.)");
+        setResults([]);
+      }
     } else { setParsedNote(null); apply(filters); }
   };
   const upd = (i, k, val) => setFilters((p) => p.map((f, j) => j === i ? { ...f, [k]: val } : f));
@@ -1971,20 +2015,33 @@ function Screener({ onOpen, market, list, watchlists, addToWatch, createWatchlis
       <div className="card" style={{ marginTop: 16, padding: 14 }}>
         <div className="disp" style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Build your own</div>
         {filters.map((f, i) => (
-          <div key={i} style={{ display: "flex", gap: 7, marginBottom: 8, alignItems: "center" }}>
-            <select value={f.m} onChange={(e) => upd(i, "m", e.target.value)} style={selStyle}>{METRICS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
-            <select value={f.o} onChange={(e) => upd(i, "o", e.target.value)} style={{ ...selStyle, flex: "0 0 56px" }}>{OPS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
-            <input value={f.v} onChange={(e) => upd(i, "v", e.target.value)} style={{ ...selStyle, flex: "0 0 70px" }} className="no-ring" />
-            <button onClick={() => setFilters((p) => p.filter((_, j) => j !== i))} className="tap" style={{ border: "none", background: "transparent" }}><Trash2 size={16} color="var(--down)" /></button>
+          <div key={i} style={{ border: "1px solid var(--line)", borderRadius: 12, padding: 9, marginBottom: 8, background: "var(--elev)" }}>
+            <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
+              <select value={f.m} onChange={(e) => upd(i, "m", e.target.value)} style={{ ...selStyle, flex: 1, minWidth: 0 }}>{METRICS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+              <select value={f.o} onChange={(e) => upd(i, "o", e.target.value)} style={{ ...selStyle, flex: "0 0 54px" }}>{OPS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+              {(f.rhsType || "value") === "value"
+                ? <input value={f.v} onChange={(e) => upd(i, "v", e.target.value)} style={{ ...selStyle, flex: "0 0 70px" }} className="no-ring" placeholder="value" />
+                : <select value={f.rhs || "sma50"} onChange={(e) => upd(i, "rhs", e.target.value)} style={{ ...selStyle, flex: 1, minWidth: 0 }}>{METRICS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>}
+              <button onClick={() => setFilters((p) => p.filter((_, j) => j !== i))} className="tap" style={{ border: "none", background: "transparent", flex: "0 0 auto" }}><Trash2 size={16} color="var(--down)" /></button>
+            </div>
+            <div style={{ display: "flex", gap: 7, alignItems: "center", marginTop: 7 }}>
+              <div className="pill" style={{ display: "inline-flex", background: "var(--surface)", border: "1px solid var(--line)", padding: 2 }}>
+                {[["value", "vs value"], ["indicator", "vs indicator"]].map(([k, l]) => (
+                  <button key={k} onClick={() => upd(i, "rhsType", k)} className="pill tap" style={{ padding: "5px 9px", fontSize: 10, fontWeight: 800, border: "none", background: (f.rhsType || "value") === k ? "var(--primary)" : "transparent", color: (f.rhsType || "value") === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
+                ))}
+              </div>
+              <span style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 700, marginLeft: "auto" }}>TF</span>
+              <select value={f.tf || "1d"} onChange={(e) => upd(i, "tf", e.target.value)} style={{ ...selStyle, flex: "0 0 88px" }}>{SCREEN_TFS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+            </div>
           </div>
         ))}
-        <button onClick={() => setFilters((p) => [...p, { m: "pe", o: "<", v: "30" }])} className="tap" style={{ border: "1px dashed var(--line)", background: "transparent", borderRadius: 12, padding: "8px 12px", fontSize: 12.5, fontWeight: 600, color: "var(--primary)", display: "flex", gap: 5, alignItems: "center" }}><Plus size={15} /> Add filter</button>
+        <button onClick={() => setFilters((p) => [...p, { m: "ema20", o: ">", rhsType: "indicator", rhs: "ema50", tf: "1d", v: "" }])} className="tap" style={{ border: "1px dashed var(--line)", background: "transparent", borderRadius: 12, padding: "8px 12px", fontSize: 12.5, fontWeight: 600, color: "var(--primary)", display: "flex", gap: 5, alignItems: "center" }}><Plus size={15} /> Add condition</button>
 
         <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>Or describe it in plain text</div>
         <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. large-cap IT stocks with RSI under 40 and rising revenue" className="no-ring"
           style={{ width: "100%", marginTop: 6, border: "1px solid var(--line)", borderRadius: 12, padding: 11, fontSize: 13, minHeight: 60, resize: "vertical" }} />
 
-        <button onClick={runScreener} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--primary)", color: "var(--on-primary)", border: "none", borderRadius: 14, padding: 13, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Filter size={16} /> Run screener</button>
+        <button onClick={runScreener} disabled={aiBusy} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--primary)", color: "var(--on-primary)", border: "none", borderRadius: 14, padding: 13, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: aiBusy ? 0.6 : 1 }}><Filter size={16} /> {aiBusy ? "Interpreting…" : "Run screener"}</button>
         {parsedNote && <div style={{ fontSize: 11, color: parsedNote.startsWith("Applied") ? "var(--up)" : "var(--amber)", marginTop: 8, fontWeight: 600, lineHeight: 1.5 }}>{parsedNote.startsWith("Applied") ? "✓ " : "⚠ "}{parsedNote}</div>}
       </div>
 
@@ -2860,6 +2917,14 @@ function Automation({ market = "IN", onRecord }) {
   const DEPLOY_OPTIONS = useMemo(() => FNO.map((s) => s.sym), []);
   const [pEntry, setPEntry] = useState("Buy when EMA 9 crosses above EMA 21 and RSI is above 55.");
   const [pExit, setPExit] = useState("Exit when RSI crosses above 85 or MACD histogram becomes negative or MACD line crosses below MACD signal line.");
+  const [aiStrat, setAiStrat] = useState(null); const [aiStratBusy, setAiStratBusy] = useState(false);
+  const aiInterpret = async () => {
+    setAiStratBusy(true); setAiStrat(null);
+    const out = await aiInterpretStrategy(`ENTRY: ${pEntry}\nEXIT: ${pExit}`);
+    setAiStratBusy(false);
+    if (out) { setAiStrat(out); const sm = out.match(/STOP:\s*(\d+)/i); const tm = out.match(/TARGET:\s*(\d+)/i); if (sm) setSl(sm[1]); if (tm) setTp(tm[1]); }
+    else setAiStrat("Couldn't reach the AI interpreter — this needs the backend deployed with a Groq (or other) key. The local parser still handles common phrasings.");
+  };
   const [strats, setStrats] = useState(SEED_STRATS);
   const [stratName, setStratName] = useState("");
   const [showBuilder, setShowBuilder] = useState(false);
@@ -3129,7 +3194,9 @@ function Automation({ market = "IN", onRecord }) {
                 <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, margin: "14px 0 6px" }}>Exit rules — in plain English</div>
                 <textarea value={pExit} onChange={(e) => setPExit(e.target.value)} placeholder="e.g. Exit when RSI crosses above 85 or MACD histogram becomes negative or MACD line crosses below MACD signal line." className="no-ring" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13, minHeight: 84, background: "var(--elev)", resize: "vertical", lineHeight: 1.5 }} />
                 {xParsed.conds.length > 0 && <div style={{ fontSize: 10.5, color: "var(--up)", marginTop: 6, fontWeight: 700 }}>✓ Parsed: {chainCode(xParsed.conds)}</div>}
-                {unparsed.length > 0 && <div style={{ fontSize: 10.5, color: "#F59E42", marginTop: 8, fontWeight: 600 }}>⚠ Couldn't parse: "{unparsed.join('", "')}". Try phrasing like "RSI crosses above 85" or "EMA 9 crosses above SMA 39".</div>}
+                {unparsed.length > 0 && <div style={{ fontSize: 10.5, color: "#F59E42", marginTop: 8, fontWeight: 600 }}>⚠ Couldn't parse: "{unparsed.join('", "')}". Try phrasing like "RSI crosses above 85" or "EMA 9 crosses above SMA 39" — or let AI interpret it below.</div>}
+                <button onClick={aiInterpret} disabled={aiStratBusy} className="tap disp" style={{ marginTop: 10, background: "var(--primary-soft)", color: "var(--primary)", border: "1px solid var(--primary)", borderRadius: 12, padding: "9px 14px", fontWeight: 800, fontSize: 12, display: "inline-flex", gap: 6, alignItems: "center", opacity: aiStratBusy ? 0.6 : 1 }}><Sparkles size={14} /> {aiStratBusy ? "Interpreting…" : "Interpret with AI (Groq)"}</button>
+                {aiStrat && <div className="card" style={{ marginTop: 10, padding: 12, background: "var(--elev)", fontSize: 12, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{aiStrat}</div>}
                 <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, display: "flex", gap: 6 }}><Sparkles size={13} color="var(--primary)" style={{ flex: "0 0 auto", marginTop: 1 }} /> Matrix converts your text into the executable code below on the <b style={{ margin: "0 3px" }}>{tf}</b> timeframe — recognises RSI, MACD (line/signal/histogram), EMA/SMA(n), Bollinger bands, ADX, CCI, VWAP, volume, price, with crosses-above/below, greater/less-than and becomes-positive/negative.</div>
               </>
             )}
@@ -3674,7 +3741,7 @@ export default function App() {
     return arr;
   }, [market, profile]);
 
-  const nav = [["home", Home, "Home"], ["ideas", Lightbulb, "Ideas"], ["automation", Bolt, "Auto"], ["portfolio", Briefcase, "Portfolio"], ["watchlist", Star, "Watch"]];
+  const nav = [["home", Home, "Home"], ["ideas", Lightbulb, "Ideas"], ["ask", Bot, "Ask"], ["automation", Bolt, "Auto"], ["portfolio", Briefcase, "Portfolio"], ["watchlist", Star, "Watch"]];
 
   return (
     <div className={"mx theme-" + theme} style={{ background: "var(--app-bg, var(--bg))", minHeight: "100vh" }}>
