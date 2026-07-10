@@ -3,7 +3,7 @@ import {
   Search, User, Wallet, Home, Repeat, Lightbulb, Bot, Bolt, Briefcase,
   Star, TrendingUp, TrendingDown, X, ChevronRight, Send, Plus, Trash2,
   ArrowUpRight, ArrowDownRight, Sparkles, SlidersHorizontal, Check,
-  Activity, Newspaper, Building2, Filter, Play, Pause, ChevronLeft, Zap, Sun, Moon, Bell, Pencil, Clock
+  Activity, Newspaper, Building2, Filter, Play, Pause, ChevronLeft, Zap, Sun, Moon, Bell, Pencil, Clock, LogIn, LogOut
 } from "lucide-react";
 import {
   AreaChart, Area, BarChart, Bar, ResponsiveContainer, XAxis, YAxis,
@@ -79,7 +79,8 @@ select option{background:var(--surface);color:var(--ink)}
 `;
 
 /* ============================== HELPERS ============================== */
-const CUR = { IN: "₹", US: "$", Crypto: "$", Commodity: "$" };
+const CUR = { IN: "₹", US: "$", Crypto: "$", Commodity: "$", FNO: "₹" };
+const MKT_LABEL = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", Commodity: "🪙 Commodity", FNO: "⚡ F&O" };
 function fmt(n, market = "IN") {
   const c = CUR[market] || "₹";
   if (n == null || isNaN(n)) return c + "0";
@@ -736,6 +737,36 @@ function AddBtn({ on, onClick, size = 28 }) {
     </button>
   );
 }
+// "+" with a watchlist picker — adds to the latest list by default, any list on choice.
+function WatchAddButton({ sym, watchlists = [], onAdd, onCreate, size = 30 }) {
+  const [open, setOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const inAny = watchlists.some((w) => w.syms.includes(sym));
+  return (
+    <div style={{ position: "relative", flex: "0 0 auto" }} onClick={(e) => e.stopPropagation()}>
+      <button onClick={() => setOpen((o) => !o)} className="tap" title="Add to watchlist" style={{ width: size, height: size, borderRadius: 9, border: "1px solid " + (inAny ? "var(--primary)" : "var(--line)"), background: inAny ? "var(--primary-soft)" : "var(--surface)", color: inAny ? "var(--primary)" : "var(--muted)", display: "grid", placeItems: "center" }}>{inAny ? <Check size={16} /> : <Plus size={17} />}</button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 39 }} />
+          <div className="card" style={{ position: "absolute", top: size + 5, right: 0, zIndex: 40, minWidth: 190, padding: 8, boxShadow: "0 12px 30px rgba(0,0,0,.2)" }}>
+            <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, padding: "2px 6px 6px" }}>Add to watchlist</div>
+            {watchlists.map((w, i) => { const has = w.syms.includes(sym); return (
+              <button key={w.id} onClick={() => { onAdd(sym, w.id); setOpen(false); }} className="tap disp" style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: 8, border: "none", background: "transparent", color: "var(--ink)", fontSize: 12.5, fontWeight: 600, textAlign: "left" }}>
+                <span style={{ width: 16, height: 16, borderRadius: 5, border: "1.5px solid " + (has ? "var(--primary)" : "var(--line)"), background: has ? "var(--primary)" : "transparent", display: "grid", placeItems: "center", flexShrink: 0 }}>{has && <Check size={11} color="var(--on-primary)" />}</span>
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w.name}</span>
+                {i === watchlists.length - 1 && <span style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 700 }}>latest</span>}
+              </button>
+            ); })}
+            <div style={{ display: "flex", gap: 6, marginTop: 6, paddingTop: 6, borderTop: "1px solid var(--line)" }}>
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="New list…" className="no-ring" style={{ flex: 1, minWidth: 0, border: "1px solid var(--line)", borderRadius: 8, padding: "6px 8px", fontSize: 12, background: "var(--elev)", color: "var(--ink)" }} />
+              <button onClick={() => { const id = onCreate ? onCreate(newName) : null; if (id) onAdd(sym, id); setNewName(""); setOpen(false); }} className="tap disp" style={{ border: "none", background: "var(--primary)", color: "var(--on-primary)", borderRadius: 8, padding: "0 12px", fontWeight: 800, fontSize: 12 }}>Add</button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 function MiniRow({ s, market, onOpen, extra, watched, toggleWatch }) {
   return (
     <div className="card tap" onClick={() => onOpen(s)} style={{ padding: 14, minWidth: 158, flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -794,7 +825,7 @@ function CarouselCard({ s, market, onOpen, children, width = 250, watched, toggl
 // Set BACKEND_URL to your deployed proxy (e.g. "https://your-matrix-proxy.onrender.com")
 // to keep the Anthropic key server-side. Empty string = in-app mode (key injected by the
 // host runtime), which is what runs inside this preview.
-const BACKEND_URL = "https://matrix-qp1i.onrender.com";
+const BACKEND_URL = "https://your-matrix-proxy.onrender.com";
 const MATRIX_PERSONA = "You are Matrix — the world's sharpest stock-market research assistant, fluent in fundamental analysis, technical analysis and macro/news-driven investing. Answer with crisp, structured, practical insight a confident GenZ investor can act on. Use short paragraphs or tight bullets. When giving a view, lay out the bull case, bear case and key levels rather than a bare command. Always end with a one-line reminder that this is educational research, not financial advice.";
 
 /* ------- LIVE PRICES (Yahoo Finance via the backend proxy) -------
@@ -852,6 +883,14 @@ async function postTrade(userId, trade) {
 async function fetchTrades(userId, from, to) {
   if (!BACKEND_URL) return null;
   try { const r = await fetch(`${BACKEND_URL}/api/trades?userId=${encodeURIComponent(userId)}&from=${from}&to=${to}`); return r.ok ? (await r.json()).trades : null; } catch { return null; }
+}
+async function apiRegister(phone, pin, name) {
+  if (!BACKEND_URL) return { error: "Login needs the backend deployed (set BACKEND_URL)." };
+  try { const r = await fetch(`${BACKEND_URL}/api/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone, pin, name }) }); return await r.json(); } catch { return { error: "Network error — try again." }; }
+}
+async function apiLogin(phone, pin) {
+  if (!BACKEND_URL) return { error: "Login needs the backend deployed (set BACKEND_URL)." };
+  try { const r = await fetch(`${BACKEND_URL}/api/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone, pin }) }); return await r.json(); } catch { return { error: "Network error — try again." }; }
 }
 
 async function askMatrix(messages, system, maxTokens = 1000) {
@@ -1484,7 +1523,7 @@ const MARKET_UPDATES = {
   Crypto: "Crypto is firm on steady spot-ETF inflows and a post-halving supply backdrop. Bitcoin dominance is easing as majors like ETH and SOL outperform on app activity. Expect sharp two-way swings around macro prints and liquidity shifts.",
   Commodity: "Commodities are mixed: precious metals firm on rate-cut hopes and central-bank buying, while energy chops on supply-demand crosscurrents. Industrial metals catch a bid from electrification demand. Watch the dollar and real yields for direction.",
 };
-function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, watch, toggleWatch, profile, portfolio = [], wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats }) {
+function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, watch, toggleWatch, profile, portfolio = [], wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist }) {
   const [glMode, setGlMode] = useState("Gainers");
   const picks = useMemo(() => {
     const base = dailyPicks(list);
@@ -1497,6 +1536,9 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy,
   const traded = [...list].sort((a, b) => b.vol - a.vol).slice(0, 6);
   const inNews = list.filter((s) => s.news).slice(0, 6);
   const smart = list.filter((s) => s.inst);
+  const optOf = (s) => makeOption(s, fnoData(s));
+  const trendingView = market === "FNO" ? trending.map(optOf) : trending;
+  const tradedView = market === "FNO" ? traded.map(optOf) : traded;
 
   // portfolio dashboard math
   const dash = portfolio.reduce((a, h) => {
@@ -1571,6 +1613,13 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy,
     const entryMin = Math.floor(r() * 120), holdMin = 20 + Math.floor(r() * 160);
     return { sym: s.sym, m, qty, entry, exit, pnl, win, tpPct, slPct, auto, entryTime: mkTime(entryMin), exitTime: mkTime(entryMin + holdMin) };
   });
+  // Record today's auto-buy trades to history (once per day per market) when auto-buy is on.
+  useEffect(() => {
+    if (!autoOn || !onRecord) return;
+    const base = new Date(); base.setHours(0, 0, 0, 0); const b = base.getTime();
+    const hm = (t) => { const [h, mm] = String(t || "09:15").split(":").map(Number); return b + (h * 60 + mm) * 60000; };
+    autoTrades.forEach((t) => onRecord({ id: `auto-${market}-${t.sym}-${DAY}`, sym: t.sym, name: t.under || t.sym, entry: t.entry, entryAt: hm(t.entryTime), exit: t.exit, exitAt: hm(t.exitTime), pnl: t.pnl, qty: t.qty, market: t.m, tradeType: "Auto Buy", exitType: t.win ? "Exit trigger" : "Stop loss" }));
+  }, [autoOn, market]);
   const setOv = (t, field, val) => setAutoOverrides((o) => { const cur = o[t.sym] || { tp: t.tpPct, sl: t.slPct }; return { ...o, [t.sym]: { ...cur, [field]: val === "" ? cur[field] : +val } }; });
   // period stats (shown regardless of on/off)
   const bizDaysThisMonth = () => { const now = new Date(); let c = 0; for (let d = 1; d <= now.getDate(); d++) { const wd = new Date(now.getFullYear(), now.getMonth(), d).getDay(); if (wd >= 1 && wd <= 5) c++; } return c; };
@@ -1738,31 +1787,33 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy,
         </div>
       </Pop>
 
-      {/* Stock Ideas carousel (not for F&O) */}
-      {market !== "FNO" && <StockIdeasStrip onOpen={onOpen} onBuy={onBuy} market={market} />}
+      {/* Ideas carousel (not for F&O or Commodity) */}
+      {market !== "FNO" && market !== "Commodity" && <StockIdeasStrip onOpen={onOpen} onBuy={onBuy} market={market} />}
 
       {/* F&O Picks (Indian derivatives) */}
       {(market === "IN" || market === "FNO") && <FnoPicks onOpen={onOpen} />}
 
-      {/* Market pulse strip (VIX, index, hot stocks) */}
-      <MarketPulseStrip market={market} list={list} onOpen={onOpen} />
+      {/* Market pulse strip — not for Commodity */}
+      {market !== "Commodity" && <MarketPulseStrip market={market} list={list} onOpen={onOpen} />}
 
-      {/* Trending */}
-      <Section title="Trending now" icon={<TrendingUp size={17} color="#0FB97D" />}>
-        <div className="hide-scroll" style={{ display: "flex", gap: 10, overflowX: "auto" }}>
-          {trending.map((s) => <MiniRow key={s.sym} s={s} market={market} onOpen={onOpen} watched={watch.includes(s.sym)} toggleWatch={toggleWatch} />)}
-        </div>
-      </Section>
+      {/* Trending — not for Commodity; F&O shows ATM options */}
+      {market !== "Commodity" && (
+        <Section title="Trending now" icon={<TrendingUp size={17} color="#0FB97D" />}>
+          <div className="hide-scroll" style={{ display: "flex", gap: 10, overflowX: "auto" }}>
+            {trendingView.map((s) => <MiniRow key={s.sym} s={s} market={market} onOpen={onOpen} watched={watch.includes(s.sym)} toggleWatch={toggleWatch} />)}
+          </div>
+        </Section>
+      )}
 
-      {/* Screener — not for F&O */}
-      {market !== "FNO" && (
+      {/* Screener — not for F&O or Commodity */}
+      {market !== "FNO" && market !== "Commodity" && (
         <Pop style={{ marginTop: 40 }}>
-          <Screener onOpen={onOpen} market={market} list={list} />
+          <Screener onOpen={onOpen} market={market} list={list} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} />
         </Pop>
       )}
 
-      {/* Gainers / Losers — not for F&O */}
-      {market !== "FNO" && (
+      {/* Gainers / Losers — not for F&O or Commodity */}
+      {market !== "FNO" && market !== "Commodity" && (
         <Section title="Top gainers & losers" icon={<Zap size={17} color="#E8A33D" />}
           right={
             <div className="pill" style={{ display: "flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3 }}>
@@ -1777,14 +1828,14 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy,
         </Section>
       )}
 
-      {/* Most traded — carousel */}
+      {/* Most traded — carousel; F&O shows ATM options */}
       <Section title="Most traded" icon={<Activity size={17} color="var(--primary)" />}>
         <div className="hide-scroll" style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
-          {traded.map((s) => (
+          {tradedView.map((s) => (
             <CarouselCard key={s.sym} s={s} market={market} onOpen={onOpen} width={210} watched={watch.includes(s.sym)} toggleWatch={toggleWatch}>
               <div style={{ marginTop: 10, background: "var(--bg)", borderRadius: 12, padding: "8px 11px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600 }}>Volume</span>
-                <span className="mono" style={{ fontSize: 12, fontWeight: 700 }}>{compact(s.vol)}</span>
+                <span style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600 }}>{market === "FNO" ? "OI" : "Volume"}</span>
+                <span className="mono" style={{ fontSize: 12, fontWeight: 700 }}>{compact(market === "FNO" ? (s.oi || s.vol) : s.vol)}</span>
               </div>
             </CarouselCard>
           ))}
@@ -1805,8 +1856,8 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy,
         </Section>
       )}
 
-      {/* Smart money — carousel, institution names + total trade value */}
-      {smart.length > 0 && (
+      {/* Smart money — not for F&O or Commodity */}
+      {market !== "FNO" && market !== "Commodity" && smart.length > 0 && (
         <Section title="Smart Money picks" icon={<Building2 size={17} color="var(--primary)" />}>
           <div className="hide-scroll" style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
             {smart.map((s) => (
@@ -1875,7 +1926,7 @@ function matchScreen(list, res) {
     return res.conds.every((c) => { const x = s[c.m]; if (x == null || isNaN(x)) return false; return c.o === ">" ? x > c.v : c.o === "<" ? x < c.v : c.o === ">=" ? x >= c.v : x <= c.v; });
   });
 }
-function Screener({ onOpen, market, list }) {
+function Screener({ onOpen, market, list, watchlists, addToWatch, createWatchlist }) {
   const [filters, setFilters] = useState([{ m: "rsi", o: ">", v: "50" }]);
   const [text, setText] = useState("");
   const [results, setResults] = useState(null);
@@ -1942,7 +1993,12 @@ function Screener({ onOpen, market, list }) {
           <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>{results.length} match{results.length !== 1 ? "es" : ""}</div>
           <div className="card" style={{ padding: "4px 12px" }}>
             {results.length === 0 ? <div style={{ padding: 20, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No stocks match these rules. Try loosening a filter.</div>
-              : results.map((s) => <ListRow key={s.sym} s={s} market={market} onOpen={onOpen} />)}
+              : results.map((s) => (
+                <div key={s.sym} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}><ListRow s={s} market={market} onOpen={onOpen} /></div>
+                  {addToWatch && <WatchAddButton sym={s.sym} watchlists={watchlists} onAdd={addToWatch} onCreate={createWatchlist} />}
+                </div>
+              ))}
           </div>
         </div>
       )}
@@ -1952,7 +2008,7 @@ function Screener({ onOpen, market, list }) {
 const selStyle = { flex: 1, border: "1px solid var(--line)", borderRadius: 10, padding: "9px 8px", fontSize: 12.5, background: "var(--surface)", color: "var(--ink)" };
 
 /* ============================== VIRTUAL TRADE ============================== */
-function TradeView({ wallet, setWallet, portfolio, setPortfolio, preset, market, recordTrade }) {
+function TradeView({ walletMap, adjustWallet, portfolio, setPortfolio, preset, market, recordTrade }) {
   const [sel, setSel] = useState(preset || ALL[0]);
   const [qty, setQty] = useState(1);
   const [side, setSide] = useState("Buy");
@@ -1962,6 +2018,7 @@ function TradeView({ wallet, setWallet, portfolio, setPortfolio, preset, market,
   const [msg, setMsg] = useState(null);
   useEffect(() => { if (preset) setSel(preset); }, [preset]);
   const m = marketOf(sel.sym);
+  const wallet = walletMap[m] ?? 1000000;
   const holding = portfolio.find((p) => p.sym === sel.sym);
   useEffect(() => { if (side === "Sell" && !holding) setSide("Buy"); }, [sel, holding, side]);
   const needsPx = ordType === "Limit" || ordType === "Stop-limit";
@@ -1970,8 +2027,8 @@ function TradeView({ wallet, setWallet, portfolio, setPortfolio, preset, market,
   const risk = { ...(sl !== "" ? { sl: +sl } : {}), ...(tsl !== "" ? { tsl: +tsl } : {}), ...(tp !== "" ? { tp: +tp } : {}), ordType };
   const exec = () => {
     if (side === "Buy") {
-      if (cost > wallet) { setMsg({ t: "Not enough virtual funds for this order.", e: true }); return; }
-      setWallet((w) => w - cost);
+      if (cost > wallet) { setMsg({ t: `Not enough funds in your ${MKT_LABEL[m] || m} wallet.`, e: true }); return; }
+      adjustWallet(m, -cost);
       setPortfolio((p) => {
         const ex = p.find((h) => h.sym === sel.sym);
         if (ex) { const tq = ex.qty + qty; return p.map((h) => h.sym === sel.sym ? { ...h, qty: tq, buy: (h.buy * h.qty + cost) / tq, ...risk } : h); }
@@ -1980,8 +2037,8 @@ function TradeView({ wallet, setWallet, portfolio, setPortfolio, preset, market,
       setMsg({ t: `${ordType} buy: ${qty} ${sel.sym} @ ${fmt(execPx, m)}${sl || tsl || tp ? " · risk orders set" : ""}.`, e: false });
     } else {
       if (!holding || holding.qty < qty) { setMsg({ t: "You don't hold enough units to sell.", e: true }); return; }
-      setWallet((w) => w + cost);
-      recordTrade && recordTrade({ sym: sel.sym, name: sel.name, entry: holding.buy, entryAt: holding.date, exit: execPx, exitAt: Date.now(), pnl: +((execPx - holding.buy) * qty).toFixed(2), qty, market: m });
+      adjustWallet(m, +cost);
+      recordTrade && recordTrade({ sym: sel.sym, name: sel.name, entry: holding.buy, entryAt: holding.date, exit: execPx, exitAt: Date.now(), pnl: +((execPx - holding.buy) * qty).toFixed(2), qty, market: m, tradeType: "Manual", exitType: "Manual" });
       setPortfolio((p) => p.map((h) => h.sym === sel.sym ? { ...h, qty: h.qty - qty } : h).filter((h) => h.qty > 0));
       setMsg({ t: `Sold ${qty} ${sel.sym} at ${fmt(execPx, m)} — credited to wallet.`, e: false });
     }
@@ -2777,7 +2834,7 @@ function TemplateCard({ t, onActivate, onToggleBt, btActive }) {
     </div>
   );
 }
-function Automation({ market = "IN" }) {
+function Automation({ market = "IN", onRecord }) {
   const [mode, setMode] = useState("builder");
   const [defs, setDefs] = useState([
     { id: 1, type: "EMA", len: "50", tf: "1D", name: "EMA1" },
@@ -2851,15 +2908,38 @@ function Automation({ market = "IN" }) {
 
   const saveStrategy = (makeActive) => {
     const name = stratName.trim() || (mode === "builder" ? "Custom strategy" : "Plain-English strategy");
-    const strat = { id: "u" + Date.now(), name, by: "You", active: makeActive, alerts: false, cfg, cap: parseInt(capital) || 100000, symbols: deploySyms.length ? deploySyms : ["NIFTY50"], created: Date.now() };
+    const id = "u" + Date.now();
+    const symbols = deploySyms.length ? deploySyms : ["NIFTY50"];
+    const strat = { id, name, by: "You", active: makeActive, alerts: false, cfg, cap: parseInt(capital) || 100000, symbols, created: Date.now() };
     setStrats((p) => [strat, ...p]);
     setStratName(""); setShowBuilder(false);
+    if (makeActive) recordAutomateTrades(id, name, cfg, symbols);
     setToast(`${name} ${makeActive ? "deployed & running" : "saved as draft"}`);
   };
   const activateTemplate = (t, syms) => {
     const symbols = syms && syms.length ? syms : ["NIFTY50"];
-    setStrats((p) => [{ id: "t" + Date.now(), name: t.name, by: "Matrix", active: true, alerts: false, cfg: t.cfg, cap: 100000, symbols, created: Date.now() }, ...p]);
+    const id = "t" + Date.now();
+    setStrats((p) => [{ id, name: t.name, by: "Matrix", active: true, alerts: false, cfg: t.cfg, cap: 100000, symbols, created: Date.now() }, ...p]);
+    recordAutomateTrades(id, t.name, t.cfg, symbols);
     setToast(`${t.name} activated on ${symbols.join(", ")}`);
+  };
+  // Record simulated trades produced by an activated automation (deduped by id).
+  const recordAutomateTrades = (stratId, name, cfg, symbols) => {
+    if (!onRecord) return;
+    const slp = (cfg && cfg.sl) || 3, tpp = (cfg && cfg.tp) || 6;
+    symbols.forEach((sym) => {
+      const s = ALL.find((a) => a.sym === sym); if (!s) return;
+      const r = lcg(hash(stratId + sym));
+      const n = 2 + Math.floor(r() * 3);
+      for (let i = 0; i < n; i++) {
+        const win = r() > 0.45;
+        const entry = +(s.price * (0.98 + r() * 0.04)).toFixed(2);
+        const exit = +(win ? entry * (1 + tpp / 100) : entry * (1 - slp / 100)).toFixed(2);
+        const qty = Math.max(1, Math.floor(100000 / entry));
+        const now = Date.now() - i * 2 * 86400000;
+        onRecord({ id: `automate-${stratId}-${sym}-${i}`, sym, name: s.name, entry, entryAt: now - 3600e3, exit, exitAt: now, pnl: +((exit - entry) * qty).toFixed(2), qty, market: marketOf(sym), tradeType: "Automate", exitType: win ? "Exit trigger" : "Stop loss" });
+      }
+    });
   };
   const toggleActive = (id) => setStrats((p) => p.map((s) => s.id === id ? { ...s, active: !s.active } : s));
   const toggleAlerts = (s) => { const willOn = !s.alerts; setStrats((p) => p.map((x) => x.id === s.id ? { ...x, alerts: willOn } : x)); if (willOn) fireAlert(s); };
@@ -3200,7 +3280,7 @@ function NumF({ label, v, set }) {
 }
 
 /* ============================== SEARCH OVERLAY ============================== */
-function SearchOverlay({ onClose, onOpen }) {
+function SearchOverlay({ onClose, onOpen, watchlists, addToWatch, createWatchlist }) {
   const [q, setQ] = useState("");
   const res = ALL.filter((s) => (s.sym + s.name).toLowerCase().includes(q.toLowerCase())).slice(0, 20);
   return (
@@ -3211,7 +3291,12 @@ function SearchOverlay({ onClose, onOpen }) {
         <X size={22} className="tap" onClick={onClose} color="var(--muted)" />
       </div>
       <div className="hide-scroll" style={{ overflowY: "auto", height: "calc(100% - 60px)", padding: "0 14px" }}>
-        {res.map((s) => <ListRow key={s.sym} s={s} market={marketOf(s.sym)} onOpen={(x) => { onOpen(x); }} />)}
+        {res.map((s) => (
+          <div key={s.sym} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}><ListRow s={s} market={marketOf(s.sym)} onOpen={(x) => { onOpen(x); }} /></div>
+            <WatchAddButton sym={s.sym} watchlists={watchlists} onAdd={addToWatch} onCreate={createWatchlist} />
+          </div>
+        ))}
         {res.length === 0 && <div style={{ textAlign: "center", color: "var(--muted)", marginTop: 40, fontSize: 14 }}>No matches. Try “TCS”, “NVDA”, “BTC”…</div>}
       </div>
     </div>
@@ -3306,27 +3391,76 @@ function Onboarding({ onDone }) {
 }
 
 /* ============================== PROFILE SHEET ============================== */
-function ProfileSheet({ profile, wallet, onClose, onTradeHistory }) {
+function LoginModal({ onClose, onAuthed }) {
+  const [tab, setTab] = useState("login");
+  const [phone, setPhone] = useState(""); const [pin, setPin] = useState(""); const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState(null);
+  const submit = async () => {
+    setErr(null); setBusy(true);
+    const res = tab === "login" ? await apiLogin(phone, pin) : await apiRegister(phone, pin, name);
+    setBusy(false);
+    if (res && res.ok) onAuthed({ phone: res.userId, name: res.name || name || "" });
+    else setErr((res && res.error) || "Something went wrong.");
+  };
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(10,10,20,.4)", zIndex: 90, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div onClick={(e) => e.stopPropagation()} className="sheet card" style={{ width: "100%", maxWidth: 460, borderRadius: "24px 24px 0 0", padding: 22 }}>
+        <div style={{ width: 40, height: 4, background: "var(--line)", borderRadius: 9, margin: "0 auto 16px" }} />
+        <div className="disp" style={{ fontWeight: 700, fontSize: 19 }}>{tab === "login" ? "Log in" : "Create account"}</div>
+        <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 3 }}>Use your phone number and a PIN to save trades, automations and preferences across visits.</div>
+        <div className="pill" style={{ display: "flex", background: "var(--bg)", padding: 4, marginTop: 16 }}>
+          {["login", "register"].map((x) => (
+            <button key={x} onClick={() => { setTab(x); setErr(null); }} className="pill tap disp" style={{ flex: 1, padding: 9, border: "none", fontWeight: 700, fontSize: 13, background: tab === x ? "var(--primary)" : "transparent", color: tab === x ? "var(--on-primary)" : "var(--muted)" }}>{x === "login" ? "Log in" : "Register"}</button>
+          ))}
+        </div>
+        {tab === "register" && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, marginBottom: 4 }}>Name (optional)</div>
+            <input value={name} onChange={(e) => setName(e.target.value)} className="no-ring" style={inpStyle} placeholder="Your name" />
+          </div>
+        )}
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, marginBottom: 4 }}>Phone number</div>
+          <input value={phone} onChange={(e) => setPhone(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" className="no-ring mono" style={inpStyle} placeholder="9876543210" />
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, marginBottom: 4 }}>PIN (4+ digits)</div>
+          <input value={pin} onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" type="password" className="no-ring mono" style={inpStyle} placeholder="••••" />
+        </div>
+        {err && <div style={{ fontSize: 12, color: "var(--down)", marginTop: 10, fontWeight: 600 }}>{err}</div>}
+        <button onClick={submit} disabled={busy} className="tap disp glow" style={{ width: "100%", marginTop: 16, background: "linear-gradient(120deg,var(--primary),var(--primary-2))", color: "var(--on-primary)", border: "none", borderRadius: 14, padding: 14, fontWeight: 800, fontSize: 14.5, opacity: busy ? 0.6 : 1 }}>{busy ? "Please wait…" : tab === "login" ? "Log in" : "Create account"}</button>
+        <button onClick={onClose} className="tap disp" style={{ width: "100%", marginTop: 10, background: "transparent", color: "var(--muted)", border: "none", fontWeight: 700, fontSize: 13 }}>Continue as guest</button>
+      </div>
+    </div>
+  );
+}
+const inpStyle = { width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: "12px 14px", fontSize: 15, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" };
+function ProfileSheet({ profile, wallet, onClose, onTradeHistory, auth, onLogin, onLogout }) {
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(10,10,20,.32)", zIndex: 60, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
       <div onClick={(e) => e.stopPropagation()} className="sheet card" style={{ width: "100%", maxWidth: 460, borderRadius: "24px 24px 0 0", padding: 20 }}>
         <div style={{ width: 40, height: 4, background: "var(--line)", borderRadius: 9, margin: "0 auto 16px" }} />
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ width: 52, height: 52, borderRadius: 16, background: "linear-gradient(135deg,var(--primary),var(--primary-2))", display: "grid", placeItems: "center", color: "#fff", fontWeight: 700, fontSize: 20 }} className="disp">M</div>
-          <div><div className="disp" style={{ fontWeight: 700, fontSize: 17 }}>My Profile</div><div style={{ fontSize: 12.5, color: "var(--muted)" }}>Virtual investor</div></div>
+          <div><div className="disp" style={{ fontWeight: 700, fontSize: 17 }}>{auth && auth.name ? auth.name : "My Profile"}</div><div style={{ fontSize: 12.5, color: "var(--muted)" }}>{auth ? `Logged in · +${auth.phone}` : "Guest session"}</div></div>
         </div>
         <div className="card" style={{ marginTop: 16, padding: 14, background: "var(--bg)" }}>
           <div style={{ fontSize: 12, color: "var(--muted)" }}>Virtual wallet</div>
           <div className="mono" style={{ fontWeight: 700, fontSize: 22 }}>{fmt(wallet, "IN")}</div>
         </div>
         <button onClick={() => { onClose && onClose(); onTradeHistory && onTradeHistory(); }} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--primary)", color: "var(--on-primary)", border: "none", borderRadius: 14, padding: 13, fontWeight: 800, fontSize: 13.5, display: "flex", gap: 7, alignItems: "center", justifyContent: "center" }}><Clock size={16} /> Trade history</button>
+        {auth ? (
+          <button onClick={() => { onClose && onClose(); onLogout && onLogout(); }} className="tap disp" style={{ width: "100%", marginTop: 10, background: "var(--surface)", color: "var(--down)", border: "1px solid var(--line)", borderRadius: 14, padding: 12, fontWeight: 800, fontSize: 13.5, display: "flex", gap: 7, alignItems: "center", justifyContent: "center" }}><LogOut size={16} /> Log out</button>
+        ) : (
+          <button onClick={() => { onClose && onClose(); onLogin && onLogin(); }} className="tap disp" style={{ width: "100%", marginTop: 10, background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 14, padding: 12, fontWeight: 800, fontSize: 13.5, display: "flex", gap: 7, alignItems: "center", justifyContent: "center" }}><LogIn size={16} /> Log in / Register</button>
+        )}
         {profile ? (
           <div style={{ marginTop: 14 }}>
             {[["Skill", profile.proficiency], ["Risk", profile.risk], ["Style", profile.style], ["Caps", profile.caps.join(", ") || "All"], ["Sectors", profile.sectors.join(", ") || "All"]].map(([k, v]) => (
               <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "11px 2px", borderBottom: "1px solid var(--line)", fontSize: 13.5 }}><span style={{ color: "var(--muted)" }}>{k}</span><span style={{ fontWeight: 600 }}>{v}</span></div>
             ))}
           </div>
-        ) : <div style={{ marginTop: 14, fontSize: 13, color: "var(--muted)" }}>Personalisation skipped. Reopen the app to set preferences.</div>}
+        ) : <div style={{ marginTop: 14, fontSize: 13, color: "var(--muted)" }}>Login to get a personalised experience.</div>}
       </div>
     </div>
   );
@@ -3335,31 +3469,71 @@ function TradeHistory({ userId, trades, onClose }) {
   const RANGES = [["7", "7d"], ["30", "30d"], ["90", "90d"], ["365", "1y"], ["all", "All"]];
   const [range, setRange] = useState("30");
   const [remote, setRemote] = useState(null);
+  const [fSym, setFSym] = useState([]);       // multi-select filters
+  const [fType, setFType] = useState([]);
+  const [fExit, setFExit] = useState([]);
+  const [openF, setOpenF] = useState(null);   // which filter dropdown is open
   const now = Date.now();
   const from = range === "all" ? 0 : now - (+range) * 86400000;
   useEffect(() => { let stop = false; setRemote(null); if (BACKEND_URL) fetchTrades(userId, from, now).then((t) => { if (!stop && t) setRemote(t); }).catch(() => {}); return () => { stop = true; }; }, [range]);
-  const rows = (remote || trades).filter((t) => (t.exitAt || t.entryAt || 0) >= from).sort((a, b) => (b.exitAt || 0) - (a.exitAt || 0));
+  const src = (remote || trades).filter((t) => (t.exitAt || t.entryAt || 0) >= from);
+  const allSyms = [...new Set(src.map((t) => t.sym))].sort();
+  const TYPES = ["Manual", "Automate", "Auto Buy"];
+  const EXITS = ["Manual", "Exit trigger", "Stop loss"];
+  const rows = src
+    .filter((t) => (fSym.length ? fSym.includes(t.sym) : true))
+    .filter((t) => (fType.length ? fType.includes(t.tradeType || "Manual") : true))
+    .filter((t) => (fExit.length ? fExit.includes(t.exitType || "Manual") : true))
+    .sort((a, b) => (b.exitAt || 0) - (a.exitAt || 0));
   const dt = (ms) => ms ? new Date(ms).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
   const totalPnl = rows.reduce((a, t) => a + (t.pnl || 0), 0);
+  const toggle = (setter, arr, v) => setter(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
+  const typeColor = (tt) => tt === "Auto Buy" ? "var(--primary)" : tt === "Automate" ? "#8B5CF6" : "var(--muted)";
+  const exitColor = (et) => et === "Stop loss" ? "var(--down)" : et === "Exit trigger" ? "var(--up)" : "var(--muted)";
+  const FilterChip = ({ label, options, sel, setter, colors }) => (
+    <div style={{ position: "relative", flex: "0 0 auto" }}>
+      <button onClick={() => setOpenF(openF === label ? null : label)} className="pill tap disp" style={{ padding: "7px 12px", fontSize: 11.5, fontWeight: 700, border: "1px solid " + (sel.length ? "var(--primary)" : "var(--line)"), background: sel.length ? "var(--primary-soft)" : "var(--surface)", color: sel.length ? "var(--primary)" : "var(--ink)", display: "flex", gap: 5, alignItems: "center" }}>{label}{sel.length ? ` (${sel.length})` : ""}<ChevronRight size={13} style={{ transform: openF === label ? "rotate(90deg)" : "rotate(0)", transition: "transform .15s" }} /></button>
+      {openF === label && (
+        <div className="card" style={{ position: "absolute", top: 38, left: 0, zIndex: 30, minWidth: 170, maxHeight: 240, overflowY: "auto", padding: 8, boxShadow: "0 12px 30px rgba(0,0,0,.18)" }}>
+          {options.length === 0 ? <div style={{ fontSize: 11, color: "var(--muted)", padding: 8 }}>No options</div> : options.map((o) => (
+            <button key={o} onClick={() => toggle(setter, sel, o)} className="tap disp" style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "8px 8px", border: "none", background: "transparent", color: "var(--ink)", fontSize: 12.5, fontWeight: 600, textAlign: "left" }}>
+              <span style={{ width: 16, height: 16, borderRadius: 5, border: "1.5px solid " + (sel.includes(o) ? "var(--primary)" : "var(--line)"), background: sel.includes(o) ? "var(--primary)" : "transparent", display: "grid", placeItems: "center", flexShrink: 0 }}>{sel.includes(o) && <Check size={11} color="var(--on-primary)" />}</span>
+              <span style={{ color: colors ? colors(o) : "var(--ink)" }}>{o}</span>
+            </button>
+          ))}
+          {sel.length > 0 && <button onClick={() => setter([])} className="tap disp" style={{ width: "100%", marginTop: 4, padding: 7, border: "none", background: "var(--elev)", borderRadius: 8, fontSize: 11, fontWeight: 700, color: "var(--muted)" }}>Clear</button>}
+        </div>
+      )}
+    </div>
+  );
   return (
-    <div style={{ position: "fixed", inset: 0, background: "var(--bg)", zIndex: 80, display: "flex", flexDirection: "column" }}>
+    <div style={{ position: "fixed", inset: 0, background: "var(--bg)", zIndex: 80, display: "flex", flexDirection: "column" }} onClick={() => setOpenF(null)}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 16px 12px", borderBottom: "1px solid var(--line)" }}>
         <button onClick={onClose} className="tap" style={{ border: "none", background: "var(--elev)", borderRadius: 11, width: 36, height: 36, display: "grid", placeItems: "center" }}><ChevronLeft size={18} /></button>
         <div><div className="disp" style={{ fontWeight: 700, fontSize: 17 }}>Trade history</div><div style={{ fontSize: 11.5, color: "var(--muted)" }}>{rows.length} trades · P&amp;L {totalPnl >= 0 ? "+" : ""}{fmt(totalPnl, "IN")}</div></div>
       </div>
-      <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "12px 16px" }}>
+      <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "12px 16px 6px" }}>
         {RANGES.map(([k, l]) => (
           <button key={k} onClick={() => setRange(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "7px 14px", fontSize: 12, fontWeight: 700, border: "1px solid " + (range === k ? "var(--primary)" : "var(--line)"), background: range === k ? "var(--primary)" : "var(--surface)", color: range === k ? "var(--on-primary)" : "var(--ink)" }}>{l}</button>
         ))}
       </div>
+      <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "4px 16px 10px", position: "relative", zIndex: 20 }} onClick={(e) => e.stopPropagation()}>
+        <FilterChip label="Symbol" options={allSyms} sel={fSym} setter={setFSym} />
+        <FilterChip label="Trade type" options={TYPES} sel={fType} setter={setFType} colors={typeColor} />
+        <FilterChip label="Exit type" options={EXITS} sel={fExit} setter={setFExit} colors={exitColor} />
+      </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 24px" }}>
         {rows.length === 0 ? (
-          <div className="card" style={{ padding: 30, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No trades in this period. Completed sells will appear here with their P&amp;L.</div>
+          <div className="card" style={{ padding: 30, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No trades match. Manual sells, auto-buy exits and automations all record here.</div>
         ) : rows.map((t) => (
           <div key={t.id} className="card" style={{ marginTop: 10, padding: 13 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div><span className="disp" style={{ fontWeight: 700, fontSize: 14 }}>{t.sym}</span> <span style={{ fontSize: 11, color: "var(--muted)" }}>×{t.qty}</span></div>
+              <div style={{ minWidth: 0 }}><span className="disp" style={{ fontWeight: 700, fontSize: 14 }}>{t.sym}</span> <span style={{ fontSize: 11, color: "var(--muted)" }}>×{t.qty}</span></div>
               <span className="mono" style={{ fontWeight: 800, fontSize: 14, color: (t.pnl || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{(t.pnl || 0) >= 0 ? "+" : ""}{fmt(t.pnl || 0, t.market || "IN")}</span>
+            </div>
+            <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+              <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: typeColor(t.tradeType || "Manual") }}>{t.tradeType || "Manual"}</span>
+              <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: exitColor(t.exitType || "Manual") }}>Exit: {t.exitType || "Manual"}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 9, fontSize: 11 }}>
               <div><div style={{ color: "var(--muted)", fontSize: 9.5 }}>Entry</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.entry, t.market || "IN")}</div><div style={{ color: "var(--muted)", fontSize: 9.5 }}>{dt(t.entryAt)}</div></div>
@@ -3382,16 +3556,27 @@ export default function App() {
   const [tab, setTab] = useState("home");
   const [market, setMarket] = useState("IN");
   const [segment, setSegment] = useState("Stocks");
-  const [wallet, setWallet] = useState(1000000);
+  const [walletMap, setWalletMap] = useState({ IN: 1000000, US: 1000000, Crypto: 1000000, FNO: 1000000, Commodity: 1000000 });
+  const wallet = walletMap[market] ?? 1000000;
+  const adjustWallet = (mkt, delta) => setWalletMap((w) => ({ ...w, [mkt]: (w[mkt] ?? 1000000) + delta }));
   const [portfolio, setPortfolio] = useState([]);
-  const [userId] = useState(getUserId);
+  const [guestId] = useState(getUserId);
+  const [auth, setAuth] = useState(() => lsGet("mx_auth", null));   // { phone, name } when logged in, else null
+  const userId = auth ? "ph_" + auth.phone : guestId;
+  const [loginOpen, setLoginOpen] = useState(false);
+  const doLogout = () => { setAuth(null); lsSet("mx_auth", null); };
+  const onAuthed = (a) => { setAuth(a); lsSet("mx_auth", a); setLoginOpen(false); };
   const [trades, setTrades] = useState(() => lsGet("mx_trades", []));
   const [histOpen, setHistOpen] = useState(false);
   const recordTrade = (t) => {
-    const rec = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, ...t };
-    setTrades((p) => { const nx = [rec, ...p].slice(0, 5000); lsSet("mx_trades", nx); return nx; });
+    const rec = { id: t.id || `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, tradeType: t.tradeType || "Manual", exitType: t.exitType || "Manual", ...t };
+    if (!rec.tradeType) rec.tradeType = "Manual";
+    if (!rec.exitType) rec.exitType = "Manual";
+    setTrades((p) => { if (rec.id && p.some((x) => x.id === rec.id)) return p; const nx = [rec, ...p].slice(0, 5000); lsSet("mx_trades", nx); return nx; });
     postTrade(userId, rec);
   };
+  // Record simulated auto-buy / automate trades once per day (deduped by stable id).
+  const recordBatch = (list) => { list.forEach((t) => recordTrade(t)); };
   // Portfolio price snapshot — frozen until the user buys or sells (portfolio changes).
   const [priceSnap, setPriceSnap] = useState({});
   useEffect(() => {
@@ -3442,34 +3627,37 @@ export default function App() {
     return () => { stop = true; clearInterval(id); };
   }, [market]);
 
-  const watch = useMemo(() => (watchlists.find((w) => w.id === activeWl)?.syms) || [], [watchlists, activeWl]);
+  const watch = useMemo(() => [...new Set(watchlists.flatMap((w) => w.syms))], [watchlists]);
   const toggleWatch = (sym) => setWatchlists((p) => p.map((w) => w.id === activeWl ? { ...w, syms: w.syms.includes(sym) ? w.syms.filter((x) => x !== sym) : [...w.syms, sym] } : w));
-  const createWatchlist = (name) => { const id = "w" + Date.now(); setWatchlists((p) => [...p, { id, name: name && name.trim() ? name.trim() : "List " + (p.length + 1), syms: [] }]); setActiveWl(id); };
+  const addToWatch = (sym, listId) => setWatchlists((p) => p.map((w) => w.id === (listId || activeWl) ? (w.syms.includes(sym) ? w : { ...w, syms: [...w.syms, sym] }) : w));
+  const createWatchlist = (name) => { const id = "w" + Date.now(); setWatchlists((p) => [...p, { id, name: name && name.trim() ? name.trim() : "List " + (p.length + 1), syms: [] }]); setActiveWl(id); return id; };
   const deleteWatchlist = (id) => setWatchlists((p) => { const n = p.filter((w) => w.id !== id); if (!n.length) { setActiveWl("w1"); return [{ id: "w1", name: "My Watchlist", syms: [] }]; } if (id === activeWl) setActiveWl(n[0].id); return n; });
   const openStock = (s) => { setSearch(false); setDrawer(s); };
   const openDetail = (s) => { setDrawer(null); setDetail(s); };
   const goTrade = (s) => { setDetail(null); setTradePreset(s); setTab("trade"); };
   const buyStock = (s, qty = 1, opts = {}) => {
+    const mkt = marketOf(s.sym);
     const cost = s.price * qty;
-    if (cost > wallet) { setBuyToast({ t: "Not enough virtual funds.", e: true }); return false; }
-    setWallet((w) => w - cost);
+    if (cost > (walletMap[mkt] ?? 0)) { setBuyToast({ t: `Not enough virtual funds in your ${MKT_LABEL[mkt] || mkt} wallet.`, e: true }); return false; }
+    adjustWallet(mkt, -cost);
     setPortfolio((p) => {
       const ex = p.find((h) => h.sym === s.sym);
       if (ex) { const tq = ex.qty + qty; return p.map((h) => h.sym === s.sym ? { ...h, qty: tq, buy: (h.buy * h.qty + cost) / tq, ...opts } : h); }
       return [...p, { sym: s.sym, name: s.name, qty, buy: s.price, date: Date.now(), ...opts }];
     });
-    setBuyToast({ t: `Bought ${qty} ${s.sym} @ ${fmt(s.price, marketOf(s.sym))} — added to portfolio.`, e: false });
+    setBuyToast({ t: `Bought ${qty} ${s.sym} @ ${fmt(s.price, mkt)} — added to portfolio.`, e: false });
     return true;
   };
   const sellStock = (s, qty = 1) => {
+    const mkt = marketOf(s.sym);
     const held = portfolio.find((h) => h.sym === s.sym);
     if (!held || held.qty < 1) { setBuyToast({ t: `You don't hold ${s.sym}.`, e: true }); return false; }
     const sellQty = Math.min(qty, held.qty);
     const proceeds = s.price * sellQty;
-    setWallet((w) => w + proceeds);
-    recordTrade({ sym: s.sym, name: s.name || held.name, entry: held.buy, entryAt: held.date, exit: s.price, exitAt: Date.now(), pnl: +((s.price - held.buy) * sellQty).toFixed(2), qty: sellQty, market: marketOf(s.sym) });
+    adjustWallet(mkt, +proceeds);
+    recordTrade({ sym: s.sym, name: s.name || held.name, entry: held.buy, entryAt: held.date, exit: s.price, exitAt: Date.now(), pnl: +((s.price - held.buy) * sellQty).toFixed(2), qty: sellQty, market: mkt, tradeType: "Manual", exitType: "Manual" });
     setPortfolio((p) => p.map((h) => h.sym === s.sym ? { ...h, qty: h.qty - sellQty } : h).filter((h) => h.qty > 0));
-    setBuyToast({ t: `Sold ${sellQty} ${s.sym} @ ${fmt(s.price, marketOf(s.sym))} — credited to wallet.`, e: false });
+    setBuyToast({ t: `Sold ${sellQty} ${s.sym} @ ${fmt(s.price, mkt)} — credited to wallet.`, e: false });
     return true;
   };
   const updateHolding = (sym, patch) => setPortfolio((p) => p.map((h) => h.sym === sym ? { ...h, ...patch } : h));
@@ -3542,10 +3730,10 @@ export default function App() {
             <DetailPage s={detail} onBack={() => setDetail(null)} watched={watch.includes(detail.sym)} toggleWatch={toggleWatch} onTrade={goTrade} onBuy={buyStock} />
           ) : (
             <>
-              {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} />}
-              {tab === "trade" && <TradeView wallet={wallet} setWallet={setWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} recordTrade={recordTrade} />}
+              {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} />}
+              {tab === "trade" && <TradeView walletMap={walletMap} adjustWallet={adjustWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} recordTrade={recordTrade} />}
               {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} market={market} />}
-              {tab === "automation" && <Automation market={market} />}
+              {tab === "automation" && <Automation market={market} onRecord={recordTrade} />}
               {tab === "portfolio" && <Portfolio portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} onBuy={buyStock} onSell={sellStock} onUpdate={updateHolding} priceSnap={priceSnap} />}
               {tab === "watchlist" && <WatchlistView watchlists={watchlists} activeWl={activeWl} setActiveWl={setActiveWl} createWatchlist={createWatchlist} deleteWatchlist={deleteWatchlist} toggleWatch={toggleWatch} onOpen={openStock} />}
               {tab === "ask" && (
@@ -3575,8 +3763,9 @@ export default function App() {
       </div>
 
       {drawer && <Drawer s={drawer} onClose={() => setDrawer(null)} onDetails={openDetail} onBuy={buyStock} />}
-      {search && <SearchOverlay onClose={() => setSearch(false)} onOpen={openStock} />}
-      {showProfile && <ProfileSheet profile={profile} wallet={wallet} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} />}
+      {search && <SearchOverlay onClose={() => setSearch(false)} onOpen={openStock} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} />}
+      {showProfile && <ProfileSheet profile={profile} wallet={wallet} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={doLogout} />}
+      {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} onAuthed={onAuthed} />}
       {histOpen && <TradeHistory userId={userId} trades={trades} onClose={() => setHistOpen(false)} />}
       {buyToast && (
         <div style={{ position: "fixed", left: 0, right: 0, bottom: 96, display: "flex", justifyContent: "center", zIndex: 90, pointerEvents: "none" }}>
