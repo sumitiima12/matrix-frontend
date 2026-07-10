@@ -822,10 +822,11 @@ function CarouselCard({ s, market, onOpen, children, width = 250, watched, toggl
 
 /* ============================== ASK MATRIX (real Claude API) ============================== */
 /* ============================== ASK MATRIX (backend proxy or in-app) ============================== */
-// Set BACKEND_URL to your deployed proxy (e.g. "https://your-matrix-proxy.onrender.com")
-// to keep the Anthropic key server-side. Empty string = in-app mode (key injected by the
-// host runtime), which is what runs inside this preview.
-const BACKEND_URL = "https://matrix-qp1i.onrender.com";
+// 🔴 REQUIRED: paste YOUR Render backend URL here (from your Render dashboard),
+// e.g. "https://matrix-backend-ab12.onrender.com" — NO trailing slash.
+// While this is "", the app runs in offline SIM mode (no live prices, no login,
+// no Ask Matrix, no cross-device trade history).
+const BACKEND_URL = "https://matrix-qp1i.onrender.com";   // 👈 REPLACE with your real Render URL, e.g. "https://matrix-backend-xxxx.onrender.com"
 const MATRIX_PERSONA = "You are Matrix — the world's sharpest stock-market research assistant, fluent in fundamental analysis, technical analysis and macro/news-driven investing. Answer with crisp, structured, practical insight a confident GenZ investor can act on. Use short paragraphs or tight bullets. When giving a view, lay out the bull case, bear case and key levels rather than a bare command. Always end with a one-line reminder that this is educational research, not financial advice.";
 
 /* ------- LIVE PRICES (Yahoo Finance via the backend proxy) -------
@@ -895,13 +896,13 @@ async function apiLogin(phone, pin) {
 
 async function askMatrix(messages, system, maxTokens = 1000) {
   if (BACKEND_URL) {
-    // Proxy mode — key never touches the client.
+    // Proxy mode — key never touches the client. Backend tries Groq → OpenRouter → Gemini → Anthropic.
     const r = await fetch(`${BACKEND_URL}/api/ask`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messages, system, max_tokens: maxTokens }),
     });
-    if (!r.ok) throw new Error("proxy " + r.status);
-    const d = await r.json();
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || ("proxy " + r.status));
     return (d.text || "").trim();
   }
   // In-app fallback (host runtime injects the key).
@@ -959,7 +960,7 @@ function useMatrixChat(context, stock) {
       const out = await askMatrix(next, system, 1000);
       setMsgs([...next, { role: "assistant", content: out || (stock ? localDeepAnalysis(stock) : "I couldn't reach the live engine just now. Try again in a moment.") }]);
     } catch (e) {
-      setMsgs([...next, { role: "assistant", content: stock ? localDeepAnalysis(stock) : "I couldn't reach the live engine just now (set GEMINI_API_KEY on your proxy to enable full answers). Try again in a moment." }]);
+      setMsgs([...next, { role: "assistant", content: stock ? localDeepAnalysis(stock) : "I couldn't reach the Matrix engine just now. Make sure your backend is deployed and a GROQ_API_KEY is set on it (Groq's free tier works great). Try again in a moment." }]);
     } finally { setBusy(false); }
   }
   return { msgs, busy, send, reset: () => setMsgs([]) };
@@ -2092,6 +2093,7 @@ function TradeView({ walletMap, adjustWallet, portfolio, setPortfolio, preset, m
         return [...p, { sym: sel.sym, name: sel.name, qty, buy: execPx, date: Date.now(), ...risk }];
       });
       setMsg({ t: `${ordType} buy: ${qty} ${sel.sym} @ ${fmt(execPx, m)}${sl || tsl || tp ? " · risk orders set" : ""}.`, e: false });
+      recordTrade && recordTrade({ sym: sel.sym, name: sel.name, entry: execPx, entryAt: Date.now(), exit: null, exitAt: null, pnl: null, qty, market: m, tradeType: "Manual", exitType: "Open" });
     } else {
       if (!holding || holding.qty < qty) { setMsg({ t: "You don't hold enough units to sell.", e: true }); return; }
       adjustWallet(m, +cost);
@@ -2222,8 +2224,7 @@ function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, 
             </div>
             {(r.sl || r.tsl || r.tp) && <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, fontWeight: 600 }}>{r.tp ? `🎯 TP +${r.tp}% ` : ""}{r.sl ? `· 🛑 SL −${r.sl}% ` : ""}{r.tsl ? `· 🔻 TSL ${r.tsl}%` : ""}</div>}
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              <button onClick={() => onBuy && onBuy(st, 1)} className="tap disp" style={{ flex: 1, background: "linear-gradient(120deg,var(--up),#0EA968)", color: "#fff", border: "none", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5 }}>Buy</button>
-              <button onClick={() => setExpand(expand === r.sym ? null : r.sym)} className="tap disp" style={{ flex: 1, background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, display: "flex", gap: 5, alignItems: "center", justifyContent: "center" }}><SlidersHorizontal size={13} /> Manage</button>
+              <button onClick={() => setExpand(expand === r.sym ? null : r.sym)} className="tap disp" style={{ flex: 1, background: expand === r.sym ? "var(--primary)" : "var(--surface)", color: expand === r.sym ? "var(--on-primary)" : "var(--ink)", border: "1px solid var(--line)", borderRadius: 11, padding: 11, fontWeight: 800, fontSize: 12.5, display: "flex", gap: 5, alignItems: "center", justifyContent: "center" }}><SlidersHorizontal size={13} /> {expand === r.sym ? "Close" : "Manage · Buy / Sell"}</button>
             </div>
             {expand === r.sym && <ManageHolding r={r} st={st} onBuy={onBuy} onSell={onSell} onUpdate={onUpdate} onClose={() => setExpand(null)} />}
           </div>
@@ -2233,25 +2234,32 @@ function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, 
   );
 }
 function ManageHolding({ r, st, onBuy, onSell, onUpdate, onClose }) {
-  const [qty, setQty] = useState(1);
+  const [buyQty, setBuyQty] = useState(1);
+  const [sellQty, setSellQty] = useState(1);
   const [sl, setSl] = useState(r.sl ? String(r.sl) : "");
   const [tsl, setTsl] = useState(r.tsl ? String(r.tsl) : "");
   const [tp, setTp] = useState(r.tp ? String(r.tp) : "");
   const saveRisk = () => { onUpdate && onUpdate(r.sym, { sl: sl === "" ? undefined : +sl, tsl: tsl === "" ? undefined : +tsl, tp: tp === "" ? undefined : +tp }); onClose && onClose(); };
+  const stepper = (val, setter, max) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto" }}>
+      <button onClick={() => setter((q) => Math.max(1, q - 1))} className="tap" style={{ ...qBtn, width: 30, height: 30, fontSize: 16 }}>–</button>
+      <input value={val} onChange={(e) => setter(Math.max(1, Math.min(max || 9999, parseInt(e.target.value) || 1)))} className="no-ring mono" style={{ width: 44, textAlign: "center", border: "1px solid var(--line)", borderRadius: 9, padding: 6, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }} />
+      <button onClick={() => setter((q) => Math.min(max || 9999, q + 1))} className="tap" style={{ ...qBtn, width: 30, height: 30, fontSize: 16 }}>+</button>
+    </div>
+  );
   return (
     <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 12, fontWeight: 700 }}>Quantity</span>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="tap" style={{ ...qBtn, width: 30, height: 30, fontSize: 16 }}>–</button>
-          <input value={qty} onChange={(e) => setQty(Math.max(1, parseInt(e.target.value) || 1))} className="no-ring mono" style={{ width: 48, textAlign: "center", border: "1px solid var(--line)", borderRadius: 9, padding: 6, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }} />
-          <button onClick={() => setQty((q) => Math.min(r.qty, q + 1))} className="tap" style={{ ...qBtn, width: 30, height: 30, fontSize: 16 }}>+</button>
-        </div>
+      {/* Buy more */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {stepper(buyQty, setBuyQty)}
+        <button onClick={() => { onBuy && onBuy(st, buyQty); }} className="tap disp" style={{ flex: 1, background: "linear-gradient(120deg,var(--up),#0EA968)", color: "#fff", border: "none", borderRadius: 10, padding: 11, fontWeight: 800, fontSize: 13 }}>Buy more · {buyQty}</button>
       </div>
-      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-        <button onClick={() => onBuy && onBuy(st, qty)} className="tap disp" style={{ flex: 1, background: "var(--up)", color: "#fff", border: "none", borderRadius: 10, padding: 9, fontWeight: 800, fontSize: 12.5 }}>Buy {qty}</button>
-        <button onClick={() => { onSell && onSell(st, qty); onClose && onClose(); }} className="tap disp" style={{ flex: 1, background: "var(--down)", color: "#fff", border: "none", borderRadius: 10, padding: 9, fontWeight: 800, fontSize: 12.5 }}>Sell {qty}</button>
+      {/* Sell */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 9 }}>
+        {stepper(sellQty, setSellQty, r.qty)}
+        <button onClick={() => { onSell && onSell(st, sellQty); onClose && onClose(); }} className="tap disp" style={{ flex: 1, background: "linear-gradient(120deg,var(--down),#D93A4E)", color: "#fff", border: "none", borderRadius: 10, padding: 11, fontWeight: 800, fontSize: 13 }}>Sell · {sellQty}</button>
       </div>
+      <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 7 }}>You hold {r.qty} units · sell up to {r.qty}.</div>
       <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600, margin: "12px 0 6px" }}>Risk orders (%)</div>
       <div style={{ display: "flex", gap: 8 }}>
         {[["Stop loss", sl, setSl], ["Trailing SL", tsl, setTsl], ["Take profit", tp, setTp]].map(([lbl, val, setter]) => (
@@ -3371,42 +3379,61 @@ function SearchOverlay({ onClose, onOpen, watchlists, addToWatch, createWatchlis
 }
 
 /* ============================== ONBOARDING ============================== */
-function LoginScreen({ onEnter }) {
+function LoginScreen({ onAuthed, onGuest }) {
+  const [tab, setTab] = useState("login");
   const [mobile, setMobile] = useState("");
   const [pin, setPin] = useState("");
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
   const field = { width: "100%", background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.28)", borderRadius: 14, padding: "14px 16px", fontSize: 15, color: "#fff", outline: "none" };
+  const submit = async () => {
+    if (mobile.length < 6 || pin.length < 4) { setErr("Enter your mobile number and a 4+ digit PIN."); return; }
+    setErr(null); setBusy(true);
+    const res = tab === "login" ? await apiLogin(mobile, pin) : await apiRegister(mobile, pin, name);
+    setBusy(false);
+    if (res && res.ok) onAuthed({ phone: res.userId, name: res.name || name || "" });
+    else setErr((res && res.error) || "Something went wrong.");
+  };
   return (
-    <div className="mx" style={{ position: "fixed", inset: 0, zIndex: 100, background: "linear-gradient(165deg,#232327 0%,#161619 55%,#0C0C0E 100%)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+    <div className="mx" style={{ position: "fixed", inset: 0, zIndex: 100, background: "linear-gradient(165deg,#232327 0%,#161619 55%,#0C0C0E 100%)", display: "flex", flexDirection: "column", overflow: "auto" }}>
       <style>{`.lginput::placeholder{color:rgba(255,255,255,.55)}`}</style>
-      {/* ambient glow blobs */}
       <div style={{ position: "absolute", top: -80, right: -60, width: 280, height: 280, borderRadius: "50%", background: "radial-gradient(circle,rgba(255,255,255,.14),transparent 70%)", pointerEvents: "none" }} />
       <div style={{ position: "absolute", bottom: -100, left: -80, width: 320, height: 320, borderRadius: "50%", background: "radial-gradient(circle,rgba(200,200,210,.12),transparent 70%)", pointerEvents: "none" }} />
 
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 30px", position: "relative", maxWidth: 460, margin: "0 auto", width: "100%" }}>
-        <div style={{ textAlign: "center", marginBottom: 46 }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "30px", position: "relative", maxWidth: 460, margin: "0 auto", width: "100%" }}>
+        <div style={{ textAlign: "center", marginBottom: 34 }}>
           <div className="disp" style={{ fontWeight: 700, fontSize: 46, color: "#fff", letterSpacing: "-.02em", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
             <span style={{ fontSize: 38 }}>✦</span> Matrix
           </div>
           <div style={{ color: "rgba(255,255,255,.7)", fontSize: 12.5, fontWeight: 600, letterSpacing: ".22em", marginTop: 6 }}>SMART TRADING</div>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <input className="lginput mono" value={mobile} onChange={(e) => setMobile(e.target.value.replace(/[^0-9]/g, "").slice(0, 10))} inputMode="numeric" placeholder="Mobile number (optional)" style={field} />
-          <input className="lginput mono" value={pin} onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))} inputMode="numeric" type="password" placeholder="PIN (optional)" style={field} />
+        <div style={{ display: "flex", background: "rgba(255,255,255,.1)", borderRadius: 14, padding: 4, marginBottom: 16 }}>
+          {[["login", "Log in"], ["signup", "Sign up"]].map(([k, l]) => (
+            <button key={k} onClick={() => { setTab(k); setErr(null); }} className="tap disp" style={{ flex: 1, padding: 11, border: "none", borderRadius: 11, fontWeight: 800, fontSize: 13.5, background: tab === k ? "#fff" : "transparent", color: tab === k ? "#141416" : "rgba(255,255,255,.75)" }}>{l}</button>
+          ))}
         </div>
 
-        <button onClick={() => onEnter(mobile ? "user" : "guest")} className="tap disp" style={{ width: "100%", marginTop: 26, background: "#fff", color: "#141416", border: "none", borderRadius: 999, padding: 16, fontWeight: 800, fontSize: 15, letterSpacing: ".02em" }}>SIGN IN</button>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {tab === "signup" && <input className="lginput" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (optional)" style={field} />}
+          <input className="lginput mono" value={mobile} onChange={(e) => setMobile(e.target.value.replace(/[^0-9]/g, "").slice(0, 10))} inputMode="numeric" placeholder="Mobile number" style={field} />
+          <input className="lginput mono" value={pin} onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))} inputMode="numeric" type="password" placeholder="PIN (4+ digits)" style={field} />
+        </div>
+        {err && <div style={{ color: "#FFB3BE", fontSize: 12.5, fontWeight: 600, marginTop: 12 }}>{err}</div>}
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "22px 0" }}>
+        <button onClick={submit} disabled={busy} className="tap disp" style={{ width: "100%", marginTop: 22, background: "#fff", color: "#141416", border: "none", borderRadius: 999, padding: 16, fontWeight: 800, fontSize: 15, letterSpacing: ".02em", opacity: busy ? 0.6 : 1 }}>{busy ? "PLEASE WAIT…" : tab === "login" ? "LOG IN" : "CREATE ACCOUNT"}</button>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "20px 0" }}>
           <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.25)" }} />
           <span style={{ color: "rgba(255,255,255,.65)", fontSize: 11, fontWeight: 700 }}>OR</span>
           <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.25)" }} />
         </div>
 
-        <button onClick={() => onEnter("guest")} className="tap disp glow" style={{ width: "100%", background: "rgba(255,255,255,.14)", color: "#fff", border: "1.5px solid rgba(255,255,255,.5)", borderRadius: 999, padding: 15, fontWeight: 800, fontSize: 14.5, display: "flex", gap: 8, alignItems: "center", justifyContent: "center" }}>
+        <button onClick={onGuest} className="tap disp glow" style={{ width: "100%", background: "rgba(255,255,255,.14)", color: "#fff", border: "1.5px solid rgba(255,255,255,.5)", borderRadius: 999, padding: 15, fontWeight: 800, fontSize: 14.5, display: "flex", gap: 8, alignItems: "center", justifyContent: "center" }}>
           <User size={17} /> Continue as guest
         </button>
-        <div style={{ textAlign: "center", color: "rgba(255,255,255,.6)", fontSize: 11.5, marginTop: 14 }}>No signup, no mobile number, no PIN needed.</div>
+        <div style={{ textAlign: "center", color: "rgba(255,255,255,.6)", fontSize: 11.5, marginTop: 14 }}>Log in to save your trades, portfolio and automations across visits.</div>
       </div>
 
       <div style={{ textAlign: "center", color: "rgba(255,255,255,.55)", fontSize: 10.5, padding: "0 30px 26px", position: "relative" }}>Educational research, not investment advice.</div>
@@ -3546,7 +3573,7 @@ function TradeHistory({ userId, trades, onClose }) {
   const src = (remote || trades).filter((t) => (t.exitAt || t.entryAt || 0) >= from);
   const allSyms = [...new Set(src.map((t) => t.sym))].sort();
   const TYPES = ["Manual", "Automate", "Auto Buy"];
-  const EXITS = ["Manual", "Exit trigger", "Stop loss"];
+  const EXITS = ["Manual", "Exit trigger", "Stop loss", "Open"];
   const rows = src
     .filter((t) => (fSym.length ? fSym.includes(t.sym) : true))
     .filter((t) => (fType.length ? fType.includes(t.tradeType || "Manual") : true))
@@ -3554,9 +3581,10 @@ function TradeHistory({ userId, trades, onClose }) {
     .sort((a, b) => (b.exitAt || 0) - (a.exitAt || 0));
   const dt = (ms) => ms ? new Date(ms).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
   const totalPnl = rows.reduce((a, t) => a + (t.pnl || 0), 0);
+  const isOpen = (t) => t.pnl == null || t.exit == null || (t.exitType === "Open");
   const toggle = (setter, arr, v) => setter(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
   const typeColor = (tt) => tt === "Auto Buy" ? "var(--primary)" : tt === "Automate" ? "#8B5CF6" : "var(--muted)";
-  const exitColor = (et) => et === "Stop loss" ? "var(--down)" : et === "Exit trigger" ? "var(--up)" : "var(--muted)";
+  const exitColor = (et) => et === "Stop loss" ? "var(--down)" : et === "Exit trigger" ? "var(--up)" : et === "Open" ? "var(--primary)" : "var(--muted)";
   const FilterChip = ({ label, options, sel, setter, colors }) => (
     <div style={{ position: "relative", flex: "0 0 auto" }}>
       <button onClick={() => setOpenF(openF === label ? null : label)} className="pill tap disp" style={{ padding: "7px 12px", fontSize: 11.5, fontWeight: 700, border: "1px solid " + (sel.length ? "var(--primary)" : "var(--line)"), background: sel.length ? "var(--primary-soft)" : "var(--surface)", color: sel.length ? "var(--primary)" : "var(--ink)", display: "flex", gap: 5, alignItems: "center" }}>{label}{sel.length ? ` (${sel.length})` : ""}<ChevronRight size={13} style={{ transform: openF === label ? "rotate(90deg)" : "rotate(0)", transition: "transform .15s" }} /></button>
@@ -3596,15 +3624,16 @@ function TradeHistory({ userId, trades, onClose }) {
           <div key={t.id} className="card" style={{ marginTop: 10, padding: 13 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ minWidth: 0 }}><span className="disp" style={{ fontWeight: 700, fontSize: 14 }}>{t.sym}</span> <span style={{ fontSize: 11, color: "var(--muted)" }}>×{t.qty}</span></div>
-              <span className="mono" style={{ fontWeight: 800, fontSize: 14, color: (t.pnl || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{(t.pnl || 0) >= 0 ? "+" : ""}{fmt(t.pnl || 0, t.market || "IN")}</span>
+              {isOpen(t) ? <span className="pill" style={{ fontSize: 10, fontWeight: 800, padding: "3px 9px", background: "var(--primary-soft)", color: "var(--primary)" }}>OPEN</span>
+                : <span className="mono" style={{ fontWeight: 800, fontSize: 14, color: (t.pnl || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{(t.pnl || 0) >= 0 ? "+" : ""}{fmt(t.pnl || 0, t.market || "IN")}</span>}
             </div>
             <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
               <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: typeColor(t.tradeType || "Manual") }}>{t.tradeType || "Manual"}</span>
-              <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: exitColor(t.exitType || "Manual") }}>Exit: {t.exitType || "Manual"}</span>
+              <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: exitColor(t.exitType || "Manual") }}>{isOpen(t) ? "Position open" : "Exit: " + (t.exitType || "Manual")}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 9, fontSize: 11 }}>
               <div><div style={{ color: "var(--muted)", fontSize: 9.5 }}>Entry</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.entry, t.market || "IN")}</div><div style={{ color: "var(--muted)", fontSize: 9.5 }}>{dt(t.entryAt)}</div></div>
-              <div style={{ textAlign: "right" }}><div style={{ color: "var(--muted)", fontSize: 9.5 }}>Exit</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.exit, t.market || "IN")}</div><div style={{ color: "var(--muted)", fontSize: 9.5 }}>{dt(t.exitAt)}</div></div>
+              <div style={{ textAlign: "right" }}><div style={{ color: "var(--muted)", fontSize: 9.5 }}>Exit</div><div className="mono" style={{ fontWeight: 700 }}>{isOpen(t) ? "—" : fmt(t.exit, t.market || "IN")}</div><div style={{ color: "var(--muted)", fontSize: 9.5 }}>{isOpen(t) ? "—" : dt(t.exitAt)}</div></div>
             </div>
           </div>
         ))}
@@ -3616,7 +3645,7 @@ function TradeHistory({ userId, trades, onClose }) {
 /* ============================== ROOT ============================== */
 export default function App() {
   const [theme, setTheme] = useState("light");
-  const [authed, setAuthed] = useState(false);
+  const [authed, setAuthed] = useState(() => !!lsGet("mx_auth", null));
   const [guest, setGuest] = useState(false);
   const [onboard, setOnboard] = useState(true);
   const [profile, setProfile] = useState(null);
@@ -3633,13 +3662,14 @@ export default function App() {
   const [loginOpen, setLoginOpen] = useState(false);
   const doLogout = () => { setAuth(null); lsSet("mx_auth", null); };
   const onAuthed = (a) => { setAuth(a); lsSet("mx_auth", a); setLoginOpen(false); };
-  const [trades, setTrades] = useState(() => lsGet("mx_trades", []));
+  const [trades, setTrades] = useState([]);
   const [histOpen, setHistOpen] = useState(false);
+  const [hydratedUser, setHydratedUser] = useState(null);
   const recordTrade = (t) => {
     const rec = { id: t.id || `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, tradeType: t.tradeType || "Manual", exitType: t.exitType || "Manual", ...t };
     if (!rec.tradeType) rec.tradeType = "Manual";
     if (!rec.exitType) rec.exitType = "Manual";
-    setTrades((p) => { if (rec.id && p.some((x) => x.id === rec.id)) return p; const nx = [rec, ...p].slice(0, 5000); lsSet("mx_trades", nx); return nx; });
+    setTrades((p) => { if (rec.id && p.some((x) => x.id === rec.id)) return p; return [rec, ...p].slice(0, 5000); });
     postTrade(userId, rec);
   };
   // Record simulated auto-buy / automate trades once per day (deduped by stable id).
@@ -3651,6 +3681,20 @@ export default function App() {
   }, [portfolio]);
   const [watchlists, setWatchlists] = useState([{ id: "w1", name: "My Watchlist", syms: ["ETERNAL", "TATAPOWER"] }]);
   const [activeWl, setActiveWl] = useState("w1");
+  // Load this user's saved data whenever the user changes (login / logout).
+  useEffect(() => {
+    const st = lsGet("mx_state_" + userId, null);
+    setPortfolio((st && st.portfolio) || []);
+    setWalletMap((st && st.walletMap) || { IN: 1000000, US: 1000000, Crypto: 1000000, FNO: 1000000, Commodity: 1000000 });
+    const wl = (st && st.watchlists) || [{ id: "w1", name: "My Watchlist", syms: ["ETERNAL", "TATAPOWER"] }];
+    setWatchlists(wl); setActiveWl(wl[wl.length - 1] ? wl[wl.length - 1].id : "w1");
+    setTrades(lsGet("mx_trades_" + userId, []));
+    setHydratedUser(userId);
+    if (BACKEND_URL) fetchTrades(userId, 0, Date.now()).then((t) => { if (t && t.length) setTrades(t); }).catch(() => {});
+  }, [userId]);
+  // Persist per-user (only after this user's data has been hydrated, to avoid clobbering).
+  useEffect(() => { if (hydratedUser === userId) lsSet("mx_state_" + userId, { portfolio, walletMap, watchlists }); }, [portfolio, walletMap, watchlists, hydratedUser, userId]);
+  useEffect(() => { if (hydratedUser === userId) lsSet("mx_trades_" + userId, trades); }, [trades, hydratedUser, userId]);
   const [drawer, setDrawer] = useState(null);
   const [detail, setDetail] = useState(null);
   const [search, setSearch] = useState(false);
@@ -3713,6 +3757,7 @@ export default function App() {
       return [...p, { sym: s.sym, name: s.name, qty, buy: s.price, date: Date.now(), ...opts }];
     });
     setBuyToast({ t: `Bought ${qty} ${s.sym} @ ${fmt(s.price, mkt)} — added to portfolio.`, e: false });
+    recordTrade({ sym: s.sym, name: s.name, entry: s.price, entryAt: Date.now(), exit: null, exitAt: null, pnl: null, qty, market: mkt, tradeType: "Manual", exitType: "Open" });
     return true;
   };
   const sellStock = (s, qty = 1) => {
@@ -3748,7 +3793,7 @@ export default function App() {
       <style>{CSS}</style>
       {/* fixed gradient backdrop so it stays behind scroll */}
       <div style={{ position: "fixed", inset: 0, background: "var(--app-bg, var(--bg))", zIndex: 0, pointerEvents: "none" }} />
-      {!authed && <LoginScreen onEnter={(kind) => { setGuest(kind === "guest"); setAuthed(true); }} />}
+      {!authed && <LoginScreen onGuest={() => { setGuest(true); setAuthed(true); }} onAuthed={(a) => { onAuthed(a); setGuest(false); setAuthed(true); }} />}
       {authed && onboard && <Onboarding onDone={(p) => { setProfile(p); setOnboard(false); }} />}
 
       <div style={{ maxWidth: 460, margin: "0 auto", minHeight: "100vh", position: "relative", zIndex: 1, paddingBottom: 86 }}>
