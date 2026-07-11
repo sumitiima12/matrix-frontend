@@ -1,0 +1,68 @@
+/**
+ * services/marketService.js — ALL market data I/O. Transport only.
+ *
+ * Every function takes a resolved Yahoo symbol (the caller owns app-symbol ->
+ * Yahoo-symbol mapping, which is domain knowledge). This keeps the service layer
+ * free of any dependency on the stock universe, so there are no circular imports.
+ *
+ * Hard rule: if the backend can't answer, these return null. They NEVER
+ * fabricate data — the UI is responsible for saying "unavailable".
+ */
+import { BACKEND_URL, TF_YF } from "../config";
+
+const get = async (path) => {
+  if (!BACKEND_URL) return null;
+  const r = await fetch(`${BACKEND_URL}${path}`);
+  if (!r.ok) throw new Error(`${path} -> ${r.status}`);
+  return r.json();
+};
+
+/** Live quotes. Returns [{ sym, price, chg }] keyed by Yahoo symbol. */
+export async function getQuotes(ySyms) {
+  if (!ySyms || !ySyms.length) return null;
+  const d = await get(`/api/quote?symbols=${encodeURIComponent(ySyms.join(","))}`);
+  return d ? (d.quotes || null) : null;
+}
+
+/** Real OHLCV candles, normalised to { i, t, o, h, l, c, v }. */
+export async function getHistory(ySym, tf) {
+  const m = TF_YF[tf] || TF_YF["1d"];
+  const d = await get(`/api/history?symbol=${encodeURIComponent(ySym)}&range=${m.r}&interval=${m.i}`);
+  if (!d) return null;
+  return (d.candles || [])
+    .filter((c) => c.o != null && c.c != null && c.h != null && c.l != null)
+    .map((c, i) => ({
+      i,
+      t: c.t,
+      o: +(+c.o).toFixed(2),
+      h: +(+c.h).toFixed(2),
+      l: +(+c.l).toFixed(2),
+      c: +(+c.c).toFixed(2),
+      v: c.v,
+    }));
+}
+
+/** Real headlines: [{ t, d, src, url }]. */
+export async function getNews(ySym) {
+  const d = await get(`/api/news?symbol=${encodeURIComponent(ySym)}`);
+  return d ? (d.news || []) : null;
+}
+
+/** Real indicators computed server-side from daily candles, keyed by Yahoo symbol. */
+export async function getIndicators(ySyms) {
+  if (!ySyms || !ySyms.length) return null;
+  const d = await get(`/api/indicators?symbols=${encodeURIComponent(ySyms.join(","))}`);
+  return d ? (d.indicators || null) : null;
+}
+
+/** Real fundamentals + institutional holders, keyed by Yahoo symbol. */
+export async function getFundamentals(ySyms) {
+  if (!ySyms || !ySyms.length) return null;
+  const d = await get(`/api/fundamentals?symbols=${encodeURIComponent(ySyms.join(","))}`);
+  return d ? (d.fundamentals || null) : null;
+}
+
+/** Backend diagnostics: which LLM engines and storage the server actually sees. */
+export async function getHealth() {
+  return get("/api/health");
+}
