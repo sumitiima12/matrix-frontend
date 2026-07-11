@@ -5,6 +5,26 @@ import {
   ArrowUpRight, ArrowDownRight, Sparkles, SlidersHorizontal, Check,
   Activity, Newspaper, Building2, Filter, Play, Pause, ChevronLeft, Zap, Sun, Moon, Bell, Pencil, Clock, LogIn, LogOut
 } from "lucide-react";
+
+/* ---- Modular layers (see product.md architecture) ----
+   config    : environment
+   lib/*     : pure maths & formatting (no I/O)
+   services/*: all I/O + the Risk Engine (no UI, no React)
+   hooks/*   : React bindings over the services
+   This file now holds domain data (the universe) + UI, and is being
+   progressively broken up further. Business logic lives in services/.        */
+import { BACKEND_URL, MATRIX_PERSONA, TF_YF } from "./config";
+import { CUR, MKT_LABEL, fmt, compact, clamp, hash, lcg, DAY, timeAgo, lsGet, lsSet, getUserId } from "./lib/format";
+import { smaSeries, emaSeries as emaSeriesC, bollingerSeries, macdSeries, rsiSeries, OVERLAYS, CHART_TFS } from "./lib/indicators";
+import { getQuotes, getHistory, getNews, getIndicators, getFundamentals } from "./services/marketService";
+import { ask as aiAsk, interpretScreen, interpretStrategy, marketBrief } from "./services/aiService";
+import { saveTrade as apiSaveTrade, listTrades, register as apiRegisterSvc, login as apiLoginSvc } from "./services/tradeService";
+import { validateOrder, isMarketOpen, DEFAULT_LIMITS } from "./services/riskService";
+import { analyzeStock } from "./services/aiService";
+import { recTone } from "./services/researchService";
+import { analyzeHolding, portfolioHealth, sectorExposure } from "./services/portfolioService";
+import { analyzeJournal } from "./services/journalService";
+import { useCandles } from "./hooks/useCandles";
 import {
   AreaChart, Area, BarChart, Bar, ResponsiveContainer, XAxis, YAxis,
   Tooltip, CartesianGrid, ReferenceLine
@@ -79,258 +99,45 @@ select option{background:var(--surface);color:var(--ink)}
 `;
 
 /* ============================== HELPERS ============================== */
-const CUR = { IN: "₹", US: "$", Crypto: "$", Commodity: "$", FNO: "₹" };
-const MKT_LABEL = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", Commodity: "🪙 Commodity", FNO: "⚡ F&O" };
-function fmt(n, market = "IN") {
-  const c = CUR[market] || "₹";
-  if (n == null || isNaN(n)) return c + "0";
-  const a = Math.abs(n);
-  const digits = a === 0 ? 2 : a < 0.001 ? 8 : a < 1 ? 4 : 2;
-  const grouped = Number(n).toLocaleString(market === "IN" ? "en-IN" : "en-US", { maximumFractionDigits: digits });
-  return c + grouped;
-}
-function compact(n) {
-  if (n >= 1e7) return (n / 1e7).toFixed(2) + " Cr";
-  if (n >= 1e5) return (n / 1e5).toFixed(2) + " L";
-  if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
-  return String(n);
-}
-function lcg(seed) { let s = seed % 2147483647; if (s <= 0) s += 2147483646; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
+// Seeded RNG. The first outputs of a raw Lehmer/LCG are strongly correlated with
+// the seed (they skew high for typical seeds), so we warm it up before use —
+// otherwise anything deciding an outcome on the first draw is badly biased.
 // Guarded local storage (won't crash if storage is unavailable, e.g. in preview).
-function lsGet(k, fb) { try { const v = window.localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } }
-function lsSet(k, v) { try { window.localStorage.setItem(k, JSON.stringify(v)); } catch { /* ignore */ } }
-function getUserId() { let id = lsGet("mx_uid", null); if (!id) { id = "u_" + Math.random().toString(36).slice(2, 10); lsSet("mx_uid", id); } return id; }
-function hash(str) { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0; return Math.abs(h); }
-// Day index — everything seeded with this rotates once per day.
-const DAY = Math.floor(Date.now() / 864e5);
-// Realistic price path: random walk with drift + volatility + occasional gaps,
-// scaled so it ends exactly at `base` (today's price). Changes daily via DAY.
-function series(sym, base, chg, points = 60) {
-  const r = lcg(hash(sym) + DAY * 101 + 7);
-  const trend = (chg / 100) / points;              // gentle drift toward today's move
-  const regime = (r() - 0.5) * 0.004;              // slow background bias
-  const path = [1];
-  for (let i = 1; i < points; i++) {
-    const vol = 0.012 + r() * 0.016;               // 1.2%–2.8% daily vol
-    let ret = trend + regime + (r() - 0.5) * 2 * vol;
-    if (r() > 0.95) ret += (r() - 0.5) * 0.07;      // occasional gap/spike
-    path.push(path[i - 1] * (1 + ret));
-  }
-  const k = base / path[points - 1];               // scale so last point = current price
-  return path.map((v, i) => ({ i, p: +(v * k).toFixed(2) }));
-}
-function candles(sym, base, chg, n = 34) {
-  const pts = series(sym + "|c", base, chg, n + 1);
-  const r = lcg(hash(sym + "cndl") + DAY * 101 + 11);
-  const out = [];
-  for (let i = 1; i <= n; i++) {
-    const o = pts[i - 1].p, c = pts[i].p;
-    const top = Math.max(o, c), bot = Math.min(o, c);
-    const range = Math.max(top - bot, base * 0.006);
-    const hi = top + range * (0.15 + r() * 0.9);
-    const lo = bot - range * (0.15 + r() * 0.9);
-    out.push({ i, o: +o.toFixed(2), c: +c.toFixed(2), h: +hi.toFixed(2), l: +lo.toFixed(2), v: Math.round((0.5 + r()) * base * 1000) });
-  }
-  return out;
-}
-function quarters(sym, base, growth) {
-  const r = lcg(hash(sym) + 3);
-  const labels = ["Q1'24", "Q2'24", "Q3'24", "Q4'24", "Q1'25", "Q2'25"];
-  let v = base;
-  return labels.map((q) => {
-    v = v * (1 + growth / 100 + (r() - 0.5) * 0.05);
-    return { q, v: Math.round(v) };
-  });
-}
-const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
-
-/* ============================== DATA ============================== */
-function build(sym, name, price, chg, sector, cap, x = {}) {
-  const h = hash(sym);
-  const r = lcg(h);
-  const dr = lcg(h + DAY * 917);                 // daily-rotating randomness
-  chg = +(chg + (dr() - 0.5) * 3).toFixed(2);     // today's move drifts day to day
-  const vol = Math.round((x.vol ?? (2 + r() * 18)) * 1e6);
-  const rsi = x.rsi ?? Math.round(clamp(38 + dr() * 34 + chg * 1.6, 6, 94));
-  const pe = x.pe ?? +(12 + r() * 45).toFixed(1);
-  const roe = x.roe ?? +(8 + r() * 28).toFixed(1);
-  const sma50 = +(price * (0.96 + r() * 0.06)).toFixed(2);
-  const sma200 = +(price * (0.9 + r() * 0.1)).toFixed(2);
-  const macd = +((chg / 2 + (dr() - 0.5) * 3)).toFixed(2);
-  const support = +(price * (0.93 - r() * 0.03)).toFixed(2);
-  const resistance = +(price * (1.05 + r() * 0.04)).toFixed(2);
-  const bull = x.bull ?? clamp(Math.round(50 + chg * 4 + (rsi - 50) * 0.6), 6, 96);
-  const verdict = x.verdict ?? (bull >= 64 ? "Buy" : bull <= 40 ? "Sell" : "Hold");
-  const revGrowth = x.revG ?? +(((r() - 0.3) * 30)).toFixed(1);
-  const ebitdaGrowth = x.ebG ?? +(((r() - 0.3) * 34)).toFixed(1);
-  // Derived technical indicators (deterministic) so the screener can filter on them.
-  const ema20 = +(price * (0.98 + r() * 0.04)).toFixed(2);
-  const ema50 = sma50;
-  const adx = Math.round(clamp(14 + r() * 40 + Math.abs(chg) * 2, 8, 72));
-  const cci = Math.round((dr() - 0.5) * 320 + chg * 12);
-  const atr = +(price * (0.008 + r() * 0.03)).toFixed(2);
-  const stoch = Math.round(clamp(rsi + (dr() - 0.5) * 20, 3, 97));
-  const vwap = +(price * (0.985 + r() * 0.03)).toFixed(2);
-  const bbPctB = +clamp((price - support) / Math.max(0.01, resistance - support), 0, 1).toFixed(2);
-  const mfi = Math.round(clamp(rsi + (r() - 0.5) * 18, 4, 96));
-  const obv = Math.round((chg >= 0 ? 1 : -1) * vol * (0.4 + r()));
-  return {
-    sym, name, price, chg, sector, cap, vol, rsi, pe, roe, sma50, sma200, macd,
-    support, resistance, bull, verdict, revGrowth, ebitdaGrowth,
-    ema20, ema50, adx, cci, atr, stoch, vwap, bbPctB, mfi, obv,
-    pick: x.pick, oneLiner: x.oneLiner || `${name} shows ${chg >= 0 ? "constructive" : "weak"} momentum; ${verdict.toLowerCase()} bias near current levels.`,
-    news: x.news || [
-      { d: "2d ago", t: `${name} reports steady quarterly traction across core segments.` },
-      { d: "5d ago", t: `Analysts revisit ${sym} estimates after sector rotation.` },
-    ],
-    inst: x.inst,
-    revBase: x.revBase ?? Math.round(2000 + r() * 18000),
-    series: series(sym, price, chg),
-    mdSpeech: x.mdSpeech || `Management struck a measured tone, flagging demand resilience and disciplined cost control while guiding for ${revGrowth >= 0 ? "continued" : "softer"} top-line growth.`,
-    qSummary: x.qSummary || `Revenue trend is ${revGrowth >= 0 ? "improving" : "under pressure"}; margins ${ebitdaGrowth >= 0 ? "expanded" : "compressed"} on operating leverage and input costs.`,
-  };
-}
 
 const IN_STOCKS = [
   build("RELIANCE", "Reliance Industries", 2945.6, 1.42, "Energy", "Large", {
-    bull: 78, verdict: "Buy",
-    pick: "Retail + Jio ramp with energy cash flows — a rare all-weather large cap setting up above its 50-DMA.",
-    oneLiner: "Breakout above 50-DMA with rising volume; trend buyers favoured.",
-    news: [{ d: "1d ago", t: "Jio adds record subscribers; ARPU inches up QoQ." }, { d: "4d ago", t: "Retail arm signals new-store acceleration into festive season." }],
-    inst: [{ n: "SBI Mutual Fund", v: "₹1,240 Cr", c: 2.1 }, { n: "LIC", v: "₹980 Cr", c: 1.3 }],
-    revBase: 235000, revG: 9.4, ebG: 12.1,
   }),
   build("TCS", "Tata Consultancy Services", 4012.3, -0.86, "IT", "Large", {
-    bull: 58, verdict: "Hold",
-    pick: "Deal pipeline intact but stock digesting gains — patient accumulation, not chase.",
-    oneLiner: "Consolidating below resistance; wait for momentum confirmation.",
-    revBase: 60000, revG: 6.2, ebG: 5.1, rsi: 47,
   }),
   build("HDFCBANK", "HDFC Bank", 1678.9, 0.94, "Banking", "Large", {
-    bull: 71, verdict: "Buy",
-    pick: "Merger synergies finally showing in NIM stability — banks' bellwether reclaiming leadership.",
-    inst: [{ n: "ICICI Prudential", v: "₹860 Cr", c: 1.7 }],
-    revBase: 80000, revG: 14.0, ebG: 13.2,
   }),
   build("INFY", "Infosys", 1542.0, 2.31, "IT", "Large", {
-    bull: 74, verdict: "Buy",
-    pick: "Upgraded FY guidance + buyback chatter — momentum and value lining up together.",
-    revBase: 38000, revG: 7.8, ebG: 8.4, rsi: 63,
   }),
   build("TATAMOTORS", "Tata Motors", 982.4, 3.67, "Auto", "Large", {
-    bull: 81, verdict: "Buy",
-    pick: "JLR margins surprising + EV order book swelling — high-beta breakout with volume.",
-    oneLiner: "Strong volume breakout; momentum traders in control.",
-    news: [{ d: "6h ago", t: "JLR posts record wholesale volumes; demand robust." }],
-    inst: [{ n: "Nippon India MF", v: "₹540 Cr", c: 3.4 }],
-    revBase: 110000, revG: 11.2, ebG: 18.5, rsi: 68,
   }),
   build("ADANIENT", "Adani Enterprises", 3120.0, -2.14, "Infrastructure", "Large", {
-    bull: 39, verdict: "Hold",
-    pick: "Event-driven volatility — only for traders who respect tight stops.",
-    rsi: 41,
   }),
   build("ETERNAL", "Eternal Ltd", 198.7, 4.85, "Consumer Tech", "Mid", {
-    bull: 83, verdict: "Buy",
-    pick: "Quick-commerce (Blinkit) inflecting to profitability — the GenZ growth story with real numbers now.",
-    oneLiner: "Fresh all-time-high zone; trend strongly bullish.",
-    news: [{ d: "1d ago", t: "Blinkit GOV growth outpaces food delivery again." }],
-    inst: [{ n: "Motilal Oswal", v: "₹310 Cr", c: 5.2 }],
-    revBase: 4200, revG: 58.0, ebG: 120.0, rsi: 71, pe: 88,
   }),
-  build("DMART", "Avenue Supermarts", 4480.5, -0.42, "Retail", "Large", { bull: 55, revBase: 13000, revG: 17.0, ebG: 12.0 }),
+  build("DMART", "Avenue Supermarts", 4480.5, -0.42, "Retail", "Large", { ebG: 12.0 }),
   build("BAJFINANCE", "Bajaj Finance", 7210.0, 1.18, "NBFC", "Large", {
-    bull: 69, verdict: "Buy",
-    pick: "AUM compounding + digital app scaling — quality growth at a more reasonable price now.",
-    revBase: 15000, revG: 26.0, ebG: 24.0,
   }),
-  build("ITC", "ITC", 462.3, 0.31, "FMCG", "Large", { bull: 60, oneLiner: "Range-bound dividend play; low-beta accumulation.", revBase: 18000, revG: 5.0, ebG: 6.5 }),
+  build("ITC", "ITC", 462.3, 0.31, "FMCG", "Large", { ebG: 6.5 }),
   build("PAYTM", "One97 (Paytm)", 412.9, -3.92, "Fintech", "Mid", {
-    bull: 34, verdict: "Sell",
-    pick: "Regulatory overhang persists — avoid until clarity; for nimble traders only.",
-    rsi: 33, pe: 0,
   }),
-  build("IRCTC", "IRCTC", 902.1, 2.04, "Travel", "Mid", { bull: 66, verdict: "Buy", revBase: 1100, revG: 13.0, ebG: 15.0 }),
+  build("IRCTC", "IRCTC", 902.1, 2.04, "Travel", "Mid", { ebG: 15.0 }),
   build("TATAPOWER", "Tata Power", 412.8, 5.21, "Power", "Mid", {
-    bull: 79, verdict: "Buy",
-    pick: "Renewables capex + smart-meter wins — the energy-transition midcap with momentum.",
-    oneLiner: "Volume-led breakout; renewables theme in play.", rsi: 70,
   }),
   build("HAL", "Hindustan Aeronautics", 4890.0, 1.77, "Defence", "Large", {
-    bull: 75, verdict: "Buy",
-    pick: "Order book visibility for years + Make-in-India tailwind — structural defence leader.",
-    revBase: 8000, revG: 16.0, ebG: 19.0,
   }),
-  build("NYKAA", "FSN E-Commerce (Nykaa)", 178.4, 1.05, "Consumer Tech", "Mid", { bull: 57, revBase: 1900, revG: 24.0, ebG: 40.0, pe: 95 }),
-  build("IDEA", "Vodafone Idea", 8.4, -1.18, "Telecom", "Small", { bull: 31, verdict: "Sell", oneLiner: "Penny-cap, balance-sheet stress; high risk." }),
-  build("SBIN", "State Bank of India", 842.6, 1.36, "Banking", "Large", { bull: 70, verdict: "Buy", pick: "Cheapest large PSU bank with improving asset quality and credit growth.", revBase: 105000, revG: 12, inst: [{ n: "LIC", v: "₹1,420 Cr", c: 1.9 }] }),
-  build("ICICIBANK", "ICICI Bank", 1186.2, 0.78, "Banking", "Large", { bull: 73, verdict: "Buy", revBase: 62000, revG: 15 }),
-  build("LT", "Larsen & Toubro", 3624.0, 1.92, "Infrastructure", "Large", { bull: 72, verdict: "Buy", pick: "Record order book + infra capex super-cycle — execution machine.", revBase: 55000, revG: 14 }),
-  build("SUNPHARMA", "Sun Pharma", 1788.5, 0.46, "Pharma", "Large", { bull: 64, verdict: "Buy", revBase: 12000, revG: 9 }),
-  build("DIXON", "Dixon Technologies", 14250.0, 3.42, "Electronics", "Mid", { bull: 80, verdict: "Buy", pick: "PLI-led EMS leader; mobile & component backward-integration scaling fast.", rsi: 69, revBase: 8500, revG: 44 }),
-  build("YESBANK", "Yes Bank", 21.8, -2.34, "Banking", "Small", { bull: 38, verdict: "Sell", oneLiner: "Turnaround unproven; speculative small-cap." }),
-  build("BEL", "Bharat Electronics", 312.4, 2.18, "Defence", "Large", { bull: 76, verdict: "Buy", pick: "Defence electronics order pipeline + margin strength.", revBase: 5400, revG: 18 }),
-  build("DRREDDY", "Dr. Reddy's Labs", 1268.0, -0.62, "Pharma", "Large", { bull: 55, revBase: 7200, revG: 7 }),
-  build("MARUTI", "Maruti Suzuki", 12640.0, 0.94, "Auto", "Large", { bull: 66, verdict: "Buy", revBase: 38000, revG: 10 }),
-  build("NIFTY50", "Nifty 50 Index", 23450.0, 0.62, "Index", "Large", { bull: 68, verdict: "Buy", pick: "Benchmark holding near highs; broad-market momentum constructive with healthy breadth.", inst: [{ n: "Index basket", v: "₹—" }] }),
-  build("BANKNIFTY", "Bank Nifty Index", 50480.0, 0.84, "Index", "Large", { bull: 66, verdict: "Buy", pick: "Financials leading; reclaim of resistance keeps the index bid." }),
-  build("SENSEX", "BSE Sensex", 77100.0, 0.58, "Index", "Large", { bull: 67, verdict: "Buy" }),
-  build("FINNIFTY", "Fin Nifty Index", 23180.0, 0.71, "Index", "Large", { bull: 65, verdict: "Buy" }),
-  build("INDIAVIX", "India VIX", 13.8, -2.1, "Volatility", "Large", { bull: 42, verdict: "Hold", oneLiner: "Volatility gauge — low reading signals complacency; spikes flag fear.", pick: "Low VIX = calm tape; hedges are cheap here." }),
+  build("NYKAA", "FSN E-Commerce (Nykaa)", 178.4, 1.05, "Consumer Tech", "Mid", { pe: 95 }),
+  build("IDEA", "Vodafone Idea", 8.4, -1.18, "Telecom", "Small", {}),
+  build("SBIN", "State Bank of India", 842.6, 1.36, "Banking", "Large", {}),
 ];
 
-const US_STOCKS = [
-  build("NVDA", "NVIDIA", 124.6, 2.85, "Semiconductors", "Large", { bull: 86, verdict: "Buy", pick: "AI compute demand still outstripping supply — the pick-and-shovel king of the GenAI era.", rsi: 72, revBase: 26000, revG: 122, inst: [{ n: "Vanguard", v: "$8.2 B", c: 1.1 }] }),
-  build("TSLA", "Tesla", 248.3, -1.46, "Auto", "Large", { bull: 52, pick: "Robotaxi narrative vs. delivery reality — binary; size positions carefully.", rsi: 49 }),
-  build("AAPL", "Apple", 214.1, 0.62, "Tech", "Large", { bull: 64, verdict: "Buy", revBase: 90000, revG: 5 }),
-  build("AMZN", "Amazon", 186.9, 1.34, "E-commerce", "Large", { bull: 70, verdict: "Buy", revBase: 148000, revG: 11 }),
-  build("PLTR", "Palantir", 27.8, 4.12, "Software", "Mid", { bull: 78, verdict: "Buy", pick: "Commercial AI deals accelerating — high-beta momentum favourite.", rsi: 69 }),
-  build("META", "Meta Platforms", 498.2, 1.01, "Tech", "Large", { bull: 67, verdict: "Buy" }),
-  build("MSFT", "Microsoft", 449.8, 0.74, "Tech", "Large", { bull: 72, verdict: "Buy", pick: "Copilot monetization + Azure AI demand — durable compounder.", revBase: 62000, revG: 16 }),
-  build("GOOGL", "Alphabet", 178.2, 1.22, "Tech", "Large", { bull: 69, verdict: "Buy", revBase: 80000, revG: 13 }),
-  build("AMD", "Advanced Micro Devices", 162.4, 2.96, "Semiconductors", "Large", { bull: 74, verdict: "Buy", pick: "MI300 AI accelerators ramping — the credible #2 to NVDA.", rsi: 66 }),
-  build("COIN", "Coinbase", 224.6, 3.88, "Fintech", "Mid", { bull: 63, pick: "Levered to crypto cycle + spot ETF flows; high beta.", rsi: 64 }),
-  build("SPX", "S&P 500 Index", 5460.0, 0.41, "Index", "Large", { bull: 64, verdict: "Buy", pick: "Broad US benchmark grinding higher on soft-landing hopes." }),
-  build("NDX", "Nasdaq 100 Index", 19250.0, 0.73, "Index", "Large", { bull: 69, verdict: "Buy", pick: "Tech-heavy index riding AI leadership; momentum strong." }),
-  build("DJI", "Dow Jones Index", 39200.0, 0.22, "Index", "Large", { bull: 58, verdict: "Hold" }),
-  build("VIX", "CBOE Volatility Index", 13.4, -1.8, "Volatility", "Large", { bull: 44, verdict: "Hold", oneLiner: "US fear gauge — subdued now; watch for spikes on macro shocks." }),
-];
-const CRYPTO = [
-  build("BTC", "Bitcoin", 64210.0, 1.92, "Crypto", "Large", { bull: 71, verdict: "Buy", pick: "Post-halving supply squeeze + ETF inflows — the macro hedge GenZ actually holds.", rsi: 61 }),
-  build("ETH", "Ethereum", 3420.0, 2.64, "Crypto", "Large", { bull: 68, verdict: "Buy", rsi: 63 }),
-  build("SOL", "Solana", 148.7, 4.88, "Crypto", "Mid", { bull: 76, verdict: "Buy", pick: "Throughput + meme/app activity — high-beta alt with strong momentum.", rsi: 70 }),
-  build("DOGE", "Dogecoin", 0.142, -2.1, "Crypto", "Small", { bull: 44, oneLiner: "Sentiment-driven; trade the meme, mind the stops." }),
-  build("XRP", "XRP", 0.61, 1.18, "Crypto", "Large", { bull: 58, verdict: "Hold" }),
-  build("BNB", "BNB", 592.0, 0.84, "Crypto", "Large", { bull: 62, verdict: "Buy" }),
-  build("AVAX", "Avalanche", 36.2, 3.42, "Crypto", "Mid", { bull: 67, verdict: "Buy", pick: "Subnet adoption + RWA tokenization narrative.", rsi: 65 }),
-  build("WIF", "dogwifhat", 2.85, 9.4, "Crypto", "Mid", { bull: 74, vol: 8, pick: "High-beta meme momentum; sharp two-way swings.", rsi: 71 }),
-  build("PEPE", "Pepe", 0.0000121, 12.6, "Crypto", "Mid", { bull: 72, vol: 22, pick: "Meme volatility leader — momentum + volume spikes.", rsi: 73 }),
-  build("BONK", "Bonk", 0.0000268, -7.8, "Crypto", "Small", { bull: 48, vol: 14, oneLiner: "Meme volatility; strictly momentum trades with tight stops." }),
-  build("INJ", "Injective", 26.4, 6.2, "Crypto", "Mid", { bull: 70, vol: 4, pick: "DeFi throughput narrative with strong trend.", rsi: 68 }),
-  build("SEI", "Sei", 0.58, 8.1, "Crypto", "Mid", { bull: 69, vol: 5, pick: "Fast L1 with high realized volatility.", rsi: 70 }),
-  build("TIA", "Celestia", 8.9, 5.4, "Crypto", "Mid", { bull: 66, vol: 3, rsi: 64 }),
-  build("RNDR", "Render", 9.2, 7.3, "Crypto", "Mid", { bull: 71, vol: 3, pick: "AI-compute narrative; high momentum.", rsi: 69 }),
-  build("FET", "Artificial Superintelligence", 1.62, 6.8, "Crypto", "Mid", { bull: 70, vol: 4, pick: "AI-agent momentum leader.", rsi: 68 }),
-  build("ARB", "Arbitrum", 0.94, -4.2, "Crypto", "Mid", { bull: 52, vol: 6 }),
-  build("OP", "Optimism", 1.78, 4.6, "Crypto", "Mid", { bull: 64, vol: 4, rsi: 63 }),
-  build("JUP", "Jupiter", 1.12, 5.9, "Crypto", "Mid", { bull: 67, vol: 3, rsi: 66 }),
-  build("LAB", "LayerZero Labs (LABUSD)", 3.42, 14.8, "Crypto", "Small", { bull: 76, vol: 9, pick: "Explosive momentum + high volatility — pure trader's coin.", rsi: 75 }),
-  build("RAVE", "Rave (RAVEUSD)", 0.084, 18.3, "Crypto", "Small", { bull: 78, vol: 7, pick: "Very high volatility micro-cap; strong momentum burst.", rsi: 74 }),
-  build("SHIB", "Shiba Inu", 0.0000242, -3.1, "Crypto", "Small", { bull: 46, vol: 12 }),
-];
-const COMMODITY = [
-  build("GOLD", "Gold (per oz)", 2358.0, 0.54, "Metals", "Large", { bull: 66, verdict: "Buy", pick: "Rate-cut hopes + central-bank buying — classic risk-off ballast." }),
-  build("SILVER", "Silver (per oz)", 30.7, 1.42, "Metals", "Mid", { bull: 63, verdict: "Buy" }),
-  build("CRUDE", "Crude Oil (WTI)", 78.4, -0.88, "Energy", "Large", { bull: 48, oneLiner: "Range-bound on supply-demand tug; event-sensitive." }),
-  build("NATGAS", "Natural Gas", 2.84, 2.06, "Energy", "Mid", { bull: 54, verdict: "Hold" }),
-  build("COPPER", "Copper", 4.52, 1.12, "Metals", "Large", { bull: 68, verdict: "Buy", pick: "Electrification + grid demand — structural metal of the decade." }),
-  build("ALUMINIUM", "Aluminium", 2.48, 0.86, "Metals", "Mid", { bull: 60, verdict: "Hold", pick: "Supply discipline + green-transition demand." }),
-];
-
-/* ---- Broaden the universe: ~100 Indian + ~100 US names ---- */
-const dchg = (sym) => +(((lcg(hash(sym) + DAY * 917)() - 0.46) * 4.6)).toFixed(2);
+/* ---- Broader Indian universe (symbol, name, price, sector, cap) ---- */
 const MORE_IN = [
-  ["HDFCBANK", "HDFC Bank", 1685, "Banking", "Large"], ["TCS", "Tata Consultancy", 4120, "IT", "Large"],
+  ["TCS", "Tata Consultancy", 4120, "IT", "Large"],
   ["KOTAKBANK", "Kotak Mahindra Bank", 1795, "Banking", "Large"], ["AXISBANK", "Axis Bank", 1168, "Banking", "Large"],
   ["BAJFINANCE", "Bajaj Finance", 7220, "NBFC", "Large"], ["BHARTIARTL", "Bharti Airtel", 1520, "Telecom", "Large"],
   ["HINDUNILVR", "Hindustan Unilever", 2460, "FMCG", "Large"], ["ITC", "ITC Ltd", 428, "FMCG", "Large"],
@@ -466,108 +273,93 @@ function istParts() {
   const d = new Date(Date.now() + new Date().getTimezoneOffset() * 60000 + 5.5 * 3600000);
   return { day: d.getDay(), mins: d.getHours() * 60 + d.getMinutes() };
 }
-function marketOpen(market) {
-  const { day, mins } = istParts();
-  const weekday = day >= 1 && day <= 5;
-  if (market === "Crypto") return true;                                   // 24×7
-  if (market === "US") return weekday && (mins >= 19 * 60 + 30 || mins <= 90);   // 7:30pm–1:30am IST
-  if (market === "Commodity") return weekday && mins >= 9 * 60 && mins <= 20 * 60 + 30; // 9:00am–8:30pm
-  return weekday && mins >= 9 * 60 + 15 && mins <= 15 * 60 + 30;          // IN / F&O 9:15am–3:30pm
-}
 function marketHoursLabel(market) {
   return market === "Crypto" ? "24×7" : market === "US" ? "7:30pm–1:30am IST" : market === "Commodity" ? "9:00am–8:30pm IST" : "9:15am–3:30pm IST";
 }
-// "World-class technical analyst" scoring on the simulated series: momentum,
+// Technical scoring on REAL indicator data: momentum,
 // breakouts, reversals off S/R, RSI/MACD confirmation, multi-timeframe bias.
 // Detects a varied set of chart patterns and explains WHY each was identified.
+/* ============ REAL technical signal — no synthetic series anywhere ============
+   Everything below is derived from indicators the backend computed from actual
+   daily candles (RSI, MACD, ADX, ATR, EMA/SMA, real support/resistance, real
+   volume). If a stock has no real data it simply isn't scored.                 */
 function techSignal(s) {
-  const ser = s.series.map((p) => p.p);
-  const n = ser.length, last = ser[n - 1], first = ser[0];
-  const mom = (last / first - 1) * 100;
-  const near = ser.slice(-8);
-  const slope = (near[near.length - 1] / near[0] - 1) * 100;
-  const lo = Math.min(...ser), hi = Math.max(...ser);
-  const pos = (last - lo) / (hi - lo + 1e-9);              // where in range (0=low,1=high)
-  const distSup = (last - s.support) / last * 100;
-  const rets = ser.slice(1).map((v, i) => v / ser[i] - 1);
-  const vol = Math.sqrt(rets.reduce((a, x) => a + x * x, 0) / rets.length) * 100;
-  const cur = (v) => (marketOf(s.sym) === "US" || marketOf(s.sym) === "Crypto") ? "$" + v : "₹" + v;
-  let pattern, signal, why, score = 0;
+  if (!s || !s.hasData || s.rsi == null || s.sma50 == null) return null;
+  const px = s.price;
+  const cur = (v) => fmt(v, marketOf(s.sym));
+  const sup = s.support, res = s.resistance;
+  const atr = s.atr || (px * 0.02);
+  const volRatio = s.avgVol ? (s.vol || 0) / s.avgVol : null;   // real relative volume
+  const range52 = (s.high52 != null && s.low52 != null && s.high52 > s.low52)
+    ? (px - s.low52) / (s.high52 - s.low52) : null;             // where in the 52w range
+  const macdBull = s.macd != null && s.macdSignal != null && s.macd > s.macdSignal;
+  const trendUp = s.sma200 != null ? s.sma50 > s.sma200 : s.price > s.sma50;
 
-  if (last >= s.resistance * 0.99) {
+  let score = 0, signal = "", why = "", pattern = "flag";
+
+  // ---- price action first (this is what the user actually trades) ----
+  if (res != null && px >= res * 0.995) {
     pattern = "breakout"; signal = "Resistance breakout";
-    why = `Price is punching through the ${cur(s.resistance)} ceiling that had capped it repeatedly — a clean breakout, ideally on a volume expansion.`; score += 3.2;
-  } else if (distSup < 2.4 && slope > 0 && pos < 0.4) {
-    pattern = "doubleBottom"; signal = "Double-bottom reversal";
-    why = `Support near ${cur(s.support)} has held on two tests and price is curling up — a classic double-bottom, momentum shifting from sellers to buyers.`; score += 2.8;
-  } else if (mom > 8 && vol < 2.1 && slope > -1 && slope < 4) {
-    pattern = "flag"; signal = "Bull-flag continuation";
-    why = `After a sharp ${mom.toFixed(0)}% advance, price is consolidating sideways on shrinking range and volume — a bull flag that typically resolves in the direction of the prior trend.`; score += 2.6;
-  } else if (pos > 0.45 && pos < 0.8 && s.rsi < 66 && slope > 0) {
-    pattern = "triangle"; signal = "Ascending triangle";
-    why = `A series of higher lows is pressing into a flat ceiling around ${cur(s.resistance)} — an ascending triangle coiling energy for a breakout.`; score += 2.4;
-  } else if (s.rsi < 42 && pos < 0.45 && vol < 2.3) {
-    pattern = "cup"; signal = "Rounded base (cup)";
-    why = `A long, U-shaped base with RSI at ${s.rsi} points to quiet accumulation — a cup forming, with the handle/breakout still ahead.`; score += 1.9;
-  } else if (s.sma50 > s.sma200 && slope > 0.5) {
-    pattern = "triangle"; signal = "Golden-cross continuation";
-    why = `The 50-DMA sits above the 200-DMA and price is making higher lows — a trend-continuation setup as long as ${cur(s.support)} holds.`; score += 1.8;
-  } else if (s.rsi > 68 && mom > 4) {
-    pattern = "flag"; signal = "Overbought pause";
-    why = `Momentum is hot (RSI ${s.rsi}) and price may pause or flag here; buyers wait for a dip toward ${cur(s.sma50)} rather than chase.`; score += 1.2;
+    why = `Price is pressing through the ${cur(res)} ceiling that capped it over the last 60 sessions.`;
+    score += 3.2;
+  } else if (sup != null && (px - sup) / px * 100 < 2.5 && macdBull) {
+    pattern = "doubleBottom"; signal = "Bounce off support";
+    why = `Price is holding the ${cur(sup)} floor with MACD turning up — buyers defending the level.`;
+    score += 2.7;
+  } else if (trendUp && macdBull && s.rsi > 50 && s.rsi < 70) {
+    pattern = "triangle"; signal = "Trend continuation";
+    why = `50-DMA above 200-DMA with MACD above its signal and RSI ${s.rsi} — an intact uptrend, not yet overbought.`;
+    score += 2.5;
+  } else if (s.rsi < 35) {
+    pattern = "cup"; signal = "Oversold";
+    why = `RSI at ${s.rsi} is in oversold territory; watch for a reclaim of ${cur(s.sma50)} before acting.`;
+    score += 1.6;
+  } else if (s.rsi > 72) {
+    pattern = "flag"; signal = "Overbought";
+    why = `RSI ${s.rsi} is stretched; momentum is strong but entries here carry elevated pullback risk.`;
+    score -= 0.4;
   } else {
-    // varied fallback so setups aren't all identical
-    const opts = ["breakout", "cup", "triangle", "doubleBottom"];
-    pattern = opts[hash(s.sym) % opts.length];
-    signal = pattern === "cup" ? "Base building" : pattern === "triangle" ? "Consolidation triangle" : pattern === "doubleBottom" ? "Support retest" : "Coiled range";
-    why = `Price is ${s.chg >= 0 ? "firming up" : "stabilising"} between ${cur(s.support)} support and ${cur(s.resistance)} resistance with RSI ${s.rsi}; a decisive move out of this range sets the next trade.`;
+    signal = trendUp ? "Uptrend" : "Range-bound";
+    why = trendUp
+      ? `Price is above its 50-DMA (${cur(s.sma50)}) with no extreme reading — a steady uptrend.`
+      : `Price is chopping between ${sup != null ? cur(sup) : "support"} and ${res != null ? cur(res) : "resistance"} with no clear edge.`;
+    score += trendUp ? 1.2 : 0.2;
   }
-  if (s.macd > 0) score += 0.8;
-  if (s.news) score += 0.4;
-  score += mom * 0.14 + (s.bull - 50) * 0.05 + (s.chg > 0 ? 1 : -0.5);
-  return { score, signal, pattern, why, mom: +mom.toFixed(1), slope };
+
+  // ---- confirmations from REAL indicators ----
+  if (macdBull) score += 0.8;
+  if (s.adx != null && s.adx > 25) score += 0.7;                 // genuine trend strength
+  if (volRatio != null && volRatio > 1.3) { score += 0.8; why += ` Volume is ${volRatio.toFixed(1)}× its 20-day average, confirming participation.`; }
+  if (range52 != null && range52 > 0.85) score += 0.5;           // near 52w highs
+  if (s.rsi > 50 && s.rsi < 68) score += 0.5;
+  if (s.chg != null) score += Math.max(-1, Math.min(1, s.chg * 0.15));
+
+  // ---- REAL stop / target from support-resistance and ATR ----
+  const stop = sup != null && sup < px ? Math.max(sup - 0.25 * atr, px - 3 * atr) : px - 2 * atr;
+  const target = res != null && res > px ? res : px + 2.5 * atr;
+  const slPct = +(((px - stop) / px) * 100).toFixed(1);
+  const tpPct = +(((target - px) / px) * 100).toFixed(1);
+  const rr = slPct > 0 ? +(tpPct / slPct).toFixed(1) : null;
+
+  return {
+    score: +score.toFixed(2), signal, pattern, why,
+    stop: +stop.toFixed(2), target: +target.toFixed(2), slPct, tpPct, rr,
+    volRatio: volRatio != null ? +volRatio.toFixed(2) : null,
+  };
 }
+
+// Ranked picks — only from instruments with REAL data. Refreshed hourly.
 function dailyPicks(list) {
-  const jr = lcg(DAY * 131 + 7);
-  return list
-    .filter((s) => s.sector !== "Volatility")
-    .filter((s) => marketOf(s.sym) !== "Crypto" || s.vol > 1_000_000)   // crypto: only liquid names
-    .map((s) => {
-      const t = techSignal(s);
-      // crypto: reward momentum + volatility so hot alts surface
-      const cryptoBoost = marketOf(s.sym) === "Crypto" ? Math.abs(s.chg) * 0.25 + (s.vol / 1e6) * 0.03 : 0;
-      return { s, t, sc: t.score + cryptoBoost, j: jr() * 0.6 };
-    })
-    .sort((a, b) => (b.sc + b.j) - (a.sc + a.j))
-    .slice(0, 6)
-    .map(({ s, t }) => ({
-      ...s, pickPattern: t.pattern, pickSignal: t.signal,
-      pickReason: `${t.signal}. ${s.chg >= 0 ? "+" : ""}${s.chg}% today · RSI ${s.rsi} · ${s.price > s.sma50 ? "above" : "below"} 50-DMA · MACD ${s.macd >= 0 ? "positive" : "negative"} — confirmed across 5m/15m/1D.`,
+  return (list || [])
+    .filter((s) => s.hasData && s.rsi != null && s.sma50 != null && s.sector !== "Volatility")
+    .map((s) => ({ s, t: techSignal(s) }))
+    .filter((x) => x.t && x.t.score > 0)
+    .sort((a, b) => b.t.score - a.t.score)
+    .map(({ s, t }) => Object.assign(s, {
+      pickSignal: t.signal, pickReason: t.why, pickPattern: t.pattern,
+      pickStop: t.stop, pickTarget: t.target, pickSlPct: t.slPct, pickTpPct: t.tpPct, pickRR: t.rr,
+      pickScore: t.score,
     }));
-}
-// Synthetic option-chain snapshot for an instrument (ATM strike, premium, OI).
-function fnoData(s) {
-  const r = lcg(hash(s.sym + "fno"));
-  const rec = s.chg >= 0 ? "CALL" : "PUT";
-  const step = s.price > 10000 ? 100 : s.price > 1000 ? 50 : s.price > 100 ? 10 : s.price > 20 ? 1 : 0.5;
-  const atm = Math.round(s.price / step) * step;
-  const premium = +(s.price * (0.012 + r() * 0.02)).toFixed(1);
-  const oi = Math.round(4 + r() * 46) * 100000;
-  const oiChg = +(((r() - 0.4) * 34)).toFixed(1);
-  return { rec, atm, premium, oi, oiChg };
-}
-// Build a tradable ATM option instrument (behaves like any stock in drawer/detail).
-function makeOption(s, f) {
-  const call = f.rec === "CALL";
-  const sym = `${s.sym} ${f.atm} ${call ? "CE" : "PE"}`;
-  const chg = +((call ? 1 : -1) * Math.abs(s.chg || 1) * (2.6 + hash(sym) % 100 / 90)).toFixed(2);
-  const opt = build(sym, `${s.name} ${f.atm} ${call ? "Call" : "Put"}`, f.premium, chg, "Index Option", "Derivative", {
-    bull: call ? 64 : 40, verdict: call ? "Buy" : "Sell",
-    pick: `ATM ${call ? "call" : "put"} on ${s.sym} (strike ${f.atm}). Premium ${f.premium}. High-gamma, leveraged exposure — mind time decay (theta) and IV crush.`,
-    oneLiner: `${s.sym} ${f.atm} ${call ? "CE" : "PE"} — at-the-money option; leverage + theta risk.`,
-  });
-  opt.isOption = true; opt.underlying = s.sym; opt.strike = f.atm; opt.optType = call ? "CE" : "PE"; opt.oi = f.oi;
-  return opt;
 }
 
 /* ============================== SMALL UI ============================== */
@@ -596,20 +388,37 @@ function Spark({ data, up }) {
     </ResponsiveContainer>
   );
 }
+
+/* ===================== CHART INDICATOR MATH (pure) =====================
+   Operates on a REAL candle array [{t,o,h,l,c,v}]. Returns arrays aligned to
+   the candles (leading nulls where the lookback isn't satisfied). Client-side
+   because chart overlays must work on ANY timeframe, while /api/indicators
+   only computes daily values.                                              */
+
+/* Shared hook: REAL candles for a symbol+timeframe. Single fetch path for every
+   chart in the app. No synthetic fallback — no data means no chart. */
+
+// Overlay registry — adding an indicator is one entry, not new chart code.
+
 // Compact candlestick chart (OHLC) with switchable timeframe, for cards & drawers.
 const TF_LIST = ["3m", "5m", "30m", "1h", "4h", "1d"];
 const TF_N = { "3m": 40, "5m": 36, "30m": 30, "1h": 28, "4h": 24, "1d": 22 };
+/* MiniCandles — REAL candles only. If there is no data, it says so rather than
+   drawing an invented price path. */
 function MiniCandles({ sym, price, chg, defaultTf = "1d", height = 130, showTf = true, pattern, staticChart = false }) {
   const [tf, setTf] = useState(defaultTf);
-  const [ctype, setCtype] = useState("line");     // default: line chart
-  const [liveData, setLiveData] = useState(null);
-  useEffect(() => {
-    let stop = false; setLiveData(null);
-    if (BACKEND_URL) fetchHistory(sym, tf).then((d) => { if (!stop && d && d.length > 4) setLiveData(d.slice(-(TF_N[tf] || 26)).map((c, i) => ({ ...c, i }))); }).catch(() => {});
-    return () => { stop = true; };
-  }, [sym, tf]);
-  const synthetic = useMemo(() => candles(sym + "|" + tf, price, chg, TF_N[tf] || 26), [sym, price, chg, tf]);
-  const data = liveData && liveData.length ? liveData : synthetic;
+  const [ctype, setCtype] = useState("line");
+  const { data, loading, error } = useCandles(sym, tf, TF_N[tf] || 26);
+
+  if (loading) return <div style={{ height, display: "grid", placeItems: "center", color: "var(--muted)", fontSize: 11.5 }}>Loading chart…</div>;
+  if (!data || !data.length) {
+    return (
+      <div style={{ height, display: "grid", placeItems: "center", color: "var(--muted)", fontSize: 11.5, textAlign: "center", padding: "0 12px" }}>
+        {error === "no-backend" ? "Connect the backend for live charts" : "Chart unavailable for this symbol"}
+      </div>
+    );
+  }
+
   const W = 340, H = height, padT = 8, padB = 8;
   const min = Math.min(...data.map((d) => d.l)), max = Math.max(...data.map((d) => d.h));
   const span = max - min || 1;
@@ -620,44 +429,205 @@ function MiniCandles({ sym, price, chg, defaultTf = "1d", height = 130, showTf =
   const lineCol = up ? "var(--up)" : "var(--down)";
   const linePts = data.map((d, k) => `${(k + 0.5) * cw},${yOf(d.c)}`).join(" ");
   const areaPts = `0,${H} ${linePts} ${W},${H}`;
+  const gid = "mcg" + String(sym).replace(/\W/g, "") + tf;
+
   return (
     <div>
       <div style={{ position: "relative" }}>
         {patLabel && <span className="pill" style={{ position: "absolute", top: 6, left: 6, zIndex: 2, fontSize: 9.5, fontWeight: 800, background: "var(--primary-soft)", color: "var(--primary)", padding: "3px 8px" }}>◫ {patLabel}</span>}
-        {liveData && liveData.length ? <span className="pill" style={{ position: "absolute", top: 6, right: 6, zIndex: 2, fontSize: 8, fontWeight: 800, background: "var(--up-soft)", color: "var(--up)", padding: "2px 6px" }}>● LIVE</span> : null}
+        <span className="pill" style={{ position: "absolute", top: 6, right: 6, zIndex: 2, fontSize: 8, fontWeight: 800, background: "var(--up-soft)", color: "var(--up)", padding: "2px 6px" }}>● REAL</span>
         <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none">
           {ctype === "line" ? (
             <>
-              <defs><linearGradient id={"mcg" + sym.replace(/\W/g, "") + tf} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={lineCol} stopOpacity="0.22" /><stop offset="100%" stopColor={lineCol} stopOpacity="0" /></linearGradient></defs>
-              <polygon points={areaPts} fill={`url(#mcg${sym.replace(/\W/g, "")}${tf})`} />
-              <polyline points={linePts} fill="none" stroke={lineCol} strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+              <defs><linearGradient id={gid} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={lineCol} stopOpacity="0.22" /><stop offset="100%" stopColor={lineCol} stopOpacity="0" /></linearGradient></defs>
+              <polygon points={areaPts} fill={`url(#${gid})`} />
+              <polyline points={linePts} fill="none" stroke={lineCol} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
             </>
           ) : data.map((d, k) => {
-            const x = (k + 0.5) * cw, isUp = d.c >= d.o;
-            const col = isUp ? "var(--up)" : "var(--down)";
-            const yO = yOf(d.o), yC = yOf(d.c), bw = Math.max(2.5, cw * 0.62);
+            const x = (k + 0.5) * cw, bull = d.c >= d.o;
+            const col = bull ? "var(--up)" : "var(--down)";
+            const yO = yOf(d.o), yC = yOf(d.c);
             return (
               <g key={k}>
-                <line x1={x} x2={x} y1={yOf(d.h)} y2={yOf(d.l)} stroke={col} strokeWidth="1" />
-                <rect x={x - bw / 2} y={Math.min(yO, yC)} width={bw} height={Math.max(1.5, Math.abs(yC - yO))} fill={col} rx="0.5" />
+                <line x1={x} y1={yOf(d.h)} x2={x} y2={yOf(d.l)} stroke={col} strokeWidth="1" />
+                <rect x={x - cw * 0.3} y={Math.min(yO, yC)} width={cw * 0.6} height={Math.max(1.5, Math.abs(yC - yO))} fill={col} rx="1" />
               </g>
             );
           })}
         </svg>
       </div>
-      {!staticChart && (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 7 }}>
-          {showTf ? (
-            <div className="hide-scroll" style={{ display: "flex", gap: 5, overflowX: "auto" }}>
-              {TF_LIST.map((x) => (
-                <button key={x} onClick={(e) => { e.stopPropagation(); setTf(x); }} className="pill tap" style={{ flex: "0 0 auto", padding: "5px 10px", fontSize: 10.5, fontWeight: 700, border: "1px solid " + (tf === x ? "var(--primary)" : "var(--line)"), background: tf === x ? "var(--primary)" : "var(--surface)", color: tf === x ? "var(--on-primary)" : "var(--ink)" }}>{x}</button>
+      {showTf && !staticChart && (
+        <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center" }}>
+          <div className="hide-scroll" style={{ display: "flex", gap: 5, overflowX: "auto", flex: 1 }}>
+            {CHART_TFS.map(([k, l]) => (
+              <button key={k} onClick={() => setTf(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "5px 11px", fontSize: 11, fontWeight: 700, border: "1px solid " + (tf === k ? "var(--primary)" : "var(--line)"), background: tf === k ? "var(--primary)" : "var(--surface)", color: tf === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
+            ))}
+          </div>
+          <button onClick={() => setCtype(ctype === "line" ? "candle" : "line")} className="pill tap disp" style={{ flex: "0 0 auto", padding: "5px 10px", fontSize: 11, fontWeight: 700, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)" }}>{ctype === "line" ? "◫ Candles" : "∿ Line"}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ProChart — full chart for the stock detail page: REAL candles, timeframe
+   selector, and stackable indicator overlays (EMA/SMA sets, Bollinger) plus
+   MACD and RSI sub-panels. All indicator math runs on the real candles. */
+function ProChart({ sym, defaultTf = "1d", height = 240 }) {
+  const [tf, setTf] = useState(defaultTf);
+  const [ctype, setCtype] = useState("candle");
+  const [on, setOn] = useState(["ema21", "ema50"]);
+  const [showMacd, setShowMacd] = useState(false);
+  const [showRsi, setShowRsi] = useState(false);
+  const [picker, setPicker] = useState(false);
+  const { data, loading, error } = useCandles(sym, tf);
+
+  const closes = useMemo(() => (data ? data.map((c) => c.c) : []), [data]);
+  const lines = useMemo(() => {
+    if (!closes.length) return [];
+    const out = [];
+    on.forEach((id) => {
+      const o = OVERLAYS.find((x) => x.id === id);
+      if (!o) return;
+      if (o.kind === "ema") out.push({ id, color: o.color, label: o.label, vals: emaSeriesC(closes, o.n) });
+      else if (o.kind === "sma") out.push({ id, color: o.color, label: o.label, vals: smaSeries(closes, o.n) });
+      else if (o.kind === "bb") {
+        const b = bollingerSeries(closes, o.n, 2);
+        out.push({ id: id + "u", color: o.color, label: "BB upper", vals: b.up, dash: "3 3" });
+        out.push({ id: id + "m", color: o.color, label: "BB mid", vals: b.mid });
+        out.push({ id: id + "l", color: o.color, label: "BB lower", vals: b.lo, dash: "3 3" });
+      }
+    });
+    return out;
+  }, [closes, on]);
+  const macd = useMemo(() => (showMacd && closes.length ? macdSeries(closes) : null), [closes, showMacd]);
+  const rsi = useMemo(() => (showRsi && closes.length ? rsiSeries(closes) : null), [closes, showRsi]);
+
+  const toggle = (id) => setOn((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+
+  const tfBar = (
+    <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 10 }}>
+      <div className="hide-scroll" style={{ display: "flex", gap: 5, overflowX: "auto", flex: 1 }}>
+        {CHART_TFS.map(([k, l]) => (
+          <button key={k} onClick={() => setTf(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "6px 12px", fontSize: 11.5, fontWeight: 800, border: "1px solid " + (tf === k ? "var(--primary)" : "var(--line)"), background: tf === k ? "var(--primary)" : "var(--surface)", color: tf === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
+        ))}
+      </div>
+      <button onClick={() => setCtype(ctype === "line" ? "candle" : "line")} className="pill tap disp" style={{ flex: "0 0 auto", padding: "6px 10px", fontSize: 11, fontWeight: 700, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)" }}>{ctype === "line" ? "◫" : "∿"}</button>
+      <button onClick={() => setPicker(true)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "6px 11px", fontSize: 11, fontWeight: 800, border: "1px solid " + (on.length || showMacd || showRsi ? "var(--primary)" : "var(--line)"), background: on.length || showMacd || showRsi ? "var(--primary-soft)" : "var(--surface)", color: on.length || showMacd || showRsi ? "var(--primary)" : "var(--ink)" }}>ƒx{on.length + (showMacd ? 1 : 0) + (showRsi ? 1 : 0) ? ` ${on.length + (showMacd ? 1 : 0) + (showRsi ? 1 : 0)}` : ""}</button>
+    </div>
+  );
+
+  if (loading) return <div>{tfBar}<div style={{ height, display: "grid", placeItems: "center", color: "var(--muted)", fontSize: 12 }}>Loading real candles…</div></div>;
+  if (!data || data.length < 3) {
+    return <div>{tfBar}<div style={{ height, display: "grid", placeItems: "center", color: "var(--muted)", fontSize: 12, textAlign: "center", padding: "0 16px" }}>{error === "no-backend" ? "Connect the backend to load real price history." : "No price history available for this symbol at this timeframe."}</div></div>;
+  }
+
+  const W = 700, H = height, padT = 10, padB = 10;
+  const lows = data.map((d) => d.l), highs = data.map((d) => d.h);
+  const allVals = lines.flatMap((l) => l.vals.filter((v) => v != null));
+  const min = Math.min(...lows, ...(allVals.length ? allVals : lows));
+  const max = Math.max(...highs, ...(allVals.length ? allVals : highs));
+  const span = max - min || 1;
+  const yOf = (p) => padT + (max - p) / span * (H - padT - padB);
+  const cw = W / data.length;
+  const pts = (vals) => vals.map((v, k) => (v == null ? null : `${(k + 0.5) * cw},${yOf(v)}`)).filter(Boolean).join(" ");
+  const up = data[data.length - 1].c >= data[0].o;
+  const lineCol = up ? "var(--up)" : "var(--down)";
+
+  return (
+    <div>
+      {tfBar}
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none">
+        {ctype === "line" ? (
+          <polyline points={pts(data.map((d) => d.c))} fill="none" stroke={lineCol} strokeWidth="1.8" strokeLinejoin="round" />
+        ) : data.map((d, k) => {
+          const x = (k + 0.5) * cw, bull = d.c >= d.o;
+          const col = bull ? "var(--up)" : "var(--down)";
+          const yO = yOf(d.o), yC = yOf(d.c);
+          return (
+            <g key={k}>
+              <line x1={x} y1={yOf(d.h)} x2={x} y2={yOf(d.l)} stroke={col} strokeWidth={Math.max(0.5, cw * 0.08)} />
+              <rect x={x - cw * 0.32} y={Math.min(yO, yC)} width={Math.max(0.8, cw * 0.64)} height={Math.max(1, Math.abs(yC - yO))} fill={col} />
+            </g>
+          );
+        })}
+        {lines.map((l) => (
+          <polyline key={l.id} points={pts(l.vals)} fill="none" stroke={l.color} strokeWidth="1.5" strokeDasharray={l.dash || undefined} opacity="0.95" />
+        ))}
+      </svg>
+
+      {/* legend */}
+      {lines.length > 0 && (
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 7 }}>
+          {lines.filter((l) => !l.id.endsWith("u") && !l.id.endsWith("l")).map((l) => (
+            <span key={l.id} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>
+              <span style={{ width: 10, height: 2, background: l.color, borderRadius: 2 }} />{l.label}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* MACD panel */}
+      {macd && (() => {
+        const hs = macd.hist.filter((v) => v != null);
+        const m = Math.max(...hs.map(Math.abs), 1e-6);
+        const HH = 70, zero = HH / 2;
+        return (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 800, marginBottom: 3 }}>MACD (12, 26, 9)</div>
+            <svg viewBox={`0 0 ${W} ${HH}`} width="100%" height={HH} preserveAspectRatio="none">
+              <line x1="0" y1={zero} x2={W} y2={zero} stroke="var(--line)" strokeWidth="1" />
+              {macd.hist.map((v, k) => v == null ? null : (
+                <rect key={k} x={(k + 0.5) * cw - cw * 0.3} y={v >= 0 ? zero - (v / m) * (zero - 4) : zero} width={Math.max(0.8, cw * 0.6)} height={Math.max(0.8, Math.abs(v / m) * (zero - 4))} fill={v >= 0 ? "var(--up)" : "var(--down)"} opacity="0.65" />
+              ))}
+              <polyline points={macd.line.map((v, k) => v == null ? null : `${(k + 0.5) * cw},${zero - (v / m) * (zero - 4)}`).filter(Boolean).join(" ")} fill="none" stroke="var(--primary)" strokeWidth="1.4" />
+              <polyline points={macd.signal.map((v, k) => v == null ? null : `${(k + 0.5) * cw},${zero - (v / m) * (zero - 4)}`).filter(Boolean).join(" ")} fill="none" stroke="#F59E0B" strokeWidth="1.4" />
+            </svg>
+          </div>
+        );
+      })()}
+
+      {/* RSI panel */}
+      {rsi && (() => {
+        const HH = 64;
+        const y = (v) => HH - (v / 100) * HH;
+        return (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 800, marginBottom: 3 }}>RSI (14)</div>
+            <svg viewBox={`0 0 ${W} ${HH}`} width="100%" height={HH} preserveAspectRatio="none">
+              <line x1="0" y1={y(70)} x2={W} y2={y(70)} stroke="var(--down)" strokeWidth="1" strokeDasharray="3 3" opacity=".5" />
+              <line x1="0" y1={y(30)} x2={W} y2={y(30)} stroke="var(--up)" strokeWidth="1" strokeDasharray="3 3" opacity=".5" />
+              <polyline points={rsi.map((v, k) => v == null ? null : `${(k + 0.5) * cw},${y(v)}`).filter(Boolean).join(" ")} fill="none" stroke="var(--primary-2)" strokeWidth="1.6" />
+            </svg>
+          </div>
+        );
+      })()}
+
+      {/* indicator picker */}
+      {picker && (
+        <div onClick={() => setPicker(false)} style={{ position: "fixed", inset: 0, background: "rgba(10,10,20,.45)", zIndex: 95, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+          <div onClick={(e) => e.stopPropagation()} className="sheet card" style={{ width: "100%", maxWidth: 460, borderRadius: "22px 22px 0 0", padding: 18, maxHeight: "72vh", display: "flex", flexDirection: "column" }}>
+            <div style={{ width: 40, height: 4, background: "var(--line)", borderRadius: 9, margin: "0 auto 14px" }} />
+            <div className="disp" style={{ fontWeight: 800, fontSize: 15, marginBottom: 10 }}>Indicators</div>
+            <div style={{ overflowY: "auto", flex: 1 }}>
+              {OVERLAYS.map((o) => {
+                const active = on.includes(o.id);
+                return (
+                  <button key={o.id} onClick={() => toggle(o.id)} className="tap disp" style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "11px 4px", border: "none", borderBottom: "1px solid var(--line)", background: "transparent", color: "var(--ink)", fontSize: 13.5, fontWeight: 600, textAlign: "left" }}>
+                    <span style={{ width: 18, height: 18, borderRadius: 6, border: "1.5px solid " + (active ? "var(--primary)" : "var(--line)"), background: active ? "var(--primary)" : "transparent", display: "grid", placeItems: "center", flexShrink: 0 }}>{active && <Check size={12} color="var(--on-primary)" />}</span>
+                    <span style={{ width: 12, height: 2.5, background: o.color, borderRadius: 2, flexShrink: 0 }} />
+                    <span>{o.label}</span>
+                  </button>
+                );
+              })}
+              {[["MACD (12,26,9)", showMacd, () => setShowMacd((v) => !v)], ["RSI (14)", showRsi, () => setShowRsi((v) => !v)]].map(([lbl, active, fn]) => (
+                <button key={lbl} onClick={fn} className="tap disp" style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "11px 4px", border: "none", borderBottom: "1px solid var(--line)", background: "transparent", color: "var(--ink)", fontSize: 13.5, fontWeight: 600, textAlign: "left" }}>
+                  <span style={{ width: 18, height: 18, borderRadius: 6, border: "1.5px solid " + (active ? "var(--primary)" : "var(--line)"), background: active ? "var(--primary)" : "transparent", display: "grid", placeItems: "center", flexShrink: 0 }}>{active && <Check size={12} color="var(--on-primary)" />}</span>
+                  <span>{lbl} <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>· sub-panel</span></span>
+                </button>
               ))}
             </div>
-          ) : <span />}
-          <div className="pill" style={{ display: "inline-flex", flexShrink: 0, background: "var(--elev)", border: "1px solid var(--line)", padding: 2 }}>
-            {[["line", "Line"], ["candle", "Candle"]].map(([k, l]) => (
-              <button key={k} onClick={(e) => { e.stopPropagation(); setCtype(k); }} className="pill tap" style={{ padding: "4px 9px", fontSize: 9.5, fontWeight: 800, border: "none", background: ctype === k ? "var(--primary)" : "transparent", color: ctype === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
-            ))}
+            <button onClick={() => setPicker(false)} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--primary)", color: "var(--on-primary)", border: "none", borderRadius: 13, padding: 13, fontWeight: 800, fontSize: 13.5 }}>Done</button>
           </div>
         </div>
       )}
@@ -826,8 +796,6 @@ function CarouselCard({ s, market, onOpen, children, width = 250, watched, toggl
 // e.g. "https://matrix-backend-ab12.onrender.com" — NO trailing slash.
 // While this is "", the app runs in offline SIM mode (no live prices, no login,
 // no Ask Matrix, no cross-device trade history).
-const BACKEND_URL = "https://matrix-qp1i.onrender.com";   // 👈 REPLACE with your real Render URL, e.g. "https://matrix-backend-xxxx.onrender.com"
-const MATRIX_PERSONA = "You are Matrix — the world's sharpest stock-market research assistant, fluent in fundamental analysis, technical analysis and macro/news-driven investing. Answer with crisp, structured, practical insight a confident GenZ investor can act on. Use short paragraphs or tight bullets. When giving a view, lay out the bull case, bear case and key levels rather than a bare command. Always end with a one-line reminder that this is educational research, not financial advice.";
 
 /* ------- LIVE PRICES (Yahoo Finance via the backend proxy) -------
  * Yahoo can't be called straight from the browser (CORS + crumb auth), so live
@@ -846,6 +814,31 @@ function yahooSymbol(sym) {
   if (m === "US") return sym;
   return sym + ".NS"; // NSE
 }
+/* ---- Domain adapters -------------------------------------------------------
+   The service layer is deliberately symbol-agnostic (it takes resolved Yahoo
+   tickers), so app-symbol -> Yahoo mapping stays here in the domain. These thin
+   wrappers keep every existing call site working while the UI is broken up.  */
+const askMatrix = (messages, system = MATRIX_PERSONA, maxTokens = 1000) => aiAsk(messages, system, maxTokens);
+const aiInterpretScreen = (text) => interpretScreen(text, METRICS.map((m) => m[0]));
+const aiInterpretStrategy = (text) => interpretStrategy(text);
+
+const fetchHistory = (sym, tf) => getHistory(yahooSymbol(sym), tf);
+const fetchNews = (sym) => getNews(yahooSymbol(sym));
+const fetchIndicators = (syms) => getIndicators((syms || []).map(yahooSymbol));
+const fetchFundamentals = (syms) => getFundamentals((syms || []).map(yahooSymbol));
+async function fetchLiveQuotes(appSyms) {
+  const rows = await getQuotes((appSyms || []).map(yahooSymbol));
+  if (!rows) return null;
+  const back = new Map((appSyms || []).map((s) => [yahooSymbol(s), s]));
+  return rows.map((r) => ({ ...r, sym: back.get(r.sym) || r.sym })).filter((r) => r.price != null);
+}
+
+const postTrade = (userId, trade) => apiSaveTrade(userId, trade);
+const fetchTrades = (userId, from, to) => listTrades(userId, from, to);
+const apiRegister = (phone, pin, name) => apiRegisterSvc(phone, pin, name);
+const apiLogin = (phone, pin) => apiLoginSvc(phone, pin);
+const marketOpen = (market) => isMarketOpen(market);
+
 async function fetchLiveQuotes(appSyms) {
   if (!BACKEND_URL) return null;
   const map = {};
@@ -857,6 +850,7 @@ async function fetchLiveQuotes(appSyms) {
   return (d.quotes || []).map((q) => ({ sym: map[q.sym] || q.sym, price: q.price, chg: q.chg })).filter((x) => x.sym && x.price != null);
 }
 // Real headlines via the proxy (Yahoo / Moneycontrol / NewsAPI). Null in preview.
+// Relative time from an ISO timestamp (real news carries real publish times).
 async function fetchNews(sym) {
   if (!BACKEND_URL) return null;
   const r = await fetch(`${BACKEND_URL}/api/news?symbol=${encodeURIComponent(yahooSymbol(sym))}`);
@@ -865,7 +859,6 @@ async function fetchNews(sym) {
   return (d.news || []).map((n) => ({ d: n.d ? new Date(n.d).toLocaleDateString() : "", t: n.t, url: n.url, src: n.src }));
 }
 // Map app timeframes → Yahoo range/interval (Yahoo lacks 3m/4h, so use nearest supported).
-const TF_YF = { "3m": { i: "2m", r: "1d" }, "5m": { i: "5m", r: "5d" }, "30m": { i: "30m", r: "1mo" }, "1h": { i: "60m", r: "3mo" }, "4h": { i: "90m", r: "6mo" }, "1d": { i: "1d", r: "1y" } };
 async function fetchHistory(sym, tf) {
   if (!BACKEND_URL) return null;
   const m = TF_YF[tf] || TF_YF["1d"];
@@ -874,7 +867,72 @@ async function fetchHistory(sym, tf) {
   const d = await r.json();
   return (d.candles || [])
     .filter((c) => c.o != null && c.c != null && c.h != null && c.l != null)
-    .map((c, i) => ({ i, o: +(+c.o).toFixed(2), h: +(+c.h).toFixed(2), l: +(+c.l).toFixed(2), c: +(+c.c).toFixed(2), v: c.v }));
+    .map((c, i) => ({ i, t: c.t, o: +(+c.o).toFixed(2), h: +(+c.h).toFixed(2), l: +(+c.l).toFixed(2), c: +(+c.c).toFixed(2), v: c.v }));
+}
+
+// REAL fundamentals + REAL institutional holders (Yahoo quoteSummary via backend).
+async function fetchFundamentals(syms) {
+  if (!BACKEND_URL || !syms || !syms.length) return null;
+  const ySyms = syms.map((s) => yahooSymbol(s)).join(",");
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/fundamentals?symbols=${encodeURIComponent(ySyms)}`);
+    if (!r.ok) return null;
+    return (await r.json()).fundamentals || null;
+  } catch { return null; }
+}
+
+// REAL indicators + volume, computed server-side from actual daily candles.
+async function fetchIndicators(syms) {
+  if (!BACKEND_URL || !syms || !syms.length) return null;
+  const ySyms = syms.map((s) => yahooSymbol(s)).join(",");
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/indicators?symbols=${encodeURIComponent(ySyms)}`);
+    if (!r.ok) return null;
+    return (await r.json()).indicators || null;
+  } catch { return null; }
+}
+
+/* ================== REAL EXIT ENGINE (paper-trading) ==================
+   Walks REAL intraday candles forward from the entry time and closes a position
+   at whichever level is actually touched first — take-profit, stop-loss, or a
+   trailing stop that ratchets up behind the highest price seen since entry.
+   No random outcomes: exit price, exit time and P&L all come from market data.
+   `risk` is read live from the holding, so edits in Portfolio take effect at once.
+   Returns null when the position is still open (nothing touched yet).            */
+async function resolveExitFromCandles(trade, risk = {}) {
+  if (!BACKEND_URL) return null;                       // needs real candles
+  const tp = risk.tp ?? trade.tp;
+  const sl = risk.sl ?? trade.sl;
+  const tsl = risk.tsl ?? trade.tsl;
+  if (!tp && !sl && !tsl) return null;                  // no exit rules -> stays open
+  const entry = trade.entry;
+  const target = tp ? entry * (1 + tp / 100) : null;
+  const hardStop = sl ? entry * (1 - sl / 100) : null;
+  let candles = null;
+  try { candles = await fetchHistory(trade.sym, "5m"); } catch { return null; }
+  if (!candles || !candles.length) return null;
+
+  // Only look at candles AFTER the entry timestamp.
+  const after = candles.filter((c) => c.t && c.t > (trade.entryAt || 0));
+  let peak = entry;                                     // highest price seen since entry
+  for (const c of after) {
+    // Trailing stop ratchets up with the peak, but only using peaks from PRIOR
+    // candles — a candle can't be stopped out by its own new high.
+    const trailStop = tsl ? peak * (1 - tsl / 100) : null;
+    const stop = Math.max(hardStop ?? -Infinity, trailStop ?? -Infinity);
+    const hasStop = stop > -Infinity;
+    const hitStop = hasStop && c.l <= stop;
+    const hitTarget = target != null && c.h >= target;
+    if (hitStop && hitTarget) {
+      // Both touched inside one candle — 5m data can't tell which came first, so
+      // assume the worst case (stop first). Honest and conservative.
+      return { exit: +stop.toFixed(2), exitAt: c.t, exitType: trailStop != null && stop === trailStop ? "Trailing stop" : "Stop loss" };
+    }
+    if (hitStop) return { exit: +stop.toFixed(2), exitAt: c.t, exitType: trailStop != null && stop === trailStop ? "Trailing stop" : "Stop loss" };
+    if (hitTarget) return { exit: +target.toFixed(2), exitAt: c.t, exitType: "Exit trigger" };
+    if (c.h > peak) peak = c.h;                         // update peak after checks
+  }
+  return null;   // still open
 }
 // Trade history flat-file sync (no-ops gracefully without a backend).
 async function postTrade(userId, trade) {
@@ -894,60 +952,8 @@ async function apiLogin(phone, pin) {
   try { const r = await fetch(`${BACKEND_URL}/api/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone, pin }) }); return await r.json(); } catch { return { error: "Network error — try again." }; }
 }
 
-async function askMatrix(messages, system, maxTokens = 1000) {
-  if (BACKEND_URL) {
-    // Proxy mode — key never touches the client. Backend tries Groq → OpenRouter → Gemini → Anthropic.
-    const r = await fetch(`${BACKEND_URL}/api/ask`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages, system, max_tokens: maxTokens }),
-    });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.error || ("proxy " + r.status));
-    return (d.text || "").trim();
-  }
-  // In-app fallback (host runtime injects the key).
-  const r = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, system, messages }),
-  });
-  const d = await r.json();
-  return (d.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
-}
 
-// Local, offline analysis from a stock's own signals — used when the LLM proxy
-// isn't reachable, so Deep Analysis / Ask Matrix always return something useful.
-function localDeepAnalysis(s) {
-  if (!s) return "Analysis isn't available right now.";
-  const m = marketOf(s.sym);
-  const trend = s.price > s.sma50 && s.sma50 > s.sma200 ? "a clean up-trend (price > 50-DMA > 200-DMA)" : s.price < s.sma50 && s.sma50 < s.sma200 ? "a down-trend (price < 50-DMA < 200-DMA)" : "a mixed / range-bound trend";
-  const rsiState = s.rsi > 70 ? "overbought" : s.rsi < 30 ? "oversold" : "neutral";
-  const adxState = s.adx >= 25 ? `trending (ADX ${s.adx})` : `weak/rangey (ADX ${s.adx})`;
-  return [
-    `Technical setup — ${s.sym} is in ${trend}. RSI ${s.rsi} (${rsiState}), MACD ${s.macd >= 0 ? "positive" : "negative"}, ${adxState}. Support ${fmt(s.support, m)}, resistance ${fmt(s.resistance, m)}; VWAP ${fmt(s.vwap, m)}.`,
-    `Fundamentals — P/E ${s.pe || "—"}, ROE ${s.roe}%. Revenue growth ${s.revGrowth}%, EBITDA growth ${s.ebitdaGrowth}%. ${s.qSummary || ""}`,
-    `Bull case — ${s.chg >= 0 ? "momentum is with buyers today" : "a bounce from support could set up a mean-reversion trade"}; a decisive close above ${fmt(s.resistance, m)} opens more upside.`,
-    `Bear case — a break below ${fmt(s.support, m)} would invalidate the setup; ${s.rsi > 70 ? "stretched RSI raises pullback risk" : "weak follow-through would keep it range-bound"}.`,
-    `Bottom line — Matrix reads this as a ${s.verdict} near ${fmt(s.price, m)}. Key levels: buy-zone near ${fmt(s.support, m)}, target near ${fmt(s.resistance, m)}.`,
-    `Educational research, not financial advice.`,
-  ].join("\n\n");
-}
-// Fallback interpreter: turns plain English into structured screener conditions
-// using the LLM proxy (Groq first). Returns null if it can't (or no backend).
-async function aiInterpretScreen(text) {
-  const metrics = METRICS.map((m) => m[0]).join(", ");
-  const system = `You convert a plain-English stock screen into JSON. Available metric fields: ${metrics}. Operators: ">","<",">=","<=". Output ONLY a JSON array (no prose, no markdown). Each item: {"m":<field>,"o":<op>,"rhsType":"value" or "indicator","v":<number when value>,"rhs":<field when indicator>,"tf":"3m"|"5m"|"15m"|"30m"|"1h"|"1d"}. For "EMA21 > EMA50" use ema20 vs ema50 with rhsType "indicator". Default tf "1d".`;
-  try {
-    const out = await askMatrix([{ role: "user", content: text }], system, 500);
-    const arr = JSON.parse((out || "").replace(/```json|```/g, "").trim());
-    if (Array.isArray(arr)) return arr.filter((c) => c && c.m && c.o).map((c) => ({ m: c.m, o: c.o, rhsType: c.rhsType === "indicator" ? "indicator" : "value", v: c.v != null ? String(c.v) : "", rhs: c.rhs || "sma50", tf: c.tf || "1d" }));
-  } catch { /* fall through */ }
-  return null;
-}
-// Fallback interpreter for automation plain-English → readable entry/exit summary.
-async function aiInterpretStrategy(text) {
-  const system = `You are a trading-strategy interpreter. Given a plain-English rule, respond with a short structured summary in this exact shape (no markdown):\nENTRY: <one line>\nEXIT: <one line>\nSTOP: <n>%\nTARGET: <n>%\nKeep it crisp and only use indicators the user mentioned.`;
-  try { const out = await askMatrix([{ role: "user", content: text }], system, 400); return (out || "").trim() || null; } catch { return null; }
-}
+
 function useMatrixChat(context, stock) {
   const [msgs, setMsgs] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -958,10 +964,10 @@ function useMatrixChat(context, stock) {
     const system = `${MATRIX_PERSONA}${context ? "\n\nCURRENT CONTEXT:\n" + context : ""}`;
     try {
       const out = await askMatrix(next, system, 1000);
-      setMsgs([...next, { role: "assistant", content: out || (stock ? localDeepAnalysis(stock) : "I couldn't reach the live engine just now. Try again in a moment.") }]);
+      setMsgs([...next, { role: "assistant", content: out || "I couldn't get a response from the engine. Try again in a moment." }]);
     } catch (e) {
       const detail = e && e.message ? ` (${e.message})` : "";
-      setMsgs([...next, { role: "assistant", content: stock ? localDeepAnalysis(stock) : `I couldn't reach the Matrix engine${detail}. Check that BACKEND_URL points at your Render service and that GROQ_API_KEY is set there — open <backend-url>/api/health to see which engines it can find.` }]);
+      setMsgs([...next, { role: "assistant", content: `I couldn't reach the Matrix engine${detail}. Check that BACKEND_URL points at your Render service and that a GROQ_API_KEY is set there — open <backend-url>/api/health to see which engines it can find. For a grounded verdict without the AI, tap Deep Analysis: it falls back to rules over real indicators.` }]);
     } finally { setBusy(false); }
   }
   return { msgs, busy, send, reset: () => setMsgs([]) };
@@ -1039,7 +1045,7 @@ function Drawer({ s, onClose, onDetails, onBuy }) {
         </div>
         <div style={{ marginTop: 10 }}>
           <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, marginBottom: 4 }}>Price action · candles</div>
-          <MiniCandles sym={s.sym} price={s.price} chg={s.chg} defaultTf={market === "Crypto" ? "1h" : "1d"} showTf pattern={s.pickPattern} />
+          <ProChart sym={s.sym} defaultTf={market === "Crypto" ? "1h" : "1d"} height={250} />
         </div>
 
         <Block title="Key news / event" icon={<Newspaper size={14} />}>{s.news[0].t}</Block>
@@ -1047,7 +1053,7 @@ function Drawer({ s, onClose, onDetails, onBuy }) {
           RSI {s.rsi} ({s.rsi > 70 ? "overbought" : s.rsi < 30 ? "oversold" : "neutral"}), price {s.price > s.sma50 ? "above" : "below"} 50-DMA. Support {fmt(s.support, market)} · Resistance {fmt(s.resistance, market)}.
         </Block>
         <Block title="Fundamental summary" icon={<Building2 size={14} />}>
-          P/E {s.pe || "—"}, ROE {s.roe}%. Revenue growth {s.revGrowth}%, EBITDA growth {s.ebitdaGrowth}%. {s.qSummary}
+          P/E {s.pe ?? "—"}, ROE {s.roe != null ? s.roe + "%" : "—"}, revenue growth {s.revGrowth != null ? s.revGrowth + "%" : "—"}, earnings growth {s.ebitdaGrowth != null ? s.ebitdaGrowth + "%" : "—"}.
         </Block>
 
         <div className="card" style={{ marginTop: 12, padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--bg)" }}>
@@ -1158,7 +1164,7 @@ function DetailPage({ s, onBack, watched, toggleWatch, onTrade, onBuy }) {
   const [active, setActive] = useState("overview");
   const [chartType, setChartType] = useState("candles");
   const [deepBusy, setDeepBusy] = useState(false);
-  const [deepText, setDeepText] = useState("");
+  const [analysis, setAnalysis] = useState(null);   // structured research verdict
   const [liveNews, setLiveNews] = useState(null);
   const [liveCandles, setLiveCandles] = useState(null);
   const refs = useRef({});
@@ -1170,16 +1176,18 @@ function DetailPage({ s, onBack, watched, toggleWatch, onTrade, onBuy }) {
     }
     return () => { stop = true; };
   }, [s]);
-  const rev = useMemo(() => quarters(s.sym, s.revBase, s.revGrowth), [s]);
-  const ebd = useMemo(() => quarters(s.sym + "e", s.revBase * 0.28, s.ebitdaGrowth), [s]);
+  // REAL quarterly revenue & earnings, as reported (Yahoo). null -> section hides.
+  const rev = useMemo(() => (s.quarters || []).map((q) => ({ q: q.q, v: q.rev })), [s]);
+  const ebd = useMemo(() => (s.quarters || []).map((q) => ({ q: q.q, v: q.earn })).filter((x) => x.v != null), [s]);
+  // REAL candles only — no synthetic fallback anywhere in the detail page.
   const cdata = useMemo(() => {
     const n = Math.round(tf / 1.8);
-    if (liveCandles && liveCandles.length) return liveCandles.slice(-n).map((c, i) => ({ ...c, i: i + 1 }));
-    return candles(s.sym, s.price, s.chg, n);
-  }, [s, tf, liveCandles]);
-  const data = s.series.slice(-tf);
+    return liveCandles && liveCandles.length ? liveCandles.slice(-n).map((c, i) => ({ ...c, i: i + 1 })) : [];
+  }, [tf, liveCandles]);
+  const data = useMemo(() => (liveCandles || []).slice(-tf).map((c, i) => ({ i, p: c.c })), [liveCandles, tf]);
   const tabs = [["overview", "Overview"], ["fund", "Fundamentals"], ["tech", "Technicals"], ["news", "News"], ["ask", "Ask Matrix"]];
-  const ctx = `Stock: ${s.name} (${s.sym}), market ${market}. Price ${fmt(s.price, market)} (${s.chg >= 0 ? "+" : ""}${s.chg}% today). RSI ${s.rsi}, P/E ${s.pe}, ROE ${s.roe}%, 50-DMA ${s.sma50}, 200-DMA ${s.sma200}, support ${s.support}, resistance ${s.resistance}. Revenue growth ${s.revGrowth}%, EBITDA growth ${s.ebitdaGrowth}%. Latest quarter: ${s.qSummary} MD commentary: ${s.mdSpeech} Recent news: ${s.news.map((n) => n.t).join(" | ")}. Matrix bull/bear score ${s.bull}/100, verdict ${s.verdict}.`;
+  const n = (v, suf = "") => (v == null ? "n/a" : v + suf);
+  const ctx = `Stock: ${s.name} (${s.sym}), market ${market}. Price ${fmt(s.price, market)} (${s.chg >= 0 ? "+" : ""}${s.chg}% today). REAL indicators — RSI ${n(s.rsi)}, MACD ${n(s.macd)} (signal ${n(s.macdSignal)}), ADX ${n(s.adx)}, ATR ${n(s.atr)}, 50-DMA ${n(s.sma50)}, 200-DMA ${n(s.sma200)}, support ${n(s.support)}, resistance ${n(s.resistance)}, 52w ${n(s.low52)}-${n(s.high52)}, volume ${n(s.vol)} vs 20d avg ${n(s.avgVol)}. Fundamentals — P/E ${n(s.pe)}, ROE ${n(s.roe, "%")}, revenue growth ${n(s.revGrowth, "%")}, earnings growth ${n(s.ebitdaGrowth, "%")}. Only use the figures given; if something is n/a, say so rather than guessing.`;
 
   useEffect(() => {
     const io = new IntersectionObserver((entries) => {
@@ -1190,15 +1198,14 @@ function DetailPage({ s, onBack, watched, toggleWatch, onTrade, onBuy }) {
   }, [s]);
 
   const jump = (k) => { const el = refs.current[k]; if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); };
+  // Structured research verdict. The LLM reasons; the ENGINE owns the levels.
   async function askDeep() {
     if (deepBusy) return;
-    setDeepBusy(true); setDeepText("");
-    const system = `You are Matrix — the world's sharpest equity-research assistant. Produce a structured deep-dive with these headed parts: Technical setup; Latest quarterly results; Recent news & catalysts; Bottom-line verdict with key levels. Be crisp and use short paragraphs. End with: "Educational research, not financial advice."\n\nCONTEXT:\n${ctx}`;
+    setDeepBusy(true); setAnalysis(null);
     try {
-      const t = await askMatrix([{ role: "user", content: `Give me a comprehensive deep analysis of ${s.name} (${s.sym}) right now.` }], system, 1100);
-      setDeepText(t || localDeepAnalysis(s));
-    } catch { setDeepText(localDeepAnalysis(s)); }
-    finally { setDeepBusy(false); }
+      const verdict = await analyzeStock(s, techSignal(s), market);
+      setAnalysis(verdict);
+    } finally { setDeepBusy(false); }
   }
 
   const secStyle = { scrollMarginTop: 118, marginTop: 34 };
@@ -1269,17 +1276,17 @@ function DetailPage({ s, onBack, watched, toggleWatch, onTrade, onBuy }) {
         <div className="card" style={{ marginTop: 12, padding: 16, background: "linear-gradient(160deg,var(--primary-soft),var(--surface))" }}>
           <div className="disp" style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Sparkles size={16} color="var(--primary)" /> Matrix's analysis</div>
           <p style={{ fontSize: 13.5, lineHeight: 1.6, marginTop: 8, marginBottom: 0 }}>
-            {s.pick || s.oneLiner} Technically, RSI sits at {s.rsi} with price {s.price > s.sma50 ? "above" : "below"} the 50-DMA and {s.sma50 > s.sma200 ? "a bullish" : "a bearish"} 50/200 structure. Fundamentally, revenue is {s.revGrowth >= 0 ? "growing" : "contracting"} {Math.abs(s.revGrowth)}% with EBITDA {s.ebitdaGrowth >= 0 ? "expanding" : "compressing"} {Math.abs(s.ebitdaGrowth)}%. Net verdict: <b>{s.verdict}</b>.
+            {s.rsi == null ? "Live technicals are still loading for this symbol." : <>Technically, RSI is <b>{s.rsi}</b> with price {s.sma50 != null ? (s.price > s.sma50 ? "above" : "below") : "—"} the 50-DMA{s.sma50 != null && s.sma200 != null ? (s.sma50 > s.sma200 ? " and a bullish 50/200 structure" : " and a bearish 50/200 structure") : ""}. {s.revGrowth != null ? <>Revenue is {s.revGrowth >= 0 ? "growing" : "contracting"} <b>{Math.abs(s.revGrowth)}%</b>{s.ebitdaGrowth != null ? <> with earnings {s.ebitdaGrowth >= 0 ? "expanding" : "compressing"} <b>{Math.abs(s.ebitdaGrowth)}%</b></> : null}.</> : "Fundamentals are unavailable for this symbol."}</>}
           </p>
           <button onClick={askDeep} disabled={deepBusy} className="tap disp glow" style={{ width: "100%", marginTop: 14, background: "linear-gradient(120deg,var(--primary),var(--primary-2))", color: "#fff", border: "none", borderRadius: 14, padding: 12, fontWeight: 700, fontSize: 13.5, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", opacity: deepBusy ? 0.7 : 1 }}>
             <Sparkles size={16} /> {deepBusy ? "Generating deep analysis…" : "Deep Analysis"}
           </button>
         </div>
-        {(deepText || deepBusy) && (
-          <div className="card" style={{ marginTop: 12, padding: 16 }}>
-            <div className="disp" style={{ fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}><Sparkles size={15} color="var(--primary)" /> Matrix Deep Analysis</div>
-            {deepBusy && !deepText ? <div style={{ color: "var(--muted)", fontSize: 13 }}>Pulling technicals, latest quarter and news together…</div>
-              : <div style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{deepText}</div>}
+        {(analysis || deepBusy) && (
+          <div style={{ marginTop: 12 }}>
+            {deepBusy && !analysis
+              ? <div className="card" style={{ padding: 16, color: "var(--muted)", fontSize: 13 }}>Analysing real technicals, fundamentals and levels…</div>
+              : <ResearchVerdict a={analysis} market={market} />}
           </div>
         )}
         <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
@@ -1288,21 +1295,35 @@ function DetailPage({ s, onBack, watched, toggleWatch, onTrade, onBuy }) {
         </div>
       </div>
 
-      {/* FUNDAMENTALS */}
+      {/* FUNDAMENTALS — all REAL (Yahoo). Anything unavailable shows "—" or hides. */}
       <div data-sec="fund" ref={(el) => (refs.current.fund = el)} style={secStyle}>
         <Pop>
           <Heading icon={<Building2 size={18} color="var(--primary)" />}>Fundamentals</Heading>
-          <Gauge value={s.bull} label="Fundamental health" />
-          <ChartCard title="Revenue (quarterly)" sub={`${s.revGrowth >= 0 ? "+" : ""}${s.revGrowth}% trend`}>
-            <BarBlock data={rev} color="var(--primary)" />
-          </ChartCard>
-          <ChartCard title="EBITDA (quarterly)" sub={`${s.ebitdaGrowth >= 0 ? "+" : ""}${s.ebitdaGrowth}% trend`}>
-            <BarBlock data={ebd} color="#0FB97D" />
-          </ChartCard>
-          <StatGrid rows={[["P/E", s.pe || "—"], ["ROE", s.roe + "%"], ["Mkt cap class", s.cap], ["Sector", s.sector], ["Rev growth", s.revGrowth + "%"], ["EBITDA growth", s.ebitdaGrowth + "%"]]} />
-          <TextCard title="Quarterly results summary">{s.qSummary}</TextCard>
-          <TextCard title="MD's speech — summary">{s.mdSpeech}</TextCard>
-          <TextCard title="Matrix's summary" accent>Fundamentals score {s.bull}/100. {s.revGrowth >= 8 ? "Healthy top-line compounding" : "Modest growth"} paired with {s.ebitdaGrowth >= 8 ? "expanding margins" : "watchful margins"} keeps the structural bias <b>{s.verdict}</b>.</TextCard>
+          {rev.length > 0 ? (
+            <ChartCard title="Revenue (quarterly, as reported)" sub={s.revGrowth != null ? `${s.revGrowth >= 0 ? "+" : ""}${s.revGrowth}% YoY` : ""}>
+              <BarBlock data={rev} color="var(--primary)" />
+            </ChartCard>
+          ) : null}
+          {ebd.length > 0 ? (
+            <ChartCard title="Earnings (quarterly, as reported)" sub={s.ebitdaGrowth != null ? `${s.ebitdaGrowth >= 0 ? "+" : ""}${s.ebitdaGrowth}% YoY` : ""}>
+              <BarBlock data={ebd} color="#0FB97D" />
+            </ChartCard>
+          ) : null}
+          <StatGrid rows={[
+            ["P/E", s.pe ?? "—"],
+            ["ROE", s.roe != null ? s.roe + "%" : "—"],
+            ["Profit margin", s.profitMargin != null ? s.profitMargin + "%" : "—"],
+            ["Market cap", s.marketCap != null ? compact(s.marketCap) : "—"],
+            ["Revenue growth", s.revGrowth != null ? s.revGrowth + "%" : "—"],
+            ["Earnings growth", s.ebitdaGrowth != null ? s.ebitdaGrowth + "%" : "—"],
+            ["Debt / equity", s.debtToEquity ?? "—"],
+            ["Sector", s.sector],
+          ]} />
+          {s.pe == null && rev.length === 0 && (
+            <div className="card" style={{ padding: 16, textAlign: "center", color: "var(--muted)", fontSize: 12.5, marginTop: 10 }}>
+              {BACKEND_URL ? "No published fundamentals for this instrument (common for indices, futures and crypto)." : "Connect the backend to load real fundamentals."}
+            </div>
+          )}
         </Pop>
       </div>
 
@@ -1310,7 +1331,14 @@ function DetailPage({ s, onBack, watched, toggleWatch, onTrade, onBuy }) {
       <div data-sec="tech" ref={(el) => (refs.current.tech = el)} style={secStyle}>
         <Pop>
           <Heading icon={<Activity size={18} color="var(--primary)" />}>Technicals</Heading>
-          <Gauge value={clamp(s.bull + (s.rsi - 50) / 4, 5, 96) | 0} label="Technical strength" />
+          {s.rsi != null ? (
+            <Gauge value={clamp(
+              50 + (s.rsi - 50) * 0.6
+                 + (s.sma50 != null && s.price > s.sma50 ? 10 : -10)
+                 + (s.sma50 != null && s.sma200 != null && s.sma50 > s.sma200 ? 8 : -8)
+                 + (s.macd != null && s.macdSignal != null && s.macd > s.macdSignal ? 8 : -8)
+                 + (s.adx != null && s.adx > 25 ? 6 : 0), 5, 96) | 0} label="Technical strength (live)" />
+          ) : null}
           <StatGrid rows={[
             ["RSI (14)", s.rsi + (s.rsi > 70 ? " · overbought" : s.rsi < 30 ? " · oversold" : " · neutral")],
             ["MACD", (s.macd >= 0 ? "+" : "") + s.macd + (s.macd >= 0 ? " · bullish" : " · bearish")],
@@ -1325,18 +1353,20 @@ function DetailPage({ s, onBack, watched, toggleWatch, onTrade, onBuy }) {
         </Pop>
       </div>
 
-      {/* NEWS */}
+      {/* NEWS — real headlines only (Yahoo / NewsAPI via the backend). */}
       <div data-sec="news" ref={(el) => (refs.current.news = el)} style={secStyle}>
         <Pop>
           <Heading icon={<Newspaper size={18} color="var(--primary)" />}>News</Heading>
-          {(liveNews || s.news).map((n, i) => (
+          {liveNews && liveNews.length ? liveNews.map((n, i) => (
             <a key={i} href={n.url || undefined} target="_blank" rel="noreferrer" className="card" style={{ display: "block", padding: 14, marginBottom: 10, textDecoration: "none", color: "inherit" }}>
-              <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 4 }}>{n.d}{n.src ? " · " + n.src : ""}{liveNews ? " · live" : ""}</div>
+              <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 4 }}>{timeAgo(n.d)}{n.src ? " · " + n.src : ""}</div>
               <div style={{ fontSize: 13.5, fontWeight: 600, lineHeight: 1.5 }}>{n.t}</div>
-              {!liveNews && <div style={{ fontSize: 12, color: "var(--primary)", marginTop: 7, display: "flex", gap: 5, alignItems: "center" }}><Sparkles size={13} /> Matrix: {i === 0 ? "Incrementally positive for sentiment; supports the current bias." : "Neutral-to-mild; monitor follow-through over coming sessions."}</div>}
             </a>
-          ))}
-          {!liveNews && <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>Live headlines from Yahoo / Moneycontrol stream in once the backend proxy is connected.</div>}
+          )) : (
+            <div className="card" style={{ padding: 18, textAlign: "center", color: "var(--muted)", fontSize: 12.5 }}>
+              {BACKEND_URL ? "No recent headlines for this symbol." : "Connect the backend to load live headlines."}
+            </div>
+          )}
         </Pop>
       </div>
 
@@ -1467,7 +1497,7 @@ function StockIdeasStrip({ onOpen, onBuy, market }) {
             <div key={i} onClick={() => s && onOpen(s)} className="card tap" style={{ flex: "0 0 auto", width: 236, padding: 13 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span className="disp" style={{ fontWeight: 700, fontSize: 14 }}>{idea.sym}</span>
-                <span className="pill" style={{ fontSize: 10, background: idea.by === "Matrix" ? "var(--primary-soft)" : "var(--bg)", color: idea.by === "Matrix" ? "var(--primary)" : "var(--ink-soft)", fontWeight: 700, padding: "2px 8px" }}>{idea.by === "Matrix" ? "✦ Matrix" : idea.by}</span>
+                <span className="pill" style={{ fontSize: 10, background: "var(--primary-soft)", color: "var(--primary)", fontWeight: 700, padding: "2px 8px" }}>✦ Matrix</span>
               </div>
               <div style={{ marginTop: 8 }}><MiniCandles sym={idea.sym} price={cur} chg={s ? s.chg : 0} height={92} showTf={false} staticChart defaultTf={m === "Crypto" ? "1h" : "1d"} pattern={idea.pattern} /></div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 9, fontSize: 10.5, gap: 4 }}>
@@ -1484,50 +1514,6 @@ function StockIdeasStrip({ onOpen, onBuy, market }) {
     </Section>
   );
 }
-function FnoPicks({ onOpen }) {
-  const items = [...FNO].sort((a, b) => Math.abs(b.chg) - Math.abs(a.chg)).slice(0, 8);
-  const [tick, setTick] = useState(0);
-  useEffect(() => { const id = setInterval(() => setTick((t) => t + 1), 2500); return () => clearInterval(id); }, []);
-  const trigTime = (sym) => { const mins = 15 + (hash(sym) % 300); const h = 9 + Math.floor((15 + mins) / 60); const mm = (15 + mins) % 60; return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`; };
-  return (
-    <Section title="Options Picks" icon={<Zap size={17} color="var(--primary)" />}>
-      <div style={{ fontSize: 10.5, color: "var(--muted)", margin: "-8px 2px 12px", display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 6, height: 6, borderRadius: 6, background: "var(--up)", boxShadow: "0 0 0 3px var(--up-soft)" }} /> Live P&amp;L from signal entry · updates every few seconds</div>
-      <div className="hide-scroll" style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4 }}>
-        {items.map((s) => {
-          const f = fnoData(s); const m = marketOf(s.sym);
-          const call = f.rec === "CALL";
-          const entry = f.premium;
-          // live premium: seeded oscillation + slow drift in the trade's favour
-          const osc = Math.sin(tick * 0.6 + (hash(s.sym) % 7)) * 0.045;
-          const drift = Math.min(0.12, tick * 0.004) * (call ? 1 : 1);
-          const live = +(entry * (1 + osc + drift * (osc >= 0 ? 1 : 0.4))).toFixed(1);
-          const pnl = (live / entry - 1) * 100;
-          const up = pnl >= 0;
-          return (
-            <div key={s.sym} onClick={() => onOpen(makeOption(s, f))} className="card tap" style={{ flex: "0 0 auto", width: 232, padding: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <div style={{ minWidth: 0 }}>
-                  <div className="disp" style={{ fontWeight: 700, fontSize: 14 }}>{s.sym}</div>
-                  <div style={{ fontSize: 10, color: "var(--muted)" }}>ATM {fmt(f.atm, m)} · signal {trigTime(s.sym)}</div>
-                </div>
-                <span className="pill disp" style={{ fontSize: 11, fontWeight: 800, padding: "4px 11px", background: call ? "var(--up-soft)" : "var(--down-soft)", color: call ? "var(--up)" : "var(--down)" }}>{call ? "▲ CALL" : "▼ PUT"}</span>
-              </div>
-              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 12 }}>
-                <div><div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 700 }}>ENTRY</div><div className="mono" style={{ fontWeight: 700, fontSize: 13 }}>{fmt(entry, m)}</div></div>
-                <div style={{ textAlign: "center" }}><div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 700 }}>LTP</div><div className="mono" style={{ fontWeight: 800, fontSize: 14 }}>{fmt(live, m)}</div></div>
-                <div style={{ textAlign: "right" }}><div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 700 }}>P&amp;L</div><div className="mono" style={{ fontWeight: 800, fontSize: 14, color: up ? "var(--up)" : "var(--down)" }}>{up ? "+" : ""}{pnl.toFixed(1)}%</div></div>
-              </div>
-              <div style={{ marginTop: 10, background: "var(--bg)", borderRadius: 10, padding: "7px 10px", display: "flex", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>OI (ATM)</span>
-                <span className="mono" style={{ fontWeight: 800, fontSize: 12 }}>{compact(f.oi)} <span style={{ fontSize: 10, color: f.oiChg >= 0 ? "var(--up)" : "var(--down)" }}>{f.oiChg >= 0 ? "↑" : "↓"}{Math.abs(f.oiChg)}%</span></span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </Section>
-  );
-}
 function DashStat({ k, v, pos }) {
   return (
     <div>
@@ -1536,26 +1522,113 @@ function DashStat({ k, v, pos }) {
     </div>
   );
 }
-const MARKET_UPDATES = {
-  IN: "Indian benchmarks are holding near record territory as domestic flows stay strong and the rupee steadies. IT and autos are leading on upbeat guidance, while rate-sensitive financials consolidate ahead of the next RBI cue. Breadth is healthy in mid-caps, though stretched valuations in pockets warrant selectivity.",
-  US: "US indices remain AI-led, with mega-cap tech and semiconductors driving gains as soft-landing hopes persist. Markets are watching the Fed's rate path and earnings revisions; rotation into laggard sectors is tentative. Volatility is contained but headline-sensitive.",
-  Crypto: "Crypto is firm on steady spot-ETF inflows and a post-halving supply backdrop. Bitcoin dominance is easing as majors like ETH and SOL outperform on app activity. Expect sharp two-way swings around macro prints and liquidity shifts.",
-  Commodity: "Commodities are mixed: precious metals firm on rate-cut hopes and central-bank buying, while energy chops on supply-demand crosscurrents. Industrial metals catch a bid from electrification demand. Watch the dollar and real yields for direction.",
-};
-function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, watch, toggleWatch, profile, portfolio = [], wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist }) {
+
+/* Real, current headlines — one card per symbol, fetched from the backend
+   (Yahoo Finance news, or NewsAPI when NEWS_API_KEY is set). Nothing hardcoded. */
+function LiveNewsStrip({ symbols = [], onOpen, list = [] }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const key = symbols.join(",");
+  useEffect(() => {
+    let stop = false;
+    setLoading(true); setItems([]);
+    if (!BACKEND_URL || !symbols.length) { setLoading(false); return; }
+    Promise.all(symbols.slice(0, 6).map((sym) =>
+      fetchNews(sym).then((n) => (n && n.length ? { sym, n: n[0] } : null)).catch(() => null)
+    )).then((rows) => {
+      if (stop) return;
+      setItems(rows.filter(Boolean));
+      setLoading(false);
+    });
+    return () => { stop = true; };
+  }, [key]);
+
+  return (
+    <Section title="In the news" icon={<Newspaper size={17} color="#E8A33D" />}>
+      {loading ? (
+        <div className="card" style={{ padding: 18, color: "var(--muted)", fontSize: 12.5 }}>Loading latest headlines…</div>
+      ) : items.length === 0 ? (
+        <div className="card" style={{ padding: 18, color: "var(--muted)", fontSize: 12.5 }}>{BACKEND_URL ? "No recent headlines right now." : "Connect the backend to load live news."}</div>
+      ) : (
+        <div className="hide-scroll" style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
+          {items.map(({ sym, n }) => {
+            const s = list.find((a) => a.sym === sym);
+            return (
+              <div key={sym} className="card" style={{ flex: "0 0 auto", width: 250, padding: 14 }}>
+                <div onClick={() => s && onOpen(s)} className="tap disp" style={{ fontWeight: 800, fontSize: 13.5 }}>{sym}</div>
+                <a href={n.url || undefined} target="_blank" rel="noreferrer" style={{ textDecoration: "none", color: "inherit" }}>
+                  <div style={{ marginTop: 8, fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{n.t}</div>
+                  <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 7 }}>{timeAgo(n.d)}{n.src ? " · " + n.src : ""}</div>
+                </a>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Section>
+  );
+}
+
+/* Market update — generated by the LLM from REAL live numbers (breadth, top
+   movers, index change). No hardcoded editorial. Falls back to a plain factual
+   summary of the same real numbers if the LLM is unreachable. */
+function MarketBrief({ market, list = [] }) {
+  const [text, setText] = useState(null);
+  const [busy, setBusy] = useState(true);
+  const withData = list.filter((s) => s.hasData && s.chg != null);
+  const key = market + "|" + Math.floor(Date.now() / 3600000) + "|" + withData.length;
+  useEffect(() => {
+    let stop = false;
+    setBusy(true);
+    if (!withData.length) { setText(null); setBusy(false); return; }
+    const up = withData.filter((s) => s.chg > 0).length;
+    const down = withData.filter((s) => s.chg < 0).length;
+    const top = [...withData].sort((a, b) => b.chg - a.chg).slice(0, 3);
+    const bot = [...withData].sort((a, b) => a.chg - b.chg).slice(0, 3);
+    const avg = (withData.reduce((a, s) => a + s.chg, 0) / withData.length).toFixed(2);
+    const facts = `Market: ${market}. Advancing ${up}, declining ${down}, average change ${avg}%. Top gainers: ${top.map((s) => `${s.sym} ${s.chg > 0 ? "+" : ""}${s.chg}%`).join(", ")}. Top losers: ${bot.map((s) => `${s.sym} ${s.chg}%`).join(", ")}.`;
+    const fallback = `Breadth is ${up > down ? "positive" : up < down ? "negative" : "mixed"} — ${up} advancing vs ${down} declining, average move ${avg}%. Leading: ${top.map((s) => s.sym).join(", ")}. Lagging: ${bot.map((s) => s.sym).join(", ")}.`;
+    askMatrix(
+      [{ role: "user", content: facts }],
+      "You are a market analyst. Using ONLY the real numbers given, write a 2-3 sentence market update: what breadth and the movers imply, and what to watch. Do not invent any figure, company or event not in the data. No preamble, no disclaimer.",
+      220
+    ).then((out) => { if (!stop) { setText((out || "").trim() || fallback); setBusy(false); } })
+     .catch(() => { if (!stop) { setText(fallback); setBusy(false); } });
+    return () => { stop = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
+  if (busy) return <p style={{ fontSize: 12.8, lineHeight: 1.6, margin: 0, color: "var(--muted)" }}>Reading the tape…</p>;
+  if (!text) return <p style={{ fontSize: 12.8, lineHeight: 1.6, margin: 0, color: "var(--muted)" }}>Live market data is still loading.</p>;
+  return <p style={{ fontSize: 12.8, lineHeight: 1.6, margin: 0, color: "var(--ink-soft)" }}>{text}</p>;
+}
+function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, watch, toggleWatch, profile, portfolio = [], wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [] }) {
   const [glMode, setGlMode] = useState("Gainers");
+  // Picks refresh ONCE AN HOUR (not on every tick) so they don't churn.
+  const [pickHour, setPickHour] = useState(() => Math.floor(Date.now() / 3600000));
+  useEffect(() => {
+    const id = setInterval(() => setPickHour(Math.floor(Date.now() / 3600000)), 60000);
+    return () => clearInterval(id);
+  }, []);
   const picks = useMemo(() => {
-    const base = dailyPicks(list);
-    if (market !== "FNO") return base;
-    return base.map((s) => { const f = fnoData(s); const call = f.rec === "CALL"; return { ...s, isOpt: true, call, atm: f.atm, premium: f.premium, optLabel: `${s.sym} ${f.atm} ${call ? "CE" : "PE"}` }; });
-  }, [list, market]);
-  const trending = [...list].sort((a, b) => b.vol - a.vol).slice(0, 6);
-  const gainers = [...list].sort((a, b) => b.chg - a.chg).slice(0, 5);
-  const losers = [...list].sort((a, b) => a.chg - b.chg).slice(0, 5);
-  const traded = [...list].sort((a, b) => b.vol - a.vol).slice(0, 6);
-  const inNews = list.filter((s) => s.news).slice(0, 6);
+    const base = dailyPicks(list).slice(0, 8);
+    return market === "FNO" ? base.map((s) => ({ ...makeFuture(s), pickSignal: s.pickSignal, pickReason: s.pickReason, pickPattern: s.pickPattern, pickStop: s.pickStop, pickTarget: s.pickTarget, pickSlPct: s.pickSlPct, pickTpPct: s.pickTpPct, pickRR: s.pickRR })) : base;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list, market, pickHour]);
+  // Trending = REAL relative volume + REAL short-term gain (not just raw volume).
+  const trending = useMemo(() => [...list]
+    .filter((s) => s.hasData && s.vol != null)
+    .map((s) => ({ s, rv: s.avgVol ? (s.vol || 0) / s.avgVol : 0 }))
+    .sort((a, b) => (b.rv * 2 + (b.s.chg || 0)) - (a.rv * 2 + (a.s.chg || 0)))
+    .slice(0, 6).map((x) => x.s), [list, pickHour]);
+  // Exclude volatility indices (India VIX etc.) from gainers/losers — they're not tradeable stocks.
+  const glList = list.filter((s) => s.sector !== "Volatility" && !/VIX/i.test(s.sym));
+  const gainers = [...glList].sort((a, b) => b.chg - a.chg).slice(0, 5);
+  const losers = [...glList].sort((a, b) => a.chg - b.chg).slice(0, 5);
+  const traded = [...list].filter((s) => s.vol != null).sort((a, b) => (b.vol || 0) - (a.vol || 0)).slice(0, 6);
+  const inNews = [...list].sort((a, b) => (b.vol || 0) - (a.vol || 0)).slice(0, 6);
   const smart = list.filter((s) => s.inst);
-  const optOf = (s) => makeOption(s, fnoData(s));
+  const optOf = (s) => makeFuture(s);
   const trendingView = market === "FNO" ? trending.map(optOf) : trending;
   const tradedView = market === "FNO" ? traded.map(optOf) : traded;
 
@@ -1570,7 +1643,6 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy,
   const net = dash.val - dash.inv;
   const retPct = dash.inv ? (net / dash.inv) * 100 : 0;
   const annPct = dash.inv ? (dash.annNum / dash.inv) * 100 : 0;
-  const upd = MARKET_UPDATES[market];
 
   // Auto-Buy Matrix's picks — for the market selected at the top; each market keeps its own on/off
   const [dashView, setDashView] = useState("auto");
@@ -1602,23 +1674,14 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy,
   const autoPicks = useMemo(() => dailyPicks(UNIVERSE[market]).slice(0, 6), [market]);
   const perCap = capNum / Math.max(1, autoPicks.length);
   const autoTrades = autoPicks.map((s) => {
-    const r = lcg(hash(s.sym) + DAY * 7);
-    const win = r() > 0.42;
     const m = marketOf(s.sym);
     if (isFNO) {
-      // Buy the ATM CALL or PUT (per signal), qty = 1 lot; P&L on premium
-      const f = fnoData(s);
-      const call = f.rec === "CALL";
-      const label = `${s.sym} ${f.atm} ${call ? "CE" : "PE"}`;
-      const ov = autoOverrides[label];
-      const tpPct = ov ? ov.tp : (call ? 35 : 30);          // options: wider targets/stops
-      const slPct = ov ? ov.sl : 18;
-      const entry = f.premium;
-      const qty = lotSize(s.sym);
-      const exit = +(win ? entry * (1 + tpPct / 100) : entry * (1 - slPct / 100)).toFixed(2);
-      const pnl = +((exit - entry) * qty).toFixed(2);
-      const entryMin = Math.floor(r() * 120), holdMin = 20 + Math.floor(r() * 160);
-      return { sym: label, under: s.sym, opt: call ? "CE" : "PE", m: "IN", qty, entry, exit, pnl, win, tpPct, slPct, entryTime: mkTime(entryMin), exitTime: mkTime(entryMin + holdMin) };
+      // F&O auto-buy trades the CURRENT-MONTH FUTURES of the underlying, 1 lot.
+      const f = makeFuture(s);
+      const auto = autoTargets(s);
+      const ov = autoOverrides[f.sym];
+      return { sym: f.sym, under: s.sym, m: "FNO", isFut: true, expiry: f.expiry, qty: f.lot,
+               entry: s.price, tpPct: ov ? ov.tp : auto.tp, slPct: ov ? ov.sl : auto.sl, auto };
     }
     const auto = autoTargets(s);
     const ov = autoOverrides[s.sym];
@@ -1627,27 +1690,46 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy,
     const entry = s.price;
     const qty = Math.max(1, Math.floor(perCap / entry));
     const dp = entry < 1 ? 6 : entry < 10 ? 4 : 2;
-    const exit = +(win ? entry * (1 + tpPct / 100) : entry * (1 - slPct / 100)).toFixed(dp);
-    const pnl = +((exit - entry) * qty).toFixed(2);
-    const entryMin = Math.floor(r() * 120), holdMin = 20 + Math.floor(r() * 160);
-    return { sym: s.sym, m, qty, entry, exit, pnl, win, tpPct, slPct, auto, entryTime: mkTime(entryMin), exitTime: mkTime(entryMin + holdMin) };
+    return { sym: s.sym, m, qty, entry, tpPct, slPct, auto };   // planned entry; the exit engine closes it at real prices
   });
-  // Record today's auto-buy trades to history (once per day per market) when auto-buy is on.
+  // When Auto-Buy is ON, actually place today's picks as REAL positions (once per
+  // day per market) with their target/stop attached. The exit engine then closes
+  // them at real market prices — no simulated win/loss.
   useEffect(() => {
-    if (!autoOn || !onRecord) return;
-    const base = new Date(); base.setHours(0, 0, 0, 0); const b = base.getTime();
-    const hm = (t) => { const [h, mm] = String(t || "09:15").split(":").map(Number); return b + (h * 60 + mm) * 60000; };
-    autoTrades.forEach((t) => onRecord({ id: `auto-${market}-${t.sym}-${DAY}`, sym: t.sym, name: t.under || t.sym, entry: t.entry, entryAt: hm(t.entryTime), exit: t.exit, exitAt: hm(t.exitTime), pnl: t.pnl, qty: t.qty, market: t.m, tradeType: "Auto Buy", exitType: t.win ? "Exit trigger" : "Stop loss" }));
+    if (!autoOn || !onBuy || !BACKEND_URL) return;
+    const key = `mx_autobuy_${market}_${DAY}`;
+    if (lsGet(key, false)) return;
+    autoTrades.forEach((t) => {
+      const u = ALL.find((a) => a.sym === (t.under || t.sym));
+      if (!u) return;
+      // F&O: buy the futures contract (priced off the underlying, qty = 1 lot).
+      const inst = t.isFut ? { ...u, sym: t.sym, name: `${u.name} — ${t.expiry} Futures` } : u;
+      onBuy(inst, t.qty, { tp: t.tpPct, sl: t.slPct, tradeType: "Auto Buy" });
+    });
+    lsSet(key, true);
   }, [autoOn, market]);
   const setOv = (t, field, val) => setAutoOverrides((o) => { const cur = o[t.sym] || { tp: t.tpPct, sl: t.slPct }; return { ...o, [t.sym]: { ...cur, [field]: val === "" ? cur[field] : +val } }; });
   // period stats (shown regardless of on/off)
   const bizDaysThisMonth = () => { const now = new Date(); let c = 0; for (let d = 1; d <= now.getDate(); d++) { const wd = new Date(now.getFullYear(), now.getMonth(), d).getDay(); if (wd >= 1 && wd <= 5) c++; } return c; };
-  const aggFor = (nTrades) => { const r = lcg(hash("hist" + DAY + market) + nTrades); let pnl = 0, wins = 0; for (let i = 0; i < nTrades; i++) { const w = r() > 0.44; if (w) wins++; const tp = 1 + r() * 4, sl = 0.4 + r() * 1.7; pnl += w ? perCap * tp / 100 : -perCap * sl / 100; } return { pnl: +pnl.toFixed(0), trades: nTrades, wins }; };
-  const nToday = autoTrades.length;
-  const todayStats = { pnl: autoTrades.reduce((a, t) => a + t.pnl, 0), trades: nToday, wins: autoTrades.filter((t) => t.win).length };
-  const periodStats = plPeriod === "today" ? todayStats : plPeriod === "month" ? aggFor(nToday * bizDaysThisMonth()) : aggFor(nToday * 250);
+  // REAL stats: every number below comes from actual recorded Auto-Buy trades.
+  // Closed trades contribute realised P&L; open ones contribute live unrealised P&L.
+  const periodFrom = useMemo(() => {
+    const d = new Date();
+    if (plPeriod === "today") { d.setHours(0, 0, 0, 0); return d.getTime(); }
+    if (plPeriod === "month") { d.setDate(1); d.setHours(0, 0, 0, 0); return d.getTime(); }
+    return 0;                                       // lifetime
+  }, [plPeriod]);
+  const autoRows = useMemo(() => (trades || [])
+    .filter((t) => (t.tradeType === "Auto Buy") && (t.market || "IN") === market && (t.entryAt || 0) >= periodFrom)
+    .map((t) => {
+      const open = t.exitAt == null;
+      const cur = open ? ((ALL.find((a) => a.sym === t.sym) || {}).price ?? t.entry) : t.exit;
+      return { ...t, open, cur, realPnl: +(((cur - t.entry) * (t.qty || 1))).toFixed(2) };
+    }), [trades, market, periodFrom]);
+  const closedRows = autoRows.filter((t) => !t.open);
+  const periodStats = { pnl: autoRows.reduce((a, t) => a + t.realPnl, 0), trades: autoRows.length, wins: closedRows.filter((t) => t.realPnl > 0).length };
   const autoPnl = periodStats.pnl;
-  const autoWinRate = periodStats.trades ? periodStats.wins / periodStats.trades * 100 : 0;
+  const autoWinRate = closedRows.length ? closedRows.filter((t) => t.realPnl > 0).length / closedRows.length * 100 : 0;
   const periodLabel = plPeriod === "today" ? "today" : plPeriod === "month" ? "this month" : "last 12 months";
 
   return (
@@ -1696,7 +1778,7 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy,
                   </label>
                 </div>
               </div>
-              <div style={{ fontSize: 10, opacity: .7, marginTop: 2 }}>P&amp;L · {periodLabel} {autoOn ? "· auto-buy running" : "· preview (turn on to run)"}</div>
+              <div style={{ fontSize: 10, opacity: .7, marginTop: 2 }}>P&amp;L · {periodLabel} {autoOn ? "· live positions (real exits)" : "· simulated preview"}</div>
               <div className="mono" style={{ fontWeight: 800, fontSize: 27, marginTop: 3, color: autoPnl >= 0 ? "#9CFFD6" : "#FFB3BE" }}>{(autoPnl >= 0 ? "+" : "") + fmt(autoPnl, aggCur)}</div>
               <div style={{ fontSize: 11, opacity: .85 }}>{`${periodStats.trades} trades · ${autoWinRate.toFixed(0)}% win rate · ${CUR[aggCur]}${(capNum / 1000).toFixed(0)}k capital`}</div>
 
@@ -1712,23 +1794,38 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy,
                 <input value={deployCapital} onChange={(e) => setDeployCapital(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" placeholder="100000" className="no-ring mono" style={{ width: "100%", background: "transparent", border: "none", color: "#fff", fontSize: 17, fontWeight: 800, marginTop: 2 }} />
               </div>
 
-              {/* collapsible trades */}
+              {/* Positions — REAL. Planned entries when Auto-Buy is off; live/closed
+                  positions (with real P&L) once it is on. Nothing is simulated. */}
               <button onClick={() => setShowTrades((v) => !v)} className="tap disp" style={{ width: "100%", marginTop: 12, background: "rgba(255,255,255,.12)", color: "#fff", border: "1px solid rgba(255,255,255,.22)", borderRadius: 12, padding: 11, fontWeight: 800, fontSize: 12.5, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}>
-                {showTrades ? "Hide today's trades" : `Show Today's Trades (${autoTrades.length})`}<ChevronRight size={15} style={{ transform: showTrades ? "rotate(-90deg)" : "rotate(90deg)", transition: "transform .2s" }} />
+                {showTrades ? "Hide positions" : (autoOn ? `Show Positions (${autoRows.length})` : `Show Today's Plan (${autoTrades.length})`)}<ChevronRight size={15} style={{ transform: showTrades ? "rotate(-90deg)" : "rotate(90deg)", transition: "transform .2s" }} />
               </button>
 
-              {showTrades && (plPeriod === "today" ? (
+              {showTrades && (autoOn ? (
                 <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-                  {autoTrades.map((t) => (
-                    <div key={t.sym} style={{ background: "rgba(0,0,0,.22)", borderRadius: 12, padding: "10px 12px" }}>
-                      <div onClick={() => { const st = ALL.find((a) => a.sym === (t.under || t.sym)); st && onOpen(st); }} className="tap" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
-                        <span className="disp" style={{ fontWeight: 800, fontSize: 12.5 }}>{t.sym} <span style={{ fontSize: 10, opacity: .7, fontWeight: 600 }}>×{t.qty}{isFNO ? " (1 lot)" : ""}</span></span>
-                        <span style={{ fontSize: 10, opacity: .85, fontWeight: 700 }}>{t.win ? "🎯 Target" : "⛔ Stop"}</span>
-                        <span className="mono" style={{ fontWeight: 800, fontSize: 13, color: t.win ? "#9CFFD6" : "#FFB3BE" }}>{t.pnl >= 0 ? "+" : ""}{fmt(t.pnl, t.m)}</span>
+                  {autoRows.length === 0 && <div style={{ fontSize: 11.5, opacity: .82, lineHeight: 1.6 }}>No auto-buy positions in this period yet. Positions are placed at real market prices and closed by the exit engine when a target or stop is actually hit.</div>}
+                  {autoRows.map((t) => (
+                    <div key={t.id} style={{ background: "rgba(0,0,0,.22)", borderRadius: 12, padding: "10px 12px" }}>
+                      <div onClick={() => { const st = ALL.find((a) => a.sym === t.sym); st && onOpen(st); }} className="tap" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
+                        <span className="disp" style={{ fontWeight: 800, fontSize: 12.5 }}>{t.sym} <span style={{ fontSize: 10, opacity: .7, fontWeight: 600 }}>×{t.qty}</span></span>
+                        <span style={{ fontSize: 9.5, opacity: .85, fontWeight: 800 }}>{t.open ? "● OPEN" : t.exitType}</span>
+                        <span className="mono" style={{ fontWeight: 800, fontSize: 13, color: t.realPnl >= 0 ? "#9CFFD6" : "#FFB3BE" }}>{t.realPnl >= 0 ? "+" : ""}{fmt(t.realPnl, t.market || "IN")}</span>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 7, fontSize: 10, opacity: .82 }}>
-                        <div><div style={{ opacity: .7 }}>Entry{isFNO ? " premium" : ""}</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.entry, t.m)}</div><div style={{ opacity: .7 }}>{t.entryTime} · {dayStr}</div></div>
-                        <div style={{ textAlign: "right" }}><div style={{ opacity: .7 }}>Exit{isFNO ? " premium" : ""}</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.exit, t.m)}</div><div style={{ opacity: .7 }}>{t.exitTime} · {dayStr}</div></div>
+                        <div><div style={{ opacity: .7 }}>Entry</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.entry, t.market || "IN")}</div><div style={{ opacity: .7 }}>{t.entryAt ? new Date(t.entryAt).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</div></div>
+                        <div style={{ textAlign: "right" }}><div style={{ opacity: .7 }}>{t.open ? "Current" : "Exit"}</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.cur, t.market || "IN")}</div><div style={{ opacity: .7 }}>{t.open ? "position open" : new Date(t.exitAt).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</div></div>
+                      </div>
+                      {(t.tp || t.sl) && <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.12)", fontSize: 10.5, fontWeight: 700 }}>🎯 Target <span style={{ color: "#9CFFD6" }}>+{t.tp}%</span> · 🛑 Stop <span style={{ color: "#FFB3BE" }}>−{t.sl}%</span></div>}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ fontSize: 11, opacity: .8, lineHeight: 1.5 }}>Today's plan — these are the picks Auto-Buy would enter at the live price, with the target/stop it would arm. Turn Auto-Buy on to place them for real.</div>
+                  {autoTrades.map((t) => (
+                    <div key={t.sym} style={{ background: "rgba(0,0,0,.22)", borderRadius: 12, padding: "10px 12px" }}>
+                      <div onClick={() => { const st = ALL.find((a) => a.sym === t.sym); st && onOpen(st); }} className="tap" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
+                        <span className="disp" style={{ fontWeight: 800, fontSize: 12.5 }}>{t.sym} <span style={{ fontSize: 10, opacity: .7, fontWeight: 600 }}>×{t.qty}</span></span>
+                        <span className="mono" style={{ fontWeight: 800, fontSize: 13 }}>{fmt(t.entry, t.m)}</span>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.12)" }}>
                         <span style={{ fontSize: 10.5, fontWeight: 700 }}>🎯 Target <span style={{ color: "#9CFFD6" }}>+{t.tpPct}%</span> · 🛑 Stop <span style={{ color: "#FFB3BE" }}>−{t.slPct}%</span>{autoOverrides[t.sym] ? " · edited" : ""}</span>
@@ -1750,10 +1847,6 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy,
                     </div>
                   ))}
                 </div>
-              ) : (
-                <div style={{ marginTop: 12, fontSize: 11, opacity: .82, lineHeight: 1.6 }}>
-                  Aggregated across {periodStats.trades} auto-trades {plPeriod === "month" ? "so far this month" : "over the last 12 months"} on {MKT_LABEL[market]}. Each trade auto-exited at its target or stop. Switch to <b>Today</b> to see and edit individual positions.
-                </div>
               ))}
             </div>
           )}
@@ -1774,22 +1867,43 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy,
           {picks.map((s) => (
             <div key={s.sym} onClick={() => onOpen(s)} className="card tap glow metal" style={{ flex: "0 0 auto", width: 272, padding: 0, position: "relative", overflow: "hidden", border: "none", background: "var(--feature-grad)" }}>
               <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 80% at 0% 0%, rgba(255,255,255,.18), transparent 45%)", pointerEvents: "none" }} />
-              <button onClick={(e) => { e.stopPropagation(); toggleWatch(s.sym); }} className="tap" style={{ position: "absolute", top: 12, right: 12, width: 30, height: 30, borderRadius: 10, border: "1px solid rgba(255,255,255,.3)", background: "rgba(255,255,255,.14)", color: "#fff", display: "grid", placeItems: "center", zIndex: 2 }}>
-                {watch.includes(s.sym) ? <Check size={16} /> : <Plus size={17} />}
+              {/* + BUYS the stock (1 unit / 1 lot for futures), arming the pick's real SL & target */}
+              <button onClick={(e) => { e.stopPropagation(); onBuy && onBuy(s, s.isFut ? (s.lot || 1) : 1, { tp: s.pickTpPct, sl: s.pickSlPct, tradeType: "Manual" }); }} className="tap" title="Buy" style={{ position: "absolute", top: 12, right: 12, width: 30, height: 30, borderRadius: 10, border: "1px solid rgba(255,255,255,.3)", background: "rgba(255,255,255,.14)", color: "#fff", display: "grid", placeItems: "center", zIndex: 2 }}>
+                <Plus size={17} />
               </button>
               <div style={{ padding: 17, position: "relative", color: "#fff" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 16 }}>💎</span>
-                  <div style={{ minWidth: 0 }}><div className="disp" style={{ fontWeight: 700, fontSize: 15.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.isOpt ? s.optLabel : s.sym}</div><div style={{ fontSize: 11, color: "rgba(255,255,255,.7)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</div></div>
-                  {s.isOpt && <span className="pill disp" style={{ marginLeft: "auto", fontSize: 10, fontWeight: 800, padding: "3px 9px", background: s.call ? "rgba(34,197,94,.3)" : "rgba(239,68,68,.32)", color: "#fff" }}>{s.call ? "▲ CALL" : "▼ PUT"}</span>}
+                  <div style={{ minWidth: 0 }}><div className="disp" style={{ fontWeight: 700, fontSize: 15.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.sym}</div><div style={{ fontSize: 11, color: "rgba(255,255,255,.7)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</div></div>
+                  {s.isFut && <span className="pill disp" style={{ marginLeft: "auto", fontSize: 9.5, fontWeight: 800, padding: "3px 9px", background: "rgba(255,255,255,.18)", color: "#fff", whiteSpace: "nowrap" }}>FUT · {s.expiry}</span>}
                 </div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 12 }}>
-                  <span className="mono" style={{ fontWeight: 800, fontSize: 19 }}>{fmt(s.isOpt ? s.premium : s.price, market)}</span>
-                  <span style={{ fontSize: 10.5, color: "rgba(255,255,255,.75)", fontWeight: 700 }}>{s.isOpt ? "premium · ATM " + fmt(s.atm, market) : (s.chg >= 0 ? "▲ +" : "▼ ") + s.chg.toFixed(2) + "%"}</span>
+                  <span className="mono" style={{ fontWeight: 800, fontSize: 19 }}>{fmt(s.price, market)}</span>
+                  <span style={{ fontSize: 10.5, color: "rgba(255,255,255,.75)", fontWeight: 700 }}>{(s.chg >= 0 ? "▲ +" : "▼ ") + s.chg.toFixed(2) + "%"}{s.isFut ? ` · lot ${s.lot}` : ""}</span>
                 </div>
-                <div style={{ marginTop: 10 }}><span className="pill" style={{ fontSize: 10, fontWeight: 800, background: "rgba(255,255,255,.18)", color: "#fff", padding: "3px 9px" }}>⚡ {s.pickSignal}</span></div>
+                <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <span className="pill" style={{ fontSize: 10, fontWeight: 800, background: "rgba(255,255,255,.18)", color: "#fff", padding: "3px 9px" }}>⚡ {s.pickSignal}</span>
+                  {s.volRatio > 1.3 && <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, background: "rgba(255,255,255,.14)", color: "#fff", padding: "3px 8px" }}>vol {s.volRatio}×</span>}
+                </div>
+                {/* REAL stop / target from support-resistance + ATR */}
+                {s.pickTarget != null && (
+                  <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                    <div style={{ flex: 1, background: "rgba(0,0,0,.24)", borderRadius: 10, padding: "7px 9px" }}>
+                      <div style={{ fontSize: 8.5, opacity: .8, fontWeight: 700 }}>TARGET</div>
+                      <div className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: "#9CFFD6" }}>{fmt(s.pickTarget, market)} <span style={{ fontSize: 9, opacity: .85 }}>+{s.pickTpPct}%</span></div>
+                    </div>
+                    <div style={{ flex: 1, background: "rgba(0,0,0,.24)", borderRadius: 10, padding: "7px 9px" }}>
+                      <div style={{ fontSize: 8.5, opacity: .8, fontWeight: 700 }}>STOP</div>
+                      <div className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: "#FFB3BE" }}>{fmt(s.pickStop, market)} <span style={{ fontSize: 9, opacity: .85 }}>−{s.pickSlPct}%</span></div>
+                    </div>
+                    {s.pickRR != null && <div style={{ flex: "0 0 auto", background: "rgba(0,0,0,.24)", borderRadius: 10, padding: "7px 9px", display: "grid", placeItems: "center" }}>
+                      <div style={{ fontSize: 8.5, opacity: .8, fontWeight: 700 }}>R:R</div>
+                      <div className="mono" style={{ fontWeight: 800, fontSize: 12.5 }}>{s.pickRR}</div>
+                    </div>}
+                  </div>
+                )}
                 <div style={{ marginTop: 10, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,.18)", fontSize: 12, color: "rgba(255,255,255,.92)", lineHeight: 1.55, display: "flex", gap: 6 }}>
-                  <Sparkles size={14} color="#fff" style={{ flex: "0 0 auto", marginTop: 2 }} /><span>{s.pickReason || s.pick}</span>
+                  <Sparkles size={14} color="#fff" style={{ flex: "0 0 auto", marginTop: 2 }} /><span>{s.pickReason || ""}</span>
                 </div>
                 <div style={{ marginTop: 12 }}><VerdictTag v={s.verdict} /></div>
               </div>
@@ -1802,7 +1916,7 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy,
       <Pop style={{ marginTop: 22 }}>
         <div className="card" style={{ padding: 15 }}>
           <div className="disp" style={{ fontWeight: 700, fontSize: 13.5, display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}><Newspaper size={15} color="var(--primary)" /> Market updates</div>
-          <p style={{ fontSize: 12.8, lineHeight: 1.6, margin: 0, color: "var(--ink-soft)" }}>{MARKET_UPDATES[market]}</p>
+          <MarketBrief market={market} list={list} />
         </div>
       </Pop>
 
@@ -1810,7 +1924,6 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy,
       {market !== "FNO" && market !== "Commodity" && <StockIdeasStrip onOpen={onOpen} onBuy={onBuy} market={market} />}
 
       {/* F&O Picks (Indian derivatives) */}
-      {(market === "IN" || market === "FNO") && <FnoPicks onOpen={onOpen} />}
 
       {/* Market pulse strip — not for Commodity */}
       {market !== "Commodity" && <MarketPulseStrip market={market} list={list} onOpen={onOpen} />}
@@ -1861,40 +1974,34 @@ function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy,
         </div>
       </Section>
 
-      {/* In the news — carousel (not for F&O) */}
-      {market !== "FNO" && (
-        <Section title="In the news" icon={<Newspaper size={17} color="#E8A33D" />}>
-          <div className="hide-scroll" style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
-            {inNews.map((s) => (
-              <CarouselCard key={s.sym} s={s} market={market} onOpen={onOpen} width={250} watched={watch.includes(s.sym)} toggleWatch={toggleWatch}>
-                <div style={{ marginTop: 10, fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{s.news[0].t}</div>
-                <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 6 }}>{s.news[0].d}</div>
-              </CarouselCard>
-            ))}
-          </div>
-        </Section>
-      )}
+      {/* In the news — REAL headlines fetched live (not for F&O) */}
+      {market !== "FNO" && <LiveNewsStrip symbols={inNews.map((s) => s.sym)} onOpen={onOpen} list={list} />}
 
-      {/* Smart money — not for F&O or Commodity */}
+      {/* Smart money — REAL institutional holders from Yahoo (quoteSummary).
+          Hidden entirely when no holder data is available: no invented names. */}
       {market !== "FNO" && market !== "Commodity" && smart.length > 0 && (
         <Section title="Smart Money picks" icon={<Building2 size={17} color="var(--primary)" />}>
           <div className="hide-scroll" style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
             {smart.map((s) => (
-              <CarouselCard key={s.sym} s={s} market={market} onOpen={onOpen} width={250} watched={watch.includes(s.sym)} toggleWatch={toggleWatch}>
+              <CarouselCard key={s.sym} s={s} market={market} onOpen={onOpen} width={260} watched={watch.includes(s.sym)} toggleWatch={toggleWatch}>
                 <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 7 }}>
-                  {s.inst.map((it, i) => (
-                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg)", borderRadius: 12, padding: "9px 11px" }}>
-                      <span style={{ fontSize: 12, fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.n}</span>
-                      <span className="mono" style={{ fontSize: 12, fontWeight: 700, flex: "0 0 auto", marginLeft: 8 }}>{it.v}</span>
+                  {s.inst.slice(0, 3).map((it, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg)", borderRadius: 12, padding: "9px 11px", gap: 8 }}>
+                      <span style={{ fontSize: 11.5, fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.n}</span>
+                      <span style={{ flex: "0 0 auto", textAlign: "right" }}>
+                        <span className="mono" style={{ fontSize: 12, fontWeight: 800, display: "block" }}>{it.pct != null ? it.pct + "%" : "—"}</span>
+                        {it.c != null && <span className="mono" style={{ fontSize: 9.5, fontWeight: 700, color: it.c >= 0 ? "var(--up)" : "var(--down)" }}>{it.c >= 0 ? "+" : ""}{it.c}%</span>}
+                      </span>
                     </div>
                   ))}
                 </div>
+                <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 8 }}>% of shares held by institution · latest filing</div>
               </CarouselCard>
             ))}
           </div>
         </Section>
       )}
-      <div style={{ textAlign: "center", fontSize: 10.5, color: "var(--muted)", margin: "26px 0 6px" }}>Simulated data for demo · Not financial advice</div>
+      <div style={{ textAlign: "center", fontSize: 10.5, color: "var(--muted)", margin: "26px 0 6px" }}>Live market data · Virtual money · Educational research, not financial advice</div>
     </div>
   );
 }
@@ -2175,6 +2282,45 @@ function TradeView({ walletMap, adjustWallet, portfolio, setPortfolio, preset, m
 const qBtn = { width: 34, height: 34, borderRadius: 10, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 18, fontWeight: 700, color: "var(--ink)" };
 
 /* ============================== PORTFOLIO ============================== */
+
+/* Per-holding intelligence: trend, action, confidence and suggested levels.
+   Straight from portfolioService — no logic in this component. */
+function HoldingIntel({ a, market = "IN" }) {
+  const [open, setOpen] = useState(false);
+  if (!a) return null;
+  const col = a.action === "Add" ? "var(--up)" : a.action === "Exit" ? "var(--down)" : a.action === "Reduce" ? "#F59E0B" : "var(--muted)";
+  if (!a.hasData) {
+    return <div style={{ marginTop: 10, fontSize: 10.5, color: "var(--muted)" }}>Live indicators haven't loaded — no recommendation without real data.</div>;
+  }
+  return (
+    <div style={{ marginTop: 11, paddingTop: 11, borderTop: "1px solid var(--line)" }}>
+      <div onClick={() => setOpen((v) => !v)} className="tap" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span className="pill disp" style={{ fontSize: 10.5, fontWeight: 800, padding: "3px 10px", background: col, color: "#fff" }}>{a.action}</span>
+        <span style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 700 }}>{a.confidence}% confidence</span>
+        <span style={{ fontSize: 10.5, color: "var(--muted)" }}>· {a.trend} · {a.risk} risk</span>
+        {a.rMultiple != null && <span className="mono" style={{ fontSize: 10.5, fontWeight: 700, color: a.rMultiple >= 0 ? "var(--up)" : "var(--down)" }}>{a.rMultiple >= 0 ? "+" : ""}{a.rMultiple}R</span>}
+        <ChevronRight size={13} style={{ marginLeft: "auto", transform: open ? "rotate(90deg)" : "none", transition: "transform .15s", color: "var(--muted)" }} />
+      </div>
+      {open && (
+        <div style={{ marginTop: 9 }}>
+          {a.reasons.map((x, i) => (
+            <div key={i} style={{ display: "flex", gap: 6, fontSize: 11.5, color: "var(--ink-soft)", marginTop: 4, lineHeight: 1.5 }}><span style={{ color: col }}>•</span><span>{x}</span></div>
+          ))}
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            {[["Suggested stop", a.suggestedStop, "var(--down)"], ["Suggested target", a.suggestedTarget, "var(--up)"]].map(([k, v, c]) => (
+              <div key={k} style={{ flex: 1, background: "var(--elev)", borderRadius: 10, padding: "7px 9px" }}>
+                <div style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 800 }}>{k.toUpperCase()}</div>
+                <div className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: c }}>{v != null ? fmt(v, market) : "—"}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>📊 {a.technical}</div>
+          <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 3, lineHeight: 1.5 }}>🏛 {a.fundamental}</div>
+        </div>
+      )}
+    </div>
+  );
+}
 function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, onUpdate, priceSnap = {} }) {
   const [expand, setExpand] = useState(null);   // sym with open trade panel
   const mkt = market === "FNO" ? "IN" : market;
@@ -2191,8 +2337,69 @@ function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, 
   const totalVal = rows.reduce((a, r) => a + r.val, 0);
   const totalInv = rows.reduce((a, r) => a + r.inv, 0);
   const totalPL = totalVal - totalInv;
+
+  // ---- PORTFOLIO INTELLIGENCE (real data only; no guesses) ----
+  const intel = useMemo(() => {
+    const map = {};
+    rows.forEach((r) => {
+      const st = ALL.find((a) => a.sym === r.sym);
+      map[r.sym] = analyzeHolding(r, st, st ? techSignal(st) : null);
+    });
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows.map((r) => `${r.sym}:${r.qty}:${r.cur}:${r.sl || ""}:${r.tp || ""}`).join(",")]);
+  const analyses = Object.values(intel);
+  const health = useMemo(() => portfolioHealth(analyses, wallet), [analyses, wallet]);
+  const sectors = useMemo(() => sectorExposure(analyses, (sym) => ALL.find((a) => a.sym === sym)), [analyses]);
+
   return (
     <div className="mx fade">
+      {/* PORTFOLIO HEALTH — every point traceable to a real number */}
+      {health.score != null && (
+        <div className="card" style={{ marginTop: 14, padding: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div className="disp" style={{ fontWeight: 800, fontSize: 14 }}>Portfolio health</div>
+            <div className="mono" style={{ fontWeight: 800, fontSize: 22, color: health.score >= 70 ? "var(--up)" : health.score >= 45 ? "#F59E0B" : "var(--down)" }}>{health.score}<span style={{ fontSize: 12, color: "var(--muted)" }}>/100</span></div>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            {health.components.map((c) => (
+              <div key={c.k} style={{ marginTop: 9 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, fontWeight: 700 }}>
+                  <span>{c.k}</span><span className="mono" style={{ color: "var(--muted)" }}>{c.v}</span>
+                </div>
+                <div style={{ height: 5, background: "var(--elev)", borderRadius: 3, marginTop: 3, overflow: "hidden" }}>
+                  <div style={{ width: `${c.v}%`, height: "100%", borderRadius: 3, background: c.v >= 70 ? "var(--up)" : c.v >= 45 ? "#F59E0B" : "var(--down)" }} />
+                </div>
+                <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 3 }}>{c.why}</div>
+              </div>
+            ))}
+          </div>
+          {health.flags.length > 0 && (
+            <div style={{ marginTop: 13, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+              {health.flags.map((f, i) => (
+                <div key={i} style={{ display: "flex", gap: 7, fontSize: 11.5, color: "var(--ink-soft)", marginTop: 5, lineHeight: 1.5 }}>
+                  <span style={{ color: "#F59E0B", flex: "0 0 auto" }}>▲</span><span>{f}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {sectors.length > 1 && (
+            <div style={{ marginTop: 13, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+              <div style={{ fontSize: 10.5, fontWeight: 800, color: "var(--muted)", marginBottom: 7 }}>SECTOR EXPOSURE</div>
+              {sectors.slice(0, 5).map((x) => (
+                <div key={x.sector} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5 }}>
+                  <span style={{ fontSize: 11.5, flex: "0 0 90px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{x.sector}</span>
+                  <div style={{ flex: 1, height: 6, background: "var(--elev)", borderRadius: 3, overflow: "hidden" }}>
+                    <div style={{ width: `${x.pct}%`, height: "100%", background: "var(--primary)", borderRadius: 3 }} />
+                  </div>
+                  <span className="mono" style={{ fontSize: 10.5, fontWeight: 700, flex: "0 0 auto" }}>{x.pct}%</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="disp" style={{ fontWeight: 700, fontSize: 20, marginTop: 6 }}>Virtual Portfolio</div>
       <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 1 }}>{mLabel} holdings</div>
       <div className="card metal" style={{ marginTop: 12, padding: 16, background: "var(--feature-grad)", border: "none", color: "#fff" }}>
@@ -2223,7 +2430,14 @@ function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, 
             <div style={{ display: "flex", gap: 14, marginTop: 10, fontSize: 11.5 }}>
               <Stat k="Buy" v={fmt(r.buy, r.m)} /><Stat k="Current" v={fmt(r.cur, r.m)} /><Stat k="Invested" v={fmt(r.inv, r.m)} />
             </div>
-            {(r.sl || r.tsl || r.tp) && <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, fontWeight: 600 }}>{r.tp ? `🎯 TP +${r.tp}% ` : ""}{r.sl ? `· 🛑 SL −${r.sl}% ` : ""}{r.tsl ? `· 🔻 TSL ${r.tsl}%` : ""}</div>}
+            {(r.sl || r.tsl || r.tp) && <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, fontWeight: 600, display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
+              <span className="pill" style={{ fontSize: 9, fontWeight: 800, padding: "2px 7px", background: "var(--up-soft)", color: "var(--up)" }}>● ARMED</span>
+              {r.tp ? `🎯 TP +${r.tp}% ` : ""}{r.sl ? `· 🛑 SL −${r.sl}% ` : ""}{r.tsl ? `· 🔻 TSL ${r.tsl}%` : ""}
+              <span style={{ opacity: .8 }}>· auto-sells when hit</span>
+            </div>}
+
+            {/* ---- AI COPILOT: per-holding recommendation (real data only) ---- */}
+            {intel[r.sym] && <HoldingIntel a={intel[r.sym]} market={r.m} />}
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
               <button onClick={() => setExpand(expand === r.sym ? null : r.sym)} className="tap disp" style={{ flex: 1, background: expand === r.sym ? "var(--primary)" : "var(--surface)", color: expand === r.sym ? "var(--on-primary)" : "var(--ink)", border: "1px solid var(--line)", borderRadius: 11, padding: 11, fontWeight: 800, fontSize: 12.5, display: "flex", gap: 5, alignItems: "center", justifyContent: "center" }}><SlidersHorizontal size={13} /> {expand === r.sym ? "Close" : "Manage · Buy / Sell"}</button>
             </div>
@@ -2330,7 +2544,7 @@ function WatchlistView({ watchlists, activeWl, setActiveWl, createWatchlist, del
                 <button onClick={(e) => { e.stopPropagation(); toggleWatch(s.sym); }} className="tap" title="Remove" style={{ width: 28, height: 28, borderRadius: 9, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--down)", display: "grid", placeItems: "center" }}><X size={15} /></button>
               </div>
             </div>
-            <div style={{ fontSize: 12, color: "var(--primary)", marginTop: 8, display: "flex", gap: 5 }}><Sparkles size={13} style={{ flex: "0 0 auto", marginTop: 1 }} />{s.oneLiner}</div>
+            <div style={{ fontSize: 12, color: "var(--primary)", marginTop: 8, display: "flex", gap: 5 }}><Sparkles size={13} style={{ flex: "0 0 auto", marginTop: 1 }} />{s.pickReason || ""}</div>
           </div>
         );
       })}
@@ -2340,27 +2554,30 @@ function WatchlistView({ watchlists, activeWl, setActiveWl, createWatchlist, del
 
 /* ============================== IDEAS ============================== */
 // Ideas are regenerated daily from the strongest technical setups across markets.
+/* Trade ideas — published by MATRIX only. Entry is the live price; the target and
+   stop come from the SAME real engine as the picks (real support/resistance + ATR).
+   No user-generated ideas, no invented handles, no random levels.            */
 function buildDailyIdeas() {
-  const r = lcg(DAY * 257 + 3);
-  const handles = ["@arjun_trades", "@nisha.fno", "@swingpro", "@chartwiz", "@priya.charts"];
-  const pool = ALL.filter((s) => s.sector !== "Volatility" && s.sector !== "Index");
-  const scored = pool.map((s) => ({ s, t: techSignal(s) }))
+  return ALL
+    .filter((s) => s.sector !== "Volatility" && s.sector !== "Index" && s.hasData)
+    .map((s) => ({ s, t: techSignal(s) }))
+    .filter((x) => x.t && x.t.score > 0 && x.t.target && x.t.stop)
     .sort((a, b) => b.t.score - a.t.score)
-    .slice(0, 16)
-    .filter(() => r() > 0.25)
-    .slice(0, 9);
-  return scored.map(({ s, t }, i) => {
-    const entry = +s.price.toFixed(2);
-    const target = +(entry * (1 + 0.05 + r() * 0.14)).toFixed(2);
-    const stop = +(entry * (1 - 0.03 - r() * 0.04)).toFixed(2);
-    const gain = +((target / entry - 1) * 100).toFixed(1);
-    const by = i % 3 === 0 ? "Matrix" : handles[i % handles.length];
-    const tradeType = marketOf(s.sym) === "IN" && r() > 0.6 ? "F&O" : "Stock";
-    return {
-      by, sym: s.sym, entry, exit: target, stop, gain, pattern: t.pattern, tradeType,
-      logic: `${t.why} ${s.price > s.sma50 ? "Trading above the 50-DMA" : "Reclaiming key moving averages"}; RSI ${s.rsi}, MACD ${s.macd >= 0 ? "positive" : "negative"} — confirmed on 5m / 15m / 1D.`,
-    };
-  });
+    .slice(0, 9)
+    .map(({ s, t }) => ({
+      by: "Matrix",
+      publishedAt: new Date(new Date().setHours(0, 0, 0, 0)).getTime(),
+      sym: s.sym,
+      entry: +s.price.toFixed(2),
+      exit: t.target,               // real: 60-session resistance or ATR projection
+      stop: t.stop,                 // real: swing support cushioned by ATR
+      gain: t.tpPct,
+      rr: t.rr,
+      pattern: t.pattern,
+      tradeType: marketOf(s.sym) === "IN" ? "Stock" : "Stock",
+      signal: t.signal,
+      logic: t.why,
+    }));
 }
 const SEED_IDEAS = buildDailyIdeas();
 const PATTERNS = {
@@ -2394,37 +2611,54 @@ function PatternChart({ type }) {
     </div>
   );
 }
-// Resolve an idea to a realized outcome by simulating a price path from entry and
-// checking whether the TARGET or STOP was touched first. If neither, it's still open.
-function ideaResult(idea) {
-  const entry = idea.entry, target = idea.exit;
-  const stop = idea.stop != null ? idea.stop : +(entry * 0.94).toFixed(2);
-  const seed = hash(idea.sym + idea.by + entry);
-  const r = lcg(seed + 1);
-  const N = 70;
-  let p = entry, closed = null;
-  for (let i = 1; i <= N; i++) {
-    const vol = entry * 0.022;
-    const drift = entry * 0.0013; // mild upward bias
-    p = p + drift + (r() - 0.5) * vol * 2;
-    if (p >= target) { closed = { win: true, ret: (target / entry - 1) * 100, reason: "Target", bars: i }; break; }
-    if (p <= stop) { closed = { win: false, ret: (stop / entry - 1) * 100, reason: "Stop", bars: i }; break; }
+/* Resolve an idea against REAL candles: walk forward from the publish time and
+   see which level was actually touched first. Same rules as the exit engine
+   (ties inside one candle assume the stop). Returns null while data is loading —
+   the dashboard then reports only what it can actually verify.               */
+function resolveIdea(idea, candles) {
+  const entry = idea.entry;
+  const target = idea.exit;
+  const stop = idea.stop;
+  const mkt = marketOf(idea.sym);
+  const type = idea.tradeType || "Stock";
+  if (!candles || !candles.length || !target || !stop) return null;
+  const from = idea.publishedAt || 0;
+  const after = candles.filter((c) => c.t && c.t >= from);
+  if (!after.length) return null;
+  const first = after[0].t;
+  const daysAgo = Math.max(0, Math.round((Date.now() - first) / 864e5));
+  for (const c of after) {
+    if (c.l <= stop) return { status: "closed", win: false, ret: (stop / entry - 1) * 100, reason: "Stop", exitAt: c.t, daysAgo, type, mkt, stop };
+    if (c.h >= target) return { status: "closed", win: true, ret: (target / entry - 1) * 100, reason: "Target", exitAt: c.t, daysAgo, type, mkt, stop };
   }
-  const daysAgo = Math.floor(lcg(seed + 9)() * 360);
-  const type = idea.tradeType || "Stock", mkt = marketOf(idea.sym);
-  if (!closed) return { status: "open", ret: (p / entry - 1) * 100, daysAgo, type, mkt, stop };
-  return { status: "closed", win: closed.win, ret: closed.ret, reason: closed.reason, bars: closed.bars, daysAgo, type, mkt, stop };
+  const last = after[after.length - 1].c;
+  return { status: "open", ret: (last / entry - 1) * 100, last, daysAgo, type, mkt, stop };
 }
+
 function IdeasDashboard({ ideas }) {
-  const [by, setBy] = useState("Matrix");
   const [type, setType] = useState("All");
   const [mkt, setMkt] = useState("All");
   const [range, setRange] = useState(365);
   const [cap, setCap] = useState(100000);
   const [symF, setSymF] = useState("All");
-  const all = ideas.map((id) => ({ id, o: ideaResult(id) }))
-    .filter(({ id, o }) =>
-      (by === "All" || (by === "Matrix" ? id.by === "Matrix" : id.by !== "Matrix")) &&
+  // Outcomes are resolved against REAL candles (async). Until the history lands we
+  // show nothing rather than a guess.
+  const [outcomes, setOutcomes] = useState({});
+  const symsKey = ideas.map((i) => i.sym).join(",");
+  useEffect(() => {
+    let stop = false;
+    if (!BACKEND_URL || !ideas.length) { setOutcomes({}); return; }
+    Promise.all(ideas.map((idea) =>
+      fetchHistory(idea.sym, "1d")
+        .then((c) => [idea.sym, resolveIdea(idea, c)])
+        .catch(() => [idea.sym, null])
+    )).then((rows) => { if (!stop) setOutcomes(Object.fromEntries(rows)); });
+    return () => { stop = true; };
+  }, [symsKey]);
+
+  const all = ideas
+    .map((id) => ({ id, o: outcomes[id.sym] }))
+    .filter(({ id, o }) => o &&
       (type === "All" || o.type === type) &&
       (mkt === "All" || o.mkt === mkt) &&
       (symF === "All" || id.sym === symF) &&
@@ -2460,7 +2694,6 @@ function IdeasDashboard({ ideas }) {
         <Stat k="Trades" v={n} />
       </div>
       <div style={{ display: "flex", gap: 7, marginTop: 12, flexWrap: "wrap" }}>
-        <select value={by} onChange={(e) => setBy(e.target.value)} style={sel}><option value="Matrix">Posted by: Matrix</option><option value="All">Posted by: All</option><option value="Community">Posted by: Community</option></select>
         <select value={type} onChange={(e) => setType(e.target.value)} style={sel}><option value="All">Type: All</option><option value="Stock">Stock</option><option value="F&O">F&amp;O</option></select>
         <select value={mkt} onChange={(e) => setMkt(e.target.value)} style={sel}><option value="All">Market: All</option><option value="IN">Indian</option><option value="US">US</option><option value="Crypto">Crypto</option></select>
         <select value={range} onChange={(e) => setRange(+e.target.value)} style={sel}><option value={30}>30d</option><option value={90}>3m</option><option value={180}>6m</option><option value={365}>12m</option></select>
@@ -2472,37 +2705,18 @@ function IdeasDashboard({ ideas }) {
 }
 function Ideas({ onOpen, onBuy, market = "IN" }) {
   const [ideas, setIdeas] = useState(SEED_IDEAS);
-  const [draft, setDraft] = useState({ sym: "NIFTY50", entry: "", exit: "", logic: "", pattern: "breakout" });
   const [open, setOpen] = useState(false);
   const mkt = market === "FNO" ? "IN" : market;
   const shown = market === "FNO" ? [] : ideas.filter((i) => marketOf(i.sym) === mkt);
-  const post = () => {
-    if (!draft.entry || !draft.exit || !draft.logic) return;
-    const g = ((parseFloat(draft.exit) / parseFloat(draft.entry) - 1) * 100);
-    setIdeas((p) => [{ by: "You", sym: draft.sym, entry: +draft.entry, exit: +draft.exit, gain: +g.toFixed(1), pattern: draft.pattern, logic: draft.logic }, ...p]);
-    setDraft({ sym: "NIFTY50", entry: "", exit: "", logic: "", pattern: "breakout" }); setOpen(false);
-  };
+;
   return (
     <div className="mx fade">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
         <div><div className="disp" style={{ fontWeight: 700, fontSize: 20 }}>Ideas</div><div style={{ fontSize: 11.5, color: "var(--muted)" }}>{{ IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", FNO: "⚡ F&O", Commodity: "🪙 Commodity" }[market]}</div></div>
-        <button onClick={() => setOpen(!open)} className="tap pill disp glow" style={{ background: "linear-gradient(120deg,var(--primary),var(--primary-2))", color: "#fff", border: "none", padding: "8px 14px", fontWeight: 700, fontSize: 12.5, display: "flex", gap: 5, alignItems: "center" }}><Plus size={15} /> Post idea</button>
       </div>
 
       <IdeasDashboard ideas={shown} />
       {market === "FNO" && <div className="card" style={{ marginTop: 12, padding: 20, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>Ideas aren't available for F&O. Switch to a stock market (Indian / US) to see trade ideas.</div>}
-      {open && (
-        <div className="card" style={{ marginTop: 12, padding: 14 }}>
-          <select value={draft.sym} onChange={(e) => setDraft({ ...draft, sym: e.target.value })} style={{ ...selStyle, width: "100%" }}>{ALL.map((a) => <option key={a.sym} value={a.sym}>{a.sym} — {a.name}</option>)}</select>
-          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-            <input placeholder="Entry" value={draft.entry} onChange={(e) => setDraft({ ...draft, entry: e.target.value })} className="no-ring" style={{ ...selStyle }} />
-            <input placeholder="Exit" value={draft.exit} onChange={(e) => setDraft({ ...draft, exit: e.target.value })} className="no-ring" style={{ ...selStyle }} />
-          </div>
-          <select value={draft.pattern} onChange={(e) => setDraft({ ...draft, pattern: e.target.value })} style={{ ...selStyle, width: "100%", marginTop: 8 }}>{Object.entries(PATTERNS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select>
-          <textarea placeholder="Logic — chart pattern, catalyst, levels…" value={draft.logic} onChange={(e) => setDraft({ ...draft, logic: e.target.value })} className="no-ring" style={{ width: "100%", marginTop: 8, border: "1px solid var(--line)", borderRadius: 12, padding: 11, fontSize: 13, minHeight: 54 }} />
-          <button onClick={post} className="tap disp" style={{ width: "100%", marginTop: 10, background: "var(--primary)", color: "#fff", border: "none", borderRadius: 12, padding: 12, fontWeight: 700 }}>Publish idea</button>
-        </div>
-      )}
       {market !== "FNO" && shown.length === 0 && <div className="card" style={{ marginTop: 12, padding: 16, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No ideas for this market yet. Post one, or switch markets from the tabs above.</div>}
       {shown.map((idea, i) => {
         const s = ALL.find((a) => a.sym === idea.sym); const m = marketOf(idea.sym);
@@ -2510,7 +2724,7 @@ function Ideas({ onOpen, onBuy, market = "IN" }) {
           <div key={i} className="card" style={{ marginTop: 12, padding: 15 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span className="pill" style={{ background: idea.by === "Matrix" ? "var(--primary-soft)" : "var(--bg)", color: idea.by === "Matrix" ? "var(--primary)" : "var(--ink-soft)", fontSize: 11, fontWeight: 700, padding: "3px 9px" }}>{idea.by === "Matrix" ? "✦ Matrix" : idea.by}</span>
+                <span className="pill" style={{ background: "var(--primary-soft)", color: "var(--primary)", fontSize: 11, fontWeight: 700, padding: "3px 9px" }}>✦ Matrix</span>
                 <span onClick={() => s && onOpen(s)} className="disp tap" style={{ fontWeight: 700, fontSize: 14 }}>{idea.sym}</span>
               </div>
               <span className="pill disp" style={{ background: "var(--up-soft)", color: "var(--up)", fontWeight: 700, fontSize: 12.5, padding: "4px 11px" }}>+{idea.gain}% potential</span>
@@ -2636,11 +2850,15 @@ function BacktestResult({ cfg }) {
   const applyPreset = (k) => { setPreset(k); if (k !== "custom") { setFrom(iso(Date.now() - PRESETS[k] * 864e5)); setTo(iso(Date.now())); } };
   const stock = ALL.find((a) => a.sym === sym) || ALL[0];
   const bars = useMemo(() => { const d = (new Date(to) - new Date(from)) / 864e5; return clamp(Math.round(d > 0 ? d : 120), 20, 400); }, [from, to]);
-  const data = useMemo(() => candles(sym + "|" + tf, stock.price, stock.chg, bars), [sym, stock, bars, tf]);
-  const res = useMemo(() => (cfg.mode === "plain" ? null : backtest(cfg, data)), [cfg, data]);
+  // REAL candles for the backtest — no synthetic price paths.
+  const { data: realData, loading: btLoading } = useCandles(sym, tf);
+  const data = useMemo(() => (realData ? realData.slice(-bars) : null), [realData, bars]);
+  const res = useMemo(() => (cfg.mode === "plain" || !data ? null : backtest(cfg, data)), [cfg, data]);
   if (cfg.mode === "plain") {
-    return <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>Plain-English rules are parsed on the backend at deploy time — switch to the visual builder to run a quick local backtest.</div>;
+    return <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>Plain-English rules are parsed on the backend at deploy time — switch to the visual builder to run a backtest.</div>;
   }
+  if (btLoading) return <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>Loading real price history…</div>;
+  if (!data || !res) return <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>{BACKEND_URL ? "No price history available for this symbol/timeframe — backtest can't run on real data." : "Connect the backend to backtest on real price history."}</div>;
   const st = res.stats;
   const tile = (k, v, c) => (
     <div style={{ flex: "1 1 0", minWidth: 64, background: "var(--bg)", borderRadius: 12, padding: "9px 10px" }}>
@@ -2900,7 +3118,7 @@ function TemplateCard({ t, onActivate, onToggleBt, btActive }) {
     </div>
   );
 }
-function Automation({ market = "IN", onRecord }) {
+function Automation({ market = "IN", onRecord, onBuyReal }) {
   const [mode, setMode] = useState("builder");
   const [defs, setDefs] = useState([
     { id: 1, type: "EMA", len: "50", tf: "1D", name: "EMA1" },
@@ -2998,21 +3216,18 @@ function Automation({ market = "IN", onRecord }) {
     setToast(`${t.name} activated on ${symbols.join(", ")}`);
   };
   // Record simulated trades produced by an activated automation (deduped by id).
+  // Activating a strategy places REAL positions at the live price with the strategy's
+  // target/stop. The exit engine then closes them at real market prices. Nothing is
+  // fabricated — no invented history, no simulated win/loss.
   const recordAutomateTrades = (stratId, name, cfg, symbols) => {
-    if (!onRecord) return;
+    if (!onBuyReal) return;
     const slp = (cfg && cfg.sl) || 3, tpp = (cfg && cfg.tp) || 6;
+    const per = Math.max(1, (parseInt(capital) || 100000) / Math.max(1, symbols.length));
     symbols.forEach((sym) => {
-      const s = ALL.find((a) => a.sym === sym); if (!s) return;
-      const r = lcg(hash(stratId + sym));
-      const n = 2 + Math.floor(r() * 3);
-      for (let i = 0; i < n; i++) {
-        const win = r() > 0.45;
-        const entry = +(s.price * (0.98 + r() * 0.04)).toFixed(2);
-        const exit = +(win ? entry * (1 + tpp / 100) : entry * (1 - slp / 100)).toFixed(2);
-        const qty = Math.max(1, Math.floor(100000 / entry));
-        const now = Date.now() - i * 2 * 86400000;
-        onRecord({ id: `automate-${stratId}-${sym}-${i}`, sym, name: s.name, entry, entryAt: now - 3600e3, exit, exitAt: now, pnl: +((exit - entry) * qty).toFixed(2), qty, market: marketOf(sym), tradeType: "Automate", exitType: win ? "Exit trigger" : "Stop loss" });
-      }
+      const s = ALL.find((a) => a.sym === sym);
+      if (!s || !s.price) return;
+      const qty = Math.max(1, Math.floor(per / s.price));
+      onBuyReal(s, qty, { tp: tpp, sl: slp, tradeType: "Automate" });
     });
   };
   const toggleActive = (id) => setStrats((p) => p.map((s) => s.id === id ? { ...s, active: !s.active } : s));
@@ -3600,27 +3815,78 @@ function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, 
   );
 }
 /* ---- Trade history (filters hoisted OUT so dropdowns don't remount) ---- */
+/* ---- Multi-select filter: renders as a bottom sheet so it can never be
+       clipped by a scrolling row (the old absolute dropdown was). ---- */
 function FilterChip({ label, options, sel, setter, colors, open, setOpen }) {
+  const isOpen = open === label;
   const toggle = (v) => setter(sel.includes(v) ? sel.filter((x) => x !== v) : [...sel, v]);
   return (
-    <div style={{ position: "relative", flex: "0 0 auto" }}>
-      <button onClick={(e) => { e.stopPropagation(); setOpen(open === label ? null : label); }} className="pill tap disp" style={{ padding: "7px 12px", fontSize: 11.5, fontWeight: 700, border: "1px solid " + (sel.length ? "var(--primary)" : "var(--line)"), background: sel.length ? "var(--primary-soft)" : "var(--surface)", color: sel.length ? "var(--primary)" : "var(--ink)", display: "flex", gap: 5, alignItems: "center", whiteSpace: "nowrap" }}>
-        {label}{sel.length ? ` (${sel.length})` : ""}<ChevronRight size={13} style={{ transform: open === label ? "rotate(90deg)" : "rotate(0)", transition: "transform .15s" }} />
+    <>
+      <button onClick={(e) => { e.stopPropagation(); setOpen(isOpen ? null : label); }} className="pill tap disp" style={{ flex: "0 0 auto", padding: "7px 12px", fontSize: 11.5, fontWeight: 700, border: "1px solid " + (sel.length ? "var(--primary)" : "var(--line)"), background: sel.length ? "var(--primary-soft)" : "var(--surface)", color: sel.length ? "var(--primary)" : "var(--ink)", display: "flex", gap: 5, alignItems: "center", whiteSpace: "nowrap" }}>
+        {label}{sel.length ? ` (${sel.length})` : ""}<ChevronRight size={13} style={{ transform: "rotate(90deg)" }} />
       </button>
-      {open === label && (
-        <>
-          <div onClick={() => setOpen(null)} style={{ position: "fixed", inset: 0, zIndex: 45 }} />
-          <div onClick={(e) => e.stopPropagation()} className="card" style={{ position: "absolute", top: 38, left: 0, zIndex: 46, minWidth: 180, maxHeight: 260, overflowY: "auto", padding: 8, boxShadow: "0 12px 30px rgba(0,0,0,.2)" }}>
-            {options.length === 0 ? <div style={{ fontSize: 11, color: "var(--muted)", padding: 8 }}>Nothing to filter</div> : options.map((o) => (
-              <button key={o} onClick={() => toggle(o)} className="tap disp" style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: 8, border: "none", background: "transparent", color: "var(--ink)", fontSize: 12.5, fontWeight: 600, textAlign: "left" }}>
-                <span style={{ width: 16, height: 16, borderRadius: 5, border: "1.5px solid " + (sel.includes(o) ? "var(--primary)" : "var(--line)"), background: sel.includes(o) ? "var(--primary)" : "transparent", display: "grid", placeItems: "center", flexShrink: 0 }}>{sel.includes(o) && <Check size={11} color="var(--on-primary)" />}</span>
-                <span style={{ color: colors ? colors(o) : "var(--ink)" }}>{o}</span>
-              </button>
-            ))}
-            {sel.length > 0 && <button onClick={() => setter([])} className="tap disp" style={{ width: "100%", marginTop: 4, padding: 7, border: "none", background: "var(--elev)", borderRadius: 8, fontSize: 11, fontWeight: 700, color: "var(--muted)" }}>Clear</button>}
+      {isOpen && (
+        <div onClick={(e) => { e.stopPropagation(); setOpen(null); }} style={{ position: "fixed", inset: 0, background: "rgba(10,10,20,.45)", zIndex: 95, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+          <div onClick={(e) => e.stopPropagation()} className="sheet card" style={{ width: "100%", maxWidth: 460, borderRadius: "22px 22px 0 0", padding: 18, maxHeight: "70vh", display: "flex", flexDirection: "column" }}>
+            <div style={{ width: 40, height: 4, background: "var(--line)", borderRadius: 9, margin: "0 auto 14px", flex: "0 0 auto" }} />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flex: "0 0 auto" }}>
+              <span className="disp" style={{ fontWeight: 800, fontSize: 15 }}>{label}</span>
+              {sel.length > 0 && <button onClick={() => setter([])} className="tap disp" style={{ border: "none", background: "transparent", color: "var(--primary)", fontWeight: 700, fontSize: 12.5 }}>Clear</button>}
+            </div>
+            <div style={{ overflowY: "auto", marginTop: 10, flex: 1 }}>
+              {options.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--muted)", padding: 16, textAlign: "center" }}>No {label.toLowerCase()} options in your history yet.</div> : options.map((o) => {
+                const on = sel.includes(o);
+                return (
+                  <button key={o} onClick={() => toggle(o)} className="tap disp" style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "12px 6px", border: "none", borderBottom: "1px solid var(--line)", background: "transparent", color: "var(--ink)", fontSize: 13.5, fontWeight: 600, textAlign: "left" }}>
+                    <span style={{ width: 19, height: 19, borderRadius: 6, border: "1.5px solid " + (on ? "var(--primary)" : "var(--line)"), background: on ? "var(--primary)" : "transparent", display: "grid", placeItems: "center", flexShrink: 0 }}>{on && <Check size={13} color="var(--on-primary)" />}</span>
+                    <span style={{ color: colors ? colors(o) : "var(--ink)" }}>{o}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <button onClick={() => setOpen(null)} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--primary)", color: "var(--on-primary)", border: "none", borderRadius: 13, padding: 13, fontWeight: 800, fontSize: 13.5, flex: "0 0 auto" }}>Done{sel.length ? ` · ${sel.length} selected` : ""}</button>
           </div>
-        </>
+        </div>
       )}
+    </>
+  );
+}
+
+/* JournalPanel — the Trading Journal. Every stat and every insight is derived
+   from the user's ACTUAL trades by journalService. Nothing is invented, and
+   patterns are suppressed entirely until there's enough evidence. */
+function JournalPanel({ trades = [] }) {
+  const { stats, insights } = useMemo(() => analyzeJournal(trades), [trades]);
+  const tone = { good: "var(--up)", warn: "#F59E0B", info: "var(--primary)" };
+  const icon = { good: "✓", warn: "▲", info: "◆" };
+  const Tile = ({ k, v, c }) => (
+    <div style={{ flex: "1 1 30%", minWidth: 92, background: "var(--elev)", borderRadius: 12, padding: "10px 11px" }}>
+      <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".04em" }}>{k}</div>
+      <div className="mono" style={{ fontWeight: 800, fontSize: 15, marginTop: 2, color: c || "var(--ink)" }}>{v}</div>
+    </div>
+  );
+  return (
+    <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px 24px" }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <Tile k="Closed" v={stats.closed} />
+        <Tile k="Win rate" v={stats.winRate != null ? stats.winRate + "%" : "—"} c={stats.winRate >= 50 ? "var(--up)" : "var(--down)"} />
+        <Tile k="Net P&L" v={stats.netPnl >= 0 ? "+" + stats.netPnl.toFixed(0) : stats.netPnl.toFixed(0)} c={stats.netPnl >= 0 ? "var(--up)" : "var(--down)"} />
+        <Tile k="Profit factor" v={stats.profitFactor ?? "—"} c={stats.profitFactor >= 1 ? "var(--up)" : "var(--down)"} />
+        <Tile k="Expectancy" v={stats.expectancy != null ? (stats.expectancy >= 0 ? "+" : "") + stats.expectancy.toFixed(0) : "—"} c={stats.expectancy >= 0 ? "var(--up)" : "var(--down)"} />
+        <Tile k="Avg hold" v={stats.avgHoldDays ? stats.avgHoldDays + "d" : "—"} />
+      </div>
+
+      <div style={{ fontSize: 11, fontWeight: 800, color: "var(--muted)", margin: "18px 2px 8px", letterSpacing: ".04em" }}>WHAT MATRIX NOTICED</div>
+      {insights.map((x, i) => (
+        <div key={i} className="card" style={{ padding: 13, marginBottom: 9, borderLeft: `3px solid ${tone[x.kind]}` }}>
+          <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
+            <span style={{ color: tone[x.kind], fontWeight: 800, fontSize: 12 }}>{icon[x.kind]}</span>
+            <span className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{x.title}</span>
+          </div>
+          <div style={{ fontSize: 12.5, lineHeight: 1.6, color: "var(--ink-soft)", marginTop: 6 }}>{x.body}</div>
+          {x.evidence && <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 7, fontWeight: 700 }}>Based on {x.evidence}</div>}
+        </div>
+      ))}
     </div>
   );
 }
@@ -3634,6 +3900,7 @@ function TradeHistory({ userId, trades, onClose }) {
   const [fType, setFType] = useState([]);
   const [fExit, setFExit] = useState([]);
   const [openF, setOpenF] = useState(null);
+  const [view, setView] = useState("history");   // "history" | "journal"
   const now = Date.now();
   const from = useMemo(() => {
     if (range === "all") return 0;
@@ -3655,7 +3922,7 @@ function TradeHistory({ userId, trades, onClose }) {
     .map(withPnl);
   const allSyms = [...new Set(src.map((t) => t.sym))].sort();
   const TYPES = ["Manual", "Automate", "Auto Buy"];
-  const EXITS = ["Manual", "Exit trigger", "Stop loss", "Open"];
+  const EXITS = ["Manual", "Exit trigger", "Stop loss", "Trailing stop", "Open"];
   const exitOf = (t) => (t.open ? "Open" : (t.exitType || "Manual"));
   const rows = src
     .filter((t) => (mkt === "all" ? true : (t.market || "IN") === mkt))
@@ -3667,18 +3934,29 @@ function TradeHistory({ userId, trades, onClose }) {
   const totalPnl = rows.reduce((a, t) => a + (t.livePnl || 0), 0);
   const openN = rows.filter((t) => t.open).length;
   const typeColor = (tt) => tt === "Auto Buy" ? "var(--primary)" : tt === "Automate" ? "#8B5CF6" : "var(--muted)";
-  const exitColor = (et) => et === "Stop loss" ? "var(--down)" : et === "Exit trigger" ? "var(--up)" : et === "Open" ? "var(--primary)" : "var(--muted)";
+  const exitColor = (et) => (et === "Stop loss" || et === "Trailing stop") ? "var(--down)" : et === "Exit trigger" ? "var(--up)" : et === "Open" ? "var(--primary)" : "var(--muted)";
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "var(--bg)", zIndex: 80, display: "flex", flexDirection: "column" }} onClick={() => setOpenF(null)}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 16px 12px", borderBottom: "1px solid var(--line)" }}>
         <button onClick={onClose} className="tap" style={{ border: "none", background: "var(--elev)", borderRadius: 11, width: 36, height: 36, display: "grid", placeItems: "center" }}><ChevronLeft size={18} /></button>
         <div>
-          <div className="disp" style={{ fontWeight: 700, fontSize: 17 }}>Trade history</div>
+          <div className="disp" style={{ fontWeight: 700, fontSize: 17 }}>{view === "journal" ? "Trading journal" : "Trade history"}</div>
           <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{rows.length} trades{openN ? ` · ${openN} open` : ""} · P&amp;L {totalPnl >= 0 ? "+" : ""}{fmt(totalPnl, mkt === "all" ? "IN" : mkt)}</div>
         </div>
       </div>
 
+      {/* history | journal */}
+      <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3, margin: "10px 16px 0" }}>
+        {[["history", "History"], ["journal", "Journal"]].map(([k, l]) => (
+          <button key={k} onClick={() => setView(k)} className="pill tap disp" style={{ padding: "6px 16px", fontSize: 12, fontWeight: 800, border: "none", background: view === k ? "var(--primary)" : "transparent", color: view === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
+        ))}
+      </div>
+
+      {view === "journal" && <JournalPanel trades={remote || trades} />}
+
+      {view === "history" && (
+        <>
       {/* market selector */}
       <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "10px 16px 4px" }}>
         {MKTS.map(([k, l]) => (
@@ -3694,7 +3972,7 @@ function TradeHistory({ userId, trades, onClose }) {
       </div>
 
       {/* multi-select filters */}
-      <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "6px 16px 10px", position: "relative", zIndex: 20 }} onClick={(e) => e.stopPropagation()}>
+      <div style={{ display: "flex", gap: 7, flexWrap: "wrap", padding: "6px 16px 10px" }}>
         <FilterChip label="Symbol" options={allSyms} sel={fSym} setter={setFSym} open={openF} setOpen={setOpenF} />
         <FilterChip label="Trade type" options={TYPES} sel={fType} setter={setFType} colors={typeColor} open={openF} setOpen={setOpenF} />
         <FilterChip label="Exit type" options={EXITS} sel={fExit} setter={setFExit} colors={exitColor} open={openF} setOpen={setOpenF} />
@@ -3727,6 +4005,8 @@ function TradeHistory({ userId, trades, onClose }) {
             </div>
           </div>
         ))}
+        </>
+      )}
       </div>
     </div>
   );
@@ -3754,6 +4034,7 @@ export default function App() {
   const doLogout = () => { setAuth(null); lsSet("mx_auth", null); };
   const onAuthed = (a) => { setAuth(a); lsSet("mx_auth", a); setLoginOpen(false); };
   const [trades, setTrades] = useState([]);
+  const [riskLimits, setRiskLimits] = useState(DEFAULT_LIMITS);   // Risk Engine config
   const [histOpen, setHistOpen] = useState(false);
   const [hydratedUser, setHydratedUser] = useState(null);
   const recordTrade = (t) => {
@@ -3765,6 +4046,62 @@ export default function App() {
   };
   // Record simulated auto-buy / automate trades once per day (deduped by stable id).
   const recordBatch = (list) => { list.forEach((t) => recordTrade(t)); };
+  // ---- REAL EXIT ENGINE ----
+  // Every minute, check each OPEN position that has a target/stop against real
+  // intraday candles. If a level was actually touched, close the position at that
+  // real price/time, credit the wallet, and write the realised P&L to history.
+  const resolving = useRef(false);
+  useEffect(() => {
+    if (!BACKEND_URL) return;                       // needs the live backend
+    // Apply a closed trade locally: credit wallet, reduce the holding, notify.
+    const applyClose = (t, closed) => {
+      const qty = closed.qty || t.qty || 1;
+      setTrades((p) => p.map((x) => (x.id === t.id ? closed : x)));
+      adjustWallet(closed.market || "IN", closed.exit * qty);
+      setPortfolio((p) => p.map((x) => x.sym === closed.sym ? { ...x, qty: x.qty - qty } : x).filter((x) => x.qty > 0));
+      const pnl = closed.pnl || 0;
+      setBuyToast({ t: `${closed.sym} auto-exited at ${fmt(closed.exit, closed.market || "IN")} (${closed.exitType}) · P&L ${pnl >= 0 ? "+" : ""}${fmt(pnl, closed.market || "IN")}`, e: pnl < 0 });
+    };
+    const tick = async () => {
+      if (resolving.current) return;
+      resolving.current = true;
+      try {
+        // 1) SYNC: the server-side monitor may have closed positions while the app
+        //    was shut. Pull them in and settle the wallet/portfolio accordingly.
+        const remote = await fetchTrades(userId, 0, Date.now());
+        if (remote && remote.length) {
+          const byId = new Map(remote.map((r) => [r.id, r]));
+          trades.forEach((t) => {
+            if (t.exitAt != null) return;                   // already closed locally
+            const r = byId.get(t.id);
+            if (r && r.exitAt != null) applyClose(t, r);    // server closed it
+          });
+        }
+        // 2) FALLBACK: resolve anything still open in-app (e.g. monitor disabled).
+        const open = trades.filter((t) => {
+          if (t.exitAt != null) return false;
+          const h = portfolio.find((x) => x.sym === t.sym);
+          return !!(t.tp || t.sl || t.tsl || (h && (h.tp || h.sl || h.tsl)));
+        });
+        for (const t of open.slice(0, 6)) {
+          const h = portfolio.find((x) => x.sym === t.sym);
+          const risk = h ? { tp: h.tp ?? t.tp, sl: h.sl ?? t.sl, tsl: h.tsl ?? t.tsl } : {};
+          const hit = await resolveExitFromCandles(t, risk);
+          if (!hit) continue;
+          const qty = Math.min(t.qty || 1, h ? h.qty : (t.qty || 1));
+          if (qty < 1) continue;
+          const closed = { ...t, ...hit, qty, pnl: +((hit.exit - t.entry) * qty).toFixed(2) };
+          applyClose(t, closed);
+          postTrade(userId, closed);
+        }
+      } catch (e) { /* transient network issues shouldn't break the loop */ }
+      finally { resolving.current = false; }
+    };
+    tick();
+    const id = setInterval(tick, 60000);
+    return () => clearInterval(id);
+  }, [trades, portfolio, userId]);
+
   // Portfolio price snapshot — frozen until the user buys or sells (portfolio changes).
   const [priceSnap, setPriceSnap] = useState({});
   useEffect(() => {
@@ -3813,19 +4150,33 @@ export default function App() {
         if (n) { setLive(true); setLiveAt(Date.now()); setLiveTick((t) => t + 1); } else setLive(false);
       } catch { setLive(false); }
     };
-    const tickSynthetic = () => {
-      const rr = lcg(Date.now() % 2147480000 + 1);
-      (UNIVERSE[market] || []).forEach((s) => {
-        if (!marketOpen(marketOf(s.sym))) return;      // respect market hours
-        const step = (rr() - 0.5) * 2 * (0.004 + rr() * 0.006);   // ±0.4%–1.0%
-        s.price = +(s.price * (1 + step)).toFixed(s.price < 1 ? 6 : s.price < 10 ? 4 : 2);
-        s.chg = +(s.chg + step * 100).toFixed(2);
-        s.rsi = clamp(Math.round(s.rsi + (rr() - 0.5) * 6), 5, 95);
-        s.macd = +(s.macd + (rr() - 0.5) * 0.6).toFixed(2);
-      });
-      setLiveAt(Date.now()); setLiveTick((t) => t + 1);
+    // REAL indicators + REAL volume, computed by the backend from actual candles.
+    const pullIndicators = async () => {
+      try {
+        const ind = await fetchIndicators(syms);
+        if (stop || !ind) return;
+        let n = 0;
+        Object.keys(ind).forEach((ySym) => {
+          const s = ALL.find((a) => yahooSymbol(a.sym) === ySym || a.sym === ySym);
+          if (!s) return;
+          Object.assign(s, ind[ySym], { hasData: true });
+          n++;
+        });
+        if (n) setLiveTick((t) => t + 1);
+      } catch { /* leave indicators null -> UI shows "—" */ }
     };
-    const refresh = () => { if (BACKEND_URL) pullLive(); else tickSynthetic(); };
+    const pullFundamentals = async () => {
+      try {
+        const f = await fetchFundamentals(syms);
+        if (stop || !f) return;
+        Object.keys(f).forEach((ySym) => {
+          const s = ALL.find((a) => yahooSymbol(a.sym) === ySym || a.sym === ySym);
+          if (s) Object.assign(s, f[ySym]);        // pe, roe, revGrowth, marketCap, inst (real holders)
+        });
+        setLiveTick((t) => t + 1);
+      } catch { /* leave null -> UI shows "—" */ }
+    };
+    const refresh = () => { if (BACKEND_URL) { pullLive(); pullIndicators(); pullFundamentals(); } };   // no synthetic fallback: no data = no numbers
     refresh();
     const id = setInterval(refresh, REFRESH_MS);
     return () => { stop = true; clearInterval(id); };
@@ -3842,7 +4193,15 @@ export default function App() {
   const buyStock = (s, qty = 1, opts = {}) => {
     const mkt = marketOf(s.sym);
     const cost = s.price * qty;
-    if (cost > (walletMap[mkt] ?? 0)) { setBuyToast({ t: `Not enough virtual funds in your ${MKT_LABEL[mkt] || mkt} wallet.`, e: true }); return false; }
+    // ---- RISK ENGINE ---------------------------------------------------------
+    // Per the architecture, NO order reaches the portfolio without passing here.
+    // Strategies, auto-buy and manual buys all funnel through this one gate.
+    const verdict = validateOrder(
+      { sym: s.sym, side: "BUY", qty, price: s.price, market: mkt },
+      { wallet: walletMap[mkt] ?? 0, portfolio: portfolio.filter((h) => marketOf(h.sym) === mkt), trades, limits: riskLimits }
+    );
+    if (!verdict.ok) { setBuyToast({ t: verdict.reasons[0], e: true }); return false; }
+    if (verdict.warnings.length) setBuyToast({ t: verdict.warnings[0], e: false });
     adjustWallet(mkt, -cost);
     setPortfolio((p) => {
       const ex = p.find((h) => h.sym === s.sym);
@@ -3850,11 +4209,16 @@ export default function App() {
       return [...p, { sym: s.sym, name: s.name, qty, buy: s.price, date: Date.now(), ...opts }];
     });
     setBuyToast({ t: `Bought ${qty} ${s.sym} @ ${fmt(s.price, mkt)} — added to portfolio.`, e: false });
-    recordTrade({ sym: s.sym, name: s.name, entry: s.price, entryAt: Date.now(), exit: null, exitAt: null, pnl: null, qty, market: mkt, tradeType: "Manual", exitType: "Open" });
+    recordTrade({ sym: s.sym, name: s.name, entry: s.price, entryAt: Date.now(), exit: null, exitAt: null, pnl: null, qty, market: mkt, tradeType: opts.tradeType || "Manual", exitType: "Open", tp: opts.tp, sl: opts.sl });
     return true;
   };
   const sellStock = (s, qty = 1) => {
     const mkt = marketOf(s.sym);
+    const sv = validateOrder(
+      { sym: s.sym, side: "SELL", qty, price: s.price, market: mkt },
+      { wallet: walletMap[mkt] ?? 0, portfolio, trades, limits: riskLimits }
+    );
+    if (!sv.ok) { setBuyToast({ t: sv.reasons[0], e: true }); return false; }
     const held = portfolio.find((h) => h.sym === s.sym);
     if (!held || held.qty < 1) { setBuyToast({ t: `You don't hold ${s.sym}.`, e: true }); return false; }
     const sellQty = Math.min(qty, held.qty);
@@ -3865,14 +4229,24 @@ export default function App() {
     setBuyToast({ t: `Sold ${sellQty} ${s.sym} @ ${fmt(s.price, mkt)} — credited to wallet.`, e: false });
     return true;
   };
-  const updateHolding = (sym, patch) => setPortfolio((p) => p.map((h) => h.sym === sym ? { ...h, ...patch } : h));
+  const updateHolding = (sym, patch) => {
+    setPortfolio((p) => p.map((h) => h.sym === sym ? { ...h, ...patch } : h));
+    // Push the new risk orders onto the OPEN trade too, and sync to the backend so
+    // the server-side monitor can honour them even while the app is closed.
+    setTrades((p) => p.map((t) => {
+      if (t.sym !== sym || t.exitAt != null) return t;
+      const upd = { ...t, tp: patch.tp, sl: patch.sl, tsl: patch.tsl };
+      postTrade(userId, upd);
+      return upd;
+    }));
+  };
 
   // personalised ordering for picks
   const list = useMemo(() => {
     let arr = [...UNIVERSE[market]];
     if (profile) {
       arr.sort((a, b) => {
-        const score = (s) => (profile.caps.length && profile.caps.includes(s.cap) ? 3 : 0) + (profile.sectors.includes(s.sector) ? 3 : 0) + (profile.risk === "Aggressive" ? s.chg : profile.risk === "Conservative" ? -Math.abs(s.chg) + (s.cap === "Large" ? 2 : 0) : s.bull / 20);
+        const score = (s) => (profile.caps.length && profile.caps.includes(s.cap) ? 3 : 0) + (profile.sectors.includes(s.sector) ? 3 : 0) + (profile.risk === "Aggressive" ? s.chg : profile.risk === "Conservative" ? -Math.abs(s.chg) + (s.cap === "Large" ? 2 : 0) : (s.rsi != null ? (s.rsi - 50) / 10 : 0));
         return score(b) - score(a);
       });
     }
@@ -3906,7 +4280,7 @@ export default function App() {
               <span className="gradtext" style={{ fontWeight: 700, fontSize: 20 }}>Matrix</span>
               <div style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: 3 }}>
                 <span className="pill" title={`${market} market ${marketOpen(market) ? "open" : "closed"} · ${marketHoursLabel(market)}. Prices refresh every minute.${live ? " Live Yahoo feed." : " Simulated feed — connect the proxy for real data."}`} style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".04em", padding: "2px 6px", display: "flex", alignItems: "center", gap: 3, background: marketOpen(market) ? "var(--up-soft)" : "var(--primary-soft)", color: marketOpen(market) ? "var(--up)" : "var(--muted)" }}>
-                  <span style={{ width: 4, height: 4, borderRadius: 4, background: marketOpen(market) ? "var(--up)" : "var(--muted)" }} />{live ? "LIVE" : marketOpen(market) ? "LIVE·SIM" : "CLOSED"}
+                  <span style={{ width: 4, height: 4, borderRadius: 4, background: marketOpen(market) ? "var(--up)" : "var(--muted)" }} />{live ? "LIVE" : BACKEND_URL ? (marketOpen(market) ? "NO DATA" : "CLOSED") : "NO DATA"}
                 </span>
                 {liveAt && <span style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 700 }}>{new Date(liveAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
               </div>
@@ -3916,7 +4290,7 @@ export default function App() {
                 {theme === "dark" ? <Sun size={16} /> : <Moon size={15} />}
               </button>
               <div onClick={() => setShowProfile(true)} className="tap pill gold-border" style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 11px", whiteSpace: "nowrap", flexShrink: 0 }}>
-                <Wallet size={14} color="var(--gold)" /><span className="mono gold-text" style={{ fontWeight: 800, fontSize: 12.5 }}>{compact(wallet)}</span>
+                <Wallet size={15} color="var(--gold)" />
               </div>
               <div onClick={() => setShowProfile(true)} className="tap glow" style={{ width: 34, height: 34, borderRadius: 11, background: "var(--feature-grad)", display: "grid", placeItems: "center", color: "#fff", flexShrink: 0 }}><User size={17} /></div>
             </div>
@@ -3941,10 +4315,10 @@ export default function App() {
             <DetailPage s={detail} onBack={() => setDetail(null)} watched={watch.includes(detail.sym)} toggleWatch={toggleWatch} onTrade={goTrade} onBuy={buyStock} />
           ) : (
             <>
-              {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} />}
+              {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} trades={trades} />}
               {tab === "trade" && <TradeView walletMap={walletMap} adjustWallet={adjustWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} recordTrade={recordTrade} />}
               {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} market={market} />}
-              {tab === "automation" && <Automation market={market} onRecord={recordTrade} />}
+              {tab === "automation" && <Automation market={market} onRecord={recordTrade} onBuyReal={buyStock} />}
               {tab === "portfolio" && <Portfolio portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} onBuy={buyStock} onSell={sellStock} onUpdate={updateHolding} priceSnap={priceSnap} />}
               {tab === "watchlist" && <WatchlistView watchlists={watchlists} activeWl={activeWl} setActiveWl={setActiveWl} createWatchlist={createWatchlist} deleteWatchlist={deleteWatchlist} toggleWatch={toggleWatch} onOpen={openStock} />}
               {tab === "ask" && (
