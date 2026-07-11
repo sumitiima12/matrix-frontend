@@ -960,7 +960,8 @@ function useMatrixChat(context, stock) {
       const out = await askMatrix(next, system, 1000);
       setMsgs([...next, { role: "assistant", content: out || (stock ? localDeepAnalysis(stock) : "I couldn't reach the live engine just now. Try again in a moment.") }]);
     } catch (e) {
-      setMsgs([...next, { role: "assistant", content: stock ? localDeepAnalysis(stock) : "I couldn't reach the Matrix engine just now. Make sure your backend is deployed and a GROQ_API_KEY is set on it (Groq's free tier works great). Try again in a moment." }]);
+      const detail = e && e.message ? ` (${e.message})` : "";
+      setMsgs([...next, { role: "assistant", content: stock ? localDeepAnalysis(stock) : `I couldn't reach the Matrix engine${detail}. Check that BACKEND_URL points at your Render service and that GROQ_API_KEY is set there — open <backend-url>/api/health to see which engines it can find.` }]);
     } finally { setBusy(false); }
   }
   return { msgs, busy, send, reset: () => setMsgs([]) };
@@ -3440,9 +3441,9 @@ function LoginScreen({ onAuthed, onGuest }) {
     </div>
   );
 }
-function Onboarding({ onDone }) {
+function Onboarding({ onDone, onSkip, initial }) {
   const [step, setStep] = useState(0);
-  const [p, setP] = useState({ proficiency: "Beginner", risk: "Balanced", reward: "", style: "Technical", caps: [], sectors: [] });
+  const [p, setP] = useState(initial || { proficiency: "Beginner", risk: "Balanced", reward: "", style: "Technical", caps: [], sectors: [] });
   const steps = [
     { key: "proficiency", q: "How would you rate your investing skill?", opts: ["Beginner", "Intermediate", "Pro"], multi: false },
     { key: "risk", q: "Your risk appetite?", opts: ["Conservative", "Balanced", "Aggressive"], multi: false },
@@ -3477,7 +3478,7 @@ function Onboarding({ onDone }) {
         })}
       </div>
       <div style={{ display: "flex", gap: 10 }}>
-        <button onClick={() => onDone(null)} className="tap" style={{ flex: "0 0 auto", padding: "15px 18px", borderRadius: 16, border: "1px solid var(--line)", background: "var(--surface)", fontWeight: 600, color: "var(--muted)" }}>Skip</button>
+        <button onClick={() => (onSkip ? onSkip() : onDone(null))} className="tap" style={{ flex: "0 0 auto", padding: "15px 18px", borderRadius: 16, border: "1px solid var(--line)", background: "var(--surface)", fontWeight: 600, color: "var(--muted)" }}>Skip</button>
         <button onClick={next} className="tap disp glow" style={{ flex: 1, padding: 15, borderRadius: 16, border: "none", background: "linear-gradient(120deg,var(--primary),var(--primary-2))", color: "#fff", fontWeight: 700, fontSize: 15 }}>{step < steps.length - 1 ? "Continue" : "Enter Matrix"}</button>
       </div>
     </div>
@@ -3529,111 +3530,200 @@ function LoginModal({ onClose, onAuthed }) {
   );
 }
 const inpStyle = { width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: "12px 14px", fontSize: 15, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" };
-function ProfileSheet({ profile, wallet, onClose, onTradeHistory, auth, onLogin, onLogout }) {
+// Human-readable summary of the personalisation answers.
+function profileSummary(p) {
+  if (!p) return null;
+  const caps = p.caps && p.caps.length ? p.caps.join(" & ").toLowerCase() + " cap" : "all caps";
+  const secs = p.sectors && p.sectors.length ? p.sectors.join(", ") : "all sectors";
+  return `${p.risk || "Balanced"}-risk ${(p.proficiency || "Beginner").toLowerCase()} investor with a ${(p.style || "Technical").toLowerCase()}-analysis trading style, interested in ${caps} and ${secs}.`;
+}
+function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise }) {
+  const WMKTS = [["IN", "🇮🇳 Indian stocks"], ["US", "🇺🇸 US stocks"], ["Crypto", "₿ Crypto"], ["FNO", "⚡ F&O"], ["Commodity", "🪙 Commodity"]];
+  const summary = profileSummary(profile);
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(10,10,20,.32)", zIndex: 60, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
-      <div onClick={(e) => e.stopPropagation()} className="sheet card" style={{ width: "100%", maxWidth: 460, borderRadius: "24px 24px 0 0", padding: 20 }}>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(10,10,20,.4)", zIndex: 60, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div onClick={(e) => e.stopPropagation()} className="sheet card" style={{ width: "100%", maxWidth: 460, borderRadius: "24px 24px 0 0", padding: 20, height: "92vh", overflowY: "auto" }}>
         <div style={{ width: 40, height: 4, background: "var(--line)", borderRadius: 9, margin: "0 auto 16px" }} />
+
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ width: 52, height: 52, borderRadius: 16, background: "linear-gradient(135deg,var(--primary),var(--primary-2))", display: "grid", placeItems: "center", color: "#fff", fontWeight: 700, fontSize: 20 }} className="disp">M</div>
-          <div><div className="disp" style={{ fontWeight: 700, fontSize: 17 }}>{auth && auth.name ? auth.name : "My Profile"}</div><div style={{ fontSize: 12.5, color: "var(--muted)" }}>{auth ? `Logged in · +${auth.phone}` : "Guest session"}</div></div>
+          <div style={{ minWidth: 0 }}>
+            <div className="disp" style={{ fontWeight: 700, fontSize: 17 }}>{auth && auth.name ? auth.name : "My Profile"}</div>
+            <div style={{ fontSize: 12.5, color: "var(--muted)" }}>{auth ? `Logged in · ${auth.phone}` : "Guest session"}</div>
+          </div>
         </div>
-        <div className="card" style={{ marginTop: 16, padding: 14, background: "var(--bg)" }}>
-          <div style={{ fontSize: 12, color: "var(--muted)" }}>Virtual wallet</div>
-          <div className="mono" style={{ fontWeight: 700, fontSize: 22 }}>{fmt(wallet, "IN")}</div>
+
+        {/* wallets — every market */}
+        <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, margin: "18px 2px 8px" }}>VIRTUAL WALLETS</div>
+        <div className="card" style={{ padding: "4px 14px", background: "var(--bg)" }}>
+          {WMKTS.map(([k, l], i) => (
+            <div key={k} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 0", borderBottom: i < WMKTS.length - 1 ? "1px solid var(--line)" : "none" }}>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>{l}</span>
+              <span className="mono" style={{ fontWeight: 800, fontSize: 14 }}>{fmt(walletMap[k] ?? 0, k)}</span>
+            </div>
+          ))}
         </div>
-        <button onClick={() => { onClose && onClose(); onTradeHistory && onTradeHistory(); }} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--primary)", color: "var(--on-primary)", border: "none", borderRadius: 14, padding: 13, fontWeight: 800, fontSize: 13.5, display: "flex", gap: 7, alignItems: "center", justifyContent: "center" }}><Clock size={16} /> Trade history</button>
-        {auth ? (
-          <button onClick={() => { onClose && onClose(); onLogout && onLogout(); }} className="tap disp" style={{ width: "100%", marginTop: 10, background: "var(--surface)", color: "var(--down)", border: "1px solid var(--line)", borderRadius: 14, padding: 12, fontWeight: 800, fontSize: 13.5, display: "flex", gap: 7, alignItems: "center", justifyContent: "center" }}><LogOut size={16} /> Log out</button>
-        ) : (
-          <button onClick={() => { onClose && onClose(); onLogin && onLogin(); }} className="tap disp" style={{ width: "100%", marginTop: 10, background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 14, padding: 12, fontWeight: 800, fontSize: 13.5, display: "flex", gap: 7, alignItems: "center", justifyContent: "center" }}><LogIn size={16} /> Log in / Register</button>
-        )}
-        {profile ? (
-          <div style={{ marginTop: 14 }}>
-            {[["Skill", profile.proficiency], ["Risk", profile.risk], ["Style", profile.style], ["Caps", profile.caps.join(", ") || "All"], ["Sectors", profile.sectors.join(", ") || "All"]].map(([k, v]) => (
-              <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "11px 2px", borderBottom: "1px solid var(--line)", fontSize: 13.5 }}><span style={{ color: "var(--muted)" }}>{k}</span><span style={{ fontWeight: 600 }}>{v}</span></div>
+
+        <button onClick={() => { onClose && onClose(); onTradeHistory && onTradeHistory(); }} className="tap disp" style={{ width: "100%", marginTop: 14, background: "var(--primary)", color: "var(--on-primary)", border: "none", borderRadius: 14, padding: 13, fontWeight: 800, fontSize: 13.5, display: "flex", gap: 7, alignItems: "center", justifyContent: "center" }}><Clock size={16} /> Trade history</button>
+
+        {/* personalisation summary */}
+        <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, margin: "20px 2px 8px" }}>YOUR INVESTOR PROFILE</div>
+        <div className="card metal" style={{ padding: 14, background: "var(--feature-grad)", color: "#fff" }}>
+          {summary ? (
+            <div style={{ fontSize: 13, lineHeight: 1.6, fontWeight: 600 }}>{summary}</div>
+          ) : (
+            <div style={{ fontSize: 13, lineHeight: 1.6, opacity: .9 }}>You haven't personalised Matrix yet. Answer a few quick questions and your picks, ideas and screens will be tuned to how you invest.</div>
+          )}
+        </div>
+        {profile && (
+          <div style={{ marginTop: 10 }}>
+            {[["Skill", profile.proficiency], ["Risk", profile.risk], ["Style", profile.style], ["Caps", (profile.caps || []).join(", ") || "All"], ["Sectors", (profile.sectors || []).join(", ") || "All"]].map(([k, v]) => (
+              <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "10px 2px", borderBottom: "1px solid var(--line)", fontSize: 13 }}><span style={{ color: "var(--muted)" }}>{k}</span><span style={{ fontWeight: 600, textAlign: "right", maxWidth: "62%" }}>{v}</span></div>
             ))}
           </div>
-        ) : <div style={{ marginTop: 14, fontSize: 13, color: "var(--muted)" }}>Login to get a personalised experience.</div>}
+        )}
+
+        {/* personalize */}
+        <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, margin: "20px 2px 8px" }}>PERSONALIZE</div>
+        <div className="card" style={{ padding: 14 }}>
+          <div style={{ fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.6 }}>Changed how you invest? Retake the quick questions and Matrix will re-tune your picks, ideas and screens.</div>
+          <button onClick={() => { onClose && onClose(); onPersonalise && onPersonalise(); }} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--surface)", color: "var(--primary)", border: "1px solid var(--primary)", borderRadius: 12, padding: 11, fontWeight: 800, fontSize: 13, display: "flex", gap: 7, alignItems: "center", justifyContent: "center" }}><Sparkles size={15} /> {profile ? "Update my answers" : "Personalise Matrix"}</button>
+        </div>
+
+        {auth ? (
+          <button onClick={() => { onClose && onClose(); onLogout && onLogout(); }} className="tap disp" style={{ width: "100%", margin: "16px 0 8px", background: "var(--surface)", color: "var(--down)", border: "1px solid var(--line)", borderRadius: 14, padding: 12, fontWeight: 800, fontSize: 13.5, display: "flex", gap: 7, alignItems: "center", justifyContent: "center" }}><LogOut size={16} /> Log out</button>
+        ) : (
+          <button onClick={() => { onClose && onClose(); onLogin && onLogin(); }} className="tap disp" style={{ width: "100%", margin: "16px 0 8px", background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 14, padding: 12, fontWeight: 800, fontSize: 13.5, display: "flex", gap: 7, alignItems: "center", justifyContent: "center" }}><LogIn size={16} /> Log in / Register</button>
+        )}
       </div>
     </div>
   );
 }
-function TradeHistory({ userId, trades, onClose }) {
-  const RANGES = [["7", "7d"], ["30", "30d"], ["90", "90d"], ["365", "1y"], ["all", "All"]];
-  const [range, setRange] = useState("30");
-  const [remote, setRemote] = useState(null);
-  const [fSym, setFSym] = useState([]);       // multi-select filters
-  const [fType, setFType] = useState([]);
-  const [fExit, setFExit] = useState([]);
-  const [openF, setOpenF] = useState(null);   // which filter dropdown is open
-  const now = Date.now();
-  const from = range === "all" ? 0 : now - (+range) * 86400000;
-  useEffect(() => { let stop = false; setRemote(null); if (BACKEND_URL) fetchTrades(userId, from, now).then((t) => { if (!stop && t) setRemote(t); }).catch(() => {}); return () => { stop = true; }; }, [range]);
-  const src = (remote || trades).filter((t) => (t.exitAt || t.entryAt || 0) >= from);
-  const allSyms = [...new Set(src.map((t) => t.sym))].sort();
-  const TYPES = ["Manual", "Automate", "Auto Buy"];
-  const EXITS = ["Manual", "Exit trigger", "Stop loss", "Open"];
-  const rows = src
-    .filter((t) => (fSym.length ? fSym.includes(t.sym) : true))
-    .filter((t) => (fType.length ? fType.includes(t.tradeType || "Manual") : true))
-    .filter((t) => (fExit.length ? fExit.includes(t.exitType || "Manual") : true))
-    .sort((a, b) => (b.exitAt || 0) - (a.exitAt || 0));
-  const dt = (ms) => ms ? new Date(ms).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
-  const totalPnl = rows.reduce((a, t) => a + (t.pnl || 0), 0);
-  const isOpen = (t) => t.pnl == null || t.exit == null || (t.exitType === "Open");
-  const toggle = (setter, arr, v) => setter(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
-  const typeColor = (tt) => tt === "Auto Buy" ? "var(--primary)" : tt === "Automate" ? "#8B5CF6" : "var(--muted)";
-  const exitColor = (et) => et === "Stop loss" ? "var(--down)" : et === "Exit trigger" ? "var(--up)" : et === "Open" ? "var(--primary)" : "var(--muted)";
-  const FilterChip = ({ label, options, sel, setter, colors }) => (
+/* ---- Trade history (filters hoisted OUT so dropdowns don't remount) ---- */
+function FilterChip({ label, options, sel, setter, colors, open, setOpen }) {
+  const toggle = (v) => setter(sel.includes(v) ? sel.filter((x) => x !== v) : [...sel, v]);
+  return (
     <div style={{ position: "relative", flex: "0 0 auto" }}>
-      <button onClick={() => setOpenF(openF === label ? null : label)} className="pill tap disp" style={{ padding: "7px 12px", fontSize: 11.5, fontWeight: 700, border: "1px solid " + (sel.length ? "var(--primary)" : "var(--line)"), background: sel.length ? "var(--primary-soft)" : "var(--surface)", color: sel.length ? "var(--primary)" : "var(--ink)", display: "flex", gap: 5, alignItems: "center" }}>{label}{sel.length ? ` (${sel.length})` : ""}<ChevronRight size={13} style={{ transform: openF === label ? "rotate(90deg)" : "rotate(0)", transition: "transform .15s" }} /></button>
-      {openF === label && (
-        <div className="card" style={{ position: "absolute", top: 38, left: 0, zIndex: 30, minWidth: 170, maxHeight: 240, overflowY: "auto", padding: 8, boxShadow: "0 12px 30px rgba(0,0,0,.18)" }}>
-          {options.length === 0 ? <div style={{ fontSize: 11, color: "var(--muted)", padding: 8 }}>No options</div> : options.map((o) => (
-            <button key={o} onClick={() => toggle(setter, sel, o)} className="tap disp" style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "8px 8px", border: "none", background: "transparent", color: "var(--ink)", fontSize: 12.5, fontWeight: 600, textAlign: "left" }}>
-              <span style={{ width: 16, height: 16, borderRadius: 5, border: "1.5px solid " + (sel.includes(o) ? "var(--primary)" : "var(--line)"), background: sel.includes(o) ? "var(--primary)" : "transparent", display: "grid", placeItems: "center", flexShrink: 0 }}>{sel.includes(o) && <Check size={11} color="var(--on-primary)" />}</span>
-              <span style={{ color: colors ? colors(o) : "var(--ink)" }}>{o}</span>
-            </button>
-          ))}
-          {sel.length > 0 && <button onClick={() => setter([])} className="tap disp" style={{ width: "100%", marginTop: 4, padding: 7, border: "none", background: "var(--elev)", borderRadius: 8, fontSize: 11, fontWeight: 700, color: "var(--muted)" }}>Clear</button>}
-        </div>
+      <button onClick={(e) => { e.stopPropagation(); setOpen(open === label ? null : label); }} className="pill tap disp" style={{ padding: "7px 12px", fontSize: 11.5, fontWeight: 700, border: "1px solid " + (sel.length ? "var(--primary)" : "var(--line)"), background: sel.length ? "var(--primary-soft)" : "var(--surface)", color: sel.length ? "var(--primary)" : "var(--ink)", display: "flex", gap: 5, alignItems: "center", whiteSpace: "nowrap" }}>
+        {label}{sel.length ? ` (${sel.length})` : ""}<ChevronRight size={13} style={{ transform: open === label ? "rotate(90deg)" : "rotate(0)", transition: "transform .15s" }} />
+      </button>
+      {open === label && (
+        <>
+          <div onClick={() => setOpen(null)} style={{ position: "fixed", inset: 0, zIndex: 45 }} />
+          <div onClick={(e) => e.stopPropagation()} className="card" style={{ position: "absolute", top: 38, left: 0, zIndex: 46, minWidth: 180, maxHeight: 260, overflowY: "auto", padding: 8, boxShadow: "0 12px 30px rgba(0,0,0,.2)" }}>
+            {options.length === 0 ? <div style={{ fontSize: 11, color: "var(--muted)", padding: 8 }}>Nothing to filter</div> : options.map((o) => (
+              <button key={o} onClick={() => toggle(o)} className="tap disp" style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: 8, border: "none", background: "transparent", color: "var(--ink)", fontSize: 12.5, fontWeight: 600, textAlign: "left" }}>
+                <span style={{ width: 16, height: 16, borderRadius: 5, border: "1.5px solid " + (sel.includes(o) ? "var(--primary)" : "var(--line)"), background: sel.includes(o) ? "var(--primary)" : "transparent", display: "grid", placeItems: "center", flexShrink: 0 }}>{sel.includes(o) && <Check size={11} color="var(--on-primary)" />}</span>
+                <span style={{ color: colors ? colors(o) : "var(--ink)" }}>{o}</span>
+              </button>
+            ))}
+            {sel.length > 0 && <button onClick={() => setter([])} className="tap disp" style={{ width: "100%", marginTop: 4, padding: 7, border: "none", background: "var(--elev)", borderRadius: 8, fontSize: 11, fontWeight: 700, color: "var(--muted)" }}>Clear</button>}
+          </div>
+        </>
       )}
     </div>
   );
+}
+function TradeHistory({ userId, trades, onClose }) {
+  const RANGES = [["today", "Today"], ["7", "7d"], ["30", "30d"], ["90", "90d"], ["365", "1y"], ["all", "All"]];
+  const MKTS = [["all", "All markets"], ["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["FNO", "⚡ F&O"], ["Commodity", "🪙 Commodity"]];
+  const [range, setRange] = useState("30");
+  const [mkt, setMkt] = useState("all");
+  const [remote, setRemote] = useState(null);
+  const [fSym, setFSym] = useState([]);
+  const [fType, setFType] = useState([]);
+  const [fExit, setFExit] = useState([]);
+  const [openF, setOpenF] = useState(null);
+  const now = Date.now();
+  const from = useMemo(() => {
+    if (range === "all") return 0;
+    if (range === "today") { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); }
+    return Date.now() - (+range) * 86400000;
+  }, [range]);
+  useEffect(() => { let stop = false; setRemote(null); if (BACKEND_URL) fetchTrades(userId, from, Date.now()).then((t) => { if (!stop && t) setRemote(t); }).catch(() => {}); return () => { stop = true; }; }, [range, userId]);
+
+  const isOpen = (t) => t.exitAt == null || t.exit == null || t.exitType === "Open";
+  // Live P&L for still-open positions, using the current price.
+  const withPnl = (t) => {
+    if (!isOpen(t)) return { ...t, livePnl: t.pnl || 0, open: false };
+    const s = ALL.find((a) => a.sym === t.sym);
+    const cur = s ? s.price : t.entry;
+    return { ...t, open: true, cur, livePnl: +((cur - t.entry) * (t.qty || 1)).toFixed(2) };
+  };
+  const src = (remote || trades)
+    .filter((t) => (isOpen(t) ? (t.entryAt || 0) : (t.exitAt || t.entryAt || 0)) >= from)
+    .map(withPnl);
+  const allSyms = [...new Set(src.map((t) => t.sym))].sort();
+  const TYPES = ["Manual", "Automate", "Auto Buy"];
+  const EXITS = ["Manual", "Exit trigger", "Stop loss", "Open"];
+  const exitOf = (t) => (t.open ? "Open" : (t.exitType || "Manual"));
+  const rows = src
+    .filter((t) => (mkt === "all" ? true : (t.market || "IN") === mkt))
+    .filter((t) => (fSym.length ? fSym.includes(t.sym) : true))
+    .filter((t) => (fType.length ? fType.includes(t.tradeType || "Manual") : true))
+    .filter((t) => (fExit.length ? fExit.includes(exitOf(t)) : true))
+    .sort((a, b) => (b.exitAt || b.entryAt || 0) - (a.exitAt || a.entryAt || 0));
+  const dt = (ms) => ms ? new Date(ms).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
+  const totalPnl = rows.reduce((a, t) => a + (t.livePnl || 0), 0);
+  const openN = rows.filter((t) => t.open).length;
+  const typeColor = (tt) => tt === "Auto Buy" ? "var(--primary)" : tt === "Automate" ? "#8B5CF6" : "var(--muted)";
+  const exitColor = (et) => et === "Stop loss" ? "var(--down)" : et === "Exit trigger" ? "var(--up)" : et === "Open" ? "var(--primary)" : "var(--muted)";
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "var(--bg)", zIndex: 80, display: "flex", flexDirection: "column" }} onClick={() => setOpenF(null)}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 16px 12px", borderBottom: "1px solid var(--line)" }}>
         <button onClick={onClose} className="tap" style={{ border: "none", background: "var(--elev)", borderRadius: 11, width: 36, height: 36, display: "grid", placeItems: "center" }}><ChevronLeft size={18} /></button>
-        <div><div className="disp" style={{ fontWeight: 700, fontSize: 17 }}>Trade history</div><div style={{ fontSize: 11.5, color: "var(--muted)" }}>{rows.length} trades · P&amp;L {totalPnl >= 0 ? "+" : ""}{fmt(totalPnl, "IN")}</div></div>
+        <div>
+          <div className="disp" style={{ fontWeight: 700, fontSize: 17 }}>Trade history</div>
+          <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{rows.length} trades{openN ? ` · ${openN} open` : ""} · P&amp;L {totalPnl >= 0 ? "+" : ""}{fmt(totalPnl, mkt === "all" ? "IN" : mkt)}</div>
+        </div>
       </div>
-      <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "12px 16px 6px" }}>
+
+      {/* market selector */}
+      <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "10px 16px 4px" }}>
+        {MKTS.map(([k, l]) => (
+          <button key={k} onClick={() => setMkt(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "7px 13px", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", border: "1px solid " + (mkt === k ? "var(--primary)" : "var(--line)"), background: mkt === k ? "var(--primary)" : "var(--surface)", color: mkt === k ? "var(--on-primary)" : "var(--ink)" }}>{l}</button>
+        ))}
+      </div>
+
+      {/* timeframe */}
+      <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "8px 16px 4px" }}>
         {RANGES.map(([k, l]) => (
           <button key={k} onClick={() => setRange(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "7px 14px", fontSize: 12, fontWeight: 700, border: "1px solid " + (range === k ? "var(--primary)" : "var(--line)"), background: range === k ? "var(--primary)" : "var(--surface)", color: range === k ? "var(--on-primary)" : "var(--ink)" }}>{l}</button>
         ))}
       </div>
-      <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "4px 16px 10px", position: "relative", zIndex: 20 }} onClick={(e) => e.stopPropagation()}>
-        <FilterChip label="Symbol" options={allSyms} sel={fSym} setter={setFSym} />
-        <FilterChip label="Trade type" options={TYPES} sel={fType} setter={setFType} colors={typeColor} />
-        <FilterChip label="Exit type" options={EXITS} sel={fExit} setter={setFExit} colors={exitColor} />
+
+      {/* multi-select filters */}
+      <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "6px 16px 10px", position: "relative", zIndex: 20 }} onClick={(e) => e.stopPropagation()}>
+        <FilterChip label="Symbol" options={allSyms} sel={fSym} setter={setFSym} open={openF} setOpen={setOpenF} />
+        <FilterChip label="Trade type" options={TYPES} sel={fType} setter={setFType} colors={typeColor} open={openF} setOpen={setOpenF} />
+        <FilterChip label="Exit type" options={EXITS} sel={fExit} setter={setFExit} colors={exitColor} open={openF} setOpen={setOpenF} />
+        {(fSym.length || fType.length || fExit.length) ? <button onClick={() => { setFSym([]); setFType([]); setFExit([]); }} className="pill tap disp" style={{ flex: "0 0 auto", padding: "7px 12px", fontSize: 11.5, fontWeight: 700, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--muted)", whiteSpace: "nowrap" }}>Clear all</button> : null}
       </div>
+
       <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 24px" }}>
         {rows.length === 0 ? (
-          <div className="card" style={{ padding: 30, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No trades match. Manual sells, auto-buy exits and automations all record here.</div>
+          <div className="card" style={{ padding: 30, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No trades match. Buys show as <b>Open</b> until you sell; manual, auto-buy and automate trades all record here.</div>
         ) : rows.map((t) => (
           <div key={t.id} className="card" style={{ marginTop: 10, padding: 13 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
               <div style={{ minWidth: 0 }}><span className="disp" style={{ fontWeight: 700, fontSize: 14 }}>{t.sym}</span> <span style={{ fontSize: 11, color: "var(--muted)" }}>×{t.qty}</span></div>
-              {isOpen(t) ? <span className="pill" style={{ fontSize: 10, fontWeight: 800, padding: "3px 9px", background: "var(--primary-soft)", color: "var(--primary)" }}>OPEN</span>
-                : <span className="mono" style={{ fontWeight: 800, fontSize: 14, color: (t.pnl || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{(t.pnl || 0) >= 0 ? "+" : ""}{fmt(t.pnl || 0, t.market || "IN")}</span>}
+              <div style={{ textAlign: "right", flex: "0 0 auto" }}>
+                <div className="mono" style={{ fontWeight: 800, fontSize: 14, color: (t.livePnl || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{(t.livePnl || 0) >= 0 ? "+" : ""}{fmt(t.livePnl || 0, t.market || "IN")}</div>
+                {t.open && <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 700 }}>unrealised</div>}
+              </div>
             </div>
             <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
               <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: typeColor(t.tradeType || "Manual") }}>{t.tradeType || "Manual"}</span>
-              <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: exitColor(t.exitType || "Manual") }}>{isOpen(t) ? "Position open" : "Exit: " + (t.exitType || "Manual")}</span>
+              <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: t.open ? "var(--primary-soft)" : "var(--elev)", color: exitColor(exitOf(t)) }}>Exit: {exitOf(t)}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 9, fontSize: 11 }}>
               <div><div style={{ color: "var(--muted)", fontSize: 9.5 }}>Entry</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.entry, t.market || "IN")}</div><div style={{ color: "var(--muted)", fontSize: 9.5 }}>{dt(t.entryAt)}</div></div>
-              <div style={{ textAlign: "right" }}><div style={{ color: "var(--muted)", fontSize: 9.5 }}>Exit</div><div className="mono" style={{ fontWeight: 700 }}>{isOpen(t) ? "—" : fmt(t.exit, t.market || "IN")}</div><div style={{ color: "var(--muted)", fontSize: 9.5 }}>{isOpen(t) ? "—" : dt(t.exitAt)}</div></div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ color: "var(--muted)", fontSize: 9.5 }}>{t.open ? "Current" : "Exit"}</div>
+                <div className="mono" style={{ fontWeight: 700 }}>{fmt(t.open ? t.cur : t.exit, t.market || "IN")}</div>
+                <div style={{ color: "var(--muted)", fontSize: 9.5 }}>{t.open ? "position open" : dt(t.exitAt)}</div>
+              </div>
             </div>
           </div>
         ))}
@@ -3647,8 +3737,9 @@ export default function App() {
   const [theme, setTheme] = useState("light");
   const [authed, setAuthed] = useState(() => !!lsGet("mx_auth", null));
   const [guest, setGuest] = useState(false);
-  const [onboard, setOnboard] = useState(true);
+  const [onboardSkipped, setOnboardSkipped] = useState(false);
   const [profile, setProfile] = useState(null);
+  const [repersonalise, setRepersonalise] = useState(false);
   const [tab, setTab] = useState("home");
   const [market, setMarket] = useState("IN");
   const [segment, setSegment] = useState("Stocks");
@@ -3688,12 +3779,14 @@ export default function App() {
     setWalletMap((st && st.walletMap) || { IN: 1000000, US: 1000000, Crypto: 1000000, FNO: 1000000, Commodity: 1000000 });
     const wl = (st && st.watchlists) || [{ id: "w1", name: "My Watchlist", syms: ["ETERNAL", "TATAPOWER"] }];
     setWatchlists(wl); setActiveWl(wl[wl.length - 1] ? wl[wl.length - 1].id : "w1");
+    setProfile((st && st.profile) || null);
+    setOnboardSkipped(!!(st && st.onboardSkipped));
     setTrades(lsGet("mx_trades_" + userId, []));
     setHydratedUser(userId);
     if (BACKEND_URL) fetchTrades(userId, 0, Date.now()).then((t) => { if (t && t.length) setTrades(t); }).catch(() => {});
   }, [userId]);
   // Persist per-user (only after this user's data has been hydrated, to avoid clobbering).
-  useEffect(() => { if (hydratedUser === userId) lsSet("mx_state_" + userId, { portfolio, walletMap, watchlists }); }, [portfolio, walletMap, watchlists, hydratedUser, userId]);
+  useEffect(() => { if (hydratedUser === userId) lsSet("mx_state_" + userId, { portfolio, walletMap, watchlists, profile, onboardSkipped }); }, [portfolio, walletMap, watchlists, profile, onboardSkipped, hydratedUser, userId]);
   useEffect(() => { if (hydratedUser === userId) lsSet("mx_trades_" + userId, trades); }, [trades, hydratedUser, userId]);
   const [drawer, setDrawer] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -3794,7 +3887,13 @@ export default function App() {
       {/* fixed gradient backdrop so it stays behind scroll */}
       <div style={{ position: "fixed", inset: 0, background: "var(--app-bg, var(--bg))", zIndex: 0, pointerEvents: "none" }} />
       {!authed && <LoginScreen onGuest={() => { setGuest(true); setAuthed(true); }} onAuthed={(a) => { onAuthed(a); setGuest(false); setAuthed(true); }} />}
-      {authed && onboard && <Onboarding onDone={(p) => { setProfile(p); setOnboard(false); }} />}
+      {authed && hydratedUser === userId && (repersonalise || (!profile && !onboardSkipped)) && (
+        <Onboarding
+          initial={repersonalise ? profile : null}
+          onDone={(p) => { setProfile(p); setRepersonalise(false); setOnboardSkipped(true); }}
+          onSkip={() => { setOnboardSkipped(true); setRepersonalise(false); }}
+        />
+      )}
 
       <div style={{ maxWidth: 460, margin: "0 auto", minHeight: "100vh", position: "relative", zIndex: 1, paddingBottom: 86 }}>
         {/* ambient glow */}
@@ -3876,7 +3975,7 @@ export default function App() {
 
       {drawer && <Drawer s={drawer} onClose={() => setDrawer(null)} onDetails={openDetail} onBuy={buyStock} />}
       {search && <SearchOverlay onClose={() => setSearch(false)} onOpen={openStock} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} />}
-      {showProfile && <ProfileSheet profile={profile} wallet={wallet} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={doLogout} />}
+      {showProfile && <ProfileSheet profile={profile} walletMap={walletMap} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={doLogout} onPersonalise={() => setRepersonalise(true)} />}
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} onAuthed={onAuthed} />}
       {histOpen && <TradeHistory userId={userId} trades={trades} onClose={() => setHistOpen(false)} />}
       {buyToast && (
