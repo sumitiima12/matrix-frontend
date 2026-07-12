@@ -183,9 +183,9 @@ export default function TradeHistory({ userId, trades, onClose }) {
             </div>
           </div>
         ))}
+        </div>
         </>
       )}
-      </div>
     </div>
   );
 }

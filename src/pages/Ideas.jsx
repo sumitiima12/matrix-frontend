@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { SEED_IDEAS, resolveIdea } from "../domain/ideas";
+import { currentIdeas, resolveIdea } from "../domain/ideas";
 import { Plus } from "lucide-react";
 import { BACKEND_URL } from "../config";
 import { fmt } from "../lib/format";
@@ -81,7 +81,12 @@ function IdeasDashboard({ ideas }) {
 }
 
 export default function Ideas({ onOpen, onBuy, market = "IN" }) {
-  const [ideas, setIdeas] = useState(SEED_IDEAS);
+  // Recomputed from real data as it arrives, rather than frozen at import time.
+  const [ideas, setIdeas] = useState(currentIdeas);
+  useEffect(() => {
+    const id = setInterval(() => setIdeas(currentIdeas()), 30000);
+    return () => clearInterval(id);
+  }, []);
   const [open, setOpen] = useState(false);
   const mkt = market === "FNO" ? "IN" : market;
   const shown = market === "FNO" ? [] : ideas.filter((i) => marketOf(i.sym) === mkt);

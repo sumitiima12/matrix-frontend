@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { SEED_IDEAS } from "../domain/ideas";
+import { currentIdeas } from "../domain/ideas";
 import { dailyPicks, techSignal } from "../domain/signals";
 import { Activity, Building2, ChevronRight, Lightbulb, Newspaper, Pencil, Plus, Sparkles, TrendingUp, Zap } from "lucide-react";
 import { BACKEND_URL } from "../config";
@@ -88,10 +88,12 @@ function MarketPulseStrip({ market, list, onOpen }) {
   );
 }
 
-function StockIdeasStrip({ onOpen, onBuy, market }) {
+function StockIdeasStrip({ onOpen, onBuy, market, liveTick = 0 }) {
   const mkt = market === "FNO" ? "IN" : market;
-  const all = SEED_IDEAS.filter((i) => marketOf(i.sym) === mkt);
-  const top = (all.length ? all : SEED_IDEAS).slice(0, 6);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const ideas = useMemo(() => currentIdeas(), [liveTick]);
+  const all = ideas.filter((i) => marketOf(i.sym) === mkt);
+  const top = (all.length ? all : ideas).slice(0, 6);
   return (
     <Section title="Ideas" icon={<Lightbulb size={17} color="var(--primary)" />}>
       <div className="hide-scroll" style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4 }}>
@@ -590,7 +592,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       </Pop>
 
       {/* Ideas carousel (not for F&O or Commodity) */}
-      {market !== "FNO" && market !== "Commodity" && <StockIdeasStrip onOpen={onOpen} onBuy={onBuy} market={market} />}
+      {market !== "FNO" && market !== "Commodity" && <StockIdeasStrip onOpen={onOpen} onBuy={onBuy} market={market} liveTick={liveTick} />}
 
       {/* F&O Picks (Indian derivatives) */}
 

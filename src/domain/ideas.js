@@ -28,7 +28,27 @@ export function buildDailyIdeas() {
       logic: t.why,
     }));
 }
-const SEED_IDEAS = buildDailyIdeas();
+/**
+ * Today's ideas.
+ *
+ * This used to be `const SEED_IDEAS = buildDailyIdeas()` — evaluated once, at
+ * MODULE IMPORT time, before any market data had loaded. Every price was still
+ * null at that moment, so it produced an empty list and froze it forever: the
+ * Ideas page could never show anything, whatever the market did.
+ *
+ * Ideas are now computed on demand from whatever REAL data has actually arrived,
+ * and cached for the hour (they are daily ideas — recomputing them on every
+ * render would make them flicker as quotes tick).
+ */
+let _cache = { hour: null, ideas: [] };
+
+export function currentIdeas() {
+  const hour = Math.floor(Date.now() / 3600000);
+  if (_cache.hour !== hour || !_cache.ideas.length) {
+    _cache = { hour, ideas: buildDailyIdeas() };
+  }
+  return _cache.ideas;
+}
 
 /* Resolve an idea against REAL candles: walk forward from the publish time and
    see which level was actually touched first. Same rules as the exit engine
