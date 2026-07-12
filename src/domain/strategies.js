@@ -11,3 +11,48 @@ export const SEED_STRATS = [
 ];
 
 export const ACTIVATE_SYMS = [...new Set([...FNO.map((s) => s.sym), "AAPL", "NVDA", "MSFT", "AMZN", "GOOGL", "META", "TSLA", "BTC", "ETH", "SOL", "DOGE"])].filter((sym) => ALL.some((a) => a.sym === sym));
+
+/**
+ * Real strategy performance, computed from the trades the strategy ACTUALLY
+ * placed. Previously this returned seeded random win rates and returns — pure
+ * fiction. A strategy with no trades yet now reports exactly that, rather than
+ * inventing a track record.
+ *
+ * @param strat      the strategy
+ * @param trades     the user's real trade log
+ * @param rangeDays  lookback window
+ */
+export function stratPerf(strat, trades = [], rangeDays = 365) {
+  const from = Date.now() - rangeDays * 86_400_000;
+  const mine = (trades || []).filter(
+    (t) => t.strategyId === strat.id || t.strategy === strat.name
+  ).filter((t) => (t.exitAt || t.entryAt || 0) >= from);
+
+  const closed = mine.filter((t) => t.exitAt != null && t.exit != null);
+  const cap = strat.cap || 100000;
+
+  if (!closed.length) {
+    return {
+      trades: mine.length, wins: 0, winRate: null, retPct: null,
+      annual: null, pnl: null, cap, open: mine.length - closed.length,
+      hasData: false,
+    };
+  }
+
+  const wins = closed.filter((t) => (t.exit - t.entry) * (t.qty || 1) > 0).length;
+  const pnl = closed.reduce((a, t) => a + (t.exit - t.entry) * (t.qty || 1), 0);
+  const retPct = cap ? (pnl / cap) * 100 : 0;
+  const years = Math.max(rangeDays / 365, 1 / 365);
+
+  return {
+    trades: closed.length,
+    wins,
+    winRate: +((wins / closed.length) * 100).toFixed(1),
+    retPct: +retPct.toFixed(2),
+    annual: +(retPct / years).toFixed(2),
+    pnl: +pnl.toFixed(2),
+    cap,
+    open: mine.length - closed.length,
+    hasData: true,
+  };
+}

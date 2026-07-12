@@ -23,7 +23,7 @@ export function techSignal(s) {
   const cur = (v) => fmt(v, marketOf(s.sym));
   const sup = s.support, res = s.resistance;
   const atr = s.atr || (px * 0.02);
-  const volRatio = s.avgVol ? (s.vol || 0) / s.avgVol : null;   // real relative volume
+  const volRatio = (s.avgVol && s.vol != null) ? s.vol / s.avgVol : null;   // real relative volume, or nothing
   const range52 = (s.high52 != null && s.low52 != null && s.high52 > s.low52)
     ? (px - s.low52) / (s.high52 - s.low52) : null;             // where in the 52w range
   const macdBull = s.macd != null && s.macdSignal != null && s.macd > s.macdSignal;

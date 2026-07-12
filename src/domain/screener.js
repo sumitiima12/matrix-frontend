@@ -1,5 +1,4 @@
 import React from "react";
-import { hash, lcg } from "../lib/format";
 
 export const METRICS = [["chg", "Day change %"], ["price", "Price"], ["rsi", "RSI"], ["macd", "MACD"], ["adx", "ADX"], ["cci", "CCI"], ["stoch", "Stochastic %K"], ["mfi", "MFI"], ["atr", "ATR"], ["vwap", "VWAP"], ["ema20", "EMA 20"], ["ema50", "EMA 50"], ["sma50", "SMA 50 (50-DMA)"], ["sma200", "SMA 200 (200-DMA)"], ["bbPctB", "Bollinger %B"], ["vol", "Volume"], ["pe", "P/E"], ["revGrowth", "Revenue growth %"], ["ebitdaGrowth", "EBITDA growth %"], ["roe", "ROE %"]];
 
@@ -43,16 +42,25 @@ export function parseScreen(text) {
   if ((/\bdma\b|\bsma\b|moving average/.test(t) && /50/.test(t) && /(100|200)/.test(t)) || /golden cross/.test(t)) { res.dma = true; res.note.push("50-DMA > 200-DMA"); }
   return res;
 }
-const SCREEN_TFS = [["3m", "3 min"], ["5m", "5 min"], ["15m", "15 min"], ["30m", "30 min"], ["1h", "1 hour"], ["1d", "1 day"]];
-const TF_ADJ = { "3m": 0.99, "5m": 0.995, "15m": 1.0, "30m": 1.005, "1h": 1.01, "1d": 1.0 };
-// Deterministic per-timeframe value for an indicator field (sim: same base, tf-seeded wobble).
+/**
+ * NOTE ON TIMEFRAMES
+ * ------------------
+ * The screener used to expose 3m/5m/15m/30m/1h/1d and resolve an indicator for
+ * the chosen timeframe via indAt(), which took the DAILY value and applied a
+ * seeded random wobble. Those numbers were invented — screening "RSI < 30 on 5m"
+ * matched against a fabricated RSI.
+ *
+ * The backend computes indicators from real DAILY candles only, so daily is the
+ * only timeframe we can screen honestly. The selector is gone rather than lying.
+ *
+ * To restore it, add a backend endpoint that computes indicators per timeframe
+ * from real intraday candles, then reintroduce the selector here.
+ */
 
-export function indAt(s, field, tf) {
-  const base = s[field];
-  if (base == null || isNaN(base)) return base;
-  if (!tf || tf === "1d") return base;
-  const r = lcg(hash(s.sym + "|" + field + "|" + tf))();
-  return +(base * ((TF_ADJ[tf] || 1) + (r - 0.5) * 0.04)).toFixed(4);
+/** The real, backend-computed value for a field. No adjustment, no invention. */
+export function indValue(s, field) {
+  const v = s[field];
+  return v == null || Number.isNaN(v) ? null : v;
 }
 
 export function matchScreen(list, res) {

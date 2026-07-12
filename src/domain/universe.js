@@ -16,7 +16,14 @@
  */
 export function build(sym, name, price, chg, sector, cap, x = {}) {
   return {
-    sym, name, price, chg, sector, cap,
+    sym, name, sector, cap,
+    // Price and day-change start NULL. The seed values in the arrays below are
+    // only there to keep the shape readable — they are never displayed. Until a
+    // REAL quote arrives from the backend the UI renders "—". A stale hardcoded
+    // price is worse than no price: corporate actions (Bajaj Finance's 4:1 bonus
+    // + 1:2 split) can make a hardcoded number wrong by hundreds of percent.
+    price: null,
+    chg: null,
     hasData: false,
     vol: null, avgVol: null,
     rsi: null, sma50: null, sma200: null, ema20: null, ema50: null,
@@ -31,215 +38,198 @@ export function build(sym, name, price, chg, sector, cap, x = {}) {
   };
 }
 
-const IN_STOCKS = [
-  build("RELIANCE", "Reliance Industries", 2945.6, 1.42, "Energy", "Large", {
-  }),
-  build("TCS", "Tata Consultancy Services", 4012.3, -0.86, "IT", "Large", {
-  }),
-  build("HDFCBANK", "HDFC Bank", 1678.9, 0.94, "Banking", "Large", {
-  }),
-  build("INFY", "Infosys", 1542.0, 2.31, "IT", "Large", {
-  }),
-  build("TATAMOTORS", "Tata Motors", 982.4, 3.67, "Auto", "Large", {
-  }),
-  build("ADANIENT", "Adani Enterprises", 3120.0, -2.14, "Infrastructure", "Large", {
-  }),
-  build("ETERNAL", "Eternal Ltd", 198.7, 4.85, "Consumer Tech", "Mid", {
-  }),
-  build("DMART", "Avenue Supermarts", 4480.5, -0.42, "Retail", "Large", { ebG: 12.0 }),
-  build("BAJFINANCE", "Bajaj Finance", 7210.0, 1.18, "NBFC", "Large", {
-  }),
-  build("ITC", "ITC", 462.3, 0.31, "FMCG", "Large", { ebG: 6.5 }),
-  build("PAYTM", "One97 (Paytm)", 412.9, -3.92, "Fintech", "Mid", {
-  }),
-  build("IRCTC", "IRCTC", 902.1, 2.04, "Travel", "Mid", { ebG: 15.0 }),
-  build("TATAPOWER", "Tata Power", 412.8, 5.21, "Power", "Mid", {
-  }),
-  build("HAL", "Hindustan Aeronautics", 4890.0, 1.77, "Defence", "Large", {
-  }),
-  build("NYKAA", "FSN E-Commerce (Nykaa)", 178.4, 1.05, "Consumer Tech", "Mid", { pe: 95 }),
-  build("IDEA", "Vodafone Idea", 8.4, -1.18, "Telecom", "Small", {}),
-  build("SBIN", "State Bank of India", 842.6, 1.36, "Banking", "Large", {}),
+/* ---------------------------------------------------------------------------
+   THE CURATED UNIVERSE
+   These are the exact instruments Matrix trades — an explicit product decision,
+   not something derived from data. Sector is factual metadata. Market-cap tier
+   is NOT hardcoded: it is derived from the REAL market cap once fundamentals
+   load (see capTier), so it can never be stale or invented.
+   --------------------------------------------------------------------------- */
+
+const stock = (sym, name, sector) => build(sym, name, null, null, sector, null);
+const index = (sym, name, sector) => ({ ...build(sym, name, null, null, sector, "Index"), isIndex: true });
+
+/** Indian indices. Shown in Market Overview; never ranked as stocks. */
+const IN_INDICES = [
+  index("NIFTY50", "Nifty 50", "Index"),
+  index("BANKNIFTY", "Bank Nifty", "Index"),
+  index("FINNIFTY", "Fin Nifty", "Index"),
+  index("SENSEX", "BSE Sensex", "Index"),
+  index("INDIAVIX", "India VIX", "Volatility"),
 ];
 
-/* ---- Broader Indian universe (symbol, name, price, sector, cap) ---- */
-const MORE_IN = [
-  ["TCS", "Tata Consultancy", 4120, "IT", "Large"],
-  ["KOTAKBANK", "Kotak Mahindra Bank", 1795, "Banking", "Large"], ["AXISBANK", "Axis Bank", 1168, "Banking", "Large"],
-  ["BAJFINANCE", "Bajaj Finance", 7220, "NBFC", "Large"], ["BHARTIARTL", "Bharti Airtel", 1520, "Telecom", "Large"],
-  ["HINDUNILVR", "Hindustan Unilever", 2460, "FMCG", "Large"], ["ITC", "ITC Ltd", 428, "FMCG", "Large"],
-  ["ADANIENT", "Adani Enterprises", 2985, "Conglomerate", "Large"], ["ADANIPORTS", "Adani Ports", 1372, "Infrastructure", "Large"],
-  ["ASIANPAINT", "Asian Paints", 2905, "Consumer", "Large"], ["TITAN", "Titan Company", 3410, "Consumer", "Large"],
-  ["ULTRACEMCO", "UltraTech Cement", 11250, "Cement", "Large"], ["WIPRO", "Wipro", 292, "IT", "Large"],
-  ["HCLTECH", "HCL Technologies", 1642, "IT", "Large"], ["TECHM", "Tech Mahindra", 1585, "IT", "Large"],
-  ["POWERGRID", "Power Grid Corp", 328, "Utilities", "Large"], ["NTPC", "NTPC Ltd", 368, "Utilities", "Large"],
-  ["ONGC", "ONGC", 268, "Energy", "Large"], ["COALINDIA", "Coal India", 462, "Energy", "Large"],
-  ["JSWSTEEL", "JSW Steel", 918, "Metals", "Large"], ["TATASTEEL", "Tata Steel", 152, "Metals", "Large"],
-  ["HINDALCO", "Hindalco", 648, "Metals", "Large"], ["GRASIM", "Grasim Industries", 2565, "Cement", "Large"],
-  ["NESTLEIND", "Nestle India", 2510, "FMCG", "Large"], ["BAJAJFINSV", "Bajaj Finserv", 1642, "NBFC", "Large"],
-  ["BAJAJ-AUTO", "Bajaj Auto", 9720, "Auto", "Large"], ["EICHERMOT", "Eicher Motors", 4780, "Auto", "Large"],
-  ["HEROMOTOCO", "Hero MotoCorp", 5240, "Auto", "Large"], ["M&M", "Mahindra & Mahindra", 2890, "Auto", "Large"],
-  ["DIVISLAB", "Divi's Labs", 5920, "Pharma", "Large"], ["CIPLA", "Cipla", 1502, "Pharma", "Large"],
-  ["APOLLOHOSP", "Apollo Hospitals", 6820, "Healthcare", "Large"], ["BRITANNIA", "Britannia", 5180, "FMCG", "Large"],
-  ["PIDILITIND", "Pidilite", 2985, "Chemicals", "Mid"], ["DABUR", "Dabur India", 512, "FMCG", "Large"],
-  ["GODREJCP", "Godrej Consumer", 1245, "FMCG", "Mid"], ["SIEMENS", "Siemens India", 6980, "Capital Goods", "Large"],
-  ["DMART", "Avenue Supermarts", 4620, "Retail", "Large"], ["PNB", "Punjab National Bank", 104, "Banking", "Mid"],
-  ["BANKBARODA", "Bank of Baroda", 242, "Banking", "Mid"], ["CANBK", "Canara Bank", 108, "Banking", "Mid"],
-  ["INDUSINDBK", "IndusInd Bank", 985, "Banking", "Large"], ["GAIL", "GAIL India", 208, "Energy", "Large"],
-  ["IOC", "Indian Oil", 142, "Energy", "Large"], ["BPCL", "Bharat Petroleum", 312, "Energy", "Large"],
-  ["VEDL", "Vedanta", 448, "Metals", "Large"], ["DLF", "DLF Ltd", 815, "Realty", "Large"],
-  ["PAYTM", "Paytm (One97)", 445, "Fintech", "Mid"],
-  ["POLICYBZR", "PB Fintech", 1520, "Fintech", "Mid"], ["IRCTC", "IRCTC", 812, "Travel", "Mid"],
-  ["JUBLFOOD", "Jubilant FoodWorks", 645, "Consumer", "Mid"], ["TVSMOTOR", "TVS Motor", 2380, "Auto", "Mid"],
-  ["ASHOKLEY", "Ashok Leyland", 228, "Auto", "Mid"], ["BOSCHLTD", "Bosch", 33200, "Auto", "Large"],
-  ["CUMMINSIND", "Cummins India", 3620, "Capital Goods", "Mid"], ["ABB", "ABB India", 8120, "Capital Goods", "Large"],
-  ["SBILIFE", "SBI Life", 1512, "Insurance", "Large"], ["HDFCLIFE", "HDFC Life", 645, "Insurance", "Large"],
-  ["ICICIGI", "ICICI Lombard", 1920, "Insurance", "Mid"], ["ICICIPRULI", "ICICI Pru Life", 685, "Insurance", "Mid"],
-  ["SHRIRAMFIN", "Shriram Finance", 3120, "NBFC", "Mid"], ["CHOLAFIN", "Cholamandalam", 1385, "NBFC", "Mid"],
-  ["MUTHOOTFIN", "Muthoot Finance", 1985, "NBFC", "Mid"], ["LTIM", "LTIMindtree", 5620, "IT", "Large"],
-  ["PERSISTENT", "Persistent Systems", 5880, "IT", "Mid"], ["COFORGE", "Coforge", 8420, "IT", "Mid"],
-  ["MPHASIS", "Mphasis", 2985, "IT", "Mid"], ["OFSS", "Oracle Fin Serv", 12200, "IT", "Mid"],
-  ["TATACONSUM", "Tata Consumer", 1085, "FMCG", "Large"], ["COLPAL", "Colgate-Palmolive", 3420, "FMCG", "Mid"],
-  ["MARICO", "Marico", 685, "FMCG", "Mid"], ["BERGEPAINT", "Berger Paints", 528, "Consumer", "Mid"],
-  ["HAVELLS", "Havells India", 1885, "Consumer", "Mid"], ["VOLTAS", "Voltas", 1685, "Consumer", "Mid"],
-  ["TORNTPHARM", "Torrent Pharma", 3285, "Pharma", "Mid"], ["LUPIN", "Lupin", 2185, "Pharma", "Mid"],
-  ["AUROPHARMA", "Aurobindo Pharma", 1385, "Pharma", "Mid"], ["ALKEM", "Alkem Labs", 5620, "Pharma", "Mid"],
-  ["ZYDUSLIFE", "Zydus Lifesciences", 1085, "Pharma", "Mid"], ["MANKIND", "Mankind Pharma", 2385, "Pharma", "Mid"],
-  ["INDIGO", "InterGlobe (IndiGo)", 4620, "Aviation", "Large"], ["JINDALSTEL", "Jindal Steel", 985, "Metals", "Mid"],
-  ["SAIL", "SAIL", 128, "Metals", "Mid"], ["NMDC", "NMDC", 218, "Metals", "Mid"],
-  ["PFC", "Power Finance Corp", 512, "NBFC", "Mid"], ["RECLTD", "REC Ltd", 528, "NBFC", "Mid"],
-  ["IRFC", "Indian Rlwy Finance", 158, "NBFC", "Mid"], ["TRENT", "Trent Ltd", 6820, "Retail", "Large"],
-  ["ADANIGREEN", "Adani Green", 1085, "Utilities", "Large"], ["ADANIPOWER", "Adani Power", 612, "Utilities", "Large"],
-  ["MOTHERSON", "Samvardhana Motherson", 168, "Auto", "Mid"], ["BHEL", "BHEL", 248, "Capital Goods", "Mid"],
-];
-const MORE_US = [
-  ["JPM", "JPMorgan Chase", 212, "Banking", "Large"], ["V", "Visa", 278, "Fintech", "Large"],
-  ["MA", "Mastercard", 462, "Fintech", "Large"], ["JNJ", "Johnson & Johnson", 158, "Healthcare", "Large"],
-  ["UNH", "UnitedHealth", 512, "Healthcare", "Large"], ["XOM", "Exxon Mobil", 118, "Energy", "Large"],
-  ["CVX", "Chevron", 158, "Energy", "Large"], ["WMT", "Walmart", 68, "Retail", "Large"],
-  ["PG", "Procter & Gamble", 168, "FMCG", "Large"], ["KO", "Coca-Cola", 62, "FMCG", "Large"],
-  ["PEP", "PepsiCo", 172, "FMCG", "Large"], ["COST", "Costco", 872, "Retail", "Large"],
-  ["HD", "Home Depot", 362, "Retail", "Large"], ["MCD", "McDonald's", 262, "Consumer", "Large"],
-  ["NKE", "Nike", 78, "Consumer", "Large"], ["DIS", "Disney", 98, "Media", "Large"],
-  ["NFLX", "Netflix", 685, "Media", "Large"], ["CRM", "Salesforce", 268, "Software", "Large"],
-  ["ORCL", "Oracle", 142, "Software", "Large"], ["ADBE", "Adobe", 528, "Software", "Large"],
-  ["INTC", "Intel", 32, "Semiconductors", "Large"], ["CSCO", "Cisco", 52, "Tech", "Large"],
-  ["QCOM", "Qualcomm", 172, "Semiconductors", "Large"], ["TXN", "Texas Instruments", 198, "Semiconductors", "Large"],
-  ["AVGO", "Broadcom", 168, "Semiconductors", "Large"], ["MU", "Micron", 108, "Semiconductors", "Large"],
-  ["IBM", "IBM", 192, "Tech", "Large"], ["ACN", "Accenture", 342, "IT Services", "Large"],
-  ["ABT", "Abbott Labs", 112, "Healthcare", "Large"], ["PFE", "Pfizer", 28, "Pharma", "Large"],
-  ["MRK", "Merck", 122, "Pharma", "Large"], ["LLY", "Eli Lilly", 785, "Pharma", "Large"],
-  ["TMO", "Thermo Fisher", 585, "Healthcare", "Large"], ["DHR", "Danaher", 252, "Healthcare", "Large"],
-  ["BAC", "Bank of America", 42, "Banking", "Large"], ["WFC", "Wells Fargo", 62, "Banking", "Large"],
-  ["GS", "Goldman Sachs", 492, "Banking", "Large"], ["MS", "Morgan Stanley", 102, "Banking", "Large"],
-  ["C", "Citigroup", 68, "Banking", "Large"], ["AXP", "American Express", 248, "Fintech", "Large"],
-  ["BLK", "BlackRock", 892, "Asset Mgmt", "Large"], ["SCHW", "Charles Schwab", 72, "Fintech", "Large"],
-  ["BA", "Boeing", 178, "Aerospace", "Large"], ["CAT", "Caterpillar", 362, "Industrials", "Large"],
-  ["GE", "GE Aerospace", 172, "Aerospace", "Large"], ["HON", "Honeywell", 205, "Industrials", "Large"],
-  ["UPS", "UPS", 132, "Logistics", "Large"], ["RTX", "RTX Corp", 118, "Aerospace", "Large"],
-  ["LMT", "Lockheed Martin", 462, "Defence", "Large"], ["DE", "Deere & Co", 382, "Industrials", "Large"],
-  ["UBER", "Uber", 72, "Tech", "Large"], ["ABNB", "Airbnb", 128, "Travel", "Large"],
-  ["SHOP", "Shopify", 78, "E-commerce", "Large"], ["SQ", "Block", 68, "Fintech", "Mid"],
-  ["PYPL", "PayPal", 68, "Fintech", "Large"], ["SNOW", "Snowflake", 158, "Software", "Mid"],
-  ["NET", "Cloudflare", 88, "Software", "Mid"], ["CRWD", "CrowdStrike", 342, "Cybersecurity", "Large"],
-  ["ZS", "Zscaler", 192, "Cybersecurity", "Mid"], ["DDOG", "Datadog", 122, "Software", "Mid"],
-  ["MDB", "MongoDB", 268, "Software", "Mid"], ["PANW", "Palo Alto Networks", 342, "Cybersecurity", "Large"],
-  ["MRVL", "Marvell", 78, "Semiconductors", "Large"], ["SMCI", "Super Micro", 42, "Hardware", "Mid"],
-  ["ARM", "ARM Holdings", 138, "Semiconductors", "Large"], ["TSM", "TSMC (ADR)", 178, "Semiconductors", "Large"],
-  ["ASML", "ASML (ADR)", 745, "Semiconductors", "Large"], ["SBUX", "Starbucks", 92, "Consumer", "Large"],
-  ["CMCSA", "Comcast", 42, "Media", "Large"], ["T", "AT&T", 22, "Telecom", "Large"],
-  ["VZ", "Verizon", 42, "Telecom", "Large"], ["TMUS", "T-Mobile", 218, "Telecom", "Large"],
-  ["F", "Ford", 12, "Auto", "Large"], ["GM", "General Motors", 48, "Auto", "Large"],
-  ["RIVN", "Rivian", 14, "Auto", "Mid"], ["LCID", "Lucid", 3, "Auto", "Mid"],
-  ["MMM", "3M", 128, "Industrials", "Large"], ["GILD", "Gilead Sciences", 78, "Pharma", "Large"],
-  ["AMGN", "Amgen", 285, "Pharma", "Large"], ["BMY", "Bristol Myers", 52, "Pharma", "Large"],
-  ["CVS", "CVS Health", 62, "Healthcare", "Large"], ["LOW", "Lowe's", 245, "Retail", "Large"],
-  ["TGT", "Target", 142, "Retail", "Large"], ["BKNG", "Booking Holdings", 3980, "Travel", "Large"],
-  ["NOW", "ServiceNow", 872, "Software", "Large"], ["INTU", "Intuit", 645, "Software", "Large"],
-  ["AMAT", "Applied Materials", 198, "Semiconductors", "Large"], ["LRCX", "Lam Research", 82, "Semiconductors", "Large"],
-  ["KLAC", "KLA Corp", 742, "Semiconductors", "Large"], ["ADI", "Analog Devices", 218, "Semiconductors", "Large"],
-  ["MARA", "MARA Holdings", 18, "Crypto Miners", "Mid", { vol: 40 }], ["RIOT", "Riot Platforms", 11, "Crypto Miners", "Mid", { vol: 38 }],
-  ["PLUG", "Plug Power", 2.4, "Clean Energy", "Mid", { vol: 45 }], ["BE", "Bloom Energy", 22, "Clean Energy", "Mid", { vol: 20 }],
-  ["CVNA", "Carvana", 245, "E-commerce", "Mid", { vol: 22 }], ["HOOD", "Robinhood", 62, "Fintech", "Large", { vol: 48 }],
-  ["SNAP", "Snap", 11, "Media", "Mid", { vol: 42 }], ["APLD", "Applied Digital", 9.5, "Data Centers", "Small", { vol: 25 }],
+/** The curated Indian universe — the exact instruments Matrix trades. */
+const IN_EQUITY = [
+  stock("ADANIENT", "Adani Enterprises", "Infrastructure"),
+  stock("ADANIPORTS", "Adani Ports & SEZ", "Infrastructure"),
+  stock("APOLLOHOSP", "Apollo Hospitals", "Healthcare"),
+  stock("ASIANPAINT", "Asian Paints", "Consumer"),
+  stock("ASTRAMICRO", "Astra Microwave Products", "Defence"),
+  stock("AXISBANK", "Axis Bank", "Banking"),
+  stock("BAJAJ-AUTO", "Bajaj Auto", "Auto"),
+  stock("BAJAJFINSV", "Bajaj Finserv", "Financial Services"),
+  stock("BAJFINANCE", "Bajaj Finance", "Financial Services"),
+  stock("BDL", "Bharat Dynamics", "Defence"),
+  stock("BEL", "Bharat Electronics", "Defence"),
+  stock("BEML", "BEML", "Defence"),
+  stock("BHARTIARTL", "Bharti Airtel", "Telecom"),
+  stock("BSE", "BSE Ltd", "Financial Services"),
+  stock("CAMS", "Computer Age Management Services", "Financial Services"),
+  stock("CDSL", "Central Depository Services", "Financial Services"),
+  stock("CIPLA", "Cipla", "Pharma"),
+  stock("COALINDIA", "Coal India", "Energy"),
+  stock("COCHINSHIP", "Cochin Shipyard", "Defence"),
+  stock("DATAPATTERNS", "Data Patterns (India)", "Defence"),
+  stock("DIXON", "Dixon Technologies", "Electronics"),
+  stock("DRREDDY", "Dr. Reddy's Laboratories", "Pharma"),
+  stock("EASEMYTRIP", "Easy Trip Planners", "Travel"),
+  stock("EICHERMOT", "Eicher Motors", "Auto"),
+  stock("ETERNAL", "Eternal (formerly Zomato)", "Consumer Tech"),
+  stock("GODREJPROP", "Godrej Properties", "Realty"),
+  stock("GRASIM", "Grasim Industries", "Cement"),
+  stock("GRSE", "Garden Reach Shipbuilders", "Defence"),
+  stock("HAL", "Hindustan Aeronautics", "Defence"),
+  stock("HAPPSTMNDS", "Happiest Minds Technologies", "IT"),
+  stock("HCLTECH", "HCL Technologies", "IT"),
+  stock("HDFCAMC", "HDFC Asset Management", "Financial Services"),
+  stock("HDFCBANK", "HDFC Bank", "Banking"),
+  stock("HDFCLIFE", "HDFC Life Insurance", "Insurance"),
+  stock("HEROMOTOCO", "Hero MotoCorp", "Auto"),
+  stock("HINDALCO", "Hindalco Industries", "Metals"),
+  stock("HINDUNILVR", "Hindustan Unilever", "FMCG"),
+  stock("ICICIBANK", "ICICI Bank", "Banking"),
+  stock("IDEAFORGE", "ideaForge Technology", "Defence"),
+  stock("INDUSINDBK", "IndusInd Bank", "Banking"),
+  stock("INFY", "Infosys", "IT"),
+  stock("INTELLECT", "Intellect Design Arena", "IT"),
+  stock("ITC", "ITC", "FMCG"),
+  stock("JIOFIN", "Jio Financial Services", "Financial Services"),
+  stock("JSWSTEEL", "JSW Steel", "Metals"),
+  stock("KOTAKBANK", "Kotak Mahindra Bank", "Banking"),
+  stock("LATENTVIEW", "Latent View Analytics", "IT"),
+  stock("LT", "Larsen & Toubro", "Infrastructure"),
+  stock("M&M", "Mahindra & Mahindra", "Auto"),
+  stock("MAPMYINDIA", "C.E. Info Systems (MapmyIndia)", "IT"),
+  stock("MARUTI", "Maruti Suzuki India", "Auto"),
+  stock("MAZDOCK", "Mazagon Dock Shipbuilders", "Defence"),
+  stock("NESTLEIND", "Nestle India", "FMCG"),
+  stock("NTPC", "NTPC", "Power"),
+  stock("NYKAA", "FSN E-Commerce (Nykaa)", "Consumer Tech"),
+  stock("ONGC", "Oil & Natural Gas Corporation", "Energy"),
+  stock("PAYTM", "One97 Communications (Paytm)", "Fintech"),
+  stock("POLICYBZR", "PB Fintech (Policybazaar)", "Fintech"),
+  stock("POWERGRID", "Power Grid Corporation", "Power"),
+  stock("RELIANCE", "Reliance Industries", "Energy"),
+  stock("SBICARD", "SBI Cards & Payment Services", "Financial Services"),
+  stock("SBIN", "State Bank of India", "Banking"),
+  stock("SHRIRAMFIN", "Shriram Finance", "Financial Services"),
+  stock("SUNPHARMA", "Sun Pharmaceutical", "Pharma"),
+  stock("SWIGGY", "Swiggy", "Consumer Tech"),
+  stock("TATACONSUM", "Tata Consumer Products", "FMCG"),
+  stock("TATAMOTORS", "Tata Motors", "Auto"),
+  stock("TATASTEEL", "Tata Steel", "Metals"),
+  stock("TCS", "Tata Consultancy Services", "IT"),
+  stock("TECHM", "Tech Mahindra", "IT"),
+  stock("TITAN", "Titan Company", "Consumer"),
+  stock("TRENT", "Trent", "Retail"),
+  stock("ULTRACEMCO", "UltraTech Cement", "Cement"),
+  stock("WIPRO", "Wipro", "IT"),
 ];
 
-/* -------------------------------------------------------------------------
-   NOTE: the seed arrays for US_STOCKS / CRYPTO / COMMODITY were lost in an
-   earlier refactor and are reconstructed here. US_STOCKS is seeded with the
-   mega-caps and indices that must always be present (the rest arrive from
-   MORE_US below). Prices are only a starting placeholder — every one of them
-   is overwritten by the REAL live quote as soon as the backend responds.
-   ------------------------------------------------------------------------- */
+const IN_STOCKS = [...IN_INDICES, ...IN_EQUITY];
 
-/** Deterministic starting day-change so the UI isn't blank before live data. */
-const dchg = (sym) => 0;
 
+/* ---- US ---- */
 const US_STOCKS = [
-  build("SPX", "S&P 500", 5620, 0, "Index", "Index"),
-  build("NDX", "Nasdaq 100", 19850, 0, "Index", "Index"),
-  build("DJI", "Dow Jones", 41200, 0, "Index", "Index"),
-  build("VIX", "CBOE Volatility Index", 14.2, 0, "Volatility", "Index"),
-  build("AAPL", "Apple", 228, 0, "Tech", "Large"),
-  build("MSFT", "Microsoft", 425, 0, "Software", "Large"),
-  build("GOOGL", "Alphabet", 172, 0, "Tech", "Large"),
-  build("AMZN", "Amazon", 186, 0, "E-commerce", "Large"),
-  build("NVDA", "NVIDIA", 128, 0, "Semiconductors", "Large"),
-  build("META", "Meta Platforms", 562, 0, "Tech", "Large"),
-  build("TSLA", "Tesla", 248, 0, "Auto", "Large"),
-  build("PLTR", "Palantir", 38, 0, "Software", "Large"),
-  build("COIN", "Coinbase", 215, 0, "Fintech", "Large"),
-  build("AMD", "AMD", 152, 0, "Semiconductors", "Large"),
+  index("SPX", "S&P 500", "Index"),
+  index("NDX", "Nasdaq 100", "Index"),
+  index("DJI", "Dow Jones", "Index"),
+  index("VIX", "CBOE Volatility Index", "Volatility"),
+  stock("AAPL", "Apple", "Tech"),
+  stock("MSFT", "Microsoft", "Software"),
+  stock("NVDA", "NVIDIA", "Semiconductors"),
+  stock("AMZN", "Amazon", "E-commerce"),
+  stock("META", "Meta Platforms", "Tech"),
+  stock("GOOGL", "Alphabet", "Tech"),
+  stock("TSLA", "Tesla", "Auto"),
+  stock("AMD", "AMD", "Semiconductors"),
+  stock("AVGO", "Broadcom", "Semiconductors"),
+  stock("NFLX", "Netflix", "Media"),
+  stock("PLTR", "Palantir", "Software"),
+  stock("CRWD", "CrowdStrike", "Cybersecurity"),
+  stock("SNOW", "Snowflake", "Software"),
+  stock("ORCL", "Oracle", "Software"),
+  stock("CRM", "Salesforce", "Software"),
+  stock("UBER", "Uber", "Mobility"),
+  stock("COIN", "Coinbase", "Fintech"),
+  stock("HOOD", "Robinhood", "Fintech"),
+  stock("SHOP", "Shopify", "E-commerce"),
+  stock("ARM", "Arm Holdings", "Semiconductors"),
+  stock("SMCI", "Super Micro Computer", "Hardware"),
+  stock("QCOM", "Qualcomm", "Semiconductors"),
+  stock("INTC", "Intel", "Semiconductors"),
+  stock("ANET", "Arista Networks", "Networking"),
+  stock("PANW", "Palo Alto Networks", "Cybersecurity"),
+  stock("DDOG", "Datadog", "Software"),
+  stock("NET", "Cloudflare", "Cloud"),
+  stock("APP", "AppLovin", "AdTech"),
+  stock("ADBE", "Adobe", "Software"),
+  stock("INTU", "Intuit", "Software"),
+  stock("MSTR", "MicroStrategy (Strategy)", "Bitcoin Treasury"),
+  stock("ABNB", "Airbnb", "Travel"),
+  stock("COST", "Costco", "Retail"),
+  stock("MA", "Mastercard", "Payments"),
+  stock("CAT", "Caterpillar", "Industrials"),
+  stock("MARA", "MARA Holdings", "Bitcoin Mining"),
+  stock("RIOT", "Riot Platforms", "Bitcoin Mining"),
+  stock("BE", "Bloom Energy", "Clean Energy"),
+  stock("PLUG", "Plug Power", "Clean Energy"),
+  stock("CVNA", "Carvana", "E-commerce"),
+  stock("SNAP", "Snap", "Tech"),
 ];
 
+/* ---- Crypto ----
+   NOTE ON PERPETUALS: the requested symbols carried a ".P" suffix (perpetual
+   futures). Our data source publishes SPOT only, so these are spot prices.
+   Funding rates and futures basis are NOT modelled — a perpetual can trade away
+   from spot, and we do not pretend to know by how much.
+
+   LAB and RAVE are deliberately absent. LAB is a real, liquid token but our data
+   source does not carry it. RAVE resolves to Ravendex, a dormant 2021 Cardano
+   token with no trading volume — serving its stale "last known price" would be
+   worse than serving nothing. Both return when a real feed for them exists. */
 const CRYPTO = [
-  build("BTC", "Bitcoin", 62000, 0, "Crypto", "Large"),
-  build("ETH", "Ethereum", 2450, 0, "Crypto", "Large"),
-  build("SOL", "Solana", 145, 0, "Crypto", "Large"),
-  build("XRP", "XRP", 0.58, 0, "Crypto", "Large"),
-  build("BNB", "BNB", 565, 0, "Crypto", "Large"),
-  build("ADA", "Cardano", 0.36, 0, "Crypto", "Mid"),
-  build("DOGE", "Dogecoin", 0.11, 0, "Crypto", "Mid"),
-  build("AVAX", "Avalanche", 26, 0, "Crypto", "Mid"),
-  build("DOT", "Polkadot", 4.2, 0, "Crypto", "Mid"),
-  build("MATIC", "Polygon", 0.42, 0, "Crypto", "Mid"),
-  build("LINK", "Chainlink", 11.5, 0, "Crypto", "Mid"),
-  build("LTC", "Litecoin", 68, 0, "Crypto", "Mid"),
+  stock("BTC", "Bitcoin", "Crypto"),
+  stock("ETH", "Ethereum", "Crypto"),
+  stock("SOL", "Solana", "Crypto"),
+  stock("BNB", "BNB", "Crypto"),
+  stock("XRP", "XRP", "Crypto"),
+  stock("LINK", "Chainlink", "Crypto"),
+  stock("PIPPIN", "pippin", "Crypto"),
 ];
 
+/* ---- Commodity ----
+   IMPORTANT: these are COMEX/NYMEX contracts priced in USD, not MCX contracts
+   priced in INR. MCX gold and COMEX gold are different contracts with different
+   prices, lot sizes and hours. The prices here are real — they are simply the
+   US contracts. There is no MCX feed available to us. */
 const COMMODITY = [
-  build("GOLD", "Gold", 2510, 0, "Metals", "Commodity"),
-  build("SILVER", "Silver", 29.4, 0, "Metals", "Commodity"),
-  build("CRUDE", "Crude Oil (WTI)", 72.5, 0, "Energy", "Commodity"),
-  build("NATGAS", "Natural Gas", 2.2, 0, "Energy", "Commodity"),
-  build("COPPER", "Copper", 4.15, 0, "Metals", "Commodity"),
-  build("ALUMINIUM", "Aluminium", 2.35, 0, "Metals", "Commodity"),
+  stock("GOLD", "Gold (COMEX)", "Metals"),
+  stock("SILVER", "Silver (COMEX)", "Metals"),
+  stock("CRUDEOIL", "Crude Oil WTI (NYMEX)", "Energy"),
+  stock("ALUMINIUM", "Aluminium (COMEX)", "Metals"),
 ];
 
-const seenIN = new Set(IN_STOCKS.map((s) => s.sym));
-const seenUS = new Set(US_STOCKS.map((s) => s.sym));
-IN_STOCKS.push(...MORE_IN.filter((a) => !seenIN.has(a[0])).map((a) => build(a[0], a[1], a[2], dchg(a[0]), a[3], a[4] || "Large", a[5] || {})));
-US_STOCKS.push(...MORE_US.filter((a) => !seenUS.has(a[0])).map((a) => build(a[0], a[1], a[2], dchg(a[0]), a[3], a[4] || "Large", a[5] || {})));
+/* ---- F&O ----
+   Only instruments with a REAL, known NSE lot size are tradable in F&O. Lot
+   sizes are exchange data, not something to guess at: a wrong lot size means a
+   wrong position size and a wrong loss. Names without a verified lot size are
+   deliberately excluded until the real value is supplied. */
+const FNO_SYMS = ["NIFTY50", "BANKNIFTY", "FINNIFTY", "RELIANCE", "HDFCBANK", "ICICIBANK",
+                  "SBIN", "TCS", "INFY", "TATAMOTORS", "LT", "BAJFINANCE", "ADANIENT",
+                  "HAL", "BEL", "DIXON", "ITC"];
+const FNO = IN_STOCKS.filter((s) => FNO_SYMS.includes(s.sym));
 
-/* -------- Trim each universe to the requested set -------- */
-const trimVol = (arr, n, keepSyms) => {
-  const keep = new Set(keepSyms);
-  const kept = arr.filter((s) => keep.has(s.sym));
-  const rest = arr.filter((s) => !keep.has(s.sym) && s.price > 0.1).sort((a, b) => b.vol - a.vol).slice(0, n);
-  const merged = [...kept, ...rest.filter((s) => s.price > 0.1)];
-  arr.length = 0; arr.push(...merged);
-};
-const IN_KEEP = ["NIFTY50", "BANKNIFTY", "SENSEX", "FINNIFTY", "INDIAVIX", "RELIANCE", "HDFCBANK", "ICICIBANK", "SBIN", "TCS", "INFY", "TATAMOTORS", "TATAPOWER", "LT", "BAJFINANCE", "ADANIENT", "HAL", "BEL", "DIXON", "ITC"];
-const US_KEEP = ["SPX", "NDX", "DJI", "VIX", "TSM", "PLTR", "MARA", "COIN", "RIOT", "PLUG", "BE", "INTC", "CVNA", "HOOD", "SHOP", "META", "GOOGL", "AAPL", "AMZN", "SNAP", "APLD", "SMCI", "NVDA"];
-trimVol(IN_STOCKS, 50, IN_KEEP);         // top 50 Indian by volume (+ indexes & F&O names)
-trimVol(US_STOCKS, 25, US_KEEP);         // top 25 US by volume (+ required names)
-trimVol(CRYPTO, 10, ["SPX"]);            // top 10 crypto by volume, price > 0.1
-// commodities: only the five requested
-const COMMO_KEEP = new Set(["GOLD", "SILVER", "ALUMINIUM", "COPPER", "CRUDE"]);
-{ const merged = COMMODITY.filter((s) => COMMO_KEEP.has(s.sym)); COMMODITY.length = 0; COMMODITY.push(...merged); }
-
-const bySym = (arr, syms) => syms.map((s) => arr.find((a) => a.sym === s)).filter(Boolean);
-const FNO = bySym(IN_STOCKS, ["NIFTY50", "BANKNIFTY", "FINNIFTY", "RELIANCE", "HDFCBANK", "ICICIBANK", "SBIN", "TCS", "INFY", "TATAMOTORS", "TATAPOWER", "LT", "BAJFINANCE", "ADANIENT", "HAL", "BEL", "DIXON", "ITC"]);
 const UNIVERSE = { IN: IN_STOCKS, US: US_STOCKS, Crypto: CRYPTO, Commodity: COMMODITY, FNO };
 const ALL = [...IN_STOCKS, ...US_STOCKS, ...CRYPTO, ...COMMODITY];
 function marketOf(sym) {
@@ -259,9 +249,12 @@ function marketHoursLabel(market) {
 
 /* ---- Yahoo ticker mapping (domain knowledge, kept out of the services) ---- */
 const Y_SPECIAL = {
+  // Indian indices
   NIFTY50: "^NSEI", BANKNIFTY: "^NSEBANK", SENSEX: "^BSESN", FINNIFTY: "^NSEFIN", INDIAVIX: "^INDIAVIX",
+  // US indices
   SPX: "^GSPC", NDX: "^NDX", DJI: "^DJI", VIX: "^VIX",
-  GOLD: "GC=F", SILVER: "SI=F", CRUDE: "CL=F", NATGAS: "NG=F", COPPER: "HG=F", ALUMINIUM: "ALI=F",
+  // Commodity futures (COMEX / NYMEX, USD — NOT MCX)
+  GOLD: "GC=F", SILVER: "SI=F", CRUDEOIL: "CL=F", ALUMINIUM: "ALI=F",
 };
 function yahooSymbol(sym) {
   if (Y_SPECIAL[sym]) return Y_SPECIAL[sym];
@@ -274,13 +267,47 @@ function yahooSymbol(sym) {
 export {
   IN_STOCKS, US_STOCKS, CRYPTO, COMMODITY, FNO, UNIVERSE, ALL,
   Y_SPECIAL, yahooSymbol, marketOf, istParts, marketHoursLabel,
+  IN_INDICES, IN_EQUITY,
 };
 
 /** Global index strip shown on the dashboard. */
+/**
+ * The global markets strip.
+ *
+ * These used to be HARDCODED percentages (NIFTY +0.62%, BTC +1.92%...) that never
+ * changed — thirteen invented numbers sitting at the top of the dashboard. They
+ * are now references to real instruments; the strip reads each one's live change
+ * and shows "—" until real data arrives.
+ *
+ * FTSE, Nikkei and Hang Seng were dropped: they were pure fiction, and we do not
+ * poll them. Add them back by adding real instruments and quoting them.
+ */
 export const GLOBAL_MKTS = [
-  { n: "NIFTY 50", c: 0.62 }, { n: "SENSEX", c: 0.58 }, { n: "BANK NIFTY", c: 0.84 },
-  { n: "S&P 500", c: 0.41 }, { n: "NASDAQ", c: 0.73 }, { n: "DOW", c: 0.22 },
-  { n: "FTSE 100", c: -0.18 }, { n: "NIKKEI", c: 1.12 }, { n: "HANG SENG", c: -0.44 },
-  { n: "BTC", c: 1.92 }, { n: "ETH", c: 2.64 }, { n: "GOLD", c: 0.54 }, { n: "CRUDE", c: -0.88 },
+  { sym: "NIFTY50", n: "NIFTY 50" },
+  { sym: "SENSEX", n: "SENSEX" },
+  { sym: "BANKNIFTY", n: "BANK NIFTY" },
+  { sym: "SPX", n: "S&P 500" },
+  { sym: "NDX", n: "NASDAQ" },
+  { sym: "DJI", n: "DOW" },
+  { sym: "BTC", n: "BTC" },
+  { sym: "ETH", n: "ETH" },
+  { sym: "GOLD", n: "GOLD" },
+  { sym: "CRUDEOIL", n: "CRUDE" },
 ];
 
+/**
+ * Market-cap tier, DERIVED from the real market cap Yahoo reports.
+ *
+ * Never hardcoded on the instrument: a hardcoded tier goes stale silently as a
+ * company grows or shrinks. Returns null when we have no real market cap, and
+ * the UI shows "—" rather than guessing a tier.
+ *
+ * Thresholds are a stated heuristic in INR (SEBI classifies by rank, not value,
+ * and the rank list is not in our data): Large > ₹50,000 cr, Mid ₹15,000–50,000 cr.
+ */
+export function capTier(marketCap) {
+  if (marketCap == null || Number.isNaN(marketCap)) return null;
+  if (marketCap >= 500e9) return "Large";   // ₹50,000 cr
+  if (marketCap >= 150e9) return "Mid";     // ₹15,000 cr
+  return "Small";
+}
