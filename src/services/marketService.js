@@ -66,3 +66,14 @@ export async function getFundamentals(ySyms) {
 export async function getHealth() {
   return get("/api/health");
 }
+
+/**
+ * Real short-term momentum from actual 5-minute candles: change over the last
+ * 5 and 15 minutes, plus a volume surge ratio against this session's own average
+ * 5-min volume. Symbols with no intraday data are simply absent.
+ */
+export async function getIntraday(ySyms) {
+  if (!BACKEND_URL || !ySyms?.length) return null;
+  const d = await get(`/api/intraday?symbols=${encodeURIComponent(ySyms.join(","))}`);
+  return d || null;
+}
