@@ -200,7 +200,51 @@ function MarketBrief({ market, list = [] }) {
   return <p style={{ fontSize: 12.8, lineHeight: 1.6, margin: 0, color: "var(--ink-soft)" }}>{text}</p>;
 }
 
-export default function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, watch, toggleWatch, profile, portfolio = [], wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [] }) {
+/**
+ * TrendingRow — shows WHY something is trending, not just that it is.
+ * Every number here comes from real 5-minute candles.
+ */
+function TrendingRow({ s, market, onOpen, watched, toggleWatch, onBuy }) {
+  const m5 = s.chg5m, m15 = s.chg15m, surge = s.volSurge;
+  const tone = (v) => (v == null ? "var(--muted)" : v >= 0 ? "var(--up)" : "var(--down)");
+  const sign = (v) => (v == null ? "—" : `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`);
+  return (
+    <div className="card tap" onClick={() => onOpen(s)} style={{ flex: "0 0 auto", width: 210, padding: 13 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+        <div style={{ minWidth: 0 }}>
+          <div className="disp" style={{ fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.sym}</div>
+          <div className="mono" style={{ fontWeight: 800, fontSize: 13, marginTop: 2 }}>{fmt(s.price, market)}</div>
+        </div>
+        {toggleWatch && <AddBtn on={watched} onClick={() => toggleWatch(s.sym)} size={24} />}
+      </div>
+
+      <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+        <div style={{ flex: 1, background: "var(--elev)", borderRadius: 9, padding: "6px 8px" }}>
+          <div style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 800 }}>5 MIN</div>
+          <div className="mono" style={{ fontSize: 12, fontWeight: 800, color: tone(m5) }}>{sign(m5)}</div>
+        </div>
+        <div style={{ flex: 1, background: "var(--elev)", borderRadius: 9, padding: "6px 8px" }}>
+          <div style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 800 }}>15 MIN</div>
+          <div className="mono" style={{ fontSize: 12, fontWeight: 800, color: tone(m15) }}>{sign(m15)}</div>
+        </div>
+      </div>
+
+      {surge != null && surge >= 1.5 && (
+        <div style={{ marginTop: 8, fontSize: 10, fontWeight: 800, color: "#E8A33D" }}>
+          ⚡ {surge.toFixed(1)}× usual volume
+        </div>
+      )}
+
+      {onBuy && (
+        <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }} onClick={(e) => e.stopPropagation()}>
+          <BuyButton s={s} market={market} onBuy={onBuy} lot={s.lot || 1} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, watch, toggleWatch, profile, portfolio = [], wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [], liveTick = 0 }) {
   const [glMode, setGlMode] = useState("Gainers");
   // Picks refresh ONCE AN HOUR (not on every tick) so they don't churn.
   const [pickHour, setPickHour] = useState(() => Math.floor(Date.now() / 3600000));
@@ -213,12 +257,33 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     return market === "FNO" ? base.map((s) => ({ ...makeFuture(s), pickSignal: s.pickSignal, pickReason: s.pickReason, pickPattern: s.pickPattern, pickStop: s.pickStop, pickTarget: s.pickTarget, pickSlPct: s.pickSlPct, pickTpPct: s.pickTpPct, pickRR: s.pickRR })) : base;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list, market, pickHour]);
-  // Trending = REAL relative volume + REAL short-term gain (not just raw volume).
+  /**
+   * TRENDING NOW — what is moving RIGHT NOW.
+   *
+   * This used to rank on relative volume + the DAY change, which is not trending:
+   * a stock up 4% since the open but flat for the last hour is not moving now.
+   *
+   * It now ranks on real 5-minute candle data from /api/intraday:
+   *   - change over the last 5 minutes   (weighted highest — most immediate)
+   *   - change over the last 15 minutes  (confirms it is a move, not a tick)
+   *   - volume surge vs this session's own average 5-min volume
+   *
+   * An instrument with no intraday data is EXCLUDED rather than scored as zero:
+   * we would rather show four movers than six with two invented.
+   */
   const trending = useMemo(() => [...list]
-    .filter((s) => s.hasData && s.vol != null)
-    .map((s) => ({ s, rv: s.avgVol ? (s.vol || 0) / s.avgVol : 0 }))
-    .sort((a, b) => (b.rv * 2 + (b.s.chg || 0)) - (a.rv * 2 + (a.s.chg || 0)))
-    .slice(0, 6).map((x) => x.s), [list, pickHour]);
+    .filter((s) => !s.isIndex && (s.chg5m != null || s.chg15m != null))
+    .map((s) => {
+      const m5 = s.chg5m ?? 0;
+      const m15 = s.chg15m ?? 0;
+      const surge = s.volSurge ?? 1;
+      // Momentum, confirmed by the 15-min move and amplified by a volume surge.
+      const score = (Math.abs(m5) * 2 + Math.abs(m15)) * Math.max(1, surge);
+      return { s, score };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6)
+    .map((x) => x.s), [list, liveTick]);
   // Indices (Nifty, Bank Nifty, India VIX...) are not tradeable stocks and must
   // never appear in gainers/losers or trending. Flagged explicitly on the
   // instrument rather than guessed at from its name.
@@ -536,7 +601,16 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       {market !== "Commodity" && (
         <Section title="Trending now" icon={<TrendingUp size={17} color="#0FB97D" />}>
           <div className="hide-scroll" style={{ display: "flex", gap: 10, overflowX: "auto" }}>
-            {trendingView.map((s) => <MiniRow key={s.sym} s={s} market={market} onOpen={onOpen} watched={watch.includes(s.sym)} toggleWatch={toggleWatch} />)}
+            {trendingView.length
+              ? trendingView.map((s) => (
+                  <TrendingRow key={s.sym} s={s} market={market} onOpen={onOpen}
+                    watched={watch.includes(s.sym)} toggleWatch={toggleWatch} onBuy={onBuy} />
+                ))
+              : (
+                <div style={{ padding: "14px 2px", fontSize: 12, color: "var(--muted)" }}>
+                  No intraday moves yet — trending needs live 5-minute candles, which arrive while the market is open.
+                </div>
+              )}
           </div>
         </Section>
       )}
