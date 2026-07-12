@@ -1,4 +1,5 @@
 import Block from "./Block";
+import { useScrollTransition } from "../../hooks/useScrollTransition";
 import React, { useRef, useState } from "react";
 import { Activity, Building2, ChevronRight, Newspaper, Plus, X } from "lucide-react";
 import { fmt } from "../../lib/format";
@@ -14,6 +15,17 @@ import VerdictTag from "../../components/common/VerdictTag";
 export default function Drawer({ s, onClose, onDetails, onBuy }) {
   const startY = useRef(null);
   const [dy, setDy] = useState(0);
+  const sheetRef = useRef(null);
+
+  /* Netflix-style expand: keep scrolling past the end of the sheet and it opens
+     into the full research page. Drag-down-to-dismiss still works as before. */
+  const { progress: expand } = useScrollTransition({
+    ref: sheetRef,
+    threshold: 90,
+    onTrigger: () => onDetails && onDetails(),
+    enabled: Boolean(s),
+  });
+
   if (!s) return null;
   const market = marketOf(s.sym);
   const onTS = (e) => { startY.current = e.touches[0].clientY; };
@@ -21,7 +33,19 @@ export default function Drawer({ s, onClose, onDetails, onBuy }) {
   const onTE = () => { const d = dy; setDy(0); startY.current = null; if (d < -55) onDetails && onDetails(); else if (d > 90) onClose && onClose(); };
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(10,10,20,.32)", zIndex: 60, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
-      <div onClick={(e) => e.stopPropagation()} className="sheet card" style={{ width: "100%", maxWidth: 460, borderRadius: "24px 24px 0 0", maxHeight: "88vh", overflowY: "auto", padding: 18, transform: dy > 0 ? `translateY(${dy}px)` : "none", transition: dy === 0 ? "transform .2s ease" : "none" }}>
+      <div
+        ref={sheetRef}
+        onClick={(e) => e.stopPropagation()}
+        className="sheet card"
+        style={{
+          width: "100%", maxWidth: 460,
+          borderRadius: "24px 24px 0 0",
+          maxHeight: "88vh", overflowY: "auto", padding: 18,
+          // pulling up past the end lifts the sheet toward full screen
+          transform: dy > 0 ? `translateY(${dy}px)` : (expand > 0 ? `translateY(${-expand * 28}px) scale(${1 + expand * 0.02})` : "none"),
+          transition: dy === 0 && expand === 0 ? "transform .22s ease" : "none",
+        }}
+      >
         <div onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE} style={{ padding: "2px 0 10px", margin: "-2px 0 0", cursor: "grab", touchAction: "none" }}>
           <div style={{ width: 40, height: 4, background: "var(--line)", borderRadius: 9, margin: "0 auto" }} />
           <div style={{ textAlign: "center", fontSize: 9.5, color: "var(--muted)", marginTop: 6, fontWeight: 600 }}>↑ drag up for full details</div>
@@ -72,6 +96,20 @@ export default function Drawer({ s, onClose, onDetails, onBuy }) {
           <button onClick={() => onDetails(s)} className="tap disp" style={{ flex: 1, background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px", fontWeight: 700, fontSize: 14.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
             Details <ChevronRight size={17} />
           </button>
+        </div>
+
+        {/* Discoverability: the scroll-to-expand gesture needs to announce itself once. */}
+        <div
+          style={{
+            textAlign: "center",
+            paddingTop: 16,
+            fontSize: 11,
+            fontWeight: 700,
+            color: expand > 0.15 ? "var(--primary)" : "var(--muted)",
+            opacity: 0.5 + expand * 0.5,
+          }}
+        >
+          {expand > 0.15 ? "Release for full research ↑" : "Keep scrolling for full research ↑"}
         </div>
       </div>
     </div>
