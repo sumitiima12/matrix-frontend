@@ -47,7 +47,7 @@ function GlobalStrip() {
   );
 }
 
-function MarketPulseStrip({ market, list, onOpen }) {
+function MarketPulseStrip({ market, list, onOpen, liveTick = 0 }) {
   const vixSym = market === "US" ? "VIX" : "INDIAVIX";
   const idxSym = market === "US" ? "SPX" : market === "Crypto" ? "BTC" : market === "Commodity" ? "GOLD" : "NIFTY50";
   const vix = ALL.find((a) => a.sym === vixSym) || ALL.find((a) => a.sym === "INDIAVIX");
@@ -55,13 +55,30 @@ function MarketPulseStrip({ market, list, onOpen }) {
   const idxLabel = market === "US" ? "S&P 500" : market === "Crypto" ? "BTC" : market === "Commodity" ? "GOLD" : "NIFTY 50";
   // It said "VIX" even when showing INDIAVIX. Name the thing we are actually showing.
   const vixLabel = market === "US" ? "VIX" : "INDIA VIX";
-  // Indices are not stocks: SENSEX and FINNIFTY were showing up under "Hot Stocks".
-  // Also skip anything with no real change yet rather than sorting nulls to the top.
+  /**
+   * HOT STOCKS — what is moving most RIGHT NOW.
+   *
+   * Two bugs lived here:
+   *  1. This useMemo keyed only on [list], but `list` is a stable array whose
+   *     objects are mutated in place as quotes arrive. So it ran ONCE at mount,
+   *     when every chg was still null, produced [], and froze — which is why the
+   *     strip was empty. It now recomputes on liveTick, like Trending does.
+   *  2. Indices (SENSEX, FINNIFTY) were being ranked as if they were stocks.
+   *
+   * Ranking prefers the REAL last-15-minute move from 5-minute candles. When the
+   * market is closed those candles are the final 15 minutes of the last session —
+   * exactly "what was hot at the close". It falls back to the day change only if
+   * no intraday data exists, and shows nothing at all rather than inventing a mover.
+   */
   const hot = useMemo(
-    () => list.filter((s) => !s.isIndex && s.chg != null)
-              .sort((a, b) => Math.abs(b.chg) - Math.abs(a.chg))
-              .slice(0, 8),
-    [list]
+    () => list
+      .filter((s) => !s.isIndex && (s.chg15m != null || s.chg != null))
+      .map((s) => ({ s, heat: Math.abs(s.chg15m != null ? s.chg15m : s.chg) }))
+      .sort((a, b) => b.heat - a.heat)
+      .slice(0, 8)
+      .map((x) => x.s),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [list, liveTick]
   );
   // One symbol at a time, rotating. It used to show two side by side, which made
   // each one cramped and hard to read at a glance.
@@ -94,7 +111,9 @@ function MarketPulseStrip({ market, list, onOpen }) {
           {shown.map((h, k) => (
             <div key={h.sym + k} onClick={() => open(h)} className="tap fade" style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
               <span className="disp" style={{ fontWeight: 700, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.sym}</span>
-              <span className="mono" style={{ fontSize: 11, fontWeight: 800, color: chgColor(h.chg), flex: "0 0 auto" }}>{pct(h.chg, 1)}</span>
+              <span className="mono" style={{ fontSize: 11, fontWeight: 800, color: chgColor(h.chg15m != null ? h.chg15m : h.chg), flex: "0 0 auto" }}>
+                {pct(h.chg15m != null ? h.chg15m : h.chg, 1)}
+              </span>
             </div>
           ))}
         </div>
@@ -227,11 +246,10 @@ function TrendingRow({ s, market, onOpen, onBuy }) {
   const sign = (v) => (v == null ? "—" : `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`);
   return (
     <div className="card tap" onClick={() => onOpen(s)} style={{ flex: "0 0 auto", width: 210, padding: 13 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-        <div style={{ minWidth: 0 }}>
-          <div className="disp" style={{ fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.sym}</div>
-          <div className="mono" style={{ fontWeight: 800, fontSize: 13, marginTop: 2 }}>{fmt(s.price, market)}</div>
-        </div>
+      {/* symbol left, price top-right */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+        <div className="disp" style={{ fontWeight: 700, fontSize: 13.5, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.sym}</div>
+        <div className="mono" style={{ fontWeight: 800, fontSize: 13.5, flex: "0 0 auto" }}>{fmt(s.price, market)}</div>
       </div>
 
       <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
@@ -612,7 +630,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       {/* F&O Picks (Indian derivatives) */}
 
       {/* Market pulse strip — not for Commodity */}
-      {market !== "Commodity" && <MarketPulseStrip market={market} list={list} onOpen={onOpen} />}
+      {market !== "Commodity" && <MarketPulseStrip market={market} list={list} onOpen={onOpen} liveTick={liveTick} />}
 
       {/* Trending — not for Commodity; F&O shows ATM options */}
       {market !== "Commodity" && (

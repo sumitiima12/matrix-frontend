@@ -367,19 +367,26 @@ export default function App() {
             </>
           )}
         </div>
-
-        {/* BOTTOM NAV */}
-        {!detail && (
-          <div className="glass" style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--header-bg)", borderTop: "1px solid var(--line)", borderRadius: "22px 22px 0 0", boxShadow: "0 -10px 34px rgba(40,10,80,.3)", display: "flex", padding: "9px 4px 11px", zIndex: 40 }}>
-            {nav.map(([k, Icon, label]) => (
-              <button key={k} onClick={() => { setTab(k); setTradePreset(null); }} className="tap" style={{ flex: 1, border: "none", background: "transparent", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: tab === k ? "var(--primary)" : "var(--muted)" }}>
-                <Icon size={20} fill={k === "watchlist" && tab === k ? "var(--primary)" : "none"} />
-                <span style={{ fontSize: 9.5, fontWeight: 700 }}>{label}</span>
-              </button>
-            ))}
-          </div>
-        )}
       </div>
+
+      {/* BOTTOM NAV
+          Deliberately a DIRECT CHILD OF THE ROOT, not of the page wrapper.
+          `position: fixed` is measured against the viewport ONLY if no ancestor
+          creates a containing block — and a transform, filter or backdrop-filter
+          on any ancestor does exactly that. The wrapper contains .glass
+          (backdrop-filter), the .fade keyframes (transform) and <Pop>, any of
+          which can silently re-anchor a fixed child and make the bar scroll away.
+          Hoisting it here removes the possibility entirely. */}
+      {!detail && (
+        <div className="glass" style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--header-bg)", borderTop: "1px solid var(--line)", borderRadius: "22px 22px 0 0", boxShadow: "0 -10px 34px rgba(40,10,80,.3)", display: "flex", padding: "9px 4px 11px", zIndex: 100 }}>
+          {nav.map(([k, Icon, label]) => (
+            <button key={k} onClick={() => { setTab(k); setTradePreset(null); }} className="tap" style={{ flex: 1, border: "none", background: "transparent", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: tab === k ? "var(--primary)" : "var(--muted)" }}>
+              <Icon size={20} fill={k === "watchlist" && tab === k ? "var(--primary)" : "none"} />
+              <span style={{ fontSize: 9.5, fontWeight: 700 }}>{label}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {drawer && <Drawer s={drawer} onClose={() => setDrawer(null)} onDetails={openDetail} onBuy={buyStock} />}
       {search && <SearchOverlay onClose={() => setSearch(false)} onOpen={openStock} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} />}

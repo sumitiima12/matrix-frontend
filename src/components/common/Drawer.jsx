@@ -1,9 +1,10 @@
 import Block from "./Block";
 import { useScrollTransition } from "../../hooks/useScrollTransition";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Activity, Building2, ChevronRight, Newspaper, Plus, X } from "lucide-react";
 import { fmt } from "../../lib/format";
 import { marketOf } from "../../domain/universe";
+import { fetchNews } from "../../domain/api";
 import Change from "../../components/common/Change";
 import ProChart from "../../components/charts/ProChart";
 import VerdictTag from "../../components/common/VerdictTag";
@@ -28,6 +29,19 @@ export default function Drawer({ s, onClose, onDetails, onBuy }) {
 
   if (!s) return null;
   const market = marketOf(s.sym);
+  /* REAL news. The old code read s.news[0].t — a hardcoded fake headline baked
+     onto the instrument. We deleted those arrays, so this crashed on every card
+     tap. Now it fetches the actual headline, and simply shows nothing if there
+     is none. */
+  const [news, setNews] = useState(null);
+  useEffect(() => {
+    let stop = false;
+    setNews(null);
+    if (!s?.sym) return undefined;
+    fetchNews(s.sym).then((n) => { if (!stop && n && n.length) setNews(n[0]); }).catch(() => {});
+    return () => { stop = true; };
+  }, [s?.sym]);
+
   const onTS = (e) => { startY.current = e.touches[0].clientY; };
   const onTM = (e) => { if (startY.current == null) return; setDy(e.touches[0].clientY - startY.current); };
   const onTE = () => { const d = dy; setDy(0); startY.current = null; if (d < -55) onDetails && onDetails(); else if (d > 90) onClose && onClose(); };
@@ -66,9 +80,15 @@ export default function Drawer({ s, onClose, onDetails, onBuy }) {
           <ProChart sym={s.sym} defaultTf={market === "Crypto" ? "1h" : "1d"} height={250} />
         </div>
 
-        <Block title="Key news / event" icon={<Newspaper size={14} />}>{s.news[0].t}</Block>
+        {news && (
+          <Block title="Key news / event" icon={<Newspaper size={14} />}>
+            {news.title}
+          </Block>
+        )}
         <Block title="Technical summary" icon={<Activity size={14} />}>
-          RSI {s.rsi} ({s.rsi > 70 ? "overbought" : s.rsi < 30 ? "oversold" : "neutral"}), price {s.price > s.sma50 ? "above" : "below"} 50-DMA. Support {fmt(s.support, market)} · Resistance {fmt(s.resistance, market)}.
+          {s.rsi == null
+            ? "Waiting for live indicators."
+            : `RSI ${s.rsi} (${s.rsi > 70 ? "overbought" : s.rsi < 30 ? "oversold" : "neutral"}), price ${s.price > s.sma50 ? "above" : "below"} 50-DMA. Support ${fmt(s.support, market)} · Resistance ${fmt(s.resistance, market)}.`}
         </Block>
         <Block title="Fundamental summary" icon={<Building2 size={14} />}>
           P/E {s.pe ?? "—"}, ROE {s.roe != null ? s.roe + "%" : "—"}, revenue growth {s.revGrowth != null ? s.revGrowth + "%" : "—"}, earnings growth {s.ebitdaGrowth != null ? s.ebitdaGrowth + "%" : "—"}.
