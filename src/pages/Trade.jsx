@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { CUR, MKT_LABEL, fmt } from "../lib/format";
 import { ALL, marketOf } from "../domain/universe";
 import Change from "../components/common/Change";
+import { selStyle } from "../components/common/styles";
 
 /**
  * Trade — order ticket for buying and selling an instrument.

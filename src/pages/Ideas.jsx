@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { currentIdeas, resolveIdea } from "../domain/ideas";
-import { Plus } from "lucide-react";
 import { BACKEND_URL } from "../config";
 import { fmt } from "../lib/format";
 import { ALL, FNO, marketOf } from "../domain/universe";
 import { fetchHistory } from "../domain/api";
 import MiniCandles from "../components/charts/MiniCandles";
+import { selStyle } from "../components/common/styles";
+import BuyButton from "../components/common/BuyButton";
 
 /**
  * Ideas — trade ideas published by Matrix, scored against real candles.
@@ -119,7 +120,12 @@ export default function Ideas({ onOpen, onBuy, market = "IN" }) {
               <div style={{ textAlign: "right" }}><div style={{ fontSize: 10, color: "var(--muted)" }}>Potential left</div>{(() => { const cur = s ? s.price : idea.entry; const pl = (idea.exit - cur) / cur * 100; return <div className="mono" style={{ fontWeight: 800, fontSize: 13, color: pl >= 0 ? "var(--up)" : "var(--muted)" }}>{pl >= 0 ? "+" + pl.toFixed(1) + "%" : "target hit"}</div>; })()}</div>
             </div>
             <div style={{ fontSize: 12.5, color: "var(--ink-soft)", marginTop: 10, lineHeight: 1.55 }}>{idea.logic}</div>
-            {s && onBuy && <button onClick={() => onBuy(s, 1)} className="tap disp" style={{ width: "100%", marginTop: 12, background: "linear-gradient(120deg,var(--up),#0EA968)", color: "#fff", border: "none", borderRadius: 12, padding: 12, fontWeight: 800, fontSize: 13.5, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}><Plus size={16} /> Buy Now</button>}
+            {s && onBuy && (
+              <div style={{ marginTop: 12 }}>
+                <BuyButton s={s} market={market} onBuy={onBuy} lot={s.lot || 1} fullWidth
+                  opts={{ tp: idea.gain, sl: idea.stop, tradeType: "Manual" }} />
+              </div>
+            )}
           </div>
         );
       })}

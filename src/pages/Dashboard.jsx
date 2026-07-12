@@ -53,19 +53,30 @@ function MarketPulseStrip({ market, list, onOpen }) {
   const vix = ALL.find((a) => a.sym === vixSym) || ALL.find((a) => a.sym === "INDIAVIX");
   const idx = ALL.find((a) => a.sym === idxSym) || ALL[0];
   const idxLabel = market === "US" ? "S&P 500" : market === "Crypto" ? "BTC" : market === "Commodity" ? "GOLD" : "NIFTY 50";
-  const hot = useMemo(() => [...list].sort((a, b) => Math.abs(b.chg) - Math.abs(a.chg)).slice(0, 8), [list]);
+  // It said "VIX" even when showing INDIAVIX. Name the thing we are actually showing.
+  const vixLabel = market === "US" ? "VIX" : "INDIA VIX";
+  // Indices are not stocks: SENSEX and FINNIFTY were showing up under "Hot Stocks".
+  // Also skip anything with no real change yet rather than sorting nulls to the top.
+  const hot = useMemo(
+    () => list.filter((s) => !s.isIndex && s.chg != null)
+              .sort((a, b) => Math.abs(b.chg) - Math.abs(a.chg))
+              .slice(0, 8),
+    [list]
+  );
+  // One symbol at a time, rotating. It used to show two side by side, which made
+  // each one cramped and hard to read at a glance.
   const [pi, setPi] = useState(0);
   useEffect(() => {
     if (hot.length < 2) return;
-    const t = setInterval(() => setPi((p) => (p + 2) % hot.length), 2000);
+    const t = setInterval(() => setPi((p) => (p + 1) % hot.length), 2600);
     return () => clearInterval(t);
   }, [hot]);
-  const pair = hot.length ? [hot[pi % hot.length], hot[(pi + 1) % hot.length]] : [];
+  const shown = hot.length ? [hot[pi % hot.length]] : [];
   const open = (s) => s && onOpen(s);
   return (
     <div className="card" style={{ marginTop: 22, padding: 12, display: "flex", alignItems: "stretch", gap: 10 }}>
       <div onClick={() => open(vix)} className="tap" style={{ flex: "0 0 auto" }}>
-        <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>VIX</div>
+        <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>{vixLabel}</div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
           <span className="mono" style={{ fontWeight: 800, fontSize: 15 }}>{vix.price}</span>
           <span className="mono" style={{ fontSize: 10.5, fontWeight: 700, color: vix.chg >= 0 ? "var(--down)" : "var(--up)" }}>{vix.chg >= 0 ? "+" : ""}{vix.chg}%</span>
@@ -80,7 +91,7 @@ function MarketPulseStrip({ market, list, onOpen }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>🔥 Hot Stocks</div>
         <div style={{ display: "flex", gap: 8, marginTop: 3 }}>
-          {pair.map((h, k) => (
+          {shown.map((h, k) => (
             <div key={h.sym + k} onClick={() => open(h)} className="tap fade" style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
               <span className="disp" style={{ fontWeight: 700, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.sym}</span>
               <span className="mono" style={{ fontSize: 11, fontWeight: 800, color: chgColor(h.chg), flex: "0 0 auto" }}>{pct(h.chg, 1)}</span>
@@ -210,7 +221,7 @@ function MarketBrief({ market, list = [] }) {
  * TrendingRow — shows WHY something is trending, not just that it is.
  * Every number here comes from real 5-minute candles.
  */
-function TrendingRow({ s, market, onOpen, watched, toggleWatch, onBuy }) {
+function TrendingRow({ s, market, onOpen, onBuy }) {
   const m5 = s.chg5m, m15 = s.chg15m, surge = s.volSurge;
   const tone = (v) => (v == null ? "var(--muted)" : v >= 0 ? "var(--up)" : "var(--down)");
   const sign = (v) => (v == null ? "—" : `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`);
@@ -221,7 +232,6 @@ function TrendingRow({ s, market, onOpen, watched, toggleWatch, onBuy }) {
           <div className="disp" style={{ fontWeight: 700, fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.sym}</div>
           <div className="mono" style={{ fontWeight: 800, fontSize: 13, marginTop: 2 }}>{fmt(s.price, market)}</div>
         </div>
-        {toggleWatch && <AddBtn on={watched} onClick={() => toggleWatch(s.sym)} size={24} />}
       </div>
 
       <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
@@ -242,8 +252,8 @@ function TrendingRow({ s, market, onOpen, watched, toggleWatch, onBuy }) {
       )}
 
       {onBuy && (
-        <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }} onClick={(e) => e.stopPropagation()}>
-          <BuyButton s={s} market={market} onBuy={onBuy} lot={s.lot || 1} />
+        <div style={{ marginTop: 11 }} onClick={(e) => e.stopPropagation()}>
+          <BuyButton s={s} market={market} onBuy={onBuy} lot={s.lot || 1} fullWidth />
         </div>
       )}
     </div>
@@ -571,7 +581,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   <Sparkles size={14} color="#fff" style={{ flex: "0 0 auto", marginTop: 2 }} /><span>{s.pickReason || ""}</span>
                 </div>
                 {/* Buy with explicit quantity; the pick's REAL stop & target are armed with it. */}
-                <div style={{ marginTop: 13, display: "flex", justifyContent: "flex-end" }} onClick={(e) => e.stopPropagation()}>
+                <div style={{ marginTop: 13 }} onClick={(e) => e.stopPropagation()}>
                   <BuyButton
                     s={s}
                     market={market}
@@ -579,6 +589,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     lot={s.isFut ? (s.lot || 1) : 1}
                     opts={{ tp: s.pickTpPct, sl: s.pickSlPct, tradeType: "Manual" }}
                     variant="light"
+                    fullWidth
                   />
                 </div>
               </div>
@@ -609,8 +620,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           <div className="hide-scroll" style={{ display: "flex", gap: 10, overflowX: "auto" }}>
             {trendingView.length
               ? trendingView.map((s) => (
-                  <TrendingRow key={s.sym} s={s} market={market} onOpen={onOpen}
-                    watched={watch.includes(s.sym)} toggleWatch={toggleWatch} onBuy={onBuy} />
+                  <TrendingRow key={s.sym} s={s} market={market} onOpen={onOpen} onBuy={onBuy} />
                 ))
               : (
                 <div style={{ padding: "14px 2px", fontSize: 12, color: "var(--muted)" }}>
@@ -639,7 +649,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
             </div>
           }>
           <div className="card" style={{ padding: "4px 14px" }}>
-            {(glMode === "Gainers" ? gainers : losers).map((s) => <ListRow key={s.sym} s={s} market={market} onOpen={onOpen} watched={watch.includes(s.sym)} toggleWatch={toggleWatch} />)}
+            {(glMode === "Gainers" ? gainers : losers).map((s) => <ListRow key={s.sym} s={s} market={market} onOpen={onOpen} onBuy={onBuy} />)}
           </div>
         </Section>
       )}
@@ -648,7 +658,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       <Section title="Most traded" icon={<Activity size={17} color="var(--primary)" />}>
         <div className="hide-scroll" style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
           {tradedView.map((s) => (
-            <CarouselCard key={s.sym} s={s} market={market} onOpen={onOpen} onBuy={onBuy} width={210} watched={watch.includes(s.sym)} toggleWatch={toggleWatch}>
+            <CarouselCard key={s.sym} s={s} market={market} onOpen={onOpen} onBuy={onBuy} width={210}>
               <div style={{ marginTop: 10, background: "var(--bg)", borderRadius: 12, padding: "8px 11px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 {/* Open Interest is not available from our data source, and we will not
                     label volume as OI. Volume is real, so volume is what we show. */}
@@ -669,7 +679,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
         <Section title="Smart Money picks" icon={<Building2 size={17} color="var(--primary)" />}>
           <div className="hide-scroll" style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
             {smart.map((s) => (
-              <CarouselCard key={s.sym} s={s} market={market} onOpen={onOpen} onBuy={onBuy} width={260} watched={watch.includes(s.sym)} toggleWatch={toggleWatch}>
+              <CarouselCard key={s.sym} s={s} market={market} onOpen={onOpen} onBuy={onBuy} width={260}>
                 <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 7 }}>
                   {s.inst.slice(0, 3).map((it, i) => (
                     <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--bg)", borderRadius: 12, padding: "9px 11px", gap: 8 }}>

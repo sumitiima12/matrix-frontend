@@ -1,13 +1,12 @@
 import React from "react";
 import { fmt } from "../../lib/format";
 import Change from "../common/Change";
-import AddBtn from "../common/AddBtn";
 import BuyButton from "../common/BuyButton";
 
 /**
  * CarouselCard — the horizontally-scrolling stock card used across the home page.
  *
- * Composes Change + AddBtn + BuyButton. Owns no logic: it renders an instrument
+ * Composes Change + BuyButton. Owns no logic: it renders an instrument
  * and reports intent (open / watch / buy) upward.
  */
 export default function CarouselCard({
@@ -24,7 +23,6 @@ export default function CarouselCard({
           <div className="mono" style={{ fontWeight: 800, fontSize: 14, whiteSpace: "nowrap" }}>{fmt(s.price, market)}</div>
           <Change v={s.chg} />
         </div>
-        {toggleWatch && <AddBtn on={watched} onClick={() => toggleWatch(s.sym)} size={26} />}
       </div>
 
       {children}
@@ -32,7 +30,7 @@ export default function CarouselCard({
       {/* Explicit quantity — replaces the old bare "+" that silently bought 1. */}
       {onBuy && (
         <div style={{ marginTop: 11, display: "flex", justifyContent: "flex-end" }} onClick={(e) => e.stopPropagation()}>
-          <BuyButton s={s} market={market} onBuy={onBuy} lot={s.lot || 1} />
+          <BuyButton s={s} market={market} onBuy={onBuy} lot={s.lot || 1} fullWidth />
         </div>
       )}
     </div>

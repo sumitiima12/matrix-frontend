@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { METRICS, OPS, indValue, matchScreen, parseScreen } from "../domain/screener";
 import ListRow from "../components/cards/ListRow";
+import { selStyle } from "../components/common/styles";
 import WatchAddButton from "../components/common/WatchAddButton";
 import { Filter, Plus, Trash2 } from "lucide-react";
 import { aiInterpretScreen } from "../domain/api";
@@ -120,6 +121,5 @@ export default function Screener({ onOpen, market, list, watchlists, addToWatch,
     </div>
   );
 }
-const selStyle = { flex: 1, border: "1px solid var(--line)", borderRadius: 10, padding: "9px 8px", fontSize: 12.5, background: "var(--surface)", color: "var(--ink)" };
 
 /* ============================== VIRTUAL TRADE ============================== */

@@ -1,122 +1,127 @@
 import React, { useState } from "react";
-import { ShoppingCart, Minus, Plus, X } from "lucide-react";
+import { Minus, Plus } from "lucide-react";
 import { fmt } from "../../lib/format";
 
 /**
- * BuyButton — the single buy control used on every card in the app.
+ * BuyButton — the ONE buy control, rendered identically on every card.
  *
- * Replaces the old bare "+" icon, which bought a hidden quantity of 1 with no
- * confirmation. Now the user picks a quantity (default 1, freely editable) and
- * sees the order value before committing.
+ * Layout is always:   [ − ][ qty ][ + ]  [ Buy ]
  *
- * The button owns NO trading logic. It collects an intent and calls onBuy();
- * the Risk Engine still gates the order downstream. One responsibility.
+ * The quantity is visible up front rather than hidden behind a first tap. The old
+ * version was a two-step flow (tap Buy, then a picker appeared), so Matrix's Picks
+ * and Trending rendered at different sizes depending on whether the picker happened
+ * to be open. That is why they looked inconsistent.
+ *
+ * Owns NO trading logic: it collects an intent and calls onBuy(). The Risk Engine
+ * still gates the order downstream.
+ *
+ * An instrument with no live price CANNOT be bought — the broker would have nothing
+ * to fill against, and we will not invent a fill price. The button disables itself.
  *
  * @param s        the instrument
- * @param market   for currency formatting
+ * @param market   currency formatting
  * @param onBuy    (stock, qty, opts) => boolean
  * @param opts     extra order options, e.g. { tp, sl, tradeType } from a pick
  * @param lot      lot size (F&O) — quantity steps in multiples of this
- * @param variant  "solid" (default) | "light" (for use on dark/gradient cards)
+ * @param variant  "solid" (default) | "light" (on dark/gradient cards)
+ * @param fullWidth stretch to fill the card: [− qty +] on the left, [Buy] filling
+ *                  the rest. Card sections (Picks, Ideas, Trending) use this so the
+ *                  call to action is one consistent full-width bar.
  */
-export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1, variant = "solid", label = "Buy" }) {
-  const [open, setOpen] = useState(false);
-  const [qty, setQty] = useState(lot || 1);
-
+export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1, variant = "solid", label = "Buy", fullWidth = false }) {
   const step = lot || 1;
-  const total = (s?.price || 0) * qty;
+  const [qty, setQty] = useState(step);
+
+  const light = variant === "light";
+  const priced = s?.price != null;
+  const total = priced ? s.price * (Number(qty) || 0) : null;
+
+  const dec = (e) => { e.stopPropagation(); setQty((q) => Math.max(step, (Number(q) || step) - step)); };
+  const inc = (e) => { e.stopPropagation(); setQty((q) => (Number(q) || 0) + step); };
 
   const commit = (e) => {
     e.stopPropagation();
-    if (!onBuy || !qty || qty <= 0) return;
-    onBuy(s, qty, opts);
-    setOpen(false);
+    if (!onBuy || !priced) return;
+    const n = Number(qty) || 0;
+    if (n <= 0) return;
+    onBuy(s, n, opts);
     setQty(step);
   };
 
-  const light = variant === "light";
+  const stepBtn = {
+    width: 22, height: 22, borderRadius: 6, border: "none", flex: "0 0 auto",
+    display: "grid", placeItems: "center", cursor: "pointer",
+    background: light ? "rgba(255,255,255,.18)" : "var(--surface)",
+    color: light ? "#fff" : "var(--ink)",
+  };
 
-  if (!open) {
-    return (
-      <button
-        onClick={(e) => { e.stopPropagation(); setOpen(true); }}
-        className="tap disp"
-        title={`Buy ${s?.sym || ""}`}
-        style={{
-          display: "flex", alignItems: "center", gap: 5,
-          padding: "6px 12px", borderRadius: 10, fontSize: 11.5, fontWeight: 800,
-          cursor: "pointer",
-          border: light ? "1px solid rgba(255,255,255,.32)" : "none",
-          background: light ? "rgba(255,255,255,.16)" : "var(--up)",
-          color: "#fff",
-        }}
-      >
-        <ShoppingCart size={13} /> {label}
-      </button>
-    );
-  }
-
-  // quantity picker
   return (
     <div
       onClick={(e) => e.stopPropagation()}
       style={{
-        display: "flex", alignItems: "center", gap: 6,
-        padding: 5, borderRadius: 12,
-        background: light ? "rgba(0,0,0,.28)" : "var(--elev)",
-        border: light ? "1px solid rgba(255,255,255,.22)" : "1px solid var(--line)",
+        display: "flex", alignItems: "center", gap: 8,
+        width: fullWidth ? "100%" : undefined,
+        flex: fullWidth ? "1 1 auto" : "0 0 auto",
       }}
     >
-      <button
-        onClick={(e) => { e.stopPropagation(); setQty((q) => Math.max(step, q - step)); }}
-        className="tap"
-        style={{ width: 24, height: 24, borderRadius: 7, border: "none", background: light ? "rgba(255,255,255,.16)" : "var(--surface)", color: light ? "#fff" : "var(--ink)", display: "grid", placeItems: "center", flex: "0 0 auto" }}
-      >
-        <Minus size={13} />
-      </button>
-
-      <input
-        type="number"
-        min={step}
-        step={step}
-        value={qty}
-        onClick={(e) => e.stopPropagation()}
-        onChange={(e) => {
-          const v = parseInt(e.target.value, 10);
-          setQty(Number.isFinite(v) && v > 0 ? v : "");
-        }}
-        onBlur={() => { if (!qty || qty < step) setQty(step); }}
-        className="mono"
+      <div
         style={{
-          width: 46, textAlign: "center", fontWeight: 800, fontSize: 12.5,
-          border: "none", outline: "none", borderRadius: 7, padding: "4px 2px",
-          background: light ? "rgba(255,255,255,.12)" : "var(--surface)",
-          color: light ? "#fff" : "var(--ink)",
+          display: "flex", alignItems: "center", gap: 2,
+          padding: fullWidth ? 4 : 3,
+          borderRadius: fullWidth ? 11 : 9,
+          flex: "0 0 auto",
+          background: light ? "rgba(0,0,0,.24)" : "var(--elev)",
+          border: light ? "1px solid rgba(255,255,255,.20)" : "1px solid var(--line)",
         }}
-      />
-
-      <button
-        onClick={(e) => { e.stopPropagation(); setQty((q) => (Number(q) || 0) + step); }}
-        className="tap"
-        style={{ width: 24, height: 24, borderRadius: 7, border: "none", background: light ? "rgba(255,255,255,.16)" : "var(--surface)", color: light ? "#fff" : "var(--ink)", display: "grid", placeItems: "center", flex: "0 0 auto" }}
       >
-        <Plus size={13} />
-      </button>
+        <button onClick={dec} className="tap" aria-label="Decrease quantity" style={stepBtn}>
+          <Minus size={12} />
+        </button>
+
+        <input
+          type="number"
+          min={step}
+          step={step}
+          value={qty}
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => {
+            const v = parseInt(e.target.value, 10);
+            setQty(Number.isFinite(v) && v > 0 ? v : "");
+          }}
+          onBlur={() => { if (!qty || Number(qty) < step) setQty(step); }}
+          className="mono"
+          aria-label="Quantity"
+          style={{
+            width: 34, textAlign: "center", fontWeight: 800, fontSize: 12,
+            border: "none", outline: "none", background: "transparent",
+            color: light ? "#fff" : "var(--ink)",
+          }}
+        />
+
+        <button onClick={inc} className="tap" aria-label="Increase quantity" style={stepBtn}>
+          <Plus size={12} />
+        </button>
+      </div>
 
       <button
         onClick={commit}
+        disabled={!priced}
         className="tap disp"
-        style={{ padding: "5px 11px", borderRadius: 9, border: "none", background: "var(--up)", color: "#fff", fontWeight: 800, fontSize: 11.5, whiteSpace: "nowrap", flex: "0 0 auto" }}
+        title={priced ? `${label} ${qty} × ${s.sym} = ${fmt(total, market)}` : "No live price yet"}
+        style={{
+          padding: fullWidth ? "10px 16px" : "6px 13px",
+          borderRadius: fullWidth ? 11 : 9,
+          border: "none",
+          fontSize: fullWidth ? 13 : 11.5,
+          fontWeight: 800, whiteSpace: "nowrap",
+          flex: fullWidth ? "1 1 auto" : "0 0 auto",
+          cursor: priced ? "pointer" : "not-allowed",
+          background: priced ? "var(--up)" : (light ? "rgba(255,255,255,.14)" : "var(--elev)"),
+          color: priced ? "#fff" : "var(--muted)",
+          opacity: priced ? 1 : 0.75,
+        }}
       >
-        {label} · {fmt(total, market)}
-      </button>
-
-      <button
-        onClick={(e) => { e.stopPropagation(); setOpen(false); setQty(step); }}
-        className="tap"
-        style={{ width: 22, height: 22, borderRadius: 6, border: "none", background: "transparent", color: light ? "rgba(255,255,255,.7)" : "var(--muted)", display: "grid", placeItems: "center", flex: "0 0 auto" }}
-      >
-        <X size={13} />
+        {label}
       </button>
     </div>
   );

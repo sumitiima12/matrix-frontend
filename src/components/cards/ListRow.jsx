@@ -1,14 +1,14 @@
 import React from "react";
 import { BACKEND_URL } from "../../config";
 import { fmt } from "../../lib/format";
-import AddBtn from "../../components/common/AddBtn";
+import BuyButton from "../common/BuyButton";
 import Change from "../../components/common/Change";
 
 /**
  * The main instrument list row.
  */
 
-export default function ListRow({ s, market, onOpen, right, watched, toggleWatch }) {
+export default function ListRow({ s, market, onOpen, right, onBuy }) {
   return (
     <div className="tap" onClick={() => onOpen(s)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 4px", borderBottom: "1px solid var(--line)" }}>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -19,7 +19,11 @@ export default function ListRow({ s, market, onOpen, right, watched, toggleWatch
         <div className="mono" style={{ fontWeight: 700, fontSize: 13 }}>{fmt(s.price, market)}</div>
         {right || <Change v={s.chg} />}
       </div>
-      {toggleWatch && <AddBtn on={watched} onClick={() => toggleWatch(s.sym)} size={26} />}
+      {onBuy && (
+        <div onClick={(e) => e.stopPropagation()} style={{ flex: "0 0 auto" }}>
+          <BuyButton s={s} market={market} onBuy={onBuy} lot={s.lot || 1} />
+        </div>
+      )}
     </div>
   );
 }

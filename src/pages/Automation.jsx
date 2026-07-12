@@ -5,11 +5,12 @@ import { ACTIVATE_SYMS, SEED_STRATS, stratPerf } from "../domain/strategies";
 import { Activity, Bell, Bolt, Check, Pause, Play, Plus, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
 import { Area, AreaChart, Bar, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { BACKEND_URL } from "../config";
-import { clamp, fmt } from "../lib/format";
+import { chgColor, clamp, fmt, pct } from "../lib/format";
 import { ALL, FNO, marketOf } from "../domain/universe";
 import { aiInterpretStrategy } from "../domain/api";
 import { useCandles } from "../hooks/useCandles";
 import MultiSelect from "../components/common/MultiSelect";
+import { selStyle } from "../components/common/styles";
 
 /**
  * Automation — visual strategy builder, plain-English rules, and backtesting on REAL candles.
@@ -394,10 +395,12 @@ export default function Automation({ market = "IN", onRecord, onBuyReal, trades 
         {s.alerts && <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, background: "var(--primary-soft)", color: "var(--primary)", padding: "3px 8px", display: "flex", alignItems: "center", gap: 3, flex: "0 0 auto" }}><Bell size={10} /> Alerts</span>}
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+        {/* A strategy with no closed trades has NO win rate. stratPerf returns null
+            rather than inventing one, so every figure here must handle null. */}
         <MetricMini k="Trades" v={p.trades} />
-        <MetricMini k="Win rate" v={p.winRate.toFixed(0) + "%"} />
-        <MetricMini k="P&L" v={(p.pnl >= 0 ? "+" : "") + fmt(p.pnl, "IN")} c={p.pnl >= 0 ? "var(--up)" : "var(--down)"} />
-        <MetricMini k="Returns" v={(p.retPct >= 0 ? "+" : "") + p.retPct.toFixed(1) + "%"} c={p.retPct >= 0 ? "var(--up)" : "var(--down)"} />
+        <MetricMini k="Win rate" v={p.winRate == null ? "—" : p.winRate.toFixed(0) + "%"} />
+        <MetricMini k="P&L" v={p.pnl == null ? "—" : (p.pnl >= 0 ? "+" : "") + fmt(p.pnl, "IN")} c={chgColor(p.pnl)} />
+        <MetricMini k="Returns" v={pct(p.retPct, 1)} c={chgColor(p.retPct)} />
       </div>
       <div style={{ display: "flex", gap: 7, marginTop: 12 }}>
         <button onClick={() => setEditStrat(editStrat === s.id ? null : s.id)} className="tap" title="Edit symbols & timeframe" style={{ border: "1px solid " + (editStrat === s.id ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: editStrat === s.id ? "var(--primary-soft)" : "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: editStrat === s.id ? "var(--primary)" : "var(--ink)" }}><SlidersHorizontal size={14} /></button>
