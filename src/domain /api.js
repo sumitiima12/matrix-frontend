@@ -1,0 +1,86 @@
+/**
+ * domain/api.js — the bridge between the domain and the service layer.
+ *
+ * Services are deliberately symbol-agnostic: they take RESOLVED Yahoo tickers,
+ * so they never import the universe (no circular dependencies). App-symbol ->
+ * Yahoo-symbol mapping is domain knowledge, so it lives here.
+ *
+ * These are the ONLY functions the UI calls for data. No component calls fetch()
+ * directly — that rule is now structurally enforced, since fetch() appears
+ * nowhere outside services/.
+ */
+import { MATRIX_PERSONA, BACKEND_URL } from "../config";
+import { yahooSymbol, marketOf } from "./universe";
+import { getQuotes, getHistory, getNews, getIndicators, getFundamentals } from "../services/marketService";
+import { ask as aiAsk, interpretScreen, interpretStrategy, marketBrief } from "../services/aiService";
+import { saveTrade, listTrades, register, login } from "../services/tradeService";
+import { isMarketOpen } from "../services/riskService";
+
+/* ----------------------------- AI ----------------------------- */
+export const askMatrix = (messages, system = MATRIX_PERSONA, maxTokens = 1000) =>
+  aiAsk(messages, system, maxTokens);
+export const aiInterpretScreen = (text, metricFields) => interpretScreen(text, metricFields);
+export const aiInterpretStrategy = (text) => interpretStrategy(text);
+export const aiMarketBrief = (facts) => marketBrief(facts);
+
+/* -------------------------- Market data -------------------------- */
+export const fetchHistory = (sym, tf) => getHistory(yahooSymbol(sym), tf);
+export const fetchNews = (sym) => getNews(yahooSymbol(sym));
+export const fetchIndicators = (syms) => getIndicators((syms || []).map(yahooSymbol));
+export const fetchFundamentals = (syms) => getFundamentals((syms || []).map(yahooSymbol));
+
+/** Live quotes, mapped back from Yahoo tickers to app symbols. */
+export async function fetchLiveQuotes(appSyms) {
+  const rows = await getQuotes((appSyms || []).map(yahooSymbol));
+  if (!rows) return null;
+  const back = new Map((appSyms || []).map((s) => [yahooSymbol(s), s]));
+  return rows.map((r) => ({ ...r, sym: back.get(r.sym) || r.sym })).filter((r) => r.price != null);
+}
+
+/* ------------------------ Trades & auth ------------------------ */
+export const postTrade = (userId, trade) => saveTrade(userId, trade);
+export const fetchTrades = (userId, from, to) => listTrades(userId, from, to);
+export const apiRegister = (phone, pin, name) => register(phone, pin, name);
+export const apiLogin = (phone, pin) => login(phone, pin);
+export const marketOpen = (market) => isMarketOpen(market);
+
+/* ------------------------- Exit engine -------------------------
+   Resolves an open position against REAL 5-minute candles: which level did
+   price actually touch first — target, stop, or trailing stop? Ties inside a
+   single candle assume the stop was hit first (the conservative reading). */
+export async function resolveExitFromCandles(trade, risk = {}) {
+  if (!BACKEND_URL) return null;                       // needs real candles
+  const tp = risk.tp ?? trade.tp;
+  const sl = risk.sl ?? trade.sl;
+  const tsl = risk.tsl ?? trade.tsl;
+  if (!tp && !sl && !tsl) return null;                  // no exit rules -> stays open
+  const entry = trade.entry;
+  const target = tp ? entry * (1 + tp / 100) : null;
+  const hardStop = sl ? entry * (1 - sl / 100) : null;
+  let candles = null;
+  try { candles = await fetchHistory(trade.sym, "5m"); } catch { return null; }
+  if (!candles || !candles.length) return null;
+
+  // Only look at candles AFTER the entry timestamp.
+  const after = candles.filter((c) => c.t && c.t > (trade.entryAt || 0));
+  let peak = entry;                                     // highest price seen since entry
+  for (const c of after) {
+    // Trailing stop ratchets up with the peak, but only using peaks from PRIOR
+    // candles — a candle can't be stopped out by its own new high.
+    const trailStop = tsl ? peak * (1 - tsl / 100) : null;
+    const stop = Math.max(hardStop ?? -Infinity, trailStop ?? -Infinity);
+    const hasStop = stop > -Infinity;
+    const hitStop = hasStop && c.l <= stop;
+    const hitTarget = target != null && c.h >= target;
+    if (hitStop && hitTarget) {
+      // Both touched inside one candle — 5m data can't tell which came first, so
+      // assume the worst case (stop first). Honest and conservative.
+      return { exit: +stop.toFixed(2), exitAt: c.t, exitType: trailStop != null && stop === trailStop ? "Trailing stop" : "Stop loss" };
+    }
+    if (hitStop) return { exit: +stop.toFixed(2), exitAt: c.t, exitType: trailStop != null && stop === trailStop ? "Trailing stop" : "Stop loss" };
+    if (hitTarget) return { exit: +target.toFixed(2), exitAt: c.t, exitType: "Exit trigger" };
+    if (c.h > peak) peak = c.h;                         // update peak after checks
+  }
+  return null;   // still open
+}
+
