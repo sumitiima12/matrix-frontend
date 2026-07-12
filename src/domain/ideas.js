@@ -10,7 +10,9 @@ export function buildDailyIdeas() {
   return ALL
     .filter((s) => s.sector !== "Volatility" && s.sector !== "Index" && s.hasData)
     .map((s) => ({ s, t: techSignal(s) }))
-    .filter((x) => x.t && x.t.score > 0 && x.t.target && x.t.stop)
+    // techSignal() already returns null without real data, but be explicit:
+    // an idea with no entry price is not an idea.
+    .filter((x) => x.t && x.s.price != null && x.t.score > 0 && x.t.target && x.t.stop)
     .sort((a, b) => b.t.score - a.t.score)
     .slice(0, 9)
     .map(({ s, t }) => ({

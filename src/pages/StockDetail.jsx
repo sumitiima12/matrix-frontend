@@ -16,6 +16,7 @@ import Pop from "../components/common/Pop";
 import ResearchVerdict from "../components/ai/ResearchVerdict";
 import StatGrid from "../components/common/StatGrid";
 import TextCard from "../components/common/TextCard";
+import ChatPanel from "./AIAssistant";
 
 /**
  * Stock detail — the research terminal for a single instrument.

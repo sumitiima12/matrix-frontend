@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { METRICS, OPS, indValue, matchScreen, parseScreen } from "../domain/screener";
+import ListRow from "../components/cards/ListRow";
+import WatchAddButton from "../components/common/WatchAddButton";
 import { Filter, Plus, Trash2 } from "lucide-react";
 import { aiInterpretScreen } from "../domain/api";
 

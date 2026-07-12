@@ -6,6 +6,7 @@ import { fmt, getUserId, lsGet, lsSet } from "../lib/format";
 import { ALL, FNO, UNIVERSE, marketOf, yahooSymbol } from "../domain/universe";
 import { fetchFundamentals, fetchIndicators, fetchLiveQuotes, fetchTrades, marketOpen, postTrade, resolveExitFromCandles } from "../domain/api";
 import { DEFAULT_LIMITS, validateOrder } from "../services/riskService";
+import FilterChip from "../components/common/FilterChip";
 import { analyzeJournal } from "../services/journalService";
 
 /**

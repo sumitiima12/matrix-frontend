@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { FNO } from "../../domain/universe";
-import { fmt } from "../../lib/format";
+import { fmt, profileSummary } from "../../lib/format";
 import { Check, ChevronLeft, Clock, LogIn, LogOut, Sparkles, User } from "lucide-react";
 import { apiLogin, apiRegister } from "../../domain/api";
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { defOperands, chainCode, TEMPLATES } from "../domain/strategyLang";
+import { defOperands, chainCode, IND_CATALOG, TEMPLATES } from "../domain/strategyLang";
 import { backtest, parseRules } from "../domain/backtest";
 import { ACTIVATE_SYMS, SEED_STRATS, stratPerf } from "../domain/strategies";
 import { Activity, Bell, Bolt, Check, Pause, Play, Plus, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
@@ -9,6 +9,7 @@ import { clamp, fmt } from "../lib/format";
 import { ALL, FNO, marketOf } from "../domain/universe";
 import { aiInterpretStrategy } from "../domain/api";
 import { useCandles } from "../hooks/useCandles";
+import MultiSelect from "../components/common/MultiSelect";
 
 /**
  * Automation — visual strategy builder, plain-English rules, and backtesting on REAL candles.
@@ -139,26 +140,7 @@ function BacktestResult({ cfg }) {
 }
 
 /* ============================== TRADE AUTOMATION ============================== */
-const IND_CATALOG = [
-  { type: "EMA", label: "EMA", needsLen: true, attrs: [] },
-  { type: "SMA", label: "SMA", needsLen: true, attrs: [] },
-  { type: "RSI", label: "RSI", needsLen: true, attrs: [] },
-  { type: "CCI", label: "CCI", needsLen: true, attrs: [] },
-  { type: "MACD", label: "MACD", needsLen: false, attrs: ["line", "signal", "hist"] },
-  { type: "BB", label: "Bollinger Band", needsLen: true, attrs: ["upper", "middle", "lower"] },
-  { type: "KC", label: "Keltner Channel", needsLen: true, attrs: ["upper", "middle", "lower"] },
-  { type: "ATR", label: "ATR", needsLen: true, attrs: [] },
-  { type: "VWAP", label: "VWAP", needsLen: false, attrs: [] },
-  { type: "ADX", label: "ADX", needsLen: true, attrs: [] },
-  { type: "DMA", label: "DMA (displaced MA)", needsLen: true, attrs: [] },
-  { type: "Volume", label: "Volume", needsLen: false, attrs: [] },
-  { type: "CurrentCandle", label: "Current candle", needsLen: false, attrs: ["open", "high", "low", "close"] },
-  { type: "PrevCandle", label: "Previous candle", needsLen: false, attrs: ["open", "high", "low", "close"] },
-  { type: "FirstNCandles", label: "First N candles", needsLen: true, attrs: ["open", "high", "low", "close"] },
-  { type: "LastNCandles", label: "Last N candles", needsLen: true, attrs: ["open", "high", "low", "close"] },
-  { type: "CurrentDay", label: "Current day", needsLen: false, attrs: ["open", "close"] },
-  { type: "PrevDay", label: "Previous day", needsLen: false, attrs: ["open", "close"] },
-];
+
 const TFS = ["3m", "5m", "15m", "30m", "1h", "4h", "1D"];
 const OPSET = [[">", ">"], ["<", "<"], [">=", "≥"], ["<=", "≤"], ["==", "="], ["crosses_above", "⤴ crosses above"], ["crosses_below", "⤵ crosses below"]];
 

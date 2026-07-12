@@ -178,12 +178,6 @@ select option{background:var(--surface);color:var(--ink)}
 
 
 
-function profileSummary(p) {
-  if (!p) return null;
-  const caps = p.caps && p.caps.length ? p.caps.join(" & ").toLowerCase() + " cap" : "all caps";
-  const secs = p.sectors && p.sectors.length ? p.sectors.join(", ") : "all sectors";
-  return `${p.risk || "Balanced"}-risk ${(p.proficiency || "Beginner").toLowerCase()} investor with a ${(p.style || "Technical").toLowerCase()}-analysis trading style, interested in ${caps} and ${secs}.`;
-}
 export default function App() {
   // Theme persists across sessions — it reset to light on every reload before.
   const [theme, setTheme] = useState(() => lsGet("mx_theme", "light"));
@@ -217,14 +211,14 @@ export default function App() {
   useEffect(() => {
     setPriceSnap((prev) => { const m = { ...prev }; portfolio.forEach((h) => { const s = ALL.find((a) => a.sym === h.sym); m[h.sym] = s ? s.price : (prev[h.sym] ?? h.buy); }); return m; });
   }, [portfolio]);
-  const [watchlists, setWatchlists] = useState([{ id: "w1", name: "My Watchlist", syms: ["ETERNAL", "TATAPOWER"] }]);
+  const [watchlists, setWatchlists] = useState([{ id: "w1", name: "My Watchlist", syms: ["RELIANCE", "TCS"] }]);
   const [activeWl, setActiveWl] = useState("w1");
   // Load this user's saved data whenever the user changes (login / logout).
   useEffect(() => {
     const st = lsGet("mx_state_" + userId, null);
     setPortfolio((st && st.portfolio) || []);
     setWalletMap((st && st.walletMap) || { IN: 1000000, US: 1000000, Crypto: 1000000, FNO: 1000000, Commodity: 1000000 });
-    const wl = (st && st.watchlists) || [{ id: "w1", name: "My Watchlist", syms: ["ETERNAL", "TATAPOWER"] }];
+    const wl = (st && st.watchlists) || [{ id: "w1", name: "My Watchlist", syms: ["RELIANCE", "TCS"] }];
     setWatchlists(wl); setActiveWl(wl[wl.length - 1] ? wl[wl.length - 1].id : "w1");
     setProfile((st && st.profile) || null);
     setOnboardSkipped(!!(st && st.onboardSkipped));
@@ -241,6 +235,43 @@ export default function App() {
   const [showProfile, setShowProfile] = useState(false);
   const [tradePreset, setTradePreset] = useState(null);
   const { live, liveAt, tick: liveTick } = useMarketData(market);
+
+  /* ---- Watchlists ----
+     `watch` is every symbol across every list — that is what the star on a card
+     reflects. Toggling from a card adds to (or removes from) the ACTIVE list. */
+  const watch = useMemo(() => [...new Set(watchlists.flatMap((w) => w.syms || []))], [watchlists]);
+
+  const toggleWatch = (sym) => setWatchlists((ls) => {
+    const inAny = ls.some((w) => (w.syms || []).includes(sym));
+    if (inAny) return ls.map((w) => ({ ...w, syms: (w.syms || []).filter((x) => x !== sym) }));
+    return ls.map((w) => (w.id === activeWl ? { ...w, syms: [...(w.syms || []), sym] } : w));
+  });
+
+  const addToWatch = (sym, wlId = activeWl) => setWatchlists((ls) => ls.map((w) => (
+    w.id === wlId && !(w.syms || []).includes(sym) ? { ...w, syms: [...(w.syms || []), sym] } : w
+  )));
+
+  const createWatchlist = (name) => {
+    const id = "w" + Date.now().toString(36);
+    setWatchlists((ls) => [...ls, { id, name: (name || "").trim() || "New list", syms: [] }]);
+    setActiveWl(id);
+    return id;                       // WatchAddButton adds the symbol to this id
+  };
+
+  const deleteWatchlist = (id) => setWatchlists((ls) => {
+    const next = ls.filter((w) => w.id !== id);
+    const safe = next.length ? next : [{ id: "w1", name: "My Watchlist", syms: [] }];
+    setActiveWl(safe[safe.length - 1].id);
+    return safe;
+  });
+
+  /* ---- Navigation ----
+     Tapping a card opens the DRAWER (a peek). Scrolling up inside the drawer
+     promotes it to the full detail page; scrolling past the bottom of the detail
+     page collapses it back to the card. See hooks/useScrollTransition. */
+  const openStock = (s) => setDrawer(s);
+  const openDetail = (s) => { setDrawer(null); setDetail(s); };
+  const goTrade = (s) => { setDrawer(null); setDetail(null); setTradePreset(s); setTab("trade"); };
 
 
 

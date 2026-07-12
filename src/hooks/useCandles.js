@@ -7,11 +7,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { BACKEND_URL } from "../config";
 import { getHistory } from "../services/marketService";
+import { yahooSymbol } from "../domain/universe";
 
 const cache = new Map();          // key: "SYM|tf" -> { at, data }
 const TTL = 60_000;
 
-export function useCandles(ySym, tf, limit = 0) {
+/**
+ * Candles for an APP symbol (e.g. "BAJAJFINSV", "BTC", "GOLD").
+ *
+ * It used to take a Yahoo symbol, but every caller passed the app symbol — so
+ * requests went out as `BAJAJFINSV` instead of `BAJAJFINSV.NS` and every chart
+ * silently failed. The conversion belongs here, once, rather than at each call
+ * site where it can be forgotten.
+ */
+export function useCandles(sym, tf, limit = 0) {
+  const ySym = yahooSymbol(sym);
   const [state, setState] = useState({ data: null, loading: true, error: null });
 
   useEffect(() => {

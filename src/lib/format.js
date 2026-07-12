@@ -66,3 +66,34 @@ export function getUserId() {
   if (!id) { id = "u_" + Math.random().toString(36).slice(2, 10); lsSet("mx_uid", id); }
   return id;
 }
+
+/**
+ * Human-readable summary of the personalisation answers.
+ * Lived in Matrix.jsx while components/auth/Auth.jsx called it — a component
+ * reaching into the root app, which crashed at render. It belongs in lib.
+ */
+export function profileSummary(p) {
+  if (!p) return null;
+  const caps = p.caps && p.caps.length ? p.caps.join(" & ").toLowerCase() + " cap" : "all caps";
+  const secs = p.sectors && p.sectors.length ? p.sectors.join(", ") : "all sectors";
+  return `${p.risk || "Balanced"}-risk ${(p.proficiency || "Beginner").toLowerCase()} investor with a ${(p.style || "Technical").toLowerCase()}-analysis trading style, interested in ${caps} and ${secs}.`;
+}
+
+/**
+ * Percent, null-safe.
+ *
+ * Prices and day-changes are NULL until real data arrives — that is deliberate,
+ * we never seed a fake number. So every render path must cope with null, and
+ * this is the one place that decides what "no data" looks like: an em dash.
+ */
+export function pct(v, digits = 2, withSign = true) {
+  if (v == null || Number.isNaN(v)) return "—";
+  const s = withSign && v >= 0 ? "+" : "";
+  return `${s}${v.toFixed(digits)}%`;
+}
+
+/** Colour for a change value; muted when we have no data rather than green. */
+export function chgColor(v) {
+  if (v == null || Number.isNaN(v)) return "var(--muted)";
+  return v >= 0 ? "var(--up)" : "var(--down)";
+}

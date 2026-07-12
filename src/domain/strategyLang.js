@@ -57,6 +57,35 @@ export function evalCond(cond, i, get) {
   }
 }
 export function chainEval(conds, i, get) { if (!conds || !conds.length) return false; let r = evalCond(conds[0], i, get); for (let k = 1; k < conds.length; k++) { const e = evalCond(conds[k], i, get); r = (conds[k].gate || "AND") === "OR" ? (r || e) : (r && e); } return r; }
+/**
+ * The indicator catalogue the strategy builder offers.
+ *
+ * This lived in pages/Automation.jsx while domain/strategyLang.js referenced it —
+ * i.e. a domain module depended on a UI page, which is backwards, and it crashed
+ * the app at runtime (ReferenceError: IND_CATALOG is not defined). It belongs
+ * here, with the language that consumes it; the page imports it from here.
+ */
+export const IND_CATALOG = [
+  { type: "EMA", label: "EMA", needsLen: true, attrs: [] },
+  { type: "SMA", label: "SMA", needsLen: true, attrs: [] },
+  { type: "RSI", label: "RSI", needsLen: true, attrs: [] },
+  { type: "CCI", label: "CCI", needsLen: true, attrs: [] },
+  { type: "MACD", label: "MACD", needsLen: false, attrs: ["line", "signal", "hist"] },
+  { type: "BB", label: "Bollinger Band", needsLen: true, attrs: ["upper", "middle", "lower"] },
+  { type: "KC", label: "Keltner Channel", needsLen: true, attrs: ["upper", "middle", "lower"] },
+  { type: "ATR", label: "ATR", needsLen: true, attrs: [] },
+  { type: "VWAP", label: "VWAP", needsLen: false, attrs: [] },
+  { type: "ADX", label: "ADX", needsLen: true, attrs: [] },
+  { type: "DMA", label: "DMA (displaced MA)", needsLen: true, attrs: [] },
+  { type: "Volume", label: "Volume", needsLen: false, attrs: [] },
+  { type: "CurrentCandle", label: "Current candle", needsLen: false, attrs: ["open", "high", "low", "close"] },
+  { type: "PrevCandle", label: "Previous candle", needsLen: false, attrs: ["open", "high", "low", "close"] },
+  { type: "FirstNCandles", label: "First N candles", needsLen: true, attrs: ["open", "high", "low", "close"] },
+  { type: "LastNCandles", label: "Last N candles", needsLen: true, attrs: ["open", "high", "low", "close"] },
+  { type: "CurrentDay", label: "Current day", needsLen: false, attrs: ["open", "close"] },
+  { type: "PrevDay", label: "Previous day", needsLen: false, attrs: ["open", "close"] },
+];
+
 export function defOperands(defs) {
   const out = [];
   defs.forEach((d) => {

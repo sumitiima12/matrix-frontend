@@ -3,11 +3,15 @@ import { currentIdeas } from "../domain/ideas";
 import { dailyPicks, techSignal } from "../domain/signals";
 import { Activity, Building2, ChevronRight, Lightbulb, Newspaper, Pencil, Plus, Sparkles, TrendingUp, Zap } from "lucide-react";
 import { BACKEND_URL } from "../config";
-import { CUR, DAY, clamp, compact, fmt, lsGet, lsSet, timeAgo } from "../lib/format";
+import { CUR, DAY, chgColor, clamp, compact, fmt, lsGet, lsSet, pct, timeAgo } from "../lib/format";
 import { ALL, FNO, GLOBAL_MKTS, UNIVERSE, marketOf } from "../domain/universe";
 import { makeFuture } from "../domain/fno";
 import { askMatrix, fetchNews } from "../domain/api";
+import AddBtn from "../components/common/AddBtn";
 import BuyButton from "../components/common/BuyButton";
+import DashStat from "../components/common/DashStat";
+import ListRow from "../components/cards/ListRow";
+import Screener from "./Screener";
 import CarouselCard from "../components/cards/CarouselCard";
 import MiniCandles from "../components/charts/MiniCandles";
 import Pop from "../components/common/Pop";
@@ -79,7 +83,7 @@ function MarketPulseStrip({ market, list, onOpen }) {
           {pair.map((h, k) => (
             <div key={h.sym + k} onClick={() => open(h)} className="tap fade" style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
               <span className="disp" style={{ fontWeight: 700, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.sym}</span>
-              <span className="mono" style={{ fontSize: 11, fontWeight: 800, color: h.chg >= 0 ? "var(--up)" : "var(--down)", flex: "0 0 auto" }}>{h.chg >= 0 ? "+" : ""}{h.chg.toFixed(1)}%</span>
+              <span className="mono" style={{ fontSize: 11, fontWeight: 800, color: chgColor(h.chg), flex: "0 0 auto" }}>{pct(h.chg, 1)}</span>
             </div>
           ))}
         </div>
@@ -540,7 +544,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 </div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 12 }}>
                   <span className="mono" style={{ fontWeight: 800, fontSize: 19 }}>{fmt(s.price, market)}</span>
-                  <span style={{ fontSize: 10.5, color: "rgba(255,255,255,.75)", fontWeight: 700 }}>{(s.chg >= 0 ? "▲ +" : "▼ ") + s.chg.toFixed(2) + "%"}{s.isFut ? ` · lot ${s.lot}` : ""}</span>
+                  <span style={{ fontSize: 10.5, color: "rgba(255,255,255,.75)", fontWeight: 700 }}>{s.chg == null ? "—" : (s.chg >= 0 ? "▲ " : "▼ ") + pct(s.chg, 2, false)}{s.isFut ? ` · lot ${s.lot}` : ""}</span>
                 </div>
                 <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap" }}>
                   <span className="pill" style={{ fontSize: 10, fontWeight: 800, background: "rgba(255,255,255,.18)", color: "#fff", padding: "3px 9px" }}>⚡ {s.pickSignal}</span>
