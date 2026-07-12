@@ -26,6 +26,8 @@ export function build(sym, name, price, chg, sector, cap, x = {}) {
     chg: null,
     hasData: false,
     vol: null, avgVol: null,
+    // Real short-term momentum from 5-min candles (see /api/intraday).
+    chg5m: null, chg15m: null, volSurge: null,
     rsi: null, sma50: null, sma200: null, ema20: null, ema50: null,
     macd: null, macdSignal: null, macdHist: null,
     atr: null, adx: null, cci: null, stoch: null, vwap: null, bbPctB: null, mfi: null, obv: null,
