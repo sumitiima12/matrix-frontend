@@ -17,13 +17,26 @@ import Section from "../components/common/Section";
  * Dashboard — the trading desk. Composes the market strips, Matrix's Picks, trending, gainers/losers, news and the auto-buy panel.
  */
 
+/**
+ * GlobalStrip — the live global markets ticker.
+ *
+ * Reads each index/asset's REAL day change from the universe. No hardcoded
+ * percentages: an instrument with no live quote yet renders "—".
+ */
 function GlobalStrip() {
+  const rows = GLOBAL_MKTS.map((m) => ({ ...m, c: (ALL.find((a) => a.sym === m.sym) || {}).chg }));
   return (
     <div className="hide-scroll" style={{ display: "flex", gap: 0, overflowX: "auto", marginTop: 10, borderRadius: 12, border: "1px solid var(--line)", background: "var(--surface)" }}>
-      {GLOBAL_MKTS.map((m, i) => (
-        <div key={m.n} style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 7, padding: "8px 13px", borderRight: i < GLOBAL_MKTS.length - 1 ? "1px solid var(--line)" : "none" }}>
+      {rows.map((m, i) => (
+        <div key={m.sym} style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 7, padding: "8px 13px", borderRight: i < rows.length - 1 ? "1px solid var(--line)" : "none" }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-soft)" }}>{m.n}</span>
-          <span className="mono" style={{ fontSize: 11, fontWeight: 800, color: m.c >= 0 ? "var(--up)" : "var(--down)" }}>{m.c >= 0 ? "▲" : "▼"}{Math.abs(m.c).toFixed(2)}%</span>
+          {m.c == null ? (
+            <span className="mono" style={{ fontSize: 11, fontWeight: 800, color: "var(--muted)" }}>—</span>
+          ) : (
+            <span className="mono" style={{ fontSize: 11, fontWeight: 800, color: m.c >= 0 ? "var(--up)" : "var(--down)" }}>
+              {m.c >= 0 ? "▲" : "▼"}{Math.abs(m.c).toFixed(2)}%
+            </span>
+          )}
         </div>
       ))}
     </div>
@@ -206,8 +219,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     .map((s) => ({ s, rv: s.avgVol ? (s.vol || 0) / s.avgVol : 0 }))
     .sort((a, b) => (b.rv * 2 + (b.s.chg || 0)) - (a.rv * 2 + (a.s.chg || 0)))
     .slice(0, 6).map((x) => x.s), [list, pickHour]);
-  // Exclude volatility indices (India VIX etc.) from gainers/losers — they're not tradeable stocks.
-  const glList = list.filter((s) => s.sector !== "Volatility" && !/VIX/i.test(s.sym));
+  // Indices (Nifty, Bank Nifty, India VIX...) are not tradeable stocks and must
+  // never appear in gainers/losers or trending. Flagged explicitly on the
+  // instrument rather than guessed at from its name.
+  const glList = list.filter((s) => !s.isIndex && s.chg != null);
   const gainers = [...glList].sort((a, b) => b.chg - a.chg).slice(0, 5);
   const losers = [...glList].sort((a, b) => a.chg - b.chg).slice(0, 5);
   const traded = [...list].filter((s) => s.vol != null).sort((a, b) => (b.vol || 0) - (a.vol || 0)).slice(0, 6);
@@ -555,8 +570,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           {tradedView.map((s) => (
             <CarouselCard key={s.sym} s={s} market={market} onOpen={onOpen} onBuy={onBuy} width={210} watched={watch.includes(s.sym)} toggleWatch={toggleWatch}>
               <div style={{ marginTop: 10, background: "var(--bg)", borderRadius: 12, padding: "8px 11px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600 }}>{market === "FNO" ? "OI" : "Volume"}</span>
-                <span className="mono" style={{ fontSize: 12, fontWeight: 700 }}>{compact(market === "FNO" ? (s.oi || s.vol) : s.vol)}</span>
+                {/* Open Interest is not available from our data source, and we will not
+                    label volume as OI. Volume is real, so volume is what we show. */}
+                <span style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600 }}>Volume</span>
+                <span className="mono" style={{ fontSize: 12, fontWeight: 700 }}>{s.vol != null ? compact(s.vol) : "—"}</span>
               </div>
             </CarouselCard>
           ))}

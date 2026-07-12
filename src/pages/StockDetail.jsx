@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useScrollTransition } from "../hooks/useScrollTransition";
 import { Activity, Bot, Building2, ChevronLeft, Newspaper, Plus, Sparkles, Star } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { BACKEND_URL } from "../config";
@@ -83,6 +84,11 @@ function CandleChart({ data, market, sup0, res0 }) {
 
 export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, onBuy }) {
   const market = marketOf(s.sym);
+
+  /* Netflix-style close: keep scrolling past the end of the page and it shrinks
+     back into the carousel card it came from. `collapse` (0..1) drives the live
+     transform, so the page visibly recedes as you pull rather than snapping. */
+  const { progress: collapse } = useScrollTransition({ threshold: 130, onTrigger: onBack });
   const hStart = useRef(null);
   const [dDrag, setDDrag] = useState(0);
   const onHTS = (e) => { if ((window.scrollY || document.documentElement.scrollTop || 0) <= 2) hStart.current = e.touches[0].clientY; };
@@ -144,8 +150,24 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
     </div>
   );
 
+
+  const collapseStyle = collapse > 0 ? {
+    transform: `scale(${1 - collapse * 0.12}) translateY(${collapse * -26}px)`,
+    opacity: 1 - collapse * 0.35,
+    transition: "none",
+  } : { transition: "transform .28s cubic-bezier(.22,1,.36,1), opacity .28s ease" };
+
   return (
-    <div className="mx fade" style={{ paddingBottom: 40, transform: dDrag > 0 ? `translateY(${dDrag}px)` : "none", transition: dDrag === 0 ? "transform .2s ease" : "none" }}>
+    <div
+      className="mx fade"
+      style={{
+        paddingBottom: 40,
+        transformOrigin: "50% 0%",
+        ...(dDrag > 0
+          ? { transform: `translateY(${dDrag}px)`, transition: "none" }
+          : collapseStyle),
+      }}
+    >
       <div className="glass" onTouchStart={onHTS} onTouchMove={onHTM} onTouchEnd={onHTE} style={{ position: "sticky", top: 0, background: "var(--header-bg)", zIndex: 20, paddingTop: 6, paddingBottom: 8, touchAction: "pan-x" }}>
         <div style={{ width: 40, height: 4, background: "var(--line)", borderRadius: 9, margin: "0 auto 8px" }} />
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -306,6 +328,21 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
             <ChatPanel context={ctx} stock={s} suggestions={["Should I buy right now?", "Support & resistance levels?", "Is this a good time to enter?", "Bull vs bear case?"]} />
           </div>
         </Pop>
+      </div>
+
+      {/* The gesture is invisible unless we say so — one quiet line, no chrome. */}
+      <div
+        style={{
+          textAlign: "center",
+          padding: "24px 0 10px",
+          fontSize: 11,
+          fontWeight: 700,
+          color: "var(--muted)",
+          opacity: 0.45 + collapse * 0.55,
+          letterSpacing: ".02em",
+        }}
+      >
+        {collapse > 0.15 ? "Release to close" : "Keep scrolling to close"}
       </div>
     </div>
   );

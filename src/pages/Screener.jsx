@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { METRICS, OPS, SCREEN_TFS, indAt, matchScreen, parseScreen } from "../domain/screener";
+import { METRICS, OPS, indValue, matchScreen, parseScreen } from "../domain/screener";
 import { Filter, Plus, Trash2 } from "lucide-react";
 import { aiInterpretScreen } from "../domain/api";
 
@@ -8,7 +8,7 @@ import { aiInterpretScreen } from "../domain/api";
  */
 
 export default function Screener({ onOpen, market, list, watchlists, addToWatch, createWatchlist }) {
-  const [filters, setFilters] = useState([{ m: "rsi", o: ">", rhsType: "value", v: "50", rhs: "sma50", tf: "1d" }]);
+  const [filters, setFilters] = useState([{ m: "rsi", o: ">", rhsType: "value", v: "50", rhs: "sma50" }]);
   const [text, setText] = useState("");
   const [results, setResults] = useState(null);
   const [parsedNote, setParsedNote] = useState(null);
@@ -17,14 +17,14 @@ export default function Screener({ onOpen, market, list, watchlists, addToWatch,
     { label: "Momentum movers", f: [{ m: "rsi", o: ">", v: "60" }, { m: "chg", o: ">", v: "1" }] },
     { label: "Value with growth", f: [{ m: "pe", o: "<", v: "30" }, { m: "revGrowth", o: ">", v: "8" }] },
     { label: "Oversold bounce", f: [{ m: "rsi", o: "<", v: "35" }] },
-    { label: "EMA 21 > EMA 50", f: [{ m: "ema20", o: ">", rhsType: "indicator", rhs: "ema50", tf: "1d" }] },
+    { label: "EMA 21 > EMA 50", f: [{ m: "ema20", o: ">", rhsType: "indicator", rhs: "ema50" }] },
   ];
   const [selRec, setSelRec] = useState(null);
   const cmp = (o, x, y) => o === ">" ? x > y : o === "<" ? x < y : o === ">=" ? x >= y : o === "<=" ? x <= y : Math.abs(x - y) < 1e-6;
   const apply = (fs) => {
     const ok = list.filter((s) => fs.every((f) => {
-      const x = indAt(s, f.m, f.tf);
-      const y = f.rhsType === "indicator" ? indAt(s, f.rhs, f.tf) : parseFloat(f.v);
+      const x = indValue(s, f.m);
+      const y = f.rhsType === "indicator" ? indValue(s, f.rhs) : parseFloat(f.v);
       if (x == null || isNaN(x) || y == null || isNaN(y)) return true;
       return cmp(f.o, x, y);
     }));
@@ -85,11 +85,13 @@ export default function Screener({ onOpen, market, list, watchlists, addToWatch,
                 ))}
               </div>
               <span style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 700, marginLeft: "auto" }}>TF</span>
-              <select value={f.tf || "1d"} onChange={(e) => upd(i, "tf", e.target.value)} style={{ ...selStyle, flex: "0 0 88px" }}>{SCREEN_TFS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
             </div>
           </div>
         ))}
-        <button onClick={() => setFilters((p) => [...p, { m: "ema20", o: ">", rhsType: "indicator", rhs: "ema50", tf: "1d", v: "" }])} className="tap" style={{ border: "1px dashed var(--line)", background: "transparent", borderRadius: 12, padding: "8px 12px", fontSize: 12.5, fontWeight: 600, color: "var(--primary)", display: "flex", gap: 5, alignItems: "center" }}><Plus size={15} /> Add condition</button>
+        <span style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600, marginRight: 8 }}>
+          Screening on daily indicators
+        </span>
+        <button onClick={() => setFilters((p) => [...p, { m: "ema20", o: ">", rhsType: "indicator", rhs: "ema50", v: "" }])} className="tap" style={{ border: "1px dashed var(--line)", background: "transparent", borderRadius: 12, padding: "8px 12px", fontSize: 12.5, fontWeight: 600, color: "var(--primary)", display: "flex", gap: 5, alignItems: "center" }}><Plus size={15} /> Add condition</button>
 
         <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>Or describe it in plain text</div>
         <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. large-cap IT stocks with RSI under 40 and rising revenue" className="no-ring"

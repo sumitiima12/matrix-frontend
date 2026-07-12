@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { defOperands, chainCode, TEMPLATES } from "../domain/strategyLang";
 import { backtest, parseRules } from "../domain/backtest";
-import { ACTIVATE_SYMS, SEED_STRATS } from "../domain/strategies";
+import { ACTIVATE_SYMS, SEED_STRATS, stratPerf } from "../domain/strategies";
 import { Activity, Bell, Bolt, Check, Pause, Play, Plus, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
 import { Area, AreaChart, Bar, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { BACKEND_URL } from "../config";
@@ -246,7 +247,7 @@ function NumF({ label, v, set }) {
 
 /* ============================== SEARCH OVERLAY ============================== */
 
-export default function Automation({ market = "IN", onRecord, onBuyReal }) {
+export default function Automation({ market = "IN", onRecord, onBuyReal, trades = [] }) {
   const [mode, setMode] = useState("builder");
   const [defs, setDefs] = useState([
     { id: 1, type: "EMA", len: "50", tf: "1D", name: "EMA1" },
@@ -368,7 +369,7 @@ export default function Automation({ market = "IN", onRecord, onBuyReal }) {
   const amkt = market === "FNO" ? "IN" : market;
   const inMkt = (s) => !(s.symbols && s.symbols.length) || s.symbols.some((x) => marketOf(x) === amkt);
   const shown = strats.filter((s) => inMkt(s) && (dashBy === "All" || s.by === dashBy) && (symFilter.length === 0 || (s.symbols || []).some((x) => symFilter.includes(x))));
-  const perf = shown.map((s) => ({ s, p: stratPerf(s, dashRange) }));
+  const perf = shown.map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
   const agg = perf.reduce((a, { p }) => { a.trades += p.trades; a.wins += p.wins; a.pnl += p.pnl; a.cap += p.cap; a.annSum += p.annual; return a; }, { trades: 0, wins: 0, pnl: 0, cap: 0, annSum: 0 });
   const activeCount = shown.filter((s) => s.active).length;
   const dWinRate = agg.trades ? agg.wins / agg.trades * 100 : 0;
