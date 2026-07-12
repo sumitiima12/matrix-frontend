@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { BACKEND_URL } from "../config";
 import { ALL, UNIVERSE, yahooSymbol, capTier } from "../domain/universe";
-import { fetchLiveQuotes, fetchIndicators, fetchFundamentals } from "../domain/api";
+import { fetchLiveQuotes, fetchIndicators, fetchFundamentals, fetchIntraday, marketOpen } from "../domain/api";
 
 /**
  * useMarketData — keeps the universe hydrated with REAL market data.
@@ -75,6 +75,29 @@ export function useMarketData(market, intervalMs = 20000) {
       } catch { /* stays null -> UI shows "—" */ }
     };
 
+    /**
+     * Real short-term momentum (5m / 15m change, volume surge) from 5-minute
+     * candles. This is what Trending ranks on. It refreshes faster than the rest
+     * because "trending" means "moving NOW" — a 20-minute-old reading is useless.
+     * Skipped when the market is closed: the numbers would just be frozen.
+     */
+    const pullIntraday = async () => {
+      try {
+        const d = await fetchIntraday(syms);
+        if (stop || !d) return;
+        let n = 0;
+        Object.keys(d).forEach((y) => {
+          const s = ALL.find((a) => yahooSymbol(a.sym) === y || a.sym === y);
+          if (!s) return;
+          s.chg5m = d[y].chg5m;
+          s.chg15m = d[y].chg15m;
+          s.volSurge = d[y].volSurge;
+          n++;
+        });
+        if (n) bump();
+      } catch { /* stays null -> Trending simply shows less */ }
+    };
+
     const refresh = () => {
       if (!BACKEND_URL) { setLive(false); return; }
       pullQuotes();
@@ -83,8 +106,15 @@ export function useMarketData(market, intervalMs = 20000) {
     };
 
     refresh();
+    pullIntraday();
     const id = setInterval(refresh, intervalMs);
-    return () => { stop = true; clearInterval(id); };
+
+    // Intraday momentum: every 60s, and only while the market is actually open.
+    const intraId = setInterval(() => {
+      if (BACKEND_URL && marketOpen(market)) pullIntraday();
+    }, 60000);
+
+    return () => { stop = true; clearInterval(id); clearInterval(intraId); };
   }, [market, intervalMs]);
 
   return { live, liveAt, tick };
