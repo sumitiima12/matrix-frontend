@@ -14,6 +14,7 @@ import ChartCard from "../components/common/ChartCard";
 import Gauge from "../components/common/Gauge";
 import Pop from "../components/common/Pop";
 import ResearchVerdict from "../components/ai/ResearchVerdict";
+import TagRow from "../components/common/TagRow";
 import StatGrid from "../components/common/StatGrid";
 import TextCard from "../components/common/TextCard";
 import ChatPanel from "./AIAssistant";
@@ -191,6 +192,12 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginTop: 12 }}>
         <span className="mono" style={{ fontWeight: 800, fontSize: 30 }}>{fmt(s.price, market)}</span>
         <Change v={s.chg} big />
+      </div>
+
+      {/* REAL technical tags — every one true, every one backed by a number.
+          Hover/long-press a tag to see the evidence. */}
+      <div style={{ marginTop: 10 }}>
+        <TagRow s={s} max={6} size="md" />
       </div>
 
       {/* OVERVIEW */}

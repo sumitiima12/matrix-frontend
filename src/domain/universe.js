@@ -1,3 +1,4 @@
+import { LOTS } from "./fno";
 /**
  * domain/universe.js — WHAT Matrix can trade.
  *
@@ -223,14 +224,14 @@ const COMMODITY = [
 ];
 
 /* ---- F&O ----
-   Only instruments with a REAL, known NSE lot size are tradable in F&O. Lot
-   sizes are exchange data, not something to guess at: a wrong lot size means a
-   wrong position size and a wrong loss. Names without a verified lot size are
-   deliberately excluded until the real value is supplied. */
-const FNO_SYMS = ["NIFTY50", "BANKNIFTY", "FINNIFTY", "RELIANCE", "HDFCBANK", "ICICIBANK",
-                  "SBIN", "TCS", "INFY", "TATAMOTORS", "LT", "BAJFINANCE", "ADANIENT",
-                  "HAL", "BEL", "DIXON", "ITC"];
-const FNO = IN_STOCKS.filter((s) => FNO_SYMS.includes(s.sym));
+   Membership is DERIVED from the real lot-size table (LOTS in domain/fno.js).
+   An instrument is F&O-tradable if and only if we know its exchange-published lot
+   size. A second hand-written list here would drift out of sync with LOTS, and a
+   symbol that is tradable but has no lot size is precisely the bug we removed:
+   lotSize() used to fall back to a made-up 500. No fallback, no guess. */
+const FNO = IN_STOCKS
+  .filter((s) => LOTS[s.sym] != null)
+  .map((s) => ({ ...s, lot: LOTS[s.sym] }));
 
 const UNIVERSE = { IN: IN_STOCKS, US: US_STOCKS, Crypto: CRYPTO, Commodity: COMMODITY, FNO };
 const ALL = [...IN_STOCKS, ...US_STOCKS, ...CRYPTO, ...COMMODITY];

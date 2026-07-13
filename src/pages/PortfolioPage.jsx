@@ -9,7 +9,7 @@ import { analyzeHolding, portfolioHealth, sectorExposure } from "../services/por
  * Portfolio — holdings with AI intelligence, health score and sector exposure.
  */
 
-function HoldingIntel({ a, market = "IN" }) {
+function HoldingIntel({ a, market = "IN", stock, onWhy }) {
   const [open, setOpen] = useState(false);
   if (!a) return null;
   const col = a.action === "Add" ? "var(--up)" : a.action === "Exit" ? "var(--down)" : a.action === "Reduce" ? "#F59E0B" : "var(--muted)";
@@ -38,6 +38,14 @@ function HoldingIntel({ a, market = "IN" }) {
               </div>
             ))}
           </div>
+
+          {/* Matrix is telling you to hold / trim / exit. You are entitled to ask why. */}
+          {stock && onWhy && (
+            <button onClick={(e) => { e.stopPropagation(); onWhy(stock, `Portfolio suggestion: ${a.action}`); }} className="tap"
+              style={{ marginTop: 10, width: "100%", border: "1px solid var(--line)", background: "transparent", color: "var(--ink-soft)", borderRadius: 10, padding: "8px 10px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
+              Why this call?
+            </button>
+          )}
           <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>📊 {a.technical}</div>
           <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 3, lineHeight: 1.5 }}>🏛 {a.fundamental}</div>
         </div>
@@ -91,7 +99,7 @@ function ManageHolding({ r, st, onBuy, onSell, onUpdate, onClose }) {
   );
 }
 
-export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, onUpdate, priceSnap = {} }) {
+export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, onUpdate, priceSnap = {}, onWhy }) {
   const [expand, setExpand] = useState(null);   // sym with open trade panel
   const mkt = market === "FNO" ? "IN" : market;
   const mLabel = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", FNO: "⚡ F&O", Commodity: "🪙 Commodity" }[market];
@@ -207,7 +215,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
             </div>}
 
             {/* ---- AI COPILOT: per-holding recommendation (real data only) ---- */}
-            {intel[r.sym] && <HoldingIntel a={intel[r.sym]} market={r.m} />}
+            {intel[r.sym] && <HoldingIntel a={intel[r.sym]} market={r.m} stock={ALL.find((x) => x.sym === r.sym)} onWhy={onWhy} />}
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
               <button onClick={() => setExpand(expand === r.sym ? null : r.sym)} className="tap disp" style={{ flex: 1, background: expand === r.sym ? "var(--primary)" : "var(--surface)", color: expand === r.sym ? "var(--on-primary)" : "var(--ink)", border: "1px solid var(--line)", borderRadius: 11, padding: 11, fontWeight: 800, fontSize: 12.5, display: "flex", gap: 5, alignItems: "center", justifyContent: "center" }}><SlidersHorizontal size={13} /> {expand === r.sym ? "Close" : "Manage · Buy / Sell"}</button>
             </div>

@@ -7,6 +7,7 @@ import { fetchHistory } from "../domain/api";
 import MiniCandles from "../components/charts/MiniCandles";
 import { selStyle } from "../components/common/styles";
 import BuyButton from "../components/common/BuyButton";
+import TagRow from "../components/common/TagRow";
 
 /**
  * Ideas — trade ideas published by Matrix, scored against real candles.
@@ -81,7 +82,7 @@ function IdeasDashboard({ ideas }) {
   );
 }
 
-export default function Ideas({ onOpen, onBuy, market = "IN" }) {
+export default function Ideas({ onOpen, onBuy, market = "IN", onWhy }) {
   // Recomputed from real data as it arrives, rather than frozen at import time.
   const [ideas, setIdeas] = useState(currentIdeas);
   useEffect(() => {
@@ -112,6 +113,12 @@ export default function Ideas({ onOpen, onBuy, market = "IN" }) {
               </div>
               <span className="pill disp" style={{ background: "var(--up-soft)", color: "var(--up)", fontWeight: 700, fontSize: 12.5, padding: "4px 11px" }}>+{idea.gain}% potential</span>
             </div>
+            {/* REAL technical tags + the evidence behind them. */}
+            {s && (
+              <div style={{ marginTop: 10 }}>
+                <TagRow s={s} max={3} onWhy={onWhy ? (x) => onWhy(x, "Matrix Idea — published today") : null} />
+              </div>
+            )}
             <div style={{ marginTop: 10 }}><MiniCandles sym={idea.sym} price={s ? s.price : idea.entry} chg={s ? s.chg : 0} height={120} staticChart defaultTf={m === "Crypto" ? "1h" : "1d"} pattern={idea.pattern} /></div>
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, gap: 8 }}>
               <div><div style={{ fontSize: 10, color: "var(--muted)" }}>Entry</div><div className="mono" style={{ fontWeight: 700, fontSize: 13 }}>{fmt(idea.entry, m)}</div></div>

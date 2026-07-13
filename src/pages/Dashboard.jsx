@@ -9,6 +9,8 @@ import { makeFuture } from "../domain/fno";
 import { askMatrix, fetchNews } from "../domain/api";
 import AddBtn from "../components/common/AddBtn";
 import BuyButton from "../components/common/BuyButton";
+import TagRow from "../components/common/TagRow";
+import { computeTags } from "../domain/tags";
 import DashStat from "../components/common/DashStat";
 import ListRow from "../components/cards/ListRow";
 import Screener from "./Screener";
@@ -240,7 +242,7 @@ function MarketBrief({ market, list = [] }) {
  * TrendingRow — shows WHY something is trending, not just that it is.
  * Every number here comes from real 5-minute candles.
  */
-function TrendingRow({ s, market, onOpen, onBuy }) {
+function TrendingRow({ s, market, onOpen, onBuy, onWhy }) {
   const m5 = s.chg5m, m15 = s.chg15m, surge = s.volSurge;
   const tone = (v) => (v == null ? "var(--muted)" : v >= 0 ? "var(--up)" : "var(--down)");
   const sign = (v) => (v == null ? "—" : `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`);
@@ -269,6 +271,11 @@ function TrendingRow({ s, market, onOpen, onBuy }) {
         </div>
       )}
 
+      {/* REAL technical tags, each backed by a number the Why panel can quote. */}
+      <div style={{ marginTop: 8 }}>
+        <TagRow s={s} max={2} onWhy={onWhy ? (x) => onWhy(x, "Trending now — moving on real 5-minute candles") : null} />
+      </div>
+
       {onBuy && (
         <div style={{ marginTop: 11 }} onClick={(e) => e.stopPropagation()}>
           <BuyButton s={s} market={market} onBuy={onBuy} lot={s.lot || 1} fullWidth />
@@ -278,7 +285,7 @@ function TrendingRow({ s, market, onOpen, onBuy }) {
   );
 }
 
-export default function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, watch, toggleWatch, profile, portfolio = [], wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [], liveTick = 0 }) {
+export default function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, watch, toggleWatch, profile, portfolio = [], wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [], liveTick = 0, onWhy }) {
   const [glMode, setGlMode] = useState("Gainers");
   // Picks refresh ONCE AN HOUR (not on every tick) so they don't churn.
   const [pickHour, setPickHour] = useState(() => Math.floor(Date.now() / 3600000));
@@ -288,7 +295,11 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   }, []);
   const picks = useMemo(() => {
     const base = dailyPicks(list).slice(0, 8);
-    return market === "FNO" ? base.map((s) => ({ ...makeFuture(s), pickSignal: s.pickSignal, pickReason: s.pickReason, pickPattern: s.pickPattern, pickStop: s.pickStop, pickTarget: s.pickTarget, pickSlPct: s.pickSlPct, pickTpPct: s.pickTpPct, pickRR: s.pickRR })) : base;
+    // makeFuture returns null when we have no REAL lot size — drop those rather
+    // than render a contract sized on a guess.
+    return market === "FNO"
+      ? base.map((s) => { const f = makeFuture(s); return f && { ...f, pickSignal: s.pickSignal, pickReason: s.pickReason, pickPattern: s.pickPattern, pickStop: s.pickStop, pickTarget: s.pickTarget, pickSlPct: s.pickSlPct, pickTpPct: s.pickTpPct, pickRR: s.pickRR }; }).filter(Boolean)
+      : base;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list, market, pickHour]);
   /**
@@ -328,8 +339,8 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const inNews = [...list].sort((a, b) => (b.vol || 0) - (a.vol || 0)).slice(0, 6);
   const smart = list.filter((s) => s.inst);
   const optOf = (s) => makeFuture(s);
-  const trendingView = market === "FNO" ? trending.map(optOf) : trending;
-  const tradedView = market === "FNO" ? traded.map(optOf) : traded;
+  const trendingView = market === "FNO" ? trending.map(optOf).filter(Boolean) : trending;
+  const tradedView = market === "FNO" ? traded.map(optOf).filter(Boolean) : traded;
 
   // portfolio dashboard math
   const dash = portfolio.reduce((a, h) => {
@@ -375,6 +386,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     if (isFNO) {
       // F&O auto-buy trades the CURRENT-MONTH FUTURES of the underlying, 1 lot.
       const f = makeFuture(s);
+      if (!f) return null;              // no real lot size -> cannot size the trade
       const auto = autoTargets(s);
       const ov = autoOverrides[f.sym];
       return { sym: f.sym, under: s.sym, m: "FNO", isFut: true, expiry: f.expiry, qty: f.lot,
@@ -388,7 +400,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     const qty = Math.max(1, Math.floor(perCap / entry));
     const dp = entry < 1 ? 6 : entry < 10 ? 4 : 2;
     return { sym: s.sym, m, qty, entry, tpPct, slPct, auto };   // planned entry; the exit engine closes it at real prices
-  });
+  }).filter(Boolean);   // F&O names with no real lot size are dropped, not guessed
   // When Auto-Buy is ON, actually place today's picks as REAL positions (once per
   // day per market) with their target/stop attached. The exit engine then closes
   // them at real market prices — no simulated win/loss.
@@ -574,9 +586,22 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   <span className="mono" style={{ fontWeight: 800, fontSize: 19 }}>{fmt(s.price, market)}</span>
                   <span style={{ fontSize: 10.5, color: "rgba(255,255,255,.75)", fontWeight: 700 }}>{s.chg == null ? "—" : (s.chg >= 0 ? "▲ " : "▼ ") + pct(s.chg, 2, false)}{s.isFut ? ` · lot ${s.lot}` : ""}</span>
                 </div>
-                <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <span className="pill" style={{ fontSize: 10, fontWeight: 800, background: "rgba(255,255,255,.18)", color: "#fff", padding: "3px 9px" }}>⚡ {s.pickSignal}</span>
-                  {s.volRatio > 1.3 && <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, background: "rgba(255,255,255,.14)", color: "#fff", padding: "3px 8px" }}>vol {s.volRatio}×</span>}
+                {/* REAL technical tags from the tag engine — Golden Cross, Bull Flag,
+                    Breakout, Volume Spike and so on, each true and each backed by a
+                    number. "Why?" opens the full evidence + verdict. */}
+                <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  {computeTags(s.under ? { ...s, sym: s.under } : s).slice(0, 3).map((t) => (
+                    <span key={t.id} className="pill" title={t.evidence}
+                      style={{ fontSize: 10, fontWeight: 800, background: "rgba(255,255,255,.18)", color: "#fff", padding: "3px 9px" }}>
+                      {t.label}
+                    </span>
+                  ))}
+                  {onWhy && (
+                    <button onClick={(e) => { e.stopPropagation(); onWhy(s, "Matrix's Pick for today"); }} className="tap"
+                      style={{ border: "1px solid rgba(255,255,255,.35)", background: "transparent", color: "#fff", borderRadius: 7, padding: "3px 9px", fontSize: 10, fontWeight: 800, cursor: "pointer" }}>
+                      Why?
+                    </button>
+                  )}
                 </div>
                 {/* REAL stop / target from support-resistance + ATR */}
                 {s.pickTarget != null && (
@@ -638,7 +663,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           <div className="hide-scroll" style={{ display: "flex", gap: 10, overflowX: "auto" }}>
             {trendingView.length
               ? trendingView.map((s) => (
-                  <TrendingRow key={s.sym} s={s} market={market} onOpen={onOpen} onBuy={onBuy} />
+                  <TrendingRow key={s.sym} s={s} market={market} onOpen={onOpen} onBuy={onBuy} onWhy={onWhy} />
                 ))
               : (
                 <div style={{ padding: "14px 2px", fontSize: 12, color: "var(--muted)" }}>

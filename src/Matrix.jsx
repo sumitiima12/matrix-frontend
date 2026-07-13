@@ -43,6 +43,7 @@ import TextCard from "./components/common/TextCard";
 import CarouselCard from "./components/cards/CarouselCard";
 import ListRow from "./components/cards/ListRow";
 import Drawer from "./components/common/Drawer";
+import WhyPanel from "./components/ai/WhyPanel";
 import Block from "./components/common/Block";
 import Spark from "./components/common/Spark";
 import CapTag from "./components/common/CapTag";
@@ -269,6 +270,14 @@ export default function App() {
      Tapping a card opens the DRAWER (a peek). Scrolling up inside the drawer
      promotes it to the full detail page; scrolling past the bottom of the detail
      page collapses it back to the card. See hooks/useScrollTransition. */
+  /* The "Why?" sheet. ONE instance, opened from anywhere — a Pick, an Idea, a
+     Trending card, a Portfolio suggestion. Every recommendation Matrix makes must
+     be interrogable at the point it is made, not only after digging into a detail
+     page. `whyCtx` records WHERE it was opened from, so the panel can say
+     "Matrix's Pick for today" rather than leaving the user to guess. */
+  const [why, setWhy] = useState(null);
+  const openWhy = (s, ctx = null) => setWhy({ s, ctx });
+
   const openStock = (s) => setDrawer(s);
   const openDetail = (s) => { setDrawer(null); setDetail(s); };
   const goTrade = (s) => { setDrawer(null); setDetail(null); setTradePreset(s); setTab("trade"); };
@@ -349,11 +358,11 @@ export default function App() {
             <DetailPage s={detail} onBack={() => setDetail(null)} watched={watch.includes(detail.sym)} toggleWatch={toggleWatch} onTrade={goTrade} onBuy={buyStock} />
           ) : (
             <>
-              {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} trades={trades} liveTick={liveTick} />}
+              {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} trades={trades} liveTick={liveTick} onWhy={openWhy} />}
               {tab === "trade" && <TradeView walletMap={walletMap} adjustWallet={adjustWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} recordTrade={recordTrade} />}
-              {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} market={market} />}
+              {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} market={market} onWhy={openWhy} />}
               {tab === "automation" && <Automation market={market} onRecord={recordTrade} onBuyReal={buyStock} trades={trades} />}
-              {tab === "portfolio" && <Portfolio portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} onBuy={buyStock} onSell={sellStock} onUpdate={updateHolding} priceSnap={priceSnap} />}
+              {tab === "portfolio" && <Portfolio portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} onBuy={buyStock} onSell={sellStock} onUpdate={updateHolding} priceSnap={priceSnap} onWhy={openWhy} />}
               {tab === "watchlist" && <WatchlistView watchlists={watchlists} activeWl={activeWl} setActiveWl={setActiveWl} createWatchlist={createWatchlist} deleteWatchlist={deleteWatchlist} toggleWatch={toggleWatch} onOpen={openStock} />}
               {tab === "ask" && (
                 <div className="fade">
@@ -389,6 +398,16 @@ export default function App() {
       )}
 
       {drawer && <Drawer s={drawer} onClose={() => setDrawer(null)} onDetails={openDetail} onBuy={buyStock} />}
+
+      {why && (
+        <WhyPanel
+          s={why.s}
+          market={marketOf(why.s.sym)}
+          context={why.ctx}
+          onClose={() => setWhy(null)}
+          onOpenStock={openStock}
+        />
+      )}
       {search && <SearchOverlay onClose={() => setSearch(false)} onOpen={openStock} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} />}
       {showProfile && <ProfileSheet profile={profile} walletMap={walletMap} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={doLogout} onPersonalise={() => setRepersonalise(true)} />}
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} onAuthed={onAuthed} />}
