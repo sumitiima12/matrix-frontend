@@ -200,6 +200,14 @@ export default function App() {
   const [authed, setAuthed] = useState(() => Boolean(lsGet("mx_auth", null)));
   const onAuthed = (a) => { doLogin(a); setAuthed(true); };
   const { portfolio, setPortfolio, walletMap, setWalletMap, adjustWallet, updateHolding, intel, health, sectors } = usePortfolio();
+
+  /* Every wallet top-up, timestamped. Without this the equity curve cannot know
+     WHEN money arrived, and a deposit made yesterday would otherwise be smeared
+     backwards across the whole history, overstating what the portfolio was worth
+     last month. Recorded from now on; see useEquityCurve for how pre-ledger
+     top-ups are handled (folded into a derived opening balance, not invented). */
+  const [deposits, setDeposits] = useState([]);
+
   const wallet = walletMap[market] ?? 1000000;
   const { trades, setTrades, recordTrade, recordBatch, placeOrder, riskLimits, setRiskLimits } =
     useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, userId, broker, notify });
@@ -221,6 +229,7 @@ export default function App() {
     const st = lsGet("mx_state_" + userId, null);
     setPortfolio((st && st.portfolio) || []);
     setWalletMap((st && st.walletMap) || { IN: 1000000, US: 1000000, Crypto: 1000000, FNO: 1000000, Commodity: 1000000 });
+    setDeposits((st && st.deposits) || []);
     const wl = (st && st.watchlists) || [{ id: "w1", name: "My Watchlist", syms: ["RELIANCE", "TCS"] }];
     setWatchlists(wl); setActiveWl(wl[wl.length - 1] ? wl[wl.length - 1].id : "w1");
     setProfile((st && st.profile) || null);
@@ -230,7 +239,7 @@ export default function App() {
     if (BACKEND_URL) fetchTrades(userId, 0, Date.now()).then((t) => { if (t && t.length) setTrades(t); }).catch(() => {});
   }, [userId]);
   // Persist per-user (only after this user's data has been hydrated, to avoid clobbering).
-  useEffect(() => { if (hydratedUser === userId) lsSet("mx_state_" + userId, { portfolio, walletMap, watchlists, profile, onboardSkipped }); }, [portfolio, walletMap, watchlists, profile, onboardSkipped, hydratedUser, userId]);
+  useEffect(() => { if (hydratedUser === userId) lsSet("mx_state_" + userId, { portfolio, walletMap, watchlists, profile, onboardSkipped, deposits }); }, [portfolio, walletMap, watchlists, profile, onboardSkipped, deposits, hydratedUser, userId]);
   useEffect(() => { if (hydratedUser === userId) lsSet("mx_trades_" + userId, trades); }, [trades, hydratedUser, userId]);
   const [drawer, setDrawer] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -423,13 +432,21 @@ export default function App() {
       {walletOpen && (
         <WalletSheet
           walletMap={walletMap}
-          onAdd={(mkt, amt) => { adjustWallet(mkt, amt); setBuyToast({ t: `Added ${fmt(amt, mkt === "FNO" ? "IN" : mkt)} to your ${MKT_LABEL[mkt] || mkt} wallet` }); }}
-          onReset={() => { setWalletMap({ IN: 1000000, US: 1000000, Crypto: 1000000, FNO: 1000000, Commodity: 1000000 }); setBuyToast({ t: "All wallets reset to their starting balance" }); }}
+          onAdd={(mkt, amt) => {
+            adjustWallet(mkt, amt);
+            setDeposits((d) => [...d, { at: Date.now(), market: mkt, amount: amt }]);
+            setBuyToast({ t: `Added ${fmt(amt, mkt === "FNO" ? "IN" : mkt)} to your ${MKT_LABEL[mkt] || mkt} wallet` });
+          }}
+          onReset={() => {
+            setWalletMap({ IN: 1000000, US: 1000000, Crypto: 1000000, FNO: 1000000, Commodity: 1000000 });
+            setDeposits([]);   // the ledger describes the wallets; reset both or neither
+            setBuyToast({ t: "All wallets reset to their starting balance" });
+          }}
           onClose={() => setWalletOpen(false)}
         />
       )}
       {search && <SearchOverlay onClose={() => setSearch(false)} onOpen={openStock} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} />}
-      {showProfile && <ProfileSheet profile={profile} walletMap={walletMap} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={doLogout} onPersonalise={() => setRepersonalise(true)} />}
+      {showProfile && <ProfileSheet profile={profile} walletMap={walletMap} portfolio={portfolio} trades={trades} deposits={deposits} market={market} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={doLogout} onPersonalise={() => setRepersonalise(true)} />}
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} onAuthed={onAuthed} />}
       {histOpen && <TradeHistory userId={userId} trades={trades} onClose={() => setHistOpen(false)} />}
       {buyToast && (

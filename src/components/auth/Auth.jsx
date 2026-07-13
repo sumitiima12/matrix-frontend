@@ -3,6 +3,7 @@ import { FNO } from "../../domain/universe";
 import { fmt, profileSummary } from "../../lib/format";
 import { Check, ChevronLeft, Clock, LogIn, LogOut, Sparkles, User } from "lucide-react";
 import { apiLogin, apiRegister } from "../../domain/api";
+import EquityCurve from "../common/EquityCurve";
 
 /**
  * Auth & profile — login, onboarding and the profile sheet.
@@ -162,9 +163,14 @@ export function LoginModal({ onClose, onAuthed }) {
 const inpStyle = { width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: "12px 14px", fontSize: 15, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" };
 // Human-readable summary of the personalisation answers.
 
-export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise }) {
+export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, portfolio = [], trades = [], deposits = [], market = "IN" }) {
   const WMKTS = [["IN", "🇮🇳 Indian stocks"], ["US", "🇺🇸 US stocks"], ["Crypto", "₿ Crypto"], ["FNO", "⚡ F&O"], ["Commodity", "🪙 Commodity"]];
   const summary = profileSummary(profile);
+
+  /* The curve is drawn for ONE market at a time, in that market's own currency.
+     ₹ and $ cannot be added together without an exchange rate for every day in the
+     series, and we do not have one — a blended "net worth" line would be invented. */
+  const [curveMkt, setCurveMkt] = useState(market || "IN");
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(10,10,20,.4)", zIndex: 60, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
       <div onClick={(e) => e.stopPropagation()} className="sheet card" style={{ width: "100%", maxWidth: 460, borderRadius: "24px 24px 0 0", padding: 20, height: "92vh", overflowY: "auto" }}>
@@ -177,6 +183,20 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
             <div style={{ fontSize: 12.5, color: "var(--muted)" }}>{auth ? `Logged in · ${auth.phone}` : "Guest session"}</div>
           </div>
         </div>
+
+        {/* TOTAL VALUE OVER TIME — cash + holdings, rebuilt from real closing prices */}
+        <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, margin: "18px 2px 8px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+          <span>PORTFOLIO VALUE</span>
+          <select
+            value={curveMkt}
+            onChange={(e) => setCurveMkt(e.target.value)}
+            aria-label="Market for the portfolio value chart"
+            style={{ border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface)", color: "var(--ink)", fontSize: 11, fontWeight: 800, padding: "4px 6px" }}
+          >
+            {WMKTS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
+        </div>
+        <EquityCurve market={curveMkt} portfolio={portfolio} trades={trades} deposits={deposits} wallet={walletMap[curveMkt] ?? 0} />
 
         {/* wallets — every market */}
         <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, margin: "18px 2px 8px" }}>VIRTUAL WALLETS</div>
