@@ -52,7 +52,7 @@ export default function TradeView({ walletMap, adjustWallet, portfolio, setPortf
 
       <div className="card" style={{ marginTop: 16, padding: 16 }}>
         <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>Instrument</div>
-        <select value={sel.sym} onChange={(e) => setSel(ALL.find((a) => a.sym === e.target.value))} style={{ ...selStyle, width: "100%", marginTop: 6, fontSize: 14, padding: 12 }}>
+        <select aria-label="Select option" value={sel.sym} onChange={(e) => setSel(ALL.find((a) => a.sym === e.target.value))} style={{ ...selStyle, width: "100%", marginTop: 6, fontSize: 14, padding: 12 }}>
           {ALL.map((a) => <option key={a.sym} value={a.sym}>{a.sym} — {a.name}</option>)}
         </select>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 12 }}>

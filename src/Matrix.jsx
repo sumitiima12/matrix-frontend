@@ -44,6 +44,8 @@ import CarouselCard from "./components/cards/CarouselCard";
 import ListRow from "./components/cards/ListRow";
 import Drawer from "./components/common/Drawer";
 import WhyPanel from "./components/ai/WhyPanel";
+import ErrorBoundary from "./components/common/ErrorBoundary";
+import WalletSheet from "./components/common/WalletSheet";
 import Block from "./components/common/Block";
 import Spark from "./components/common/Spark";
 import CapTag from "./components/common/CapTag";
@@ -275,6 +277,12 @@ export default function App() {
      be interrogable at the point it is made, not only after digging into a detail
      page. `whyCtx` records WHERE it was opened from, so the panel can say
      "Matrix's Pick for today" rather than leaving the user to guess. */
+  /* True while the onboarding flow owns the screen. The bottom tab bar is fixed and
+     was covering onboarding's own CTA — it has no business sitting on top of a
+     full-screen flow the user cannot navigate away from anyway. */
+  const onboarding = authed && hydratedUser === userId && (repersonalise || (!profile && !onboardSkipped));
+
+  const [walletOpen, setWalletOpen] = useState(false);
   const [why, setWhy] = useState(null);
   const openWhy = (s, ctx = null) => setWhy({ s, ctx });
 
@@ -329,12 +337,14 @@ export default function App() {
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
-              <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className="tap pill" style={{ width: 34, height: 34, display: "grid", placeItems: "center", background: "var(--elev)", border: "1px solid var(--line)", color: "var(--ink)" }}>
+              <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label="Toggle dark mode" className="tap pill" style={{ width: 34, height: 34, display: "grid", placeItems: "center", background: "var(--elev)", border: "1px solid var(--line)", color: "var(--ink)" }}>
                 {theme === "dark" ? <Sun size={16} /> : <Moon size={15} />}
               </button>
-              <div onClick={() => setShowProfile(true)} className="tap pill gold-border" style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 11px", whiteSpace: "nowrap", flexShrink: 0 }}>
+              {/* The wallet icon opens the WALLET, not the profile sheet. */}
+              <button onClick={() => setWalletOpen(true)} aria-label="Wallet" className="tap pill gold-border" style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 11px", whiteSpace: "nowrap", flexShrink: 0, background: "transparent", cursor: "pointer" }}>
                 <Wallet size={15} color="var(--gold)" />
-              </div>
+                <span className="mono" style={{ fontSize: 11.5, fontWeight: 800, color: "var(--ink)" }}>{compact(wallet)}</span>
+              </button>
               <div onClick={() => setShowProfile(true)} className="tap glow" style={{ width: 34, height: 34, borderRadius: 11, background: "var(--feature-grad)", display: "grid", placeItems: "center", color: "#fff", flexShrink: 0 }}><User size={17} /></div>
             </div>
           </div>
@@ -354,6 +364,7 @@ export default function App() {
 
         {/* BODY */}
         <div style={{ padding: "0 18px", position: "relative", zIndex: 1 }}>
+          <ErrorBoundary name={detail ? "Stock detail" : tab}>
           {detail ? (
             <DetailPage s={detail} onBack={() => setDetail(null)} watched={watch.includes(detail.sym)} toggleWatch={toggleWatch} onTrade={goTrade} onBuy={buyStock} />
           ) : (
@@ -362,7 +373,7 @@ export default function App() {
               {tab === "trade" && <TradeView walletMap={walletMap} adjustWallet={adjustWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} recordTrade={recordTrade} />}
               {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} market={market} onWhy={openWhy} />}
               {tab === "automation" && <Automation market={market} onRecord={recordTrade} onBuyReal={buyStock} trades={trades} />}
-              {tab === "portfolio" && <Portfolio portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} onBuy={buyStock} onSell={sellStock} onUpdate={updateHolding} priceSnap={priceSnap} onWhy={openWhy} />}
+              {tab === "portfolio" && <Portfolio portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} onBuy={buyStock} onSell={sellStock} onUpdate={updateHolding} priceSnap={priceSnap} onWhy={openWhy} onOpen={openStock} />}
               {tab === "watchlist" && <WatchlistView watchlists={watchlists} activeWl={activeWl} setActiveWl={setActiveWl} createWatchlist={createWatchlist} deleteWatchlist={deleteWatchlist} toggleWatch={toggleWatch} onOpen={openStock} />}
               {tab === "ask" && (
                 <div className="fade">
@@ -375,6 +386,7 @@ export default function App() {
               )}
             </>
           )}
+          </ErrorBoundary>
         </div>
       </div>
 
@@ -386,7 +398,7 @@ export default function App() {
           (backdrop-filter), the .fade keyframes (transform) and <Pop>, any of
           which can silently re-anchor a fixed child and make the bar scroll away.
           Hoisting it here removes the possibility entirely. */}
-      {!detail && (
+      {!detail && !onboarding && (
         <div className="glass" style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--header-bg)", borderTop: "1px solid var(--line)", borderRadius: "22px 22px 0 0", boxShadow: "0 -10px 34px rgba(40,10,80,.3)", display: "flex", padding: "9px 4px 11px", zIndex: 100 }}>
           {nav.map(([k, Icon, label]) => (
             <button key={k} onClick={() => { setTab(k); setTradePreset(null); }} className="tap" style={{ flex: 1, border: "none", background: "transparent", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: tab === k ? "var(--primary)" : "var(--muted)" }}>
@@ -406,6 +418,14 @@ export default function App() {
           context={why.ctx}
           onClose={() => setWhy(null)}
           onOpenStock={openStock}
+        />
+      )}
+      {walletOpen && (
+        <WalletSheet
+          walletMap={walletMap}
+          onAdd={(mkt, amt) => { adjustWallet(mkt, amt); setBuyToast({ t: `Added ${fmt(amt, mkt === "FNO" ? "IN" : mkt)} to your ${MKT_LABEL[mkt] || mkt} wallet` }); }}
+          onReset={() => { setWalletMap({ IN: 1000000, US: 1000000, Crypto: 1000000, FNO: 1000000, Commodity: 1000000 }); setBuyToast({ t: "All wallets reset to their starting balance" }); }}
+          onClose={() => setWalletOpen(false)}
         />
       )}
       {search && <SearchOverlay onClose={() => setSearch(false)} onOpen={openStock} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} />}

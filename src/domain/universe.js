@@ -235,11 +235,21 @@ const FNO = IN_STOCKS
 
 const UNIVERSE = { IN: IN_STOCKS, US: US_STOCKS, Crypto: CRYPTO, Commodity: COMMODITY, FNO };
 const ALL = [...IN_STOCKS, ...US_STOCKS, ...CRYPTO, ...COMMODITY];
+/**
+ * Which market an instrument belongs to, or NULL if we do not carry it.
+ *
+ * This used to fall through to "IN" for anything unrecognised, which is how LAB —
+ * a crypto we deliberately excluded because Yahoo has no feed for it — ended up
+ * listed under Indian holdings. An unknown symbol is not an Indian stock; it is
+ * unknown, and saying otherwise is a small lie with real consequences (it would be
+ * sent to Yahoo as LAB.NS and priced against the wrong instrument).
+ */
 function marketOf(sym) {
+  if (IN_STOCKS.find((s) => s.sym === sym)) return "IN";
   if (US_STOCKS.find((s) => s.sym === sym)) return "US";
   if (CRYPTO.find((s) => s.sym === sym)) return "Crypto";
   if (COMMODITY.find((s) => s.sym === sym)) return "Commodity";
-  return "IN";
+  return null;
 }
 // Market hours in IST (regardless of the device's own timezone).
 function istParts() {
@@ -264,7 +274,11 @@ function yahooSymbol(sym) {
   const m = marketOf(sym);
   if (m === "Crypto") return sym + "-USD";
   if (m === "US") return sym;
-  return sym + ".NS"; // NSE
+  if (m === "IN") return sym + ".NS";      // NSE
+  // Unknown instrument: return it untouched rather than guessing it is Indian and
+  // requesting SOMETHING.NS, which would either 404 or — worse — quietly resolve to
+  // a different company that happens to share the ticker.
+  return sym;
 }
 
 export {

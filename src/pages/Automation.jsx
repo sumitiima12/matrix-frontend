@@ -6,6 +6,7 @@ import { Activity, Bell, Bolt, Check, Pause, Play, Plus, SlidersHorizontal, Spar
 import { Area, AreaChart, Bar, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { BACKEND_URL } from "../config";
 import { chgColor, clamp, fmt, pct } from "../lib/format";
+import { useBacktestStats } from "../hooks/useBacktestStats";
 import { ALL, FNO, marketOf } from "../domain/universe";
 import { aiInterpretStrategy } from "../domain/api";
 import { useCandles } from "../hooks/useCandles";
@@ -60,7 +61,11 @@ function BacktestResult({ cfg }) {
   // REAL candles for the backtest — no synthetic price paths.
   const { data: realData, loading: btLoading } = useCandles(sym, tf);
   const data = useMemo(() => (realData ? realData.slice(-bars) : null), [realData, bars]);
-  const res = useMemo(() => (cfg.mode === "plain" || !data ? null : backtest(cfg, data)), [cfg, data]);
+  const res = useMemo(() => (!cfg || cfg.mode === "plain" || !data ? null : backtest(cfg, data)), [cfg, data]);
+  // No cfg at all -> the template lookup missed. Say so; do not throw a white screen.
+  if (!cfg) {
+    return <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>This strategy has no runnable configuration to backtest.</div>;
+  }
   if (cfg.mode === "plain") {
     return <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>Plain-English rules are parsed on the backend at deploy time — switch to the visual builder to run a backtest.</div>;
   }
@@ -77,7 +82,7 @@ function BacktestResult({ cfg }) {
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <span style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700 }}>Backtest on</span>
-        <select value={sym} onChange={(e) => setSym(e.target.value)} style={{ ...selStyle, flex: "0 0 auto", minWidth: 120 }}>{ALL.map((a) => <option key={a.sym} value={a.sym}>{a.sym}</option>)}</select>
+        <select aria-label="Symbol" value={sym} onChange={(e) => setSym(e.target.value)} style={{ ...selStyle, flex: "0 0 auto", minWidth: 120 }}>{ALL.map((a) => <option key={a.sym} value={a.sym}>{a.sym}</option>)}</select>
         <span style={{ fontSize: 10.5, color: "var(--muted)", marginLeft: "auto" }}>{bars} bars · sim</span>
       </div>
       <div style={{ marginBottom: 10 }}>
@@ -173,9 +178,9 @@ function IndicatorDefs({ defs, setDefs }) {
         const cat = IND_CATALOG.find((c) => c.type === d.type) || {};
         return (
           <div key={d.id} style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "nowrap", marginBottom: 8 }}>
-            <select value={d.type} onChange={(e) => upd(d.id, "type", e.target.value)} style={{ ...selStyle, flex: "1 1 0", minWidth: 0, padding: "9px 4px" }}>{IND_CATALOG.map((c) => <option key={c.type} value={c.type}>{c.label}</option>)}</select>
+            <select aria-label="Select option" value={d.type} onChange={(e) => upd(d.id, "type", e.target.value)} style={{ ...selStyle, flex: "1 1 0", minWidth: 0, padding: "9px 4px" }}>{IND_CATALOG.map((c) => <option key={c.type} value={c.type}>{c.label}</option>)}</select>
             <input value={cat.needsLen ? d.len : "—"} onChange={(e) => upd(d.id, "len", e.target.value)} disabled={!cat.needsLen} placeholder="len" className="no-ring mono" style={{ ...selStyle, flex: "0 0 40px", minWidth: 0, textAlign: "center", padding: "9px 2px", opacity: cat.needsLen ? 1 : 0.4 }} />
-            <select value={d.tf} onChange={(e) => upd(d.id, "tf", e.target.value)} style={{ ...selStyle, flex: "0 0 56px", minWidth: 0, padding: "9px 2px" }}>{TFS.map((t) => <option key={t}>{t}</option>)}</select>
+            <select aria-label="Select option" value={d.tf} onChange={(e) => upd(d.id, "tf", e.target.value)} style={{ ...selStyle, flex: "0 0 56px", minWidth: 0, padding: "9px 2px" }}>{TFS.map((t) => <option key={t}>{t}</option>)}</select>
             <input value={d.name} onChange={(e) => upd(d.id, "name", e.target.value)} placeholder="name" className="no-ring disp" style={{ ...selStyle, flex: "1 1 0", minWidth: 0, fontWeight: 700, padding: "9px 6px" }} />
             <button onClick={() => setDefs((p) => p.filter((x) => x.id !== d.id))} className="tap" style={{ border: "none", background: "transparent", flex: "0 0 auto", padding: 2 }}><Trash2 size={15} color="var(--down)" /></button>
           </div>
@@ -204,15 +209,15 @@ function CondBuilder2({ label, conds, setConds, operands }) {
             </div>
           )}
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", background: "var(--bg)", borderRadius: 12, padding: 8 }}>
-            <select value={c.la} onChange={(e) => upd(i, "la", e.target.value)} style={{ ...selStyle, flex: "1 1 104px" }}>{operands.map((o) => <option key={o}>{o}</option>)}</select>
-            <select value={c.op} onChange={(e) => upd(i, "op", e.target.value)} style={{ ...selStyle, flex: "1 1 96px" }}>{OPSET.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+            <select aria-label="Select option" value={c.la} onChange={(e) => upd(i, "la", e.target.value)} style={{ ...selStyle, flex: "1 1 104px" }}>{operands.map((o) => <option key={o}>{o}</option>)}</select>
+            <select aria-label="Select option" value={c.op} onChange={(e) => upd(i, "op", e.target.value)} style={{ ...selStyle, flex: "1 1 96px" }}>{OPSET.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
             <div className="pill" style={{ display: "flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 2, flex: "0 0 auto" }}>
               {[["ind", "Ind"], ["num", "#"]].map(([k, l]) => (
                 <button key={k} onClick={() => upd(i, "bType", k)} className="pill tap" style={{ fontSize: 10.5, fontWeight: 800, padding: "4px 9px", border: "none", background: c.bType === k ? "var(--primary)" : "transparent", color: c.bType === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
               ))}
             </div>
             {c.bType === "ind"
-              ? <select value={c.b} onChange={(e) => upd(i, "b", e.target.value)} style={{ ...selStyle, flex: "1 1 104px" }}>{operands.map((o) => <option key={o}>{o}</option>)}</select>
+              ? <select aria-label="Select option" value={c.b} onChange={(e) => upd(i, "b", e.target.value)} style={{ ...selStyle, flex: "1 1 104px" }}>{operands.map((o) => <option key={o}>{o}</option>)}</select>
               : <input value={c.b} onChange={(e) => upd(i, "b", e.target.value)} className="no-ring mono" style={{ ...selStyle, flex: "1 1 64px", textAlign: "center" }} />}
             <button onClick={() => del(i)} disabled={conds.length === 1} className="tap" style={{ border: "none", background: "transparent", opacity: conds.length === 1 ? 0.3 : 1 }}><Trash2 size={15} color="var(--down)" /></button>
           </div>
@@ -229,6 +234,67 @@ function NumF({ label, v, set }) {
 }
 
 /* ============================== SEARCH OVERLAY ============================== */
+
+/**
+ * A sample (Matrix-authored) strategy. It has never traded, so it has no live
+ * record. Rather than invent one, we RUN it over the last six months of real
+ * candles and report exactly what came out — and we label it a backtest, because
+ * that is what it is. Hindsight is not performance.
+ */
+function SampleStrategyCard({ s, onActivate }) {
+  const { loading, stats } = useBacktestStats(s, 6);
+
+  const Stat = ({ k, v, c }) => (
+    <div style={{ flex: 1, background: "var(--elev)", borderRadius: 11, padding: "9px 10px", minWidth: 0 }}>
+      <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 800, letterSpacing: ".03em" }}>{k}</div>
+      <div className="mono" style={{ fontWeight: 800, fontSize: 13.5, marginTop: 3, color: c || "var(--ink)" }}>{v}</div>
+    </div>
+  );
+
+  return (
+    <div className="card" style={{ marginTop: 12, padding: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+        <div style={{ minWidth: 0 }}>
+          <div className="disp" style={{ fontWeight: 700, fontSize: 14 }}>{s.name}</div>
+          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
+            {(s.symbols || []).join(" · ")}
+          </div>
+        </div>
+        <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--primary-soft)", color: "var(--primary)", flex: "0 0 auto" }}>SAMPLE</span>
+      </div>
+
+      {loading ? (
+        <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 12 }}>Backtesting on real prices…</div>
+      ) : !stats ? (
+        <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 12 }}>Data currently unavailable</div>
+      ) : stats.trades === 0 ? (
+        <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 12 }}>
+          This strategy did not trigger a single trade in the last 6 months. That is a real result, not missing data.
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            <Stat k="WIN RATE" v={stats.winRate.toFixed(0) + "%"} />
+            <Stat k="TRADES" v={stats.trades} />
+            <Stat k="P&L" v={(stats.pnl >= 0 ? "+" : "") + fmt(stats.pnl, "IN")} c={chgColor(stats.pnl)} />
+            <Stat k="RETURN" v={pct(stats.retPct, 1)} c={chgColor(stats.retPct)} />
+          </div>
+          <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.45 }}>
+            Backtested on the last 6 months of real daily candles across {stats.symbols} symbol{stats.symbols === 1 ? "" : "s"}, ₹{(s.cap || 100000).toLocaleString("en-IN")} capital.
+            A backtest is scored with hindsight — it is not a forecast.
+          </div>
+        </>
+      )}
+
+      {onActivate && (
+        <button onClick={() => onActivate(s)} className="tap disp"
+          style={{ width: "100%", marginTop: 12, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>
+          Use this strategy
+        </button>
+      )}
+    </div>
+  );
+}
 
 export default function Automation({ market = "IN", onRecord, onBuyReal, trades = [] }) {
   const [mode, setMode] = useState("builder");
@@ -323,10 +389,17 @@ export default function Automation({ market = "IN", onRecord, onBuyReal, trades 
   const activateTemplate = (t, syms) => {
     const symbols = syms && syms.length ? syms : ["NIFTY50"];
     const id = "t" + Date.now();
-    setStrats((p) => [{ id, name: t.name, by: "Matrix", active: true, alerts: false, cfg: t.cfg, cap: 100000, symbols, created: Date.now() }, ...p]);
+    // by: "You" — the moment YOU activate it, it is YOUR strategy and belongs under
+    // "My strategies". It was previously tagged "Matrix", which filed the user's own
+    // running strategies under the samples.
+    setStrats((p) => [{ id, name: t.name, by: "You", active: true, alerts: false, cfg: t.cfg, cap: 100000, symbols, created: Date.now() }, ...p]);
     recordAutomateTrades(id, t.name, t.cfg, symbols);
     setToast(`${t.name} activated on ${symbols.join(", ")}`);
+    setStratTab("mine");
   };
+
+  /* "Use this strategy" on a sample: copy its rules and symbols into your own. */
+  const useTemplateStrategy = (s) => activateTemplate({ name: s.name, cfg: s.cfg }, s.symbols);
   // Record simulated trades produced by an activated automation (deduped by id).
   // Activating a strategy places REAL positions at the live price with the strategy's
   // target/stop. The exit engine then closes them at real market prices. Nothing is
@@ -358,8 +431,16 @@ export default function Automation({ market = "IN", onRecord, onBuyReal, trades 
   const dWinRate = agg.trades ? agg.wins / agg.trades * 100 : 0;
   const dRet = agg.cap ? agg.pnl / agg.cap * 100 : 0;
   const dAnn = perf.length ? agg.annSum / perf.length : 0;
-  const activeStrats = perf.filter(({ s }) => s.active);
-  const inactiveStrats = perf.filter(({ s }) => !s.active);
+  /* Two kinds of strategy, and they are scored differently — deliberately.
+       SAMPLE  (by "Matrix"): never traded, so no live record exists. Shown with a
+                real 6-month BACKTEST on real candles, labelled as such.
+       MINE    (created by the user): scored on their ACTUAL closed trades. A
+                strategy with no closed trades shows "—", not a made-up win rate. */
+  const [stratTab, setStratTab] = useState("sample");
+  const sampleStrats = perf.filter(({ s }) => s.by === "Matrix");
+  const myStrats     = perf.filter(({ s }) => s.by !== "Matrix");
+  const myActive     = myStrats.filter(({ s }) => s.active);
+  const myInactive   = myStrats.filter(({ s }) => !s.active);
   const byOptions = ["All", "Matrix", "You", "Community"];
   const dsel = { ...selStyle, flex: "1 1 0", minWidth: 0, padding: "8px 8px", fontSize: 11.5 };
   const fmtDate = (t) => new Date(t).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" });
@@ -452,8 +533,8 @@ export default function Automation({ market = "IN", onRecord, onBuyReal, trades 
           <DStat k="Returns %" v={(dRet >= 0 ? "+" : "") + dRet.toFixed(2) + "%"} c={dRet >= 0 ? "#9CFFD6" : "#FFB3BE"} />
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-          <select value={dashBy} onChange={(e) => setDashBy(e.target.value)} style={dsel}>{byOptions.map((o) => <option key={o} value={o}>Created by: {o}</option>)}</select>
-          <select value={dashRange} onChange={(e) => setDashRange(+e.target.value)} style={dsel}><option value={30}>30d</option><option value={90}>3m</option><option value={180}>6m</option><option value={365}>12m</option></select>
+          <select aria-label="Select option" value={dashBy} onChange={(e) => setDashBy(e.target.value)} style={dsel}>{byOptions.map((o) => <option key={o} value={o}>Created by: {o}</option>)}</select>
+          <select aria-label="Select option" value={dashRange} onChange={(e) => setDashRange(+e.target.value)} style={dsel}><option value={30}>30d</option><option value={90}>3m</option><option value={180}>6m</option><option value={365}>12m</option></select>
         </div>
         <div style={{ marginTop: 8 }}>
           <MultiSelect label="Symbol" options={DEPLOY_OPTIONS} value={symFilter} onChange={setSymFilter} dark />
@@ -599,17 +680,47 @@ export default function Automation({ market = "IN", onRecord, onBuyReal, trades 
         </>
       )}
 
-      {/* Strategies — Active / Inactive */}
+      {/* Strategies — Sample (Matrix-authored) vs My strategies (yours) */}
       <div className="disp" style={{ fontWeight: 700, fontSize: 18, margin: "28px 2px 4px" }}>Strategies</div>
       <div className="gold-line" style={{ width: 44, margin: "0 0 14px 2px", borderRadius: 2 }} />
 
-      <div style={{ fontSize: 11.5, fontWeight: 800, color: "var(--up)", letterSpacing: ".04em", margin: "4px 2px 10px", display: "flex", alignItems: "center", gap: 6 }}>● ACTIVE <span style={{ color: "var(--muted)", fontWeight: 700 }}>({activeStrats.length})</span></div>
-      {activeStrats.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 12 }}>No active strategies for this filter.</div>
-        : activeStrats.map(({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>)}
+      <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+        {[["sample", `Sample strategies (${sampleStrats.length})`], ["mine", `My strategies (${myStrats.length})`]].map(([k, label]) => (
+          <button
+            key={k}
+            onClick={() => setStratTab(k)}
+            className="tap disp"
+            style={{
+              flex: 1, borderRadius: 11, padding: "10px 8px", fontWeight: 800, fontSize: 12.5, cursor: "pointer",
+              border: "1px solid " + (stratTab === k ? "var(--primary)" : "var(--line)"),
+              background: stratTab === k ? "var(--primary-soft)" : "var(--surface)",
+              color: stratTab === k ? "var(--primary)" : "var(--ink)",
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
-      <div style={{ fontSize: 11.5, fontWeight: 800, color: "var(--muted)", letterSpacing: ".04em", margin: "16px 2px 10px", display: "flex", alignItems: "center", gap: 6 }}>● INACTIVE <span style={{ fontWeight: 700 }}>({inactiveStrats.length})</span></div>
-      {inactiveStrats.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--muted)" }}>No inactive strategies for this filter.</div>
-        : inactiveStrats.map(({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>)}
+      {stratTab === "sample" ? (
+        sampleStrats.length === 0
+          ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No sample strategies for this filter.</div>
+          : sampleStrats.map(({ s }) => <SampleStrategyCard key={s.id} s={s} onActivate={useTemplateStrategy} />)
+      ) : myStrats.length === 0 ? (
+        <div className="card" style={{ marginTop: 12, padding: 20, textAlign: "center", color: "var(--muted)", fontSize: 12.5 }}>
+          You haven't created a strategy yet. Build one below, or start from a sample.
+        </div>
+      ) : (
+        <>
+          <div style={{ fontSize: 11.5, fontWeight: 800, color: "var(--up)", letterSpacing: ".04em", margin: "14px 2px 10px", display: "flex", alignItems: "center", gap: 6 }}>● ACTIVE <span style={{ color: "var(--muted)", fontWeight: 700 }}>({myActive.length})</span></div>
+          {myActive.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 12 }}>None active.</div>
+            : myActive.map(({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>)}
+
+          <div style={{ fontSize: 11.5, fontWeight: 800, color: "var(--muted)", letterSpacing: ".04em", margin: "16px 2px 10px", display: "flex", alignItems: "center", gap: 6 }}>● INACTIVE <span style={{ fontWeight: 700 }}>({myInactive.length})</span></div>
+          {myInactive.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--muted)" }}>None inactive.</div>
+            : myInactive.map(({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>)}
+        </>
+      )}
 
       {toast && (
         <div style={{ position: "fixed", left: 0, right: 0, bottom: 96, display: "flex", justifyContent: "center", zIndex: 80, pointerEvents: "none" }}>

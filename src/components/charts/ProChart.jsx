@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useCandles } from "../../hooks/useCandles";
 import { smaSeries, emaSeries, bollingerSeries, macdSeries, rsiSeries, OVERLAYS } from "../../lib/indicators";
+import { lsGet, lsSet } from "../../lib/format";
 import ChartToolbar from "./ChartToolbar";
 import IndicatorPanel from "./IndicatorPanel";
 
@@ -12,13 +13,26 @@ import IndicatorPanel from "./IndicatorPanel";
  *
  * All indicator maths comes from lib/indicators — this component only draws.
  */
+/* The chosen indicators are a PREFERENCE, not a property of one stock. If you add
+   Bollinger + MACD + RSI on HDFCBANK, you want them on every chart you open next —
+   re-picking them per symbol is busywork. Persisted so it survives reloads too. */
+const PREF_KEY = "mx_chart_prefs";
+const DEFAULT_PREFS = { active: ["ema21", "ema50"], macd: false, rsi: false, ctype: "candle" };
+
 export default function ProChart({ sym, defaultTf = "1d", height = 240 }) {
+  const saved = useMemo(() => ({ ...DEFAULT_PREFS, ...(lsGet(PREF_KEY, {}) || {}) }), []);
+
   const [tf, setTf] = useState(defaultTf);
-  const [ctype, setCtype] = useState("candle");
-  const [active, setActive] = useState(["ema21", "ema50"]);
-  const [showMacd, setShowMacd] = useState(false);
-  const [showRsi, setShowRsi] = useState(false);
+  const [ctype, setCtype] = useState(saved.ctype);
+  const [active, setActive] = useState(saved.active);
+  const [showMacd, setShowMacd] = useState(saved.macd);
+  const [showRsi, setShowRsi] = useState(saved.rsi);
   const [picker, setPicker] = useState(false);
+
+  // Any change to the indicator set applies to EVERY chart from now on.
+  useEffect(() => {
+    lsSet(PREF_KEY, { active, macd: showMacd, rsi: showRsi, ctype });
+  }, [active, showMacd, showRsi, ctype]);
 
   const { data, loading, error } = useCandles(sym, tf);
   const closes = useMemo(() => (data ? data.map((c) => c.c) : []), [data]);

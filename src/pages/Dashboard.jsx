@@ -10,6 +10,7 @@ import { askMatrix, fetchNews } from "../domain/api";
 import AddBtn from "../components/common/AddBtn";
 import BuyButton from "../components/common/BuyButton";
 import TagRow from "../components/common/TagRow";
+import Change from "../components/common/Change";
 import { computeTags } from "../domain/tags";
 import DashStat from "../components/common/DashStat";
 import ListRow from "../components/cards/ListRow";
@@ -159,7 +160,7 @@ function StockIdeasStrip({ onOpen, onBuy, market, liveTick = 0 }) {
   );
 }
 
-function LiveNewsStrip({ symbols = [], onOpen, list = [] }) {
+function LiveNewsStrip({ symbols = [], onOpen, list = [], market = "IN", onBuy }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const key = symbols.join(",");
@@ -188,12 +189,24 @@ function LiveNewsStrip({ symbols = [], onOpen, list = [] }) {
           {items.map(({ sym, n }) => {
             const s = list.find((a) => a.sym === sym);
             return (
-              <div key={sym} className="card" style={{ flex: "0 0 auto", width: 250, padding: 14 }}>
-                <div onClick={() => s && onOpen(s)} className="tap disp" style={{ fontWeight: 800, fontSize: 13.5 }}>{sym}</div>
-                <a href={n.url || undefined} target="_blank" rel="noreferrer" style={{ textDecoration: "none", color: "inherit" }}>
-                  <div style={{ marginTop: 8, fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{n.t}</div>
-                  <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 7 }}>{timeAgo(n.d)}{n.src ? " · " + n.src : ""}</div>
-                </a>
+              /* Tapping a news card opens the SYMBOL, exactly like every other card
+                 in the app — it no longer throws the user out to Yahoo. Price and a
+                 BUY are on the card, so the news is actionable where it sits. */
+              <div key={sym} onClick={() => s && onOpen(s)} className="card tap" style={{ flex: "0 0 auto", width: 250, padding: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+                  <span className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>{sym}</span>
+                  {s && <span className="mono" style={{ fontWeight: 800, fontSize: 13 }}>{fmt(s.price, market)}</span>}
+                </div>
+                {s && <div style={{ marginTop: 2 }}><Change v={s.chg} /></div>}
+
+                <div style={{ marginTop: 8, fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{n.t}</div>
+                <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 7 }}>{timeAgo(n.d)}{n.src ? " · " + n.src : ""}</div>
+
+                {s && onBuy && (
+                  <div style={{ marginTop: 11 }} onClick={(e) => e.stopPropagation()}>
+                    <BuyButton s={s} market={market} onBuy={onBuy} lot={s.lot || 1} fullWidth />
+                  </div>
+                )}
               </div>
             );
           })}
@@ -293,6 +306,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     const id = setInterval(() => setPickHour(Math.floor(Date.now() / 3600000)), 60000);
     return () => clearInterval(id);
   }, []);
+  /* Picks were BLANK for the same reason Hot Stocks was: this useMemo keyed on
+     [list], and `list` is a stable array whose objects are mutated in place as
+     quotes arrive. It ran once at mount — before any indicator had loaded — got an
+     empty array, and froze. It must recompute when data actually arrives. */
   const picks = useMemo(() => {
     const base = dailyPicks(list).slice(0, 8);
     // makeFuture returns null when we have no REAL lot size — drop those rather
@@ -301,7 +318,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       ? base.map((s) => { const f = makeFuture(s); return f && { ...f, pickSignal: s.pickSignal, pickReason: s.pickReason, pickPattern: s.pickPattern, pickStop: s.pickStop, pickTarget: s.pickTarget, pickSlPct: s.pickSlPct, pickTpPct: s.pickTpPct, pickRR: s.pickRR }; }).filter(Boolean)
       : base;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [list, market, pickHour]);
+  }, [list, market, pickHour, liveTick]);
   /**
    * TRENDING NOW — what is moving RIGHT NOW.
    *
@@ -714,7 +731,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       </Section>
 
       {/* In the news — REAL headlines fetched live (not for F&O) */}
-      {market !== "FNO" && <LiveNewsStrip symbols={inNews.map((s) => s.sym)} onOpen={onOpen} list={list} />}
+      {market !== "FNO" && <LiveNewsStrip symbols={inNews.map((s) => s.sym)} onOpen={onOpen} list={list} market={market} onBuy={onBuy} />}
 
       {/* Smart money — REAL institutional holders from Yahoo (quoteSummary).
           Hidden entirely when no holder data is available: no invented names. */}

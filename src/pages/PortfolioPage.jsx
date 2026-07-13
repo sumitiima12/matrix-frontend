@@ -14,7 +14,7 @@ function HoldingIntel({ a, market = "IN", stock, onWhy }) {
   if (!a) return null;
   const col = a.action === "Add" ? "var(--up)" : a.action === "Exit" ? "var(--down)" : a.action === "Reduce" ? "#F59E0B" : "var(--muted)";
   if (!a.hasData) {
-    return <div style={{ marginTop: 10, fontSize: 10.5, color: "var(--muted)" }}>Live indicators haven't loaded — no recommendation without real data.</div>;
+    return <div style={{ marginTop: 10, fontSize: 10.5, color: "var(--muted)" }}>Data currently unavailable</div>;
   }
   return (
     <div style={{ marginTop: 11, paddingTop: 11, borderTop: "1px solid var(--line)" }}>
@@ -99,10 +99,16 @@ function ManageHolding({ r, st, onBuy, onSell, onUpdate, onClose }) {
   );
 }
 
-export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, onUpdate, priceSnap = {}, onWhy }) {
+export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, onUpdate, priceSnap = {}, onWhy, onOpen }) {
   const [expand, setExpand] = useState(null);   // sym with open trade panel
   const mkt = market === "FNO" ? "IN" : market;
   const mLabel = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", FNO: "⚡ F&O", Commodity: "🪙 Commodity" }[market];
+
+  /* Holdings whose symbol is no longer in the universe (e.g. LAB — real, but Yahoo
+     carries no feed for it, so we cannot price it). marketOf() used to call these
+     "IN", which is why they appeared under Indian holdings. They are not hidden —
+     hiding someone's position would be worse — they are listed honestly, unpriced. */
+  const orphans = portfolio.filter((h) => !h.fno && marketOf(h.sym) === null);
   // F&O portfolio shows only F&O (futures/options) positions — never plain stock holdings
   const rows = portfolio.filter((h) => market === "FNO" ? h.fno : (marketOf(h.sym) === mkt && !h.fno)).map((h) => {
     const m = marketOf(h.sym);
@@ -198,7 +204,13 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
         const st = ALL.find((a) => a.sym === r.sym) || { sym: r.sym, name: r.name, price: r.cur };
         return (
           <div key={r.sym} className="card" style={{ marginTop: 12, padding: 14 }}>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
+            {/* Tapping the holding opens the symbol drawer, exactly like a card on the
+                home page. The controls below stopPropagation so they still work. */}
+            <div
+              onClick={() => onOpen && ALL.find((a) => a.sym === r.sym) && onOpen(ALL.find((a) => a.sym === r.sym))}
+              className={onOpen ? "tap" : undefined}
+              style={{ display: "flex", justifyContent: "space-between" }}
+            >
               <div><div className="disp" style={{ fontWeight: 700, fontSize: 14 }}>{r.sym}</div><div style={{ fontSize: 11, color: "var(--muted)" }}>{r.qty} units · held {r.days}d</div></div>
               <div style={{ textAlign: "right" }}>
                 <div className="mono" style={{ fontWeight: 700, fontSize: 14, color: r.pl >= 0 ? "var(--up)" : "var(--down)" }}>{r.pl >= 0 ? "+" : ""}{fmt(r.pl, r.m)}</div>
@@ -223,6 +235,24 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
           </div>
         );
       })}
+
+      {/* Positions we can no longer price. Never silently dropped, never filed under
+          a market they don't belong to. */}
+      {market === "IN" && orphans.length > 0 && (
+        <div className="card" style={{ marginTop: 14, padding: 14, border: "1px dashed var(--line)" }}>
+          <div className="disp" style={{ fontWeight: 800, fontSize: 12.5, color: "var(--muted)" }}>Not currently priceable</div>
+          <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 5, lineHeight: 1.5 }}>
+            No live feed exists for these, so they are excluded from valuations rather than
+            valued with a made-up price.
+          </div>
+          {orphans.map((h) => (
+            <div key={h.sym} style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 12.5 }}>
+              <span className="disp" style={{ fontWeight: 700 }}>{h.sym}</span>
+              <span className="mono" style={{ color: "var(--muted)" }}>{h.qty} units · bought at {fmt(h.buy, "Crypto")}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
