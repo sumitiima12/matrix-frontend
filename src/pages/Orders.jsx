@@ -4,7 +4,7 @@ import { Bolt, Bot, Briefcase, Check, ChevronLeft, Home, Lightbulb, Moon, Search
 import { BACKEND_URL } from "../config";
 import { fmt, getUserId, lsGet, lsSet } from "../lib/format";
 import { ALL, FNO, UNIVERSE, marketOf, yahooSymbol } from "../domain/universe";
-import { fetchFundamentals, fetchIndicators, fetchLiveQuotes, fetchTrades, marketOpen, postTrade, resolveExitFromCandles } from "../domain/api";
+import { fetchIndicators, fetchLiveQuotes, fetchTrades, marketOpen, postTrade, resolveExitFromCandles } from "../domain/api";
 import { DEFAULT_LIMITS, validateOrder } from "../services/riskService";
 import FilterChip from "../components/common/FilterChip";
 import { analyzeJournal } from "../services/journalService";

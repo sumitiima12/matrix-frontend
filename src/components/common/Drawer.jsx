@@ -91,7 +91,7 @@ export default function Drawer({ s, onClose, onDetails, onBuy }) {
             : `RSI ${s.rsi} (${s.rsi > 70 ? "overbought" : s.rsi < 30 ? "oversold" : "neutral"}), price ${s.price > s.sma50 ? "above" : "below"} 50-DMA. Support ${fmt(s.support, market)} · Resistance ${fmt(s.resistance, market)}.`}
         </Block>
         <Block title="Fundamental summary" icon={<Building2 size={14} />}>
-          P/E {s.pe ?? "—"}, ROE {s.roe != null ? s.roe + "%" : "—"}, revenue growth {s.revGrowth != null ? s.revGrowth + "%" : "—"}, earnings growth {s.ebitdaGrowth != null ? s.ebitdaGrowth + "%" : "—"}.
+
         </Block>
 
         <div className="card" style={{ marginTop: 12, padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--bg)" }}>

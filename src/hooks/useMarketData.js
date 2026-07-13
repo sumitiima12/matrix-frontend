@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { BACKEND_URL } from "../config";
-import { ALL, UNIVERSE, yahooSymbol, capTier } from "../domain/universe";
-import { fetchLiveQuotes, fetchIndicators, fetchFundamentals, fetchIntraday, marketOpen } from "../domain/api";
+import { ALL, UNIVERSE, yahooSymbol } from "../domain/universe";
+import { fetchLiveQuotes, fetchIndicators, fetchIntraday, marketOpen } from "../domain/api";
 
 /**
  * useMarketData — keeps the universe hydrated with REAL market data.
@@ -9,7 +9,6 @@ import { fetchLiveQuotes, fetchIndicators, fetchFundamentals, fetchIntraday, mar
  * Three streams, all from the backend:
  *   - quotes       (price, day change)        every 20s
  *   - indicators   (RSI/MACD/ATR/volume/S&R)  computed from real daily candles
- *   - fundamentals (P/E, ROE, growth, holders)
  *
  * There is NO synthetic fallback. With no backend, instruments keep their null
  * indicators and the UI renders "—". Matrix never invents a number to look live.
@@ -63,18 +62,6 @@ export function useMarketData(market, intervalMs = 20000) {
       } catch { /* stays null -> UI shows "—" */ }
     };
 
-    const pullFundamentals = async () => {
-      try {
-        const f = await fetchFundamentals(syms);
-        if (stop || !f) return;
-        if (merge(f)) {
-          // Cap tier is derived from the REAL market cap, never hardcoded.
-          ALL.forEach((s) => { if (s.marketCap != null) s.cap = capTier(s.marketCap); });
-          bump();
-        }
-      } catch { /* stays null -> UI shows "—" */ }
-    };
-
     /**
      * Real short-term momentum (5m / 15m change, volume surge) from 5-minute
      * candles. This is what Trending ranks on. It refreshes faster than the rest
@@ -102,7 +89,6 @@ export function useMarketData(market, intervalMs = 20000) {
       if (!BACKEND_URL) { setLive(false); return; }
       pullQuotes();
       pullIndicators();
-      pullFundamentals();
     };
 
     refresh();

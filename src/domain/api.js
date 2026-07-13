@@ -11,7 +11,7 @@
  */
 import { MATRIX_PERSONA, BACKEND_URL } from "../config";
 import { yahooSymbol, marketOf } from "./universe";
-import { getQuotes, getHistory, getNews, getIndicators, getFundamentals, getIntraday } from "../services/marketService";
+import { getQuotes, getHistory, getNews, getIndicators, getIntraday } from "../services/marketService";
 import { ask as aiAsk, interpretScreen, interpretStrategy, marketBrief } from "../services/aiService";
 import { saveTrade, listTrades, register, login } from "../services/tradeService";
 import { isMarketOpen } from "../services/riskService";
@@ -27,7 +27,6 @@ export const aiMarketBrief = (facts) => marketBrief(facts);
 export const fetchHistory = (sym, tf) => getHistory(yahooSymbol(sym), tf);
 export const fetchNews = (sym) => getNews(yahooSymbol(sym));
 export const fetchIndicators = (syms) => getIndicators((syms || []).map(yahooSymbol));
-export const fetchFundamentals = (syms) => getFundamentals((syms || []).map(yahooSymbol));
 export const fetchIntraday = (syms) => getIntraday((syms || []).map(yahooSymbol));
 
 /** Live quotes, mapped back from Yahoo tickers to app symbols. */

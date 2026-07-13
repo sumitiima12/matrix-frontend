@@ -121,9 +121,13 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
     return liveCandles && liveCandles.length ? liveCandles.slice(-n).map((c, i) => ({ ...c, i: i + 1 })) : [];
   }, [tf, liveCandles]);
   const data = useMemo(() => (liveCandles || []).slice(-tf).map((c, i) => ({ i, p: c.c })), [liveCandles, tf]);
-  const tabs = [["overview", "Overview"], ["fund", "Fundamentals"], ["tech", "Technicals"], ["news", "News"], ["ask", "Ask Matrix"]];
+  /* No "Fundamentals" tab. Yahoo's quoteSummary — the only source we had for P/E,
+     ROE, margins and quarterly revenue — refuses requests from datacenter IPs
+     (verified: "yahoo: auth failed" from Render). No data source, no feature.
+     Deleted rather than left as an empty panel or filled with plausible numbers. */
+  const tabs = [["overview", "Overview"], ["tech", "Technicals"], ["news", "News"], ["ask", "Ask Matrix"]];
   const n = (v, suf = "") => (v == null ? "n/a" : v + suf);
-  const ctx = `Stock: ${s.name} (${s.sym}), market ${market}. Price ${fmt(s.price, market)} (${s.chg >= 0 ? "+" : ""}${s.chg}% today). REAL indicators — RSI ${n(s.rsi)}, MACD ${n(s.macd)} (signal ${n(s.macdSignal)}), ADX ${n(s.adx)}, ATR ${n(s.atr)}, 50-DMA ${n(s.sma50)}, 200-DMA ${n(s.sma200)}, support ${n(s.support)}, resistance ${n(s.resistance)}, 52w ${n(s.low52)}-${n(s.high52)}, volume ${n(s.vol)} vs 20d avg ${n(s.avgVol)}. Fundamentals — P/E ${n(s.pe)}, ROE ${n(s.roe, "%")}, revenue growth ${n(s.revGrowth, "%")}, earnings growth ${n(s.ebitdaGrowth, "%")}. Only use the figures given; if something is n/a, say so rather than guessing.`;
+  const ctx = `Stock: ${s.name} (${s.sym}), market ${market}. Price ${fmt(s.price, market)} (${s.chg >= 0 ? "+" : ""}${s.chg}% today). REAL indicators — RSI ${n(s.rsi)}, MACD ${n(s.macd)} (signal ${n(s.macdSignal)}), ADX ${n(s.adx)}, ATR ${n(s.atr)}, 50-DMA ${n(s.sma50)}, 200-DMA ${n(s.sma200)}, support ${n(s.support)}, resistance ${n(s.resistance)}, 52w ${n(s.low52)}-${n(s.high52)}, volume ${n(s.vol)} vs 20d avg ${n(s.avgVol)}. Only use the figures given; if something is n/a, say so rather than guessing.`;
 
   useEffect(() => {
     const io = new IntersectionObserver((entries) => {
@@ -234,7 +238,7 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
         <div className="card" style={{ marginTop: 12, padding: 16, background: "linear-gradient(160deg,var(--primary-soft),var(--surface))" }}>
           <div className="disp" style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Sparkles size={16} color="var(--primary)" /> Matrix's analysis</div>
           <p style={{ fontSize: 13.5, lineHeight: 1.6, marginTop: 8, marginBottom: 0 }}>
-            {s.rsi == null ? "Live technicals are still loading for this symbol." : <>Technically, RSI is <b>{s.rsi}</b> with price {s.sma50 != null ? (s.price > s.sma50 ? "above" : "below") : "—"} the 50-DMA{s.sma50 != null && s.sma200 != null ? (s.sma50 > s.sma200 ? " and a bullish 50/200 structure" : " and a bearish 50/200 structure") : ""}. {s.revGrowth != null ? <>Revenue is {s.revGrowth >= 0 ? "growing" : "contracting"} <b>{Math.abs(s.revGrowth)}%</b>{s.ebitdaGrowth != null ? <> with earnings {s.ebitdaGrowth >= 0 ? "expanding" : "compressing"} <b>{Math.abs(s.ebitdaGrowth)}%</b></> : null}.</> : "Fundamentals are unavailable for this symbol."}</>}
+            {s.rsi == null ? "Live technicals are still loading for this symbol." : <>Technically, RSI is <b>{s.rsi}</b> with price {s.sma50 != null ? (s.price > s.sma50 ? "above" : "below") : "—"} the 50-DMA{s.sma50 != null && s.sma200 != null ? (s.sma50 > s.sma200 ? " and a bullish 50/200 structure" : " and a bearish 50/200 structure") : ""}.</>}
           </p>
           <button onClick={askDeep} disabled={deepBusy} className="tap disp glow" style={{ width: "100%", marginTop: 14, background: "linear-gradient(120deg,var(--primary),var(--primary-2))", color: "#fff", border: "none", borderRadius: 14, padding: 12, fontWeight: 700, fontSize: 13.5, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", opacity: deepBusy ? 0.7 : 1 }}>
             <Sparkles size={16} /> {deepBusy ? "Generating deep analysis…" : "Deep Analysis"}
@@ -251,38 +255,6 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
           <button onClick={() => onBuy && onBuy(s, 1)} className="tap disp glow" style={{ flex: 1, background: "linear-gradient(120deg,var(--up),#12B98A)", color: "#fff", border: "none", borderRadius: 16, padding: 14, fontWeight: 800, fontSize: 14.5, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}><Plus size={17} /> Buy</button>
           <button onClick={() => onTrade(s)} className="tap disp" style={{ flex: 1, background: "var(--elev)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 16, padding: 14, fontWeight: 700, fontSize: 14.5 }}>Trade…</button>
         </div>
-      </div>
-
-      {/* FUNDAMENTALS — all REAL (Yahoo). Anything unavailable shows "—" or hides. */}
-      <div data-sec="fund" ref={(el) => (refs.current.fund = el)} style={secStyle}>
-        <Pop>
-          <Heading icon={<Building2 size={18} color="var(--primary)" />}>Fundamentals</Heading>
-          {rev.length > 0 ? (
-            <ChartCard title="Revenue (quarterly, as reported)" sub={s.revGrowth != null ? `${s.revGrowth >= 0 ? "+" : ""}${s.revGrowth}% YoY` : ""}>
-              <BarBlock data={rev} color="var(--primary)" />
-            </ChartCard>
-          ) : null}
-          {ebd.length > 0 ? (
-            <ChartCard title="Earnings (quarterly, as reported)" sub={s.ebitdaGrowth != null ? `${s.ebitdaGrowth >= 0 ? "+" : ""}${s.ebitdaGrowth}% YoY` : ""}>
-              <BarBlock data={ebd} color="#0FB97D" />
-            </ChartCard>
-          ) : null}
-          <StatGrid rows={[
-            ["P/E", s.pe ?? "—"],
-            ["ROE", s.roe != null ? s.roe + "%" : "—"],
-            ["Profit margin", s.profitMargin != null ? s.profitMargin + "%" : "—"],
-            ["Market cap", s.marketCap != null ? compact(s.marketCap) : "—"],
-            ["Revenue growth", s.revGrowth != null ? s.revGrowth + "%" : "—"],
-            ["Earnings growth", s.ebitdaGrowth != null ? s.ebitdaGrowth + "%" : "—"],
-            ["Debt / equity", s.debtToEquity ?? "—"],
-            ["Sector", s.sector],
-          ]} />
-          {s.pe == null && rev.length === 0 && (
-            <div className="card" style={{ padding: 16, textAlign: "center", color: "var(--muted)", fontSize: 12.5, marginTop: 10 }}>
-              {BACKEND_URL ? "No published fundamentals for this instrument (common for indices, futures and crypto)." : "Connect the backend to load real fundamentals."}
-            </div>
-          )}
-        </Pop>
       </div>
 
       {/* TECHNICALS */}

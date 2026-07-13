@@ -10,7 +10,7 @@ import { LOTS } from "./fno";
 /**
  * Create an instrument.
  *
- * Indicators, volume and fundamentals are NOT generated here. They start as
+ * Indicators and volume are NOT generated here. They start as
  * null and are filled with REAL values from /api/indicators and
  * /api/fundamentals. A null means "no data yet" — the UI renders "—" rather
  * than inventing a number.
@@ -33,9 +33,10 @@ export function build(sym, name, price, chg, sector, cap, x = {}) {
     macd: null, macdSignal: null, macdHist: null,
     atr: null, adx: null, cci: null, stoch: null, vwap: null, bbPctB: null, mfi: null, obv: null,
     high52: null, low52: null, support: null, resistance: null,
-    pe: x.pe ?? null, roe: x.roe ?? null,
-    revGrowth: x.revG ?? null, ebitdaGrowth: x.ebG ?? null,
-    profitMargin: null, marketCap: null, debtToEquity: null,
+    /* No fundamentals fields. Yahoo's quoteSummary refuses datacenter IPs, so
+       P/E, ROE, margins, market cap and growth have NO source. They were always
+       null in practice; carrying the keys around only invited a UI to render a
+       blank row and imply the number exists but is loading. */
     quarters: null, inst: null,
     verdict: x.verdict ?? null,
   };
@@ -45,8 +46,6 @@ export function build(sym, name, price, chg, sector, cap, x = {}) {
    THE CURATED UNIVERSE
    These are the exact instruments Matrix trades — an explicit product decision,
    not something derived from data. Sector is factual metadata. Market-cap tier
-   is NOT hardcoded: it is derived from the REAL market cap once fundamentals
-   load (see capTier), so it can never be stale or invented.
    --------------------------------------------------------------------------- */
 
 const stock = (sym, name, sector) => build(sym, name, null, null, sector, null);
@@ -322,9 +321,4 @@ export const GLOBAL_MKTS = [
  * Thresholds are a stated heuristic in INR (SEBI classifies by rank, not value,
  * and the rank list is not in our data): Large > ₹50,000 cr, Mid ₹15,000–50,000 cr.
  */
-export function capTier(marketCap) {
-  if (marketCap == null || Number.isNaN(marketCap)) return null;
-  if (marketCap >= 500e9) return "Large";   // ₹50,000 cr
-  if (marketCap >= 150e9) return "Mid";     // ₹15,000 cr
-  return "Small";
-}
+

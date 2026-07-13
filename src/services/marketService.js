@@ -55,13 +55,6 @@ export async function getIndicators(ySyms) {
   return d ? (d.indicators || null) : null;
 }
 
-/** Real fundamentals + institutional holders, keyed by Yahoo symbol. */
-export async function getFundamentals(ySyms) {
-  if (!ySyms || !ySyms.length) return null;
-  const d = await get(`/api/fundamentals?symbols=${encodeURIComponent(ySyms.join(","))}`);
-  return d ? (d.fundamentals || null) : null;
-}
-
 /** Backend diagnostics: which LLM engines and storage the server actually sees. */
 export async function getHealth() {
   return get("/api/health");

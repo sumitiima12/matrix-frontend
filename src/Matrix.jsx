@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
-import { fetchFundamentals, fetchIndicators, fetchTrades, marketOpen, postTrade, resolveExitFromCandles, fetchLiveQuotes } from "./domain/api";
+import { fetchIndicators, fetchTrades, marketOpen, postTrade, resolveExitFromCandles, fetchLiveQuotes } from "./domain/api";
 import {
   Search, User, Wallet, Home, Repeat, Lightbulb, Bot, Bolt, Briefcase,
   Star, TrendingUp, TrendingDown, X, ChevronRight, Send, Plus, Trash2,
@@ -17,7 +17,7 @@ import {
 import { BACKEND_URL, MATRIX_PERSONA, TF_YF } from "./config";
 import { CUR, MKT_LABEL, fmt, compact, clamp, hash, lcg, DAY, timeAgo, lsGet, lsSet, getUserId } from "./lib/format";
 import { smaSeries, emaSeries as emaSeriesC, bollingerSeries, macdSeries, rsiSeries, OVERLAYS, CHART_TFS } from "./lib/indicators";
-import { getQuotes, getHistory, getNews, getIndicators, getFundamentals } from "./services/marketService";
+import { getQuotes, getHistory, getNews, getIndicators } from "./services/marketService";
 import { ask as aiAsk, interpretScreen, interpretStrategy, marketBrief } from "./services/aiService";
 import { saveTrade as apiSaveTrade, listTrades, register as apiRegisterSvc, login as apiLoginSvc } from "./services/tradeService";
 import { validateOrder, isMarketOpen, DEFAULT_LIMITS } from "./services/riskService";
@@ -323,7 +323,8 @@ export default function App() {
     let arr = [...UNIVERSE[market]];
     if (profile) {
       arr.sort((a, b) => {
-        const score = (s) => (profile.caps.length && profile.caps.includes(s.cap) ? 3 : 0) + (profile.sectors.includes(s.sector) ? 3 : 0) + (profile.risk === "Aggressive" ? s.chg : profile.risk === "Conservative" ? -Math.abs(s.chg) + (s.cap === "Large" ? 2 : 0) : (s.rsi != null ? (s.rsi - 50) / 10 : 0));
+        /* No cap tier: market cap came from fundamentals, which has no feed. */
+        const score = (s) => (profile.sectors.includes(s.sector) ? 3 : 0) + (profile.risk === "Aggressive" ? s.chg : profile.risk === "Conservative" ? -Math.abs(s.chg) : (s.rsi != null ? (s.rsi - 50) / 10 : 0));
         return score(b) - score(a);
       });
     }
