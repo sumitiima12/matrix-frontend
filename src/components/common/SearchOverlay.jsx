@@ -54,11 +54,15 @@ export default function SearchOverlay({ onClose, onOpen }) {
   const results = useMemo(() => {
     const pool = Array.isArray(ALL) ? ALL : [];
 
-    // Empty box: 5 suggestions, spread across markets.
+    // Empty box: 5 suggestions spread across markets — expandable to the whole
+    // universe via "Show more" (it previously had no way to expand at all).
     if (!matches) {
-      return SPREAD.flatMap(([mkt, n]) =>
+      const five = SPREAD.flatMap(([mkt, n]) =>
         pool.filter((s) => marketOf(s.sym) === mkt && !s.isIndex).slice(0, n)
       );
+      if (!all) return five;
+      const rest = pool.filter((s) => !five.some((f) => f.sym === s.sym));
+      return [...five, ...rest];
     }
 
     // With a query, relevance wins — a search for "TCS" should not be padded out
@@ -66,7 +70,8 @@ export default function SearchOverlay({ onClose, onOpen }) {
     return all ? matches.slice(0, 60) : matches.slice(0, 5);
   }, [matches, all]);
 
-  const hidden = matches ? Math.max(0, matches.length - results.length) : 0;
+  const total = matches ? matches.length : (Array.isArray(ALL) ? ALL.length : 0);
+  const hidden = Math.max(0, total - results.length);
 
   // A new query resets the expansion.
   const onType = (v) => { setQ(v); setAll(false); };
@@ -144,7 +149,7 @@ export default function SearchOverlay({ onClose, onOpen }) {
           </button>
         )}
 
-        {!matches && (
+        {!matches && !all && (
           <div style={{ fontSize: 11, color: "var(--muted)", textAlign: "center", marginTop: 14 }}>
             Start typing a symbol or company name.
           </div>

@@ -1,14 +1,14 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { defOperands, chainCode, IND_CATALOG, TEMPLATES } from "../domain/strategyLang";
 import { backtest, parseRules } from "../domain/backtest";
-import { ACTIVATE_SYMS, SEED_STRATS, stratPerf } from "../domain/strategies";
+import { stratPerf } from "../domain/strategies";
 import { Activity, Bell, Bolt, Check, Pause, Play, Plus, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
 import { Area, AreaChart, Bar, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { BACKEND_URL } from "../config";
 import { chgColor, clamp, fmt, pct } from "../lib/format";
 import { useBacktestStats } from "../hooks/useBacktestStats";
 import { SMAarr, EMAarr, RSIarr, MACDarr, BBarr, CCIarr, ATRarr, VWAParr, ADXarr, CF } from "../lib/series";
-import { ALL, FNO, marketOf } from "../domain/universe";
+import { ALL, FNO, UNIVERSE, marketOf } from "../domain/universe";
 import { aiInterpretStrategy } from "../domain/api";
 import { useCandles } from "../hooks/useCandles";
 import MultiSelect from "../components/common/MultiSelect";
@@ -19,8 +19,11 @@ import { selStyle } from "../components/common/styles";
  */
 
 
-function BacktestResult({ cfg }) {
-  const [sym, setSym] = useState("RELIANCE");
+function BacktestResult({ cfg, defaultSym }) {
+  // Default to the symbol the strategy is ACTIVATED on. Backtesting a NIFTY50
+  // strategy against RELIANCE by default tests something you never deployed.
+  const [sym, setSym] = useState(defaultSym || "RELIANCE");
+  useEffect(() => { if (defaultSym) setSym(defaultSym); }, [defaultSym]);
   const iso = (d) => new Date(d).toISOString().slice(0, 10);
   const [from, setFrom] = useState(iso(Date.now() - 180 * 864e5));
   const [to, setTo] = useState(iso(Date.now()));
@@ -123,7 +126,12 @@ function BacktestResult({ cfg }) {
 const TFS = ["3m", "5m", "15m", "30m", "1h", "4h", "1D"];
 const OPSET = [[">", ">"], ["<", "<"], [">=", "≥"], ["<=", "≤"], ["==", "="], ["crosses_above", "⤴ crosses above"], ["crosses_below", "⤵ crosses below"]];
 
-function TemplateCard({ t, onActivate, onToggleBt, btActive }) {
+function TemplateCard({ t, onActivate, onToggleBt, btActive, market = "IN" }) {
+  // Only symbols that belong to the market you are looking at.
+  const symbolOptions = useMemo(() => {
+    if (market === "FNO") return FNO.map((s) => s.sym);
+    return (UNIVERSE[market] || []).map((s) => s.sym);
+  }, [market]);
   const [syms, setSyms] = useState([]);
   return (
     <div className="card" style={{ flex: "0 0 auto", width: 250, padding: 14 }}>
@@ -132,10 +140,21 @@ function TemplateCard({ t, onActivate, onToggleBt, btActive }) {
         <span className="pill" style={{ fontSize: 10, background: "var(--primary-soft)", color: "var(--primary)", fontWeight: 700, padding: "2px 8px" }}>{t.tag}</span>
       </div>
       <pre className="mono" style={{ fontSize: 10, background: "var(--bg)", borderRadius: 12, padding: 10, marginTop: 10, whiteSpace: "pre-wrap", lineHeight: 1.4 }}>{t.code}</pre>
-      <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, margin: "10px 0 6px" }}>Select symbol(s) to activate on</div>
-      <MultiSelect label="Symbols" options={ACTIVATE_SYMS} value={syms} onChange={setSyms} allLabel="Choose…" />
+      <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, margin: "10px 0 6px" }}>Symbol to activate on</div>
+      {/* One symbol, from THIS market. The old picker was a multi-select over a
+          fixed cross-market list, so TSLA and NVDA showed up while you were on
+          Indian equity — symbols the strategy could never sensibly trade. */}
+      <select
+        value={syms[0] || ""}
+        onChange={(e) => setSyms(e.target.value ? [e.target.value] : [])}
+        aria-label="Symbol to activate this strategy on"
+        style={{ ...selStyle, width: "100%" }}
+      >
+        <option value="">Choose a symbol…</option>
+        {symbolOptions.map((sym) => <option key={sym} value={sym}>{sym}</option>)}
+      </select>
       <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-        <button disabled={!syms.length} onClick={() => syms.length && onActivate(t, syms)} className="tap pill" style={{ flex: 1, border: "none", background: syms.length ? "linear-gradient(120deg,var(--primary),var(--primary-2))" : "var(--elev)", color: syms.length ? "var(--on-primary)" : "var(--muted)", fontWeight: 700, fontSize: 11.5, padding: 9, cursor: syms.length ? "pointer" : "not-allowed", opacity: syms.length ? 1 : 0.7 }}>Activate{syms.length ? ` (${syms.length})` : ""}</button>
+        <button disabled={!syms.length} onClick={() => syms.length && onActivate(t, syms)} className="tap pill" style={{ flex: 1, border: "none", background: syms.length ? "linear-gradient(120deg,var(--primary),var(--primary-2))" : "var(--elev)", color: syms.length ? "var(--on-primary)" : "var(--muted)", fontWeight: 700, fontSize: 11.5, padding: 9, cursor: syms.length ? "pointer" : "not-allowed", opacity: syms.length ? 1 : 0.7 }}>Activate</button>
         <button onClick={() => onToggleBt(t.name)} className="tap pill" style={{ flex: "0 0 auto", border: "1px solid " + (btActive ? "var(--primary)" : "var(--line)"), background: btActive ? "var(--primary-soft)" : "var(--surface)", fontWeight: 700, fontSize: 11.5, padding: "9px 11px", color: btActive ? "var(--primary)" : "var(--ink)", display: "flex", gap: 4, alignItems: "center" }}><Activity size={13} /> Test</button>
       </div>
     </div>
@@ -270,7 +289,7 @@ function SampleStrategyCard({ s, onActivate }) {
   );
 }
 
-export default function Automation({ market = "IN", onRecord, onBuyReal, trades = [] }) {
+export default function Automation({ market = "IN", onRecord, trades = [], strats = [], setStrats }) {
   const [mode, setMode] = useState("builder");
   const [defs, setDefs] = useState([
     { id: 1, type: "EMA", len: "50", tf: "1D", name: "EMA1" },
@@ -293,7 +312,12 @@ export default function Automation({ market = "IN", onRecord, onBuyReal, trades 
   const [tf, setTf] = useState("5m");
   const [deploySyms, setDeploySyms] = useState(["NIFTY50"]);
   const [symFilter, setSymFilter] = useState([]);
-  const DEPLOY_OPTIONS = useMemo(() => FNO.map((s) => s.sym), []);
+  /* Symbols for the market you are actually on. This was hardcoded to the F&O
+     list, so on the US or Crypto tab the builder offered you Indian F&O names —
+     symbols the strategy would then try (and fail) to trade in that wallet. */
+  const DEPLOY_OPTIONS = useMemo(() => (
+    market === "FNO" ? FNO.map((s) => s.sym) : (UNIVERSE[market] || []).map((s) => s.sym)
+  ), [market]);
   const [pEntry, setPEntry] = useState("Buy when EMA 9 crosses above EMA 21 and RSI is above 55.");
   const [pExit, setPExit] = useState("Exit when RSI crosses above 85 or MACD histogram becomes negative or MACD line crosses below MACD signal line.");
   const [aiStrat, setAiStrat] = useState(null); const [aiStratBusy, setAiStratBusy] = useState(false);
@@ -304,7 +328,7 @@ export default function Automation({ market = "IN", onRecord, onBuyReal, trades 
     if (out) { setAiStrat(out); const sm = out.match(/STOP:\s*(\d+)/i); const tm = out.match(/TARGET:\s*(\d+)/i); if (sm) setSl(sm[1]); if (tm) setTp(tm[1]); }
     else setAiStrat("Couldn't reach the AI interpreter — this needs the backend deployed with a Groq (or other) key. The local parser still handles common phrasings.");
   };
-  const [strats, setStrats] = useState(SEED_STRATS);
+
   const [stratName, setStratName] = useState("");
   const [showBuilder, setShowBuilder] = useState(false);
   const [showBt, setShowBt] = useState(false);
@@ -357,8 +381,11 @@ export default function Automation({ market = "IN", onRecord, onBuyReal, trades 
     const strat = { id, name, by: "You", active: makeActive, alerts: false, cfg, cap: parseInt(capital) || 100000, symbols, created: Date.now() };
     setStrats((p) => [strat, ...p]);
     setStratName(""); setShowBuilder(false);
-    if (makeActive) recordAutomateTrades(id, name, cfg, symbols);
-    setToast(`${name} ${makeActive ? "deployed & running" : "saved as draft"}`);
+    setToast(makeActive
+      ? `${name} is live on ${symbols.join(", ")} — it will place orders when its rules trigger.`
+      : `${name} saved as a draft. Activate it to start trading.`);
+    setStratTab("mine");
+    setTimeout(() => stratsRef.current && stratsRef.current.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   };
   const activateTemplate = (t, syms) => {
     const symbols = syms && syms.length ? syms : ["NIFTY50"];
@@ -367,9 +394,9 @@ export default function Automation({ market = "IN", onRecord, onBuyReal, trades 
     // "My strategies". It was previously tagged "Matrix", which filed the user's own
     // running strategies under the samples.
     setStrats((p) => [{ id, name: t.name, by: "You", active: true, alerts: false, cfg: t.cfg, cap: 100000, symbols, created: Date.now() }, ...p]);
-    recordAutomateTrades(id, t.name, t.cfg, symbols);
-    setToast(`${t.name} activated on ${symbols.join(", ")}`);
+    setToast(`${t.name} is live on ${symbols.join(", ")} — it will place orders when its rules trigger.`);
     setStratTab("mine");
+    setTimeout(() => stratsRef.current && stratsRef.current.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   };
 
   /* "Use this strategy" on a sample: copy its rules and symbols into your own. */
@@ -378,17 +405,12 @@ export default function Automation({ market = "IN", onRecord, onBuyReal, trades 
   // Activating a strategy places REAL positions at the live price with the strategy's
   // target/stop. The exit engine then closes them at real market prices. Nothing is
   // fabricated — no invented history, no simulated win/loss.
-  const recordAutomateTrades = (stratId, name, cfg, symbols) => {
-    if (!onBuyReal) return;
-    const slp = (cfg && cfg.sl) || 3, tpp = (cfg && cfg.tp) || 6;
-    const per = Math.max(1, (parseInt(capital) || 100000) / Math.max(1, symbols.length));
-    symbols.forEach((sym) => {
-      const s = ALL.find((a) => a.sym === sym);
-      if (!s || !s.price) return;
-      const qty = Math.max(1, Math.floor(per / s.price));
-      onBuyReal(s, qty, { tp: tpp, sl: slp, tradeType: "Automate" });
-    });
-  };
+  /* recordAutomateTrades used to live here. It market-bought EVERY symbol the
+     instant a strategy was activated, never evaluated the entry rule, and never
+     sold anything. The rules were decoration. It is gone; hooks/useAutomation.js
+     now evaluates the real rules against real candles once a minute and places
+     both buys and sells. */
+
   const toggleActive = (id) => setStrats((p) => p.map((s) => s.id === id ? { ...s, active: !s.active } : s));
   const toggleAlerts = (s) => { const willOn = !s.alerts; setStrats((p) => p.map((x) => x.id === s.id ? { ...x, alerts: willOn } : x)); if (willOn) fireAlert(s); };
   const updateStrat = (id, patch) => setStrats((p) => p.map((s) => s.id === id ? { ...s, ...patch } : s));
@@ -411,6 +433,7 @@ export default function Automation({ market = "IN", onRecord, onBuyReal, trades 
        MINE    (created by the user): scored on their ACTUAL closed trades. A
                 strategy with no closed trades shows "—", not a made-up win rate. */
   const [stratTab, setStratTab] = useState("sample");
+  const stratsRef = useRef(null);
   const sampleStrats = perf.filter(({ s }) => s.by === "Matrix");
   const myStrats     = perf.filter(({ s }) => s.by !== "Matrix");
   const myActive     = myStrats.filter(({ s }) => s.active);
@@ -480,7 +503,7 @@ export default function Automation({ market = "IN", onRecord, onBuyReal, trades 
       )}
       {btOpen === s.id && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-          <BacktestResult cfg={s.cfg || { mode: "plain" }} />
+          <BacktestResult cfg={s.cfg || { mode: "plain" }} defaultSym={(s.symbols && s.symbols[0]) || undefined} />
         </div>
       )}
     </div>
@@ -536,7 +559,7 @@ export default function Automation({ market = "IN", onRecord, onBuyReal, trades 
               <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", margin: "18px 2px 10px", display: "flex", alignItems: "center", gap: 7 }}><Sparkles size={14} color="var(--primary)" /> Strategy Ideas — pick a symbol, then activate</div>
               <div className="hide-scroll" style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 2 }}>
                 {TEMPLATES.map((t) => (
-                  <TemplateCard key={t.name} t={t} onActivate={activateTemplate} onToggleBt={(n) => setBtTpl(btTpl === n ? null : n)} btActive={btTpl === t.name} />
+                  <TemplateCard key={t.name} t={t} market={market} onActivate={activateTemplate} onToggleBt={(n) => setBtTpl(btTpl === n ? null : n)} btActive={btTpl === t.name} />
                 ))}
               </div>
               {btTpl && (
@@ -545,7 +568,7 @@ export default function Automation({ market = "IN", onRecord, onBuyReal, trades 
                     <span className="disp" style={{ fontWeight: 700, fontSize: 13.5 }}>Backtest · {btTpl} <span style={{ color: "var(--muted)", fontWeight: 600, fontSize: 11 }}>· pick a stock or index</span></span>
                     <X size={18} className="tap" color="var(--muted)" onClick={() => setBtTpl(null)} />
                   </div>
-                  <BacktestResult cfg={(TEMPLATES.find((x) => x.name === btTpl) || {}).cfg} />
+                  <BacktestResult cfg={(TEMPLATES.find((x) => x.name === btTpl) || {}).cfg} defaultSym={(syms && syms[0]) || undefined} />
                 </div>
               )}
 
@@ -655,7 +678,7 @@ export default function Automation({ market = "IN", onRecord, onBuyReal, trades 
       )}
 
       {/* Strategies — Sample (Matrix-authored) vs My strategies (yours) */}
-      <div className="disp" style={{ fontWeight: 700, fontSize: 18, margin: "28px 2px 4px" }}>Strategies</div>
+      <div ref={stratsRef} className="disp" style={{ fontWeight: 700, fontSize: 18, margin: "28px 2px 4px", scrollMarginTop: 80 }}>Strategies</div>
       <div className="gold-line" style={{ width: 44, margin: "0 0 14px 2px", borderRadius: 2 }} />
 
       <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>

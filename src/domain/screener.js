@@ -1,4 +1,3 @@
-import React from "react";
 
 /* Technicals only. P/E, revenue growth, EBITDA growth and ROE are gone: there is
    no fundamentals feed (Yahoo quoteSummary blocks datacenter IPs), so a screener

@@ -1,5 +1,5 @@
-import React from "react";
-import { AlertTriangle, X } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { AlertTriangle, Minus, Plus, X } from "lucide-react";
 import { fmt, pct } from "../../lib/format";
 
 /**
@@ -14,9 +14,16 @@ import { fmt, pct } from "../../lib/format";
  * it says so here rather than letting the risk engine reject it after the tap.
  */
 export default function ConfirmOrder({ order, wallet, onConfirm, onCancel }) {
+  const { s, qty: initialQty, side, market, lot = 1 } = order || {};
+
+  // Quantity is EDITABLE here. The confirmation step is the last place you can
+  // still change your mind about size, so making it read-only meant cancelling
+  // and starting over just to buy two instead of one.
+  const [qty, setQty] = useState(initialQty || 1);
+  useEffect(() => { setQty(initialQty || 1); }, [initialQty, order && order.s && order.s.sym]);
+
   if (!order) return null;
 
-  const { s, qty, side, market, lot = 1 } = order;
   const price = s.price;
   const units = qty * (lot || 1);
   const total = price != null ? price * units : null;
@@ -57,7 +64,47 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel }) {
 
         <div style={{ marginTop: 10 }}>
           <Row k="Action" v={side} c={side === "BUY" ? "var(--up)" : "var(--down)"} />
-          <Row k={lot > 1 ? `Quantity (${qty} lot${qty === 1 ? "" : "s"} × ${lot})` : "Quantity"} v={units} />
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
+            <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>
+              {lot > 1 ? `Quantity (lots of ${lot})` : "Quantity"}
+            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <button
+                onClick={() => setQty((q) => Math.max(1, q - 1))}
+                disabled={qty <= 1}
+                aria-label="Decrease quantity"
+                className="tap"
+                style={{ width: 30, height: 30, borderRadius: 9, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", display: "grid", placeItems: "center", cursor: qty <= 1 ? "not-allowed" : "pointer", opacity: qty <= 1 ? 0.45 : 1 }}
+              >
+                <Minus size={14} />
+              </button>
+              <input
+                value={qty}
+                onChange={(e) => {
+                  const v = parseInt(String(e.target.value).replace(/[^0-9]/g, ""), 10);
+                  setQty(Number.isFinite(v) && v > 0 ? v : 1);
+                }}
+                inputMode="numeric"
+                aria-label="Quantity"
+                className="mono no-ring"
+                style={{ width: 56, textAlign: "center", border: "1px solid var(--line)", borderRadius: 9, padding: "6px 4px", fontWeight: 800, fontSize: 13, background: "var(--elev)", color: "var(--ink)" }}
+              />
+              <button
+                onClick={() => setQty((q) => q + 1)}
+                aria-label="Increase quantity"
+                className="tap"
+                style={{ width: 30, height: 30, borderRadius: 9, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", display: "grid", placeItems: "center", cursor: "pointer" }}
+              >
+                <Plus size={14} />
+              </button>
+            </div>
+          </div>
+          {lot > 1 && (
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+              <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>Total units</span>
+              <span className="mono" style={{ fontSize: 13, fontWeight: 800 }}>{units}</span>
+            </div>
+          )}
           <Row k="Live price" v={fmt(price, market)} />
           <Row k="Order value" v={total != null ? fmt(total, market) : "—"} />
           <Row k="Wallet after" v={after != null ? fmt(after, market) : "—"} c={short ? "var(--down)" : undefined} />
@@ -87,7 +134,7 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel }) {
             Cancel
           </button>
           <button
-            onClick={onConfirm}
+            onClick={() => onConfirm(qty)}
             disabled={price == null || short}
             className="tap disp"
             style={{

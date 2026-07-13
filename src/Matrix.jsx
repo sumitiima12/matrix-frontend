@@ -28,6 +28,7 @@ import { analyzeJournal } from "./services/journalService";
 import BuyButton from "./components/common/BuyButton";
 import { PATTERNS, TF_N } from "./lib/patterns";
 import { ALL, UNIVERSE, IN_STOCKS, US_STOCKS, CRYPTO, COMMODITY, FNO, marketOf, yahooSymbol, istParts, marketHoursLabel } from "./domain/universe";
+import { SEED_STRATS } from "./domain/strategies";
 import { makeFuture, lotSize, LOTS, currentExpiry } from "./domain/fno";
 import { techSignal, dailyPicks } from "./domain/signals";
 import Change from "./components/common/Change";
@@ -209,6 +210,11 @@ export default function App() {
      top-ups are handled (folded into a derived opening balance, not invented). */
   const [deposits, setDeposits] = useState([]);
 
+  /* Strategies live at APP ROOT, not inside the Automation page. They used to be
+     page-local state, so they were thrown away the moment you navigated to Home —
+     an "always-on" strategy that only existed while you were looking at it. */
+  const [strats, setStrats] = useState(SEED_STRATS);
+
   const wallet = walletMap[market] ?? 1000000;
   const { trades, setTrades, recordTrade, recordBatch, placeOrder, riskLimits, setRiskLimits } =
     useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, userId, broker, notify });
@@ -229,10 +235,27 @@ export default function App() {
   const buyStockNow  = (stock, qty = 1, opts = {}) => { placeOrder({ stock, side: "BUY",  qty, opts }); return true; };
   const sellStockNow = (stock, qty = 1, opts = {}) => { placeOrder({ stock, side: "SELL", qty, opts }); return true; };
 
-  const runConfirmedOrder = () => {
+  /* THE AUTOMATION LOOP. Evaluates every active strategy's entry/exit rules
+     against real candles once a minute and places real orders through the normal
+     pipeline. Automated orders skip the confirm dialog on purpose. */
+  useAutomation({ strats, onBuy: buyStockNow, onSell: sellStockNow, userId, enabled: !!auth });
+
+  /* Wake the backend the moment the app opens. Render's free tier sleeps after 15
+     minutes, and the first request then pays a ~30s cold start — which is why the
+     screener's AI call "timed out" while Groq itself answers in under a second.
+     A cheap /health ping on load means the server is awake before you need it. */
+  useEffect(() => {
+    if (!BACKEND_URL) return;
+    fetch(`${BACKEND_URL}/health`).catch(() => {});
+  }, []);
+
+  /* Takes the quantity from the sheet, NOT the one we opened with — the user can
+     change it there, and ignoring that would place a different order than the one
+     they confirmed. */
+  const runConfirmedOrder = (finalQty) => {
     if (!confirmOrder) return;
     const { s, qty, side, opts } = confirmOrder;
-    placeOrder({ stock: s, side, qty, opts });
+    placeOrder({ stock: s, side, qty: finalQty || qty, opts });
     setConfirmOrder(null);
   };
   const [priceSnap, setPriceSnap] = useState({});
@@ -247,6 +270,7 @@ export default function App() {
     setPortfolio((st && st.portfolio) || []);
     setWalletMap((st && st.walletMap) || { IN: 1000000, US: 1000000, Crypto: 1000000, FNO: 1000000, Commodity: 1000000 });
     setDeposits((st && st.deposits) || []);
+    setStrats((st && st.strats) || SEED_STRATS);
     const wl = (st && st.watchlists) || [{ id: "w1", name: "My Watchlist", syms: ["RELIANCE", "TCS"] }];
     setWatchlists(wl); setActiveWl(wl[wl.length - 1] ? wl[wl.length - 1].id : "w1");
     setProfile((st && st.profile) || null);
@@ -256,7 +280,7 @@ export default function App() {
     if (BACKEND_URL) fetchTrades(userId, 0, Date.now()).then((t) => { if (t && t.length) setTrades(t); }).catch(() => {});
   }, [userId]);
   // Persist per-user (only after this user's data has been hydrated, to avoid clobbering).
-  useEffect(() => { if (hydratedUser === userId) lsSet("mx_state_" + userId, { portfolio, walletMap, watchlists, profile, onboardSkipped, deposits }); }, [portfolio, walletMap, watchlists, profile, onboardSkipped, deposits, hydratedUser, userId]);
+  useEffect(() => { if (hydratedUser === userId) lsSet("mx_state_" + userId, { portfolio, walletMap, watchlists, profile, onboardSkipped, deposits, strats }); }, [portfolio, walletMap, watchlists, profile, onboardSkipped, deposits, strats, hydratedUser, userId]);
   useEffect(() => { if (hydratedUser === userId) lsSet("mx_trades_" + userId, trades); }, [trades, hydratedUser, userId]);
   const [drawer, setDrawer] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -399,7 +423,7 @@ export default function App() {
               {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} trades={trades} liveTick={liveTick} onWhy={openWhy} />}
               {tab === "trade" && <TradeView walletMap={walletMap} adjustWallet={adjustWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} recordTrade={recordTrade} />}
               {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} market={market} onWhy={openWhy} />}
-              {tab === "automation" && <Automation market={market} onRecord={recordTrade} onBuyReal={buyStockNow} trades={trades} />}
+              {tab === "automation" && <Automation market={market} onRecord={recordTrade} trades={trades} strats={strats} setStrats={setStrats} />}
               {tab === "portfolio" && <Portfolio portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} onBuy={buyStock} onSell={sellStock} onUpdate={updateHolding} priceSnap={priceSnap} onWhy={openWhy} onOpen={openStock} />}
               {tab === "watchlist" && <WatchlistView watchlists={watchlists} activeWl={activeWl} setActiveWl={setActiveWl} createWatchlist={createWatchlist} deleteWatchlist={deleteWatchlist} toggleWatch={toggleWatch} onOpen={openStock} />}
               {tab === "ask" && (

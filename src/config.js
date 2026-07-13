@@ -6,7 +6,7 @@
 // 🔴 REQUIRED: your Render backend URL (no trailing slash).
 // While empty, the app runs with no live data: no prices, charts, indicators,
 // news, AI or trade sync. Matrix never fabricates data to fill the gap.
-export const BACKEND_URL = "https://matrix-qp1i.onrender.com";
+export const BACKEND_URL = "";
 
 export const isLive = () => Boolean(BACKEND_URL);
 

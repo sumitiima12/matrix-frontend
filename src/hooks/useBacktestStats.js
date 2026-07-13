@@ -40,10 +40,15 @@ export function useBacktestStats(strat) {
         const cap = strat.cap || 100000;
         const perSym = cap / syms.length;
 
-        /* Try 6 months. If the real history is too short for that, fall back to 1
-           month and SAY SO — a 1-month window is a weaker basis for a win rate, and
-           the label has to admit that. If even a month is not there, we report no
-           result rather than stretching whatever we have into a number. */
+        /* WARM-UP MATTERS.
+           Indicators need history before they mean anything: a 200-day SMA is NaN
+           until the 200th bar. Slicing the candles to a 6-month window (126 bars)
+           and THEN running the strategy meant every rule touching the 50- or
+           200-DMA was comparing against NaN for the whole window and could never
+           fire — which is why the trade counts looked implausibly low.
+
+           So: run over the FULL history (indicators warm up properly), then count
+           only the trades that ENTERED inside the window we're reporting on. */
         const attempt = (months) => {
           const bars = Math.round(months * 21);
           const trades = [];
@@ -51,10 +56,13 @@ export function useBacktestStats(strat) {
           let usable = 0;
 
           sets.forEach((c) => {
-            if (!c || c.length < bars * 0.6) return;   // not enough real history for this window
+            if (!c || c.length < 30) return;
             usable += 1;
-            const r = backtest(cfg, c.slice(-bars));
-            r.trades.forEach((t) => { trades.push(t); pnl += perSym * t.ret; });
+            const from = Math.max(0, c.length - bars);      // window start index
+            const r = backtest(cfg, c);                      // FULL history: real warm-up
+            r.trades
+              .filter((t) => t.entryIdx >= from)             // only trades inside the window
+              .forEach((t) => { trades.push(t); pnl += perSym * t.ret; });
           });
 
           return usable ? { trades, pnl, usable } : null;

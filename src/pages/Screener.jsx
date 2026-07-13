@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { METRICS, OPS, indValue, matchScreen, parseScreen } from "../domain/screener";
 import ListRow from "../components/cards/ListRow";
 import { selStyle } from "../components/common/styles";
@@ -33,6 +33,30 @@ export default function Screener({ onOpen, market, list, watchlists, addToWatch,
     }));
     setResults(ok);
   };
+  const [timedOut, setTimedOut] = useState(false);
+  const cancelled = useRef(null);   // a chip tap cancels the in-flight interpretation
+
+  /* Every one of these is parsed LOCALLY — no backend, no AI, no waiting. We only
+     suggest prompts we know for a fact will work; suggesting something that also
+     fails would be worse than saying nothing. */
+  const SUGGESTIONS = [
+    "RSI > 60",
+    "RSI below 30",
+    "ADX > 25",
+    "price above 200-DMA",
+    "RSI > 60 and ADX > 25",
+    "banking stocks with RSI > 55",
+  ];
+
+  const useSuggestion = (q) => {
+    cancelled.current = text;      // ignore whatever the model was chewing on
+    setText(q);
+    setTimedOut(false);
+    const res = parseScreen(q);
+    setParsedNote("Applied: " + res.note.join(" · "));
+    setResults(matchScreen(list, res));
+  };
+
   const runScreener = async () => {
     if (text.trim()) {
       setSelRec(null);
@@ -42,16 +66,44 @@ export default function Screener({ onOpen, market, list, watchlists, addToWatch,
         setResults(matchScreen(list, res));
         return;
       }
-      // Fallback: ask the LLM (Groq) to interpret the plain text into conditions.
-      setAiBusy(true); setParsedNote("Asking Matrix to interpret…");
-      const conds = await aiInterpretScreen(text);
+      /* Fall back to the LLM — but on a LEASH. It used to be a bare await, so if
+         the backend was cold-starting, missing a key, or just slow, the button sat
+         on "Interpreting…" forever with no way out. Two seconds, then we give up
+         and say so. Whichever finishes first wins. */
+      setAiBusy(true);
+      setParsedNote("Asking Matrix to interpret…");
+      setTimedOut(false);
+
+      /* Don't THROW AWAY a slow answer — just stop blocking on it. If the model
+         comes back after we've already offered the fallback chips, apply it then.
+         The server is pre-warmed on app load, so 5s is generous; the old 2s was
+         racing a cold Render instance, not Groq. */
+      const pending = aiInterpretScreen(text).catch(() => null);
+
+      pending.then((late) => {
+        if (late && late.length && cancelled.current !== text) {
+          setFilters(late);
+          setTimedOut(false);
+          setParsedNote("AI interpreted: " + late.map((c) => `${c.m} ${c.o} ${c.rhsType === "indicator" ? c.rhs : c.v}${c.tf && c.tf !== "1d" ? " · " + c.tf : ""}`).join(" · "));
+          apply(late);
+        }
+      });
+
+      const conds = await Promise.race([
+        pending,
+        new Promise((r) => setTimeout(() => r("TIMEOUT"), 5000)),
+      ]);
       setAiBusy(false);
-      if (conds && conds.length) {
+
+      if (conds && conds !== "TIMEOUT" && conds.length) {
         setFilters(conds);
         setParsedNote("AI interpreted: " + conds.map((c) => `${c.m} ${c.o} ${c.rhsType === "indicator" ? c.rhs : c.v}${c.tf && c.tf !== "1d" ? " · " + c.tf : ""}`).join(" · "));
         apply(conds);
       } else {
-        setParsedNote("Couldn't understand — try the builder above, or e.g. 'EMA21 > EMA50 with RSI > 60 on 15m'. (AI interpretation needs the backend + a Groq key.)");
+        setParsedNote(conds === "TIMEOUT"
+          ? "Couldn't interpret that in time."
+          : "Couldn't interpret that.");
+        setTimedOut(true);
         setResults([]);
       }
     } else { setParsedNote(null); apply(filters); }
@@ -101,7 +153,27 @@ export default function Screener({ onOpen, market, list, watchlists, addToWatch,
           style={{ width: "100%", marginTop: 6, border: "1px solid var(--line)", borderRadius: 12, padding: 11, fontSize: 13, minHeight: 60, resize: "vertical" }} />
 
         <button onClick={runScreener} disabled={aiBusy} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--primary)", color: "var(--on-primary)", border: "none", borderRadius: 14, padding: 13, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: aiBusy ? 0.6 : 1 }}><Filter size={16} /> {aiBusy ? "Interpreting…" : "Run screener"}</button>
-        {parsedNote && <div style={{ fontSize: 11, color: parsedNote.startsWith("Applied") ? "var(--up)" : "var(--amber)", marginTop: 8, fontWeight: 600, lineHeight: 1.5 }}>{parsedNote.startsWith("Applied") ? "✓ " : "⚠ "}{parsedNote}</div>}
+        {parsedNote && <div style={{ fontSize: 11, color: parsedNote.startsWith("Applied") || parsedNote.startsWith("AI interpreted") ? "var(--up)" : "var(--amber)", marginTop: 8, fontWeight: 600, lineHeight: 1.5 }}>{parsedNote.startsWith("Applied") || parsedNote.startsWith("AI interpreted") ? "✓ " : "⚠ "}{parsedNote}</div>}
+
+        {timedOut && (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 600, marginBottom: 7 }}>
+              Try one of these — they run instantly, no AI needed:
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {SUGGESTIONS.map((q) => (
+                <button
+                  key={q}
+                  onClick={() => useSuggestion(q)}
+                  className="tap mono"
+                  style={{ border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", borderRadius: 9, padding: "6px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {results && (

@@ -1,4 +1,3 @@
-import React from "react";
 import { ALL, marketOf } from "../domain/universe";
 import { techSignal } from "../domain/signals";
 

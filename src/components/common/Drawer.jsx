@@ -43,8 +43,10 @@ export default function Drawer({ s, onClose, onDetails, onBuy }) {
   }, [s?.sym]);
 
   const onTS = (e) => { startY.current = e.touches[0].clientY; };
-  const onTM = (e) => { if (startY.current == null) return; setDy(e.touches[0].clientY - startY.current); };
-  const onTE = () => { const d = dy; setDy(0); startY.current = null; if (d < -55) onDetails && onDetails(); else if (d > 90) onClose && onClose(); };
+  const onTM = (e) => { if (startY.current == null) return; setDy(Math.max(0, e.touches[0].clientY - startY.current)); };  // down only
+  /* Swipe DOWN closes. Swiping UP used to jump to the detail page — which read as
+     "scrolling up closed my drawer". Gone; use the button to open details. */
+  const onTE = () => { const d = dy; setDy(0); startY.current = null; if (d > 90) onClose && onClose(); };
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(10,10,20,.32)", zIndex: 60, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
       <div
