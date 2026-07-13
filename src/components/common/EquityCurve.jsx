@@ -93,17 +93,24 @@ export default function EquityCurve({ market = "IN", portfolio, trades, deposits
         )}
       </div>
 
-      <div style={{ display: "flex", gap: 5, marginTop: 11 }}>
+      {/* Small segmented toggle, not two full-width buttons. */}
+      <div
+        style={{
+          display: "inline-flex", gap: 2, marginTop: 10, padding: 2,
+          borderRadius: 9, background: "var(--elev)", border: "1px solid var(--line)",
+        }}
+      >
         {[["value", "Value"], ["pnl", "P&L"]].map(([k, label]) => (
           <button
             key={k}
             onClick={() => setMode(k)}
             className="tap disp"
             style={{
-              flex: 1, borderRadius: 9, padding: "6px 4px", fontSize: 11.5, fontWeight: 800, cursor: "pointer",
-              border: "1px solid " + (mode === k ? "var(--primary)" : "var(--line)"),
-              background: mode === k ? "var(--primary-soft)" : "transparent",
-              color: mode === k ? "var(--primary)" : "var(--muted)",
+              border: "none", borderRadius: 7, padding: "4px 12px",
+              fontSize: 10.5, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap",
+              background: mode === k ? "var(--surface)" : "transparent",
+              color: mode === k ? "var(--ink)" : "var(--muted)",
+              boxShadow: mode === k ? "0 1px 3px rgba(0,0,0,.14)" : "none",
             }}
           >
             {label}
@@ -111,7 +118,7 @@ export default function EquityCurve({ market = "IN", portfolio, trades, deposits
         ))}
       </div>
 
-      <div style={{ display: "flex", gap: 5, marginTop: 7 }}>
+      <div style={{ display: "flex", gap: 5, marginTop: 9 }}>
         {RANGES.map(([d, label]) => (
           <button
             key={d}

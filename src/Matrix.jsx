@@ -445,7 +445,11 @@ export default function App() {
           onClose={() => setWalletOpen(false)}
         />
       )}
-      {search && <SearchOverlay onClose={() => setSearch(false)} onOpen={openStock} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} />}
+      {search && (
+        <ErrorBoundary name="Search">
+          <SearchOverlay onClose={() => setSearch(false)} onOpen={openStock} />
+        </ErrorBoundary>
+      )}
       {showProfile && <ProfileSheet profile={profile} walletMap={walletMap} portfolio={portfolio} trades={trades} deposits={deposits} market={market} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={doLogout} onPersonalise={() => setRepersonalise(true)} />}
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} onAuthed={onAuthed} />}
       {histOpen && <TradeHistory userId={userId} trades={trades} onClose={() => setHistOpen(false)} />}

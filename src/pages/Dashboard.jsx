@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { currentIdeas } from "../domain/ideas";
 import { dailyPicks, techSignal } from "../domain/signals";
-import { Activity, Building2, ChevronRight, Lightbulb, Newspaper, Pencil, Plus, Sparkles, TrendingUp, Zap } from "lucide-react";
+import { Activity, Building2, ChevronRight, Lightbulb, Newspaper, Pencil, Sparkles, TrendingUp, Zap } from "lucide-react";
 import { BACKEND_URL } from "../config";
 import { CUR, DAY, chgColor, clamp, compact, fmt, lsGet, lsSet, pct, timeAgo } from "../lib/format";
 import { ALL, FNO, GLOBAL_MKTS, UNIVERSE, marketOf } from "../domain/universe";
@@ -151,7 +151,14 @@ function StockIdeasStrip({ onOpen, onBuy, market, liveTick = 0 }) {
                 <div><div style={{ color: "var(--muted)", fontSize: 9 }}>Target</div><span className="mono" style={{ fontWeight: 700 }}>{fmt(idea.exit, m)}</span></div>
                 <div style={{ textAlign: "right" }}><div style={{ color: "var(--muted)", fontSize: 9 }}>Left</div><span className="mono" style={{ fontWeight: 800, color: potLeft >= 0 ? "var(--up)" : "var(--muted)" }}>{potLeft >= 0 ? "+" + potLeft.toFixed(1) + "%" : "hit"}</span></div>
               </div>
-              {s && onBuy && <button onClick={(e) => { e.stopPropagation(); onBuy(s, 1); }} className="tap disp" style={{ width: "100%", marginTop: 10, background: "linear-gradient(120deg,var(--up),#0EA968)", color: "#fff", border: "none", borderRadius: 11, padding: 9, fontWeight: 800, fontSize: 12, display: "flex", gap: 5, alignItems: "center", justifyContent: "center" }}><Plus size={14} /> Buy Now</button>}
+              {/* The shared control. This was the last bespoke buy button left: it
+                  silently bought qty 1 with no way to change it. */}
+              {s && onBuy && (
+                <div style={{ marginTop: 10 }} onClick={(e) => e.stopPropagation()}>
+                  <BuyButton s={s} market={m} onBuy={onBuy} lot={s.lot || 1} fullWidth
+                    opts={{ tp: idea.gain, sl: idea.stop, tradeType: "Manual" }} />
+                </div>
+              )}
             </div>
           );
         })}
@@ -580,7 +587,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       </div>
 
       {profile && (
-        <div className="card metal" style={{ marginTop: 14, padding: 14, background: "var(--feature-grad)", border: "none", color: "#fff" }}>
+        <div className="card metal" style={{ marginTop: 14, padding: 14, background: "linear-gradient(135deg,#5B5B63,#313138)", border: "none", color: "#fff" }}>
           <div style={{ fontSize: 12, opacity: .9 }}>Tuned for you</div>
           <div className="disp" style={{ fontWeight: 700, fontSize: 15, marginTop: 2 }}>{profile.style} investor · {profile.risk} risk</div>
           <div style={{ fontSize: 12, opacity: .92, marginTop: 4 }}>Picks below are weighted toward {profile.caps.join(", ") || "all caps"}{profile.sectors.length ? ` and ${profile.sectors.join(", ")}` : ""}.</div>
@@ -591,7 +598,8 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       <Section title="Matrix's Picks" icon={<Sparkles size={17} color="var(--primary-2)" />}>
         <div className="hide-scroll" style={{ display: "flex", gap: 13, overflowX: "auto", paddingBottom: 8, paddingTop: 2 }}>
           {picks.map((s) => (
-            <div key={s.sym} onClick={() => onOpen(s)} className="card tap glow metal" style={{ flex: "0 0 auto", width: 272, padding: 0, position: "relative", overflow: "hidden", border: "none", background: "var(--feature-grad)" }}>
+            /* Grey, not the accent gradient. */
+            <div key={s.sym} onClick={() => onOpen(s)} className="card tap glow metal" style={{ flex: "0 0 auto", width: 272, padding: 0, position: "relative", overflow: "hidden", border: "none", background: "linear-gradient(135deg,#5B5B63,#313138)" }}>
               <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 80% at 0% 0%, rgba(255,255,255,.18), transparent 45%)", pointerEvents: "none" }} />
               <div style={{ padding: 17, position: "relative", color: "#fff" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
