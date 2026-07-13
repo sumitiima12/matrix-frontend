@@ -32,20 +32,44 @@ function rank(s, q) {
   return 99;
 }
 
+/* A default spread, so the first thing you see is a cross-section of the whole
+   universe rather than 30 Indian large-caps. 2 Indian, 1 US, 1 crypto, 1 commodity. */
+const SPREAD = [["IN", 2], ["US", 1], ["Crypto", 1], ["Commodity", 1]];
+
 export default function SearchOverlay({ onClose, onOpen }) {
   const [q, setQ] = useState("");
+  const [all, setAll] = useState(false);   // "Show more" -> reveal the full ranked list
 
-  const results = useMemo(() => {
+  const matches = useMemo(() => {
     const query = q.trim().toLowerCase();
     const pool = Array.isArray(ALL) ? ALL : [];
-    if (!query) return pool.slice(0, 30);        // show something immediately, not a void
+    if (!query) return null;                    // no query -> use the spread instead
     return pool
       .map((s) => ({ s, r: rank(s, query) }))
       .filter((x) => x.r < 99)
       .sort((a, b) => a.r - b.r || (a.s.sym || "").length - (b.s.sym || "").length)
-      .slice(0, 40)
       .map((x) => x.s);
   }, [q]);
+
+  const results = useMemo(() => {
+    const pool = Array.isArray(ALL) ? ALL : [];
+
+    // Empty box: 5 suggestions, spread across markets.
+    if (!matches) {
+      return SPREAD.flatMap(([mkt, n]) =>
+        pool.filter((s) => marketOf(s.sym) === mkt && !s.isIndex).slice(0, n)
+      );
+    }
+
+    // With a query, relevance wins — a search for "TCS" should not be padded out
+    // with a commodity just to satisfy a quota. Top 5, then "Show more".
+    return all ? matches.slice(0, 60) : matches.slice(0, 5);
+  }, [matches, all]);
+
+  const hidden = matches ? Math.max(0, matches.length - results.length) : 0;
+
+  // A new query resets the expansion.
+  const onType = (v) => { setQ(v); setAll(false); };
 
   return (
     <div
@@ -61,7 +85,7 @@ export default function SearchOverlay({ onClose, onOpen }) {
         <input
           autoFocus
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => onType(e.target.value)}
           placeholder="Search symbol or company…"
           aria-label="Search instruments"
           className="no-ring"
@@ -108,6 +132,22 @@ export default function SearchOverlay({ onClose, onOpen }) {
               </div>
             );
           })
+        )}
+
+        {hidden > 0 && !all && (
+          <button
+            onClick={() => setAll(true)}
+            className="tap disp"
+            style={{ width: "100%", marginTop: 12, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 11, padding: 11, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
+          >
+            Show {hidden} more result{hidden === 1 ? "" : "s"}
+          </button>
+        )}
+
+        {!matches && (
+          <div style={{ fontSize: 11, color: "var(--muted)", textAlign: "center", marginTop: 14 }}>
+            Start typing a symbol or company name.
+          </div>
         )}
       </div>
     </div>

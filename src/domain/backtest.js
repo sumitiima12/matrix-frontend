@@ -1,5 +1,4 @@
 import { resolveOperand, chainEval, parseClause, mapToken, detectOp } from "./strategyLang";
-import React from "react";
 
 /**
  * Backtest engine — runs a strategy over REAL candles and reports win rate, P&L and drawdown.

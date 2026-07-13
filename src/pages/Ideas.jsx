@@ -91,7 +91,17 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy }) {
   }, []);
   const [open, setOpen] = useState(false);
   const mkt = market === "FNO" ? "IN" : market;
-  const shown = market === "FNO" ? [] : ideas.filter((i) => marketOf(i.sym) === mkt);
+  /* Ordered by POTENTIAL LEFT to the target, measured off the live price — so the
+     ideas with the most room still to run lead, and ones that already hit sink. */
+  const shown = market === "FNO" ? [] : ideas
+    .filter((i) => marketOf(i.sym) === mkt)
+    .map((i) => {
+      const st = ALL.find((a) => a.sym === i.sym);
+      const cur = st && st.price != null ? st.price : i.entry;
+      return { i, left: cur ? ((i.exit - cur) / cur) * 100 : -Infinity };
+    })
+    .sort((a, b) => b.left - a.left)
+    .map((x) => x.i);
 ;
   return (
     <div className="mx fade">

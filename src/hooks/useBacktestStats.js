@@ -18,7 +18,7 @@ import { backtest } from "../domain/backtest";
  * Returns { loading, stats } where stats is null if it could not be computed, and
  * `trades: 0` with null metrics if the strategy simply never triggered.
  */
-export function useBacktestStats(strat, months = 6) {
+export function useBacktestStats(strat) {
   const [state, setState] = useState({ loading: true, stats: null });
 
   useEffect(() => {
@@ -37,30 +37,40 @@ export function useBacktestStats(strat, months = 6) {
       .then((sets) => {
         if (stop) return;
 
-        const bars = Math.round(months * 21);              // ~21 trading days a month
         const cap = strat.cap || 100000;
         const perSym = cap / syms.length;
 
-        const trades = [];
-        let pnl = 0;
-        let usable = 0;
+        /* Try 6 months. If the real history is too short for that, fall back to 1
+           month and SAY SO — a 1-month window is a weaker basis for a win rate, and
+           the label has to admit that. If even a month is not there, we report no
+           result rather than stretching whatever we have into a number. */
+        const attempt = (months) => {
+          const bars = Math.round(months * 21);
+          const trades = [];
+          let pnl = 0;
+          let usable = 0;
 
-        sets.forEach((c) => {
-          if (!c || c.length < 30) return;                  // not enough real history
-          usable += 1;
-          const window = c.slice(-bars);
-          const r = backtest(cfg, window);
-          r.trades.forEach((t) => {
-            trades.push(t);
-            pnl += perSym * t.ret;                          // t.ret is a fraction
+          sets.forEach((c) => {
+            if (!c || c.length < bars * 0.6) return;   // not enough real history for this window
+            usable += 1;
+            const r = backtest(cfg, c.slice(-bars));
+            r.trades.forEach((t) => { trades.push(t); pnl += perSym * t.ret; });
           });
-        });
 
-        if (!usable) { setState({ loading: false, stats: null }); return; }
+          return usable ? { trades, pnl, usable } : null;
+        };
+
+        let months = 6;
+        let out = attempt(6);
+        if (!out) { months = 1; out = attempt(1); }
+
+        if (!out) { setState({ loading: false, stats: null }); return; }
+
+        const { trades, pnl, usable } = out;
 
         if (!trades.length) {
           // The strategy ran but never triggered. That is a real result: say it.
-          setState({ loading: false, stats: { trades: 0, winRate: null, pnl: null, retPct: null, symbols: usable } });
+          setState({ loading: false, stats: { trades: 0, winRate: null, pnl: null, retPct: null, symbols: usable, months } });
           return;
         }
 
@@ -74,6 +84,7 @@ export function useBacktestStats(strat, months = 6) {
             pnl,
             retPct: (pnl / cap) * 100,
             symbols: usable,
+            months,
           },
         });
       })
@@ -81,7 +92,7 @@ export function useBacktestStats(strat, months = 6) {
 
     return () => { stop = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [strat && strat.id, months]);
+  }, [strat && strat.id]);
 
   return state;
 }

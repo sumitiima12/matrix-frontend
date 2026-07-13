@@ -130,7 +130,18 @@ function StockIdeasStrip({ onOpen, onBuy, market, liveTick = 0 }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const ideas = useMemo(() => currentIdeas(), [liveTick]);
   const all = ideas.filter((i) => marketOf(i.sym) === mkt);
-  const top = (all.length ? all : ideas).slice(0, 6);
+  /* Ordered by POTENTIAL LEFT, descending: how far the price still has to run to
+     the target, measured against the live price. An idea whose target is already
+     hit has nothing left to give, so it sinks to the bottom rather than leading. */
+  const top = (all.length ? all : ideas)
+    .map((i) => {
+      const st = ALL.find((a) => a.sym === i.sym);
+      const cur = st && st.price != null ? st.price : i.entry;
+      return { i, left: cur ? ((i.exit - cur) / cur) * 100 : -Infinity };
+    })
+    .sort((a, b) => b.left - a.left)
+    .slice(0, 6)
+    .map((x) => x.i);
   return (
     <Section title="Ideas" icon={<Lightbulb size={17} color="var(--primary)" />}>
       <div className="hide-scroll" style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4 }}>
@@ -318,7 +329,16 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
      quotes arrive. It ran once at mount — before any indicator had loaded — got an
      empty array, and froze. It must recompute when data actually arrives. */
   const picks = useMemo(() => {
-    const base = dailyPicks(list).slice(0, 8);
+    /* Ranked by POTENTIAL LEFT to the engine's real target, not by raw signal score:
+       a pick that has already run to its target is the least useful one to show first. */
+    const base = dailyPicks(list)
+      .map((s) => ({
+        s,
+        left: s.price != null && s.pickTarget != null ? ((s.pickTarget - s.price) / s.price) * 100 : -Infinity,
+      }))
+      .sort((a, b) => b.left - a.left)
+      .map((x) => x.s)
+      .slice(0, 8);
     // makeFuture returns null when we have no REAL lot size — drop those rather
     // than render a contract sized on a guess.
     return market === "FNO"
@@ -726,14 +746,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       <Section title="Most traded" icon={<Activity size={17} color="var(--primary)" />}>
         <div className="hide-scroll" style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
           {tradedView.map((s) => (
-            <CarouselCard key={s.sym} s={s} market={market} onOpen={onOpen} onBuy={onBuy} width={210}>
-              <div style={{ marginTop: 10, background: "var(--bg)", borderRadius: 12, padding: "8px 11px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                {/* Open Interest is not available from our data source, and we will not
-                    label volume as OI. Volume is real, so volume is what we show. */}
-                <span style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600 }}>Volume</span>
-                <span className="mono" style={{ fontSize: 12, fontWeight: 700 }}>{s.vol != null ? compact(s.vol) : "—"}</span>
-              </div>
-            </CarouselCard>
+            <CarouselCard key={s.sym} s={s} market={market} onOpen={onOpen} onBuy={onBuy} width={210} />
           ))}
         </div>
       </Section>

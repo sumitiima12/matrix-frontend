@@ -46,6 +46,7 @@ import Drawer from "./components/common/Drawer";
 import WhyPanel from "./components/ai/WhyPanel";
 import ErrorBoundary from "./components/common/ErrorBoundary";
 import WalletSheet from "./components/common/WalletSheet";
+import ConfirmOrder from "./components/common/ConfirmOrder";
 import Block from "./components/common/Block";
 import Spark from "./components/common/Spark";
 import CapTag from "./components/common/CapTag";
@@ -216,8 +217,24 @@ export default function App() {
 
   /* ---- Orders: the ONLY way to trade. Everything funnels through the pipeline:
          Risk Engine -> Broker Adapter -> Portfolio -> Journal -> Notifications ---- */
-  const buyStock = (stock, qty = 1, opts = {}) => { placeOrder({ stock, side: "BUY", qty, opts }); return true; };
-  const sellStock = (stock, qty = 1, opts = {}) => { placeOrder({ stock, side: "SELL", qty, opts }); return true; };
+  /* MANUAL orders go through a confirmation sheet. AUTOMATED ones do not: a
+     strategy you already armed is not a decision you are making right now, and a
+     confirm dialog you cannot answer (because you are asleep) would simply stop it
+     from ever firing. So automation calls placeOrder directly, via *Now below. */
+  const [confirmOrder, setConfirmOrder] = useState(null);
+
+  const buyStock  = (stock, qty = 1, opts = {}) => { setConfirmOrder({ s: stock, qty, side: "BUY",  opts, market: marketOf(stock.sym) || market, lot: opts.lot || 1 }); return true; };
+  const sellStock = (stock, qty = 1, opts = {}) => { setConfirmOrder({ s: stock, qty, side: "SELL", opts, market: marketOf(stock.sym) || market, lot: opts.lot || 1 }); return true; };
+
+  const buyStockNow  = (stock, qty = 1, opts = {}) => { placeOrder({ stock, side: "BUY",  qty, opts }); return true; };
+  const sellStockNow = (stock, qty = 1, opts = {}) => { placeOrder({ stock, side: "SELL", qty, opts }); return true; };
+
+  const runConfirmedOrder = () => {
+    if (!confirmOrder) return;
+    const { s, qty, side, opts } = confirmOrder;
+    placeOrder({ stock: s, side, qty, opts });
+    setConfirmOrder(null);
+  };
   const [priceSnap, setPriceSnap] = useState({});
   useEffect(() => {
     setPriceSnap((prev) => { const m = { ...prev }; portfolio.forEach((h) => { const s = ALL.find((a) => a.sym === h.sym); m[h.sym] = s ? s.price : (prev[h.sym] ?? h.buy); }); return m; });
@@ -381,7 +398,7 @@ export default function App() {
               {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} trades={trades} liveTick={liveTick} onWhy={openWhy} />}
               {tab === "trade" && <TradeView walletMap={walletMap} adjustWallet={adjustWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} recordTrade={recordTrade} />}
               {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} market={market} onWhy={openWhy} />}
-              {tab === "automation" && <Automation market={market} onRecord={recordTrade} onBuyReal={buyStock} trades={trades} />}
+              {tab === "automation" && <Automation market={market} onRecord={recordTrade} onBuyReal={buyStockNow} trades={trades} />}
               {tab === "portfolio" && <Portfolio portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} onBuy={buyStock} onSell={sellStock} onUpdate={updateHolding} priceSnap={priceSnap} onWhy={openWhy} onOpen={openStock} />}
               {tab === "watchlist" && <WatchlistView watchlists={watchlists} activeWl={activeWl} setActiveWl={setActiveWl} createWatchlist={createWatchlist} deleteWatchlist={deleteWatchlist} toggleWatch={toggleWatch} onOpen={openStock} />}
               {tab === "ask" && (
@@ -428,6 +445,16 @@ export default function App() {
           onClose={() => setWhy(null)}
           onOpenStock={openStock}
         />
+      )}
+      {confirmOrder && (
+        <ErrorBoundary name="Order confirmation">
+          <ConfirmOrder
+            order={confirmOrder}
+            wallet={walletMap[confirmOrder.market] ?? 0}
+            onConfirm={runConfirmedOrder}
+            onCancel={() => setConfirmOrder(null)}
+          />
+        </ErrorBoundary>
       )}
       {walletOpen && (
         <WalletSheet
