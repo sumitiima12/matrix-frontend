@@ -228,9 +228,17 @@ const COMMODITY = [
    size. A second hand-written list here would drift out of sync with LOTS, and a
    symbol that is tradable but has no lot size is precisely the bug we removed:
    lotSize() used to fall back to a made-up 500. No fallback, no guess. */
-const FNO = IN_STOCKS
-  .filter((s) => LOTS[s.sym] != null)
-  .map((s) => ({ ...s, lot: LOTS[s.sym] }));
+/* F&O is a VIEW over the Indian stocks, not a copy of them.
+   This used to be `.map((s) => ({ ...s, lot }))` — which produced brand-new objects. The
+   price poller and the indicator fetch both write in place onto the objects found in ALL,
+   and ALL is built from IN_STOCKS. The F&O copies were therefore never written to: no
+   price, no rsi, no sma50, no hasData — so dailyPicks filtered every one of them out and
+   "Matrix's Picks" rendered an empty carousel under the F&O tab, permanently.
+
+   Attaching `lot` to the SAME object keeps one source of truth per instrument. A copy of a
+   live object is a snapshot that stops being true the moment the next tick lands. */
+const FNO = IN_STOCKS.filter((s) => LOTS[s.sym] != null);
+FNO.forEach((s) => { s.lot = LOTS[s.sym]; });
 
 const UNIVERSE = { IN: IN_STOCKS, US: US_STOCKS, Crypto: CRYPTO, Commodity: COMMODITY, FNO };
 const ALL = [...IN_STOCKS, ...US_STOCKS, ...CRYPTO, ...COMMODITY];

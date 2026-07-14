@@ -661,6 +661,15 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
 
       {/* Matrix picks */}
       <Section title="Matrix's Picks" icon={<Sparkles size={17} color="var(--primary-2)" />}>
+        {/* An empty carousel is a void the user has to interpret. Say what's happening:
+            picks need real indicators (RSI, 50-DMA), and those arrive after the prices. */}
+        {picks.length === 0 && (
+          <div style={{ fontSize: 12, color: "var(--muted)", padding: "2px 2px 8px", lineHeight: 1.5 }}>
+            {list.some((s) => s.rsi != null)
+              ? "No stock currently clears the signal bar in this market."
+              : "Waiting on real indicators — picks are ranked on RSI and the 50-DMA, so they appear once the data lands."}
+          </div>
+        )}
         <div className="hide-scroll" style={{ display: "flex", gap: 13, overflowX: "auto", paddingBottom: 8, paddingTop: 2 }}>
           {picks.map((s) => (
             /* Grey, not the accent gradient. */
