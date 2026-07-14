@@ -4,10 +4,22 @@ import { resolveOperand, chainEval, parseClause, mapToken, detectOp } from "./st
  * Backtest engine — runs a strategy over REAL candles and reports win rate, P&L and drawdown.
  */
 
-export function backtest(cfg, c) {
+/**
+ * @param cfg      the strategy
+ * @param c        FULL candle history — indicators are computed over all of it
+ * @param startIdx first bar allowed to OPEN a trade (the warm-up boundary)
+ *
+ * WHY startIdx EXISTS: indicators need history. Slice the candles down to your test
+ * window first and a 200-day SMA is NaN for the whole window, an entry rule that
+ * depends on it can never fire, and the backtest confidently reports zero trades —
+ * which reads as "the strategy never triggers" rather than "we never gave it enough
+ * data to know". So: compute over everything, only COUNT entries from startIdx on.
+ */
+export function backtest(cfg, c, startIdx = 1) {
   const closes = c.map((x) => x.c), vols = c.map((x) => x.v || 0), cache = {};
   const get = (op) => resolveOperand(op, cfg.defs, c, closes, vols, cache);
   const trades = []; let pos = null, equity = 1, peak = 1, maxDD = 0; const eq = [{ i: 0, eq: 100 }];
+  const from = Math.max(1, startIdx | 0);
   for (let i = 1; i < c.length; i++) {
     if (pos) equity *= closes[i] / closes[i - 1];
     eq.push({ i, eq: +(equity * 100).toFixed(2) });
@@ -18,7 +30,11 @@ export function backtest(cfg, c) {
       const hitTP = cfg.tp && ret >= Math.abs(Number(cfg.tp)) / 100;
       const sig = chainEval(cfg.exit, i, get);
       if (hitSL || hitTP || sig) { trades.push({ entryIdx: pos.i, exitIdx: i, entry: pos.entry, exit: closes[i], ret, reason: hitSL ? "SL" : hitTP ? "TP" : "Signal" }); pos = null; }
-    } else if (chainEval(cfg.entry, i, get)) pos = { i, entry: closes[i] };
+    } else if (i >= from && chainEval(cfg.entry, i, get)) {
+      // Only OPEN inside the window. Exits above are ungated on purpose: a position
+      // opened in-window must still be allowed to close.
+      pos = { i, entry: closes[i] };
+    }
   }
   if (pos) { const i = c.length - 1; trades.push({ entryIdx: pos.i, exitIdx: i, entry: pos.entry, exit: closes[i], ret: closes[i] / pos.entry - 1, reason: "EOD" }); }
   const totalRet = (trades.reduce((a, t) => a * (1 + t.ret), 1) - 1) * 100;

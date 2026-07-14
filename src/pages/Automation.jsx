@@ -33,11 +33,45 @@ function BacktestResult({ cfg, defaultSym }) {
   const PRESETS = { "1m": 30, "3m": 90, "6m": 180, "1y": 365, "2y": 730 };
   const applyPreset = (k) => { setPreset(k); if (k !== "custom") { setFrom(iso(Date.now() - PRESETS[k] * 864e5)); setTo(iso(Date.now())); } };
   const stock = ALL.find((a) => a.sym === sym) || ALL[0];
-  const bars = useMemo(() => { const d = (new Date(to) - new Date(from)) / 864e5; return clamp(Math.round(d > 0 ? d : 120), 20, 400); }, [from, to]);
-  // REAL candles for the backtest — no synthetic price paths.
+  /* THE DATE RANGE USED TO BE DECORATIVE.
+     It computed `bars` = the number of DAYS between From and To, then sliced that many
+     CANDLES — of whatever timeframe. On a 3-minute chart, "6 months" became 180 two-minute
+     bars: about six hours of one session. The dates never filtered by date at all, and a
+     strategy that would have traded plenty over six months reported zero trades.
+
+     Now: filter by real timestamps, and compute indicators over the FULL history so a
+     20-period Bollinger band isn't NaN for the entire window. */
   const { data: realData, loading: btLoading } = useCandles(sym, tf);
-  const data = useMemo(() => (realData ? realData.slice(-bars) : null), [realData, bars]);
-  const res = useMemo(() => (!cfg || cfg.mode === "plain" || !data ? null : backtest(cfg, data)), [cfg, data]);
+
+  const fromMs = useMemo(() => new Date(from + "T00:00:00").getTime(), [from]);
+  const toMs = useMemo(() => new Date(to + "T23:59:59").getTime(), [to]);
+
+  const { data, startIdx, covered } = useMemo(() => {
+    if (!realData || !realData.length) return { data: null, startIdx: 1, covered: null };
+    // First bar inside the window. Everything before it is warm-up, not test data.
+    let s = realData.findIndex((x) => x.t >= fromMs);
+    if (s < 0) s = realData.length;           // window starts after our newest bar
+    const end = realData.findIndex((x) => x.t > toMs);
+    const cut = end < 0 ? realData.length : end;
+    const inWindow = cut - s;
+
+    return {
+      data: realData.slice(0, cut),           // full history up to `to` (warm-up included)
+      startIdx: Math.max(1, s),
+      covered: {
+        inWindow,
+        first: realData[0] ? realData[0].t : null,
+        last: realData[cut - 1] ? realData[cut - 1].t : null,
+      },
+    };
+  }, [realData, fromMs, toMs]);
+
+  const res = useMemo(
+    () => (!cfg || cfg.mode === "plain" || !data ? null : backtest(cfg, data, startIdx)),
+    [cfg, data, startIdx]
+  );
+
+  const bars = covered ? covered.inWindow : 0;
   // No cfg at all -> the template lookup missed. Say so; do not throw a white screen.
   if (!cfg) {
     return <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>This strategy has no runnable configuration to backtest.</div>;
@@ -46,6 +80,28 @@ function BacktestResult({ cfg, defaultSym }) {
     return <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>Plain-English rules are parsed on the backend at deploy time — switch to the visual builder to run a backtest.</div>;
   }
   if (btLoading) return <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>Loading real price history…</div>;
+
+  /* Yahoo caps intraday history hard: 3-minute candles go back ONE DAY, 15-minute a
+     month, hourly three months. Asking for "6M of 3-minute" is not a small stretch —
+     it is impossible, and the old code silently returned six hours of one session and
+     reported zero trades. Say what the data can actually support. */
+  const TF_COVER = { "1m": "1 day", "3m": "1 day", "5m": "5 days", "15m": "1 month", "30m": "1 month", "1h": "3 months", "4h": "6 months", "1d": "1 year" };
+  const coverNote = TF_COVER[tf];
+
+  if (covered && covered.inWindow < 30) {
+    return (
+      <div style={{ fontSize: 12, color: "var(--amber)", padding: "10px 2px", lineHeight: 1.6, fontWeight: 600 }}>
+        Only {covered.inWindow} candle{covered.inWindow === 1 ? "" : "s"} of real data fall inside this window
+        {coverNote ? <> — Yahoo only provides about <b>{coverNote}</b> of history at the <b>{tf}</b> timeframe.</> : "."}
+        <div style={{ color: "var(--muted)", fontWeight: 500, marginTop: 6 }}>
+          {covered.first
+            ? <>Available: {new Date(covered.first).toLocaleDateString("en-IN")} → {new Date(covered.last).toLocaleDateString("en-IN")}. </>
+            : null}
+          Pick a longer timeframe (1h or 1d) for a multi-month test, or shorten the date range.
+        </div>
+      </div>
+    );
+  }
   if (!data || !res) return <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>{BACKEND_URL ? "No price history available for this symbol/timeframe — backtest can't run on real data." : "Connect the backend to backtest on real price history."}</div>;
   const st = res.stats;
   const tile = (k, v, c) => (
@@ -59,7 +115,7 @@ function BacktestResult({ cfg, defaultSym }) {
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <span style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700 }}>Backtest on</span>
         <select aria-label="Symbol" value={sym} onChange={(e) => setSym(e.target.value)} style={{ ...selStyle, flex: "0 0 auto", minWidth: 120 }}>{ALL.map((a) => <option key={a.sym} value={a.sym}>{a.sym}</option>)}</select>
-        <span style={{ fontSize: 10.5, color: "var(--muted)", marginLeft: "auto" }}>{bars} bars · sim</span>
+        <span style={{ fontSize: 10.5, color: "var(--muted)", marginLeft: "auto" }}>{bars} real bars</span>
       </div>
       <div style={{ marginBottom: 10 }}>
         <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, marginBottom: 3 }}>Candle timeframe</div>
@@ -116,7 +172,7 @@ function BacktestResult({ cfg, defaultSym }) {
           ))}
         </div>
       )}
-      <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 8 }}>Simulated bars · indicative only, not financial advice.</div>
+      <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 8 }}>Real market candles · past performance is not a prediction. Not financial advice.</div>
     </div>
   );
 }
@@ -124,7 +180,7 @@ function BacktestResult({ cfg, defaultSym }) {
 /* ============================== TRADE AUTOMATION ============================== */
 
 const TFS = ["3m", "5m", "15m", "30m", "1h", "4h", "1D"];
-const OPSET = [[">", ">"], ["<", "<"], [">=", "≥"], ["<=", "≤"], ["==", "="], ["crosses_above", "⤴ crosses above"], ["crosses_below", "⤵ crosses below"]];
+const OPSET = [[">", ">"], ["<", "<"], [">=", "≥"], ["<=", "≤"], ["==", "="], ["crosses_above", "⤴ crosses above"], ["crosses_below", "⤵ crosses below"], ["crossed_above_within", "⤴ crossed above (within N)"], ["crossed_below_within", "⤵ crossed below (within N)"]];
 
 function TemplateCard({ t, onActivate, onToggleBt, btActive, market = "IN" }) {
   // Only symbols that belong to the market you are looking at.
@@ -211,6 +267,19 @@ function CondBuilder2({ label, conds, setConds, operands }) {
             {c.bType === "ind"
               ? <select aria-label="Select option" value={c.b} onChange={(e) => upd(i, "b", e.target.value)} style={{ ...selStyle, flex: "1 1 104px" }}>{operands.map((o) => <option key={o}>{o}</option>)}</select>
               : <input value={c.b} onChange={(e) => upd(i, "b", e.target.value)} className="no-ring mono" style={{ ...selStyle, flex: "1 1 64px", textAlign: "center" }} />}
+            {/* The "within N bars" operators need their N. Shown only when relevant. */}
+            {(c.op === "crossed_above_within" || c.op === "crossed_below_within") && (
+              <div className="pill" style={{ display: "flex", alignItems: "center", gap: 4, background: "var(--elev)", border: "1px solid var(--line)", padding: "3px 7px" }}>
+                <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>within</span>
+                <input
+                  value={c.n == null ? 3 : c.n}
+                  onChange={(e) => upd(i, "n", e.target.value.replace(/[^0-9]/g, "") || "1")}
+                  className="no-ring mono"
+                  style={{ width: 26, textAlign: "center", border: "none", background: "transparent", color: "var(--ink)", fontWeight: 800, fontSize: 11.5 }}
+                />
+                <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>bars</span>
+              </div>
+            )}
             <button onClick={() => del(i)} disabled={conds.length === 1} className="tap" style={{ border: "none", background: "transparent", opacity: conds.length === 1 ? 0.3 : 1 }}><Trash2 size={15} color="var(--down)" /></button>
           </div>
         </div>
@@ -235,6 +304,7 @@ function NumF({ label, v, set }) {
  */
 function SampleStrategyCard({ s, onActivate }) {
   const { loading, stats } = useBacktestStats(s);
+  const [bt, setBt] = useState(false);
 
   const Stat = ({ k, v, c }) => (
     <div style={{ flex: 1, background: "var(--elev)", borderRadius: 11, padding: "9px 10px", minWidth: 0 }}>
@@ -279,11 +349,29 @@ function SampleStrategyCard({ s, onActivate }) {
         </>
       )}
 
-      {onActivate && (
-        <button onClick={() => onActivate(s)} className="tap disp"
-          style={{ width: "100%", marginTop: 12, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>
-          Use this strategy
+      {/* TEST BEFORE YOU ACTIVATE. The headline stats above are a fixed backtest; this
+          is the interactive one — pick the symbol, timeframe and window yourself. It was
+          only available on strategies you'd already deployed, which is backwards. */}
+      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+        <button
+          onClick={() => setBt((v) => !v)}
+          className="tap disp"
+          style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: bt ? "var(--elev)" : "transparent", color: "var(--ink)", borderRadius: 11, padding: "10px 14px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
+        >
+          <Activity size={14} /> Test
         </button>
+        {onActivate && (
+          <button onClick={() => onActivate(s)} className="tap disp"
+            style={{ flex: 1, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>
+            Use this strategy
+          </button>
+        )}
+      </div>
+
+      {bt && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+          <BacktestResult cfg={s.cfg} defaultSym={(s.symbols && s.symbols[0]) || undefined} />
+        </div>
       )}
     </div>
   );

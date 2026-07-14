@@ -40,3 +40,32 @@ export function ADXarr(c, p) {
 }
 
 export const CF = { open: "o", high: "h", low: "l", close: "c" };
+
+/**
+ * Drop the candle that is still forming.
+ *
+ * During market hours the last bar in a series is the CURRENT one: its close is the
+ * live price and it changes every tick. Evaluating a rule on it means a signal can
+ * fire and then un-fire seconds later — "close crossed above the upper band" is true
+ * at 10:31:05 and false at 10:31:40, and an automation acting on that will buy into a
+ * cross that never actually happened. A completed candle is a fact; a forming one is
+ * a rumour.
+ *
+ * We detect it from the data rather than from a clock: take the spacing between the
+ * last two bars as the interval, and if `now` is inside the final bar's window, that
+ * bar hasn't closed yet.
+ *
+ * @returns the candles up to and including the last CLOSED bar
+ */
+export function closedCandles(c, now = Date.now()) {
+  if (!c || c.length < 3) return c || [];
+  const last = c[c.length - 1];
+  const prev = c[c.length - 2];
+  if (last.t == null || prev.t == null) return c;      // no timestamps -> can't tell, don't guess
+
+  const interval = last.t - prev.t;
+  if (!(interval > 0)) return c;
+
+  // The final bar closes at t + interval. Before that, it is still being written.
+  return now < last.t + interval ? c.slice(0, -1) : c;
+}

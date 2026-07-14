@@ -53,6 +53,30 @@ export function evalCond(cond, i, get) {
     case ">": return lv > rv; case "<": return lv < rv; case ">=": return lv >= rv; case "<=": return lv <= rv;
     case "==": return Math.abs(lv - rv) < 1e-9;
     case "crosses_above": return !isNaN(plv) && !isNaN(prv) && plv <= prv && lv > rv;
+
+    /* "Crossed above at some point in the last N bars" — the cross stays TRUE for a
+       short window instead of for exactly one candle. Requiring two separate crosses to
+       land on the same bar is nearly a coincidence; this lets you say "the band broke
+       out AND momentum crossed up within the last 3 candles", which is what the rule
+       actually means. Default 3 bars. */
+    case "crossed_above_within": {
+      const n = Math.max(1, Number(cond.n) || 3);
+      for (let k = 0; k < n; k++) {
+        const a = L[i - k], b = cond.bType === "num" ? Number(cond.b) : (R ? R[i - k] : NaN);
+        const pa = L[i - k - 1], pb = cond.bType === "num" ? Number(cond.b) : (R ? R[i - k - 1] : NaN);
+        if (!isNaN(a) && !isNaN(b) && !isNaN(pa) && !isNaN(pb) && pa <= pb && a > b) return true;
+      }
+      return false;
+    }
+    case "crossed_below_within": {
+      const n = Math.max(1, Number(cond.n) || 3);
+      for (let k = 0; k < n; k++) {
+        const a = L[i - k], b = cond.bType === "num" ? Number(cond.b) : (R ? R[i - k] : NaN);
+        const pa = L[i - k - 1], pb = cond.bType === "num" ? Number(cond.b) : (R ? R[i - k - 1] : NaN);
+        if (!isNaN(a) && !isNaN(b) && !isNaN(pa) && !isNaN(pb) && pa >= pb && a < b) return true;
+      }
+      return false;
+    }
     case "crosses_below": return !isNaN(plv) && !isNaN(prv) && plv >= prv && lv < rv;
     default: return false;
   }
@@ -151,6 +175,43 @@ export function condCode(c) { return `${c.la} ${c.op} ${c.b}`; }
 export function chainCode(conds) { return conds.map((c, i) => `${i ? " " + (c.gate || "AND") + " " : ""}${condCode(c)}`).join(""); }
 
 export const TEMPLATES = [
+  /* BB breakout with momentum confirmation.
+     Entry demands FIVE things line up on the same completed candle: a close that has
+     just crossed the upper band, a green candle, RSI above 60, a positive MACD
+     histogram and a fresh MACD/signal cross. That is a deliberately narrow gate — it
+     will not fire often, and it is not supposed to.
+
+     Note MACD1.hist > 0 and MACD1.line crosses_above MACD1.signal overlap: the
+     histogram IS line minus signal, so it is positive exactly when the line is above
+     the signal. Kept because the user asked for both; it costs nothing.
+
+     Exit is deliberately WIDE (OR): the trend breaking (close under the middle band),
+     momentum turning (MACD cross down), or the move going parabolic (RSI > 90). Any
+     one of them is enough. Quick to leave, slow to enter. */
+  { name: "BB breakout + MACD", tag: "Momentum",
+    code: "BB1 = BollingerBand(length=20)\nRSI1 = RSI(length=14)\nMACD1 = MACD()\nCC1 = CurrentCandle()\n\nif CC1.close crosses_above BB1.upper\n   AND CC1.close > CC1.open\n   AND RSI1 > 60\n   AND MACD1.hist > 0\n   AND MACD1.line crosses_above MACD1.signal:\n    enter_trade()\n\nif CC1.close crosses_below BB1.middle\n   OR MACD1.line crosses_below MACD1.signal\n   OR RSI1 > 90:\n    exit_trade()",
+    cfg: {
+      mode: "builder",
+      defs: [
+        { type: "BB", len: "20", name: "BB1" },
+        { type: "RSI", len: "14", name: "RSI1" },
+        { type: "MACD", len: "", name: "MACD1" },
+        { type: "CurrentCandle", len: "", name: "CC1" },
+      ],
+      entry: [
+        { la: "CC1.close", op: "crosses_above", bType: "ind", b: "BB1.upper" },
+        { gate: "AND", la: "CC1.close", op: ">", bType: "ind", b: "CC1.open" },
+        { gate: "AND", la: "RSI1", op: ">", bType: "num", b: "60" },
+        { gate: "AND", la: "MACD1.hist", op: ">", bType: "num", b: "0" },
+        { gate: "AND", la: "MACD1.line", op: "crosses_above", bType: "ind", b: "MACD1.signal" },
+      ],
+      exit: [
+        { la: "CC1.close", op: "crosses_below", bType: "ind", b: "BB1.middle" },
+        { gate: "OR", la: "MACD1.line", op: "crosses_below", bType: "ind", b: "MACD1.signal" },
+        { gate: "OR", la: "RSI1", op: ">", bType: "num", b: "90" },
+      ],
+    },
+  },
   { name: "Golden Cross + RSI", code: "EMA1 = EMA(length=50, tf=1D)\nEMA2 = EMA(length=200, tf=1D)\nif EMA1 > EMA2 AND RSI1 < 70:\n    enter_trade()", tag: "Trend",
     cfg: { mode: "builder", defs: [{ type: "EMA", len: "50", name: "EMA1" }, { type: "EMA", len: "200", name: "EMA2" }, { type: "RSI", len: "14", name: "RSI1" }], entry: [{ la: "EMA1", op: ">", bType: "ind", b: "EMA2" }, { la: "RSI1", op: "<", bType: "num", b: "70", gate: "AND" }], exit: [{ la: "EMA1", op: "crosses_below", bType: "ind", b: "EMA2" }], sl: "3", tp: "8" } },
   { name: "Bollinger squeeze", code: "if Price <= BB1.lower:\n    enter_trade()\nif Price >= BB1.upper:\n    exit_trade()", tag: "Volatility",

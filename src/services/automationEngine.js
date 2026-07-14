@@ -1,3 +1,4 @@
+import { closedCandles } from "../lib/series";
 import { chainEval, resolveOperand } from "../domain/strategyLang";
 
 /**
@@ -30,15 +31,24 @@ import { chainEval, resolveOperand } from "../domain/strategyLang";
  */
 
 /** Evaluate one strategy against one symbol's candles. Pure: returns an intent. */
-export function evaluate({ cfg, candles, position, price }) {
-  if (!cfg || !candles || candles.length < 2) return { action: "NONE", reason: "no candles" };
+export function evaluate({ cfg, candles: raw, position, price, now = Date.now() }) {
+  if (!cfg || !raw || raw.length < 2) return { action: "NONE", reason: "no candles" };
+
+  /* ONLY COMPLETED CANDLES.
+     The last bar of a live series is the one currently forming: its close IS the live
+     price and it moves every tick. Evaluating on it means "close crossed above the
+     upper band" can be true at 10:31:05 and false at 10:31:40 — the engine buys into a
+     cross that never happened, then holds a position the rule no longer justifies.
+     A closed candle is a fact. A forming one is a rumour. We act on facts. */
+  const candles = closedCandles(raw, now);
+  if (candles.length < 2) return { action: "NONE", reason: "no completed candles yet" };
 
   const closes = candles.map((x) => x.c);
   const vols = candles.map((x) => x.v || 0);
   const cache = {};
   const get = (op) => resolveOperand(op, cfg.defs, candles, closes, vols, cache);
 
-  const i = candles.length - 1;                 // the latest real bar
+  const i = candles.length - 1;                 // the last COMPLETED bar
 
   if (!position) {
     let entry = false;
