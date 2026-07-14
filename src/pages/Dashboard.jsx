@@ -652,7 +652,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       </div>
 
       {profile && (
-        <div className="card" style={{ marginTop: 14, padding: 14, background: "#F4F5F7", border: "1px solid #E3E5E9", color: "#16181D", boxShadow: "0 1px 3px rgba(0,0,0,.05)" }}>
+        <div className="card metal" style={{ marginTop: 14, padding: 14, background: "linear-gradient(135deg,#5B5B63,#313138)", border: "none", color: "#fff" }}>
           <div style={{ fontSize: 12, opacity: .9 }}>Tuned for you</div>
           <div className="disp" style={{ fontWeight: 700, fontSize: 15, marginTop: 2 }}>{profile.style} investor · {profile.risk} risk</div>
           <div style={{ fontSize: 12, opacity: .92, marginTop: 4 }}>Picks below are weighted toward {profile.caps.join(", ") || "all caps"}{profile.sectors.length ? ` and ${profile.sectors.join(", ")}` : ""}.</div>
@@ -664,17 +664,17 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
         <div className="hide-scroll" style={{ display: "flex", gap: 13, overflowX: "auto", paddingBottom: 8, paddingTop: 2 }}>
           {picks.map((s) => (
             /* Grey, not the accent gradient. */
-            <div key={s.sym} onClick={() => onOpen(s)} className="card tap glow" style={{ flex: "0 0 auto", width: 272, padding: 0, position: "relative", overflow: "hidden", border: "1px solid #E3E5E9", background: "#F4F5F7", color: "#16181D", boxShadow: "0 1px 3px rgba(0,0,0,.05)" }}>
-              <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 80% at 0% 0%, rgba(28,29,33,.10), transparent 45%)", pointerEvents: "none" }} />
-              <div style={{ padding: 17, position: "relative", color: "#1C1D21" }}>
+            <div key={s.sym} onClick={() => onOpen(s)} className="card tap glow metal" style={{ flex: "0 0 auto", width: 272, padding: 0, position: "relative", overflow: "hidden", border: "none", background: "linear-gradient(135deg,#5B5B63,#313138)" }}>
+              <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 80% at 0% 0%, rgba(255,255,255,.10), transparent 45%)", pointerEvents: "none" }} />
+              <div style={{ padding: 17, position: "relative", color: "#fff" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 16 }}>💎</span>
-                  <div style={{ minWidth: 0 }}><div className="disp" style={{ fontWeight: 700, fontSize: 15.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.sym}</div><div style={{ fontSize: 11, color: "#5C6069", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</div></div>
-                  {s.isFut && <span className="pill disp" style={{ marginLeft: "auto", fontSize: 9.5, fontWeight: 800, padding: "3px 9px", background: "rgba(28,29,33,.10)", color: "#1C1D21", whiteSpace: "nowrap" }}>FUT · {s.expiry}</span>}
+                  <div style={{ minWidth: 0 }}><div className="disp" style={{ fontWeight: 700, fontSize: 15.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.sym}</div><div style={{ fontSize: 11, color: "rgba(255,255,255,.75)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</div></div>
+                  {s.isFut && <span className="pill disp" style={{ marginLeft: "auto", fontSize: 9.5, fontWeight: 800, padding: "3px 9px", background: "rgba(255,255,255,.18)", color: "#fff", whiteSpace: "nowrap" }}>FUT · {s.expiry}</span>}
                 </div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 12 }}>
                   <span className="mono" style={{ fontWeight: 800, fontSize: 19 }}>{fmt(s.price, market)}</span>
-                  <span style={{ fontSize: 10.5, color: "#5C6069", fontWeight: 700 }}>{s.chg == null ? "—" : (s.chg >= 0 ? "▲ " : "▼ ") + pct(s.chg, 2, false)}{s.isFut ? ` · lot ${s.lot}` : ""}</span>
+                  <span style={{ fontSize: 10.5, color: "rgba(255,255,255,.75)", fontWeight: 700 }}>{s.chg == null ? "—" : (s.chg >= 0 ? "▲ " : "▼ ") + pct(s.chg, 2, false)}{s.isFut ? ` · lot ${s.lot}` : ""}</span>
                 </div>
                 {/* REAL technical tags from the tag engine — Golden Cross, Bull Flag,
                     Breakout, Volume Spike and so on, each true and each backed by a
@@ -682,7 +682,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                   {computeTags(s.under ? { ...s, sym: s.under } : s).slice(0, 3).map((t) => (
                     <span key={t.id} className="pill" title={t.evidence}
-                      style={{ fontSize: 10, fontWeight: 800, background: "rgba(28,29,33,.10)", color: "#1C1D21", padding: "3px 9px" }}>
+                      style={{ fontSize: 10, fontWeight: 800, background: "rgba(255,255,255,.18)", color: "#fff", padding: "3px 9px" }}>
                       {t.label}
                     </span>
                   ))}

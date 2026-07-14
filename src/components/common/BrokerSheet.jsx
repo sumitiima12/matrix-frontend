@@ -28,7 +28,7 @@ const TONE = {
   none:    { label: "No public API",       c: "var(--muted)" },
 };
 
-export default function BrokerSheet({ connectedId, onDisconnect, onClose }) {
+export default function BrokerSheet({ connectedId, onDisconnect, onClose, onConnect }) {
   const [q, setQ] = useState("");
   const [server, setServer] = useState(null);
   const [statusErr, setStatusErr] = useState(null);
@@ -52,6 +52,17 @@ export default function BrokerSheet({ connectedId, onDisconnect, onClose }) {
     setErr(null);
     setBusy(b.id);
     try {
+      /* Delta has no login page. It authenticates with API keys held on the SERVER and
+         signs each request, so there is nothing to redirect to — we just ask the server
+         to prove the keys work and hand back a session. Sending it down the OAuth path
+         would bounce the user to a URL that doesn't exist. */
+      if (b.apiKeyOnly) {
+        await onConnect(b.id, null);        // server verifies the keys with a signed call
+        setBusy(null);
+        onClose && onClose();
+        return;
+      }
+
       const redirect = window.location.origin + window.location.pathname;
       const url = await brokerLoginUrl(b.id, redirect);
       window.location.href = url;     // the broker's own login page — we never see the password

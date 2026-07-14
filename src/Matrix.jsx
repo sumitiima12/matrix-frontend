@@ -771,6 +771,11 @@ function AppInner() {
             connectedId={liveBroker ? liveBroker.id : null}
             onDisconnect={() => { disconnectBroker(); setBrokerOpen(false); setBuyToast({ t: "Broker disconnected — prices are delayed again" }); }}
             onClose={() => setBrokerOpen(false)}
+            onConnect={async (id, token) => {
+              // Delta connects with no OAuth token; the server signs with its own keys.
+              await connectBroker(id, token);
+              setBuyToast({ t: "Broker connected — prices are live" });
+            }}
           />
         </ErrorBoundary>
       )}
