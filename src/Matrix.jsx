@@ -349,8 +349,44 @@ function AppInner() {
   const runConfirmedOrder = async (finalQty, product) => {
     if (!confirmOrder) return;
     const { s, qty, side, opts } = confirmOrder;
-    const q = finalQty || qty;
-    const prod = product || "CNC";
+
+    /* The confirm sheet calls back in one of two shapes:
+         stock  -> (finalQty, product)
+         option -> (orderObject) with the BROKER's own contract symbol already resolved
+       An option order carries a symbol we did NOT construct — it came from the broker's
+       live contract list — plus quantity already converted from lots to contracts. */
+    const isOpt = finalQty && typeof finalQty === "object";
+    const opt = isOpt ? finalQty : null;
+
+    const q = isOpt ? opt.qty : (finalQty || qty);
+    const prod = (isOpt ? opt.product : product) || "CNC";
+
+    if (isOpt) {
+      // Trade the option contract, under its real symbol, at its real premium.
+      const oStock = {
+        ...s,
+        sym: opt.optionSymbol,               // e.g. NSE:NIFTY26JUL24050CE — the broker's string
+        name: `${s.sym} ${opt.strike} ${opt.optType === "CE" ? "CALL" : "PUT"}`,
+        price: opt.price != null ? opt.price : s.price,
+        fno: true,
+        isFut: false,
+        isOpt: true,
+        lot: opt.lotSize,
+        under: s.sym,
+        strike: opt.strike,
+        optType: opt.optType,
+        expiry: opt.expiry,
+      };
+      if (oStock.price == null) {
+        setBuyToast({ t: "No live premium for that contract — refusing to price the order", e: true });
+        setConfirmOrder(null);
+        return;
+      }
+      buyStockNow(oStock, q, { ...opts, product: prod, tradeType: opts.tradeType || "Manual" });
+      setBuyToast({ t: `Bought ${opt.lots} lot${opt.lots > 1 ? "s" : ""} · ${opt.optionSymbol}` });
+      setConfirmOrder(null);
+      return;
+    }
 
     if (mode === "real") {
       if (!brokerLive) {                       // belt and braces; the toggle already guards this
@@ -745,6 +781,7 @@ function AppInner() {
             wallet={walletMap[confirmOrder.market] ?? 0}
             onConfirm={runConfirmedOrder}
             onCancel={() => setConfirmOrder(null)}
+            userId={userId}
           />
         </ErrorBoundary>
       )}

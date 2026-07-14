@@ -40,22 +40,26 @@ export const BROKERS = [
     id: "delta",
     name: "Delta Exchange",
     markets: ["Crypto"],
-    status: "ready",
-    realtime: true,
-    oi: true,
-    depth: true,
-    note: "Indian crypto derivatives exchange. Public market data needs no login; trading needs an API key.",
+    // NOT BUILT. The server implements fyers and zerodha only — there is no Delta OAuth,
+    // no quote adapter, no order path and no env keys. Marking this "ready" put a Connect
+    // button in front of an integration that does not exist, which is a promise the app
+    // cannot keep.
+    status: "planned",
+    realtime: false,
+    oi: false,
+    depth: false,
+    note: "Not integrated yet. The backend has no Delta adapter — connecting it needs the OAuth/API-key flow, a quote adapter and an order path to be built first.",
     docs: "https://docs.delta.exchange/",
   },
   {
     id: "schwab",
     name: "Charles Schwab",
     markets: ["US"],
-    status: "ready",
-    realtime: true,
+    status: "planned",   // no server adapter — same as Delta
+    realtime: false,
     oi: false,
     depth: true,
-    note: "Schwab Trader API. Real-time US quotes. Requires a Schwab account and an approved developer app — approval takes a few days.",
+    note: "Not integrated yet. The backend has no Schwab adapter — the OAuth flow and quote/order paths still need building.",
     docs: "https://developer.schwab.com/",
   },
   {

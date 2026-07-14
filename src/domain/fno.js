@@ -62,12 +62,6 @@ export const lotSize = (sym) => (LOTS[sym] == null ? null : LOTS[sym]);
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 
-/** Last Thursday of a given month (NSE monthly expiry convention). */
-export function lastThursday(year, month) {
-  const d = new Date(year, month + 1, 0);          // last day of month
-  while (d.getDay() !== 4) d.setDate(d.getDate() - 1);
-  return d;
-}
 
 /**
  * The current-month contract — rolls to next month automatically once this
@@ -76,17 +70,24 @@ export function lastThursday(year, month) {
  * The roll happens at the END of expiry day (market close), not at midnight:
  * on expiry day itself the contract is still the current month and still trades.
  */
+/**
+ * ⚠ THE EXPIRY DAY IS NOT OURS TO ASSERT.
+ *
+ * This used to compute the LAST THURSDAY of the month and present it as the expiry date.
+ * That rule is stale: NSE has moved its expiry day (a July 2026 weekly expiry falls on
+ * TUESDAY the 21st, not a Thursday), so the "expiry" we printed was a date on which
+ * nothing expires.
+ *
+ * We now return the contract MONTH only — which is what the futures label actually needs
+ * ("RELIANCE JUL FUT") — and no longer claim a precise date. Anywhere a real expiry date
+ * matters, it comes from the broker's contract list (see /api/broker/optionchain), which
+ * knows today's calendar. We do not.
+ */
 export function currentExpiry(now = new Date()) {
-  let y = now.getFullYear();
-  let m = now.getMonth();
-  let exp = lastThursday(y, m);
-  const expiryEnd = new Date(exp.getFullYear(), exp.getMonth(), exp.getDate(), 23, 59, 59);
-  if (now > expiryEnd) {
-    m += 1;
-    if (m > 11) { m = 0; y += 1; }
-    exp = lastThursday(y, m);
-  }
-  return { date: exp, label: MONTHS[m], year: y, month: m };
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  // Month only. No `date` field: we would be inventing it.
+  return { label: MONTHS[m], year: y, month: m };
 }
 
 /**
@@ -108,7 +109,6 @@ export function makeFuture(s, now = new Date()) {
     fno: true,
     lot,
     expiry: exp.label,
-    expiryDate: exp.date.getTime(),
     // price/chg inherited from the underlying's REAL quote
   };
 }
