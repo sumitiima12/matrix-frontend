@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from "react";
+import React, { useCallback, useState, useMemo, useRef, useEffect } from "react";
 import { fetchIndicators, fetchTrades, marketOpen, postTrade, resolveExitFromCandles, fetchLiveQuotes } from "./domain/api";
 import {
   Search, User, Wallet, Home, Repeat, Lightbulb, Bot, Bolt, Briefcase,
@@ -48,6 +48,9 @@ import WhyPanel from "./components/ai/WhyPanel";
 import ErrorBoundary from "./components/common/ErrorBoundary";
 import WalletSheet from "./components/common/WalletSheet";
 import ConfirmOrder from "./components/common/ConfirmOrder";
+import BrokerSheet from "./components/common/BrokerSheet";
+import MatrixRain from "./components/common/MatrixRain";
+import { useBroker } from "./hooks/useBroker";
 import Block from "./components/common/Block";
 import Spark from "./components/common/Spark";
 import CapTag from "./components/common/CapTag";
@@ -78,6 +81,7 @@ import { useMarketData } from "./hooks/useMarketData";
 import { usePortfolio } from "./hooks/usePortfolio";
 import { useOrders } from "./hooks/useOrders";
 import { useNotifications } from "./hooks/useNotifications";
+import { useAutomation } from "./hooks/useAutomation";
 import { getBroker } from "./services/broker/BrokerFactory";
 import {
   AreaChart, Area, BarChart, Bar, ResponsiveContainer, XAxis, YAxis,
@@ -183,7 +187,7 @@ select option{background:var(--surface);color:var(--ink)}
 
 
 
-export default function App() {
+function AppInner() {
   // Theme persists across sessions — it reset to light on every reload before.
   const [theme, setTheme] = useState(() => lsGet("mx_theme", "light"));
   useEffect(() => { lsSet("mx_theme", theme); }, [theme]);
@@ -208,7 +212,26 @@ export default function App() {
      backwards across the whole history, overstating what the portfolio was worth
      last month. Recorded from now on; see useEquityCurve for how pre-ledger
      top-ups are handled (folded into a derived opening balance, not invented). */
+  /* The cold-open. Once per browser session — a splash on every route change is a
+     tax, not a flourish. It renders OVER the app, so quotes are already loading
+     behind it; it never delays the first price. */
+  const [splash, setSplash] = useState(() => {
+    try { return !sessionStorage.getItem("mx_splash_seen"); } catch { return true; }
+  });
+  const endSplash = useCallback(() => {
+    try { sessionStorage.setItem("mx_splash_seen", "1"); } catch { /* private mode */ }
+    setSplash(false);
+  }, []);
+
   const [deposits, setDeposits] = useState([]);
+
+  const [brokerOpen, setBrokerOpen] = useState(false);
+  const [brokerPrompt, setBrokerPrompt] = useState(false);   // shown once, after onboarding
+
+  /* A connected broker overwrites the delayed Yahoo prices with live ones, in place.
+     Nothing downstream changes — the numbers just stop being 15 minutes old. */
+  const { connected: brokerLive, broker: liveBroker, connect: connectBroker, disconnect: disconnectBroker, lastTick: brokerTick } =
+    useBroker({ onTick: () => setLiveTick((t) => t + 1), userId });
 
   /* Strategies live at APP ROOT, not inside the Automation page. They used to be
      page-local state, so they were thrown away the moment you navigated to Home —
@@ -247,6 +270,21 @@ export default function App() {
   useEffect(() => {
     if (!BACKEND_URL) return;
     fetch(`${BACKEND_URL}/health`).catch(() => {});
+  }, []);
+
+  /* Finish the broker OAuth handshake. Zerodha comes back with ?request_token=,
+     FYERS with ?auth_code=. We strip it from the URL immediately afterwards — a
+     token sitting in the address bar ends up in history and in referrer headers. */
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const token = p.get("request_token") || p.get("auth_code");
+    if (!token) return;
+    const which = p.get("request_token") ? "zerodha" : "fyers";
+    connectBroker(which, token)
+      .then(() => setBuyToast({ t: "Broker connected — prices are now live" }))
+      .catch((e) => setBuyToast({ t: String(e.message || e), e: true }))
+      .finally(() => window.history.replaceState({}, "", window.location.pathname));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /* Takes the quantity from the sheet, NOT the one we opened with — the user can
@@ -332,6 +370,19 @@ export default function App() {
      full-screen flow the user cannot navigate away from anyway. */
   const onboarding = authed && hydratedUser === userId && (repersonalise || (!profile && !onboardSkipped));
 
+  /* Once onboarding is done, offer the broker — once, ever. This is the moment the
+     user first looks at a price, and the moment it matters that it is 15 minutes
+     old. Nagging on every launch would be a dark pattern; asking once is service. */
+  useEffect(() => {
+    if (onboarding || !authed || !profile || brokerLive) return;
+    if (lsGet("mx_broker_prompted_" + userId)) return;
+    const t = setTimeout(() => {
+      setBrokerPrompt(true);
+      lsSet("mx_broker_prompted_" + userId, true);
+    }, 900);
+    return () => clearTimeout(t);
+  }, [onboarding, authed, profile, brokerLive, userId]);
+
   const [walletOpen, setWalletOpen] = useState(false);
   const [why, setWhy] = useState(null);
   const openWhy = (s, ctx = null) => setWhy({ s, ctx });
@@ -355,7 +406,7 @@ export default function App() {
     return arr;
   }, [market, profile]);
 
-  const nav = [["home", Home, "Home"], ["ideas", Lightbulb, "Ideas"], ["ask", Bot, "Ask"], ["automation", Bolt, "Auto"], ["portfolio", Briefcase, "Portfolio"], ["watchlist", Star, "Watch"]];
+  const nav = [["home", Home, "Home"], ["ideas", Lightbulb, "Ideas"], ["ask", Bot, "Oracle"], ["automation", Bolt, "Neo"], ["portfolio", Briefcase, "Portfolio"], ["watchlist", Star, "Watch"]];
 
   return (
     <div className={"mx theme-" + theme} style={{ background: "var(--app-bg, var(--bg))", minHeight: "100vh" }}>
@@ -381,10 +432,32 @@ export default function App() {
               <span style={{ color: "var(--primary)", fontSize: 19 }}>✦</span>
               <span className="gradtext" style={{ fontWeight: 700, fontSize: 20 }}>Matrix</span>
               <div style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: 3 }}>
-                <span className="pill" title={`${market} market ${marketOpen(market) ? "open" : "closed"} · ${marketHoursLabel(market)}. Prices refresh every minute.${live ? " Live Yahoo feed." : " Simulated feed — connect the proxy for real data."}`} style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".04em", padding: "2px 6px", display: "flex", alignItems: "center", gap: 3, background: marketOpen(market) ? "var(--up-soft)" : "var(--primary-soft)", color: marketOpen(market) ? "var(--up)" : "var(--muted)" }}>
-                  <span style={{ width: 4, height: 4, borderRadius: 4, background: marketOpen(market) ? "var(--up)" : "var(--muted)" }} />{live ? "LIVE" : BACKEND_URL ? (marketOpen(market) ? "NO DATA" : "CLOSED") : "NO DATA"}
-                </span>
-                {liveAt && <span style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 700 }}>{new Date(liveAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
+                {/* The header states WHERE the price came from. "LIVE" on a 15-minute
+                    delayed feed is a lie of omission — a trader reading it will size a
+                    position on it. Broker connected -> LIVE · <broker>. Otherwise the
+                    delay is named, and connecting is one tap away. */}
+                {brokerLive ? (
+                  <span
+                    className="pill"
+                    title={`Real-time feed from ${liveBroker ? liveBroker.name : "your broker"}.`}
+                    onClick={() => setBrokerOpen(true)}
+                    style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".04em", padding: "2px 6px", display: "flex", alignItems: "center", gap: 3, background: "var(--up-soft)", color: "var(--up)", cursor: "pointer" }}
+                  >
+                    <span style={{ width: 4, height: 4, borderRadius: 4, background: "var(--up)" }} />
+                    LIVE · {liveBroker ? liveBroker.name.toUpperCase() : "BROKER"}
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => setBrokerOpen(true)}
+                    className="tap pill"
+                    title={`Prices are from Yahoo and are delayed ~15 minutes on NSE. Connect a broker for a real-time feed.`}
+                    style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".04em", padding: "3px 7px", display: "flex", alignItems: "center", gap: 3, background: "var(--primary-soft)", color: "var(--primary)", border: "none", cursor: "pointer" }}
+                  >
+                    <span style={{ width: 4, height: 4, borderRadius: 4, background: "var(--primary)" }} />
+                    CONNECT BROKER
+                  </button>
+                )}
+                {(brokerTick || liveAt) && <span style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 700 }}>{new Date(brokerTick || liveAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
@@ -428,7 +501,7 @@ export default function App() {
               {tab === "watchlist" && <WatchlistView watchlists={watchlists} activeWl={activeWl} setActiveWl={setActiveWl} createWatchlist={createWatchlist} deleteWatchlist={deleteWatchlist} toggleWatch={toggleWatch} onOpen={openStock} />}
               {tab === "ask" && (
                 <div className="fade">
-                  <div className="disp" style={{ fontWeight: 700, fontSize: 20, marginTop: 6 }}>Ask Matrix</div>
+                  <div className="disp" style={{ fontWeight: 700, fontSize: 20, marginTop: 6 }}>Ask the Oracle</div>
                   <div style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 10 }}>Your AI markets expert. Ask about any stock, sector or strategy.</div>
                   <div className="card" style={{ padding: 14, height: 520 }}>
                     <ChatPanel suggestions={["Is it a good time to buy Indian IT?", "Explain RSI vs MACD simply", "Build me a swing-trade checklist", "What sectors look strong now?"]} />
@@ -471,6 +544,42 @@ export default function App() {
           onOpenStock={openStock}
         />
       )}
+      {splash && <MatrixRain onDone={endSplash} />}
+
+      {brokerPrompt && !brokerOpen && (
+        <>
+          <div onClick={() => setBrokerPrompt(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 148 }} />
+          <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--surface)", borderRadius: "22px 22px 0 0", zIndex: 149, padding: "20px 20px 26px", boxShadow: "0 -16px 44px rgba(0,0,0,.3)" }}>
+            <div className="disp" style={{ fontSize: 19, fontWeight: 800 }}>Connect your broker</div>
+            <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 7, lineHeight: 1.55 }}>
+              Right now your prices come from Yahoo, which is <b style={{ color: "var(--ink)" }}>delayed about 15 minutes</b> on
+              NSE. Connect Zerodha or FYERS and Matrix switches to a real-time feed — plus real open interest and market depth.
+              <br /><br />
+              Your trades stay on virtual capital either way. This is about the data, not your money.
+            </div>
+            <div style={{ display: "flex", gap: 9, marginTop: 16 }}>
+              <button onClick={() => setBrokerPrompt(false)} className="tap disp"
+                style={{ flex: 1, border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 12, padding: 13, fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>
+                Not now
+              </button>
+              <button onClick={() => { setBrokerPrompt(false); setBrokerOpen(true); }} className="tap disp"
+                style={{ flex: 1.4, border: "none", background: "var(--ink)", color: "var(--surface)", borderRadius: 12, padding: 13, fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>
+                Connect broker
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {brokerOpen && (
+        <ErrorBoundary name="Broker">
+          <BrokerSheet
+            connectedId={liveBroker ? liveBroker.id : null}
+            onDisconnect={() => { disconnectBroker(); setBrokerOpen(false); setBuyToast({ t: "Broker disconnected — prices are delayed again" }); }}
+            onClose={() => setBrokerOpen(false)}
+          />
+        </ErrorBoundary>
+      )}
       {confirmOrder && (
         <ErrorBoundary name="Order confirmation">
           <ConfirmOrder
@@ -502,7 +611,7 @@ export default function App() {
           <SearchOverlay onClose={() => setSearch(false)} onOpen={openStock} />
         </ErrorBoundary>
       )}
-      {showProfile && <ProfileSheet profile={profile} walletMap={walletMap} portfolio={portfolio} trades={trades} deposits={deposits} market={market} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={doLogout} onPersonalise={() => setRepersonalise(true)} />}
+      {showProfile && <ProfileSheet onBroker={() => { setShowProfile(false); setBrokerOpen(true); }} brokerName={liveBroker ? liveBroker.name : null} profile={profile} walletMap={walletMap} portfolio={portfolio} trades={trades} deposits={deposits} market={market} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={doLogout} onPersonalise={() => setRepersonalise(true)} />}
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} onAuthed={onAuthed} />}
       {histOpen && <TradeHistory userId={userId} trades={trades} onClose={() => setHistOpen(false)} />}
       {buyToast && (
@@ -514,5 +623,23 @@ export default function App() {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * The root ErrorBoundary.
+ *
+ * Every other boundary in the app sits INSIDE App — so a throw in App's own render
+ * (a bad import, an undefined at module scope, a hook that blows up) had nothing
+ * above it to catch it, and the deploy went white with no message. That is the
+ * worst possible failure: no page, no error, nothing to debug.
+ *
+ * main.jsx imports this default export, so it keeps working untouched.
+ */
+export default function App() {
+  return (
+    <ErrorBoundary name="Matrix">
+      <AppInner />
+    </ErrorBoundary>
   );
 }

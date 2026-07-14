@@ -20,16 +20,11 @@ const REGISTRY = {
   //   icicibreeze: () => new ICICIBreezeAdapter(),
 };
 
-/** Brokers that could be offered in Settings (only `paper` is live today). */
-export const SUPPORTED_BROKERS = [
-  { id: "paper", name: "Matrix Paper", live: true },
-  { id: "zerodha", name: "Zerodha", live: false },
-  { id: "upstox", name: "Upstox", live: false },
-  { id: "angelone", name: "Angel One", live: false },
-  { id: "dhan", name: "Dhan", live: false },
-  { id: "fyers", name: "FYERS", live: false },
-  { id: "icicibreeze", name: "ICICI Breeze", live: false },
-];
+/* The catalogue now lives in domain/brokers.js, which also records WHY a broker is
+   or is not available. Execution still defaults to `paper`: connecting a broker
+   turns on its live DATA feed (hooks/useBroker), not real-money orders. Those need
+   BROKER_TRADING_ENABLED=true on the server, deliberately. */
+export { BROKERS as SUPPORTED_BROKERS } from "../../domain/brokers";
 
 let active = null;
 

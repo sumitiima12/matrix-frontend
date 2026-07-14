@@ -511,7 +511,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
 
   return (
     <div className="mx fade">
-      <div className="disp" style={{ fontWeight: 700, fontSize: 22, marginTop: 8 }}>Trade Automation</div>
+      <div className="disp" style={{ fontWeight: 700, fontSize: 22, marginTop: 8 }}>Automate with Neo</div>
       <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 2 }}>{{ IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", FNO: "⚡ F&O", Commodity: "🪙 Commodity" }[market]} strategies · track performance and manage automations.</div>
 
       {/* Automation dashboard */}

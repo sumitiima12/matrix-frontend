@@ -125,7 +125,7 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
      ROE, margins and quarterly revenue — refuses requests from datacenter IPs
      (verified: "yahoo: auth failed" from Render). No data source, no feature.
      Deleted rather than left as an empty panel or filled with plausible numbers. */
-  const tabs = [["overview", "Overview"], ["tech", "Technicals"], ["news", "News"], ["ask", "Ask Matrix"]];
+  const tabs = [["overview", "Overview"], ["tech", "Technicals"], ["news", "News"], ["ask", "Ask the Oracle"]];
   const n = (v, suf = "") => (v == null ? "n/a" : v + suf);
   const ctx = `Stock: ${s.name} (${s.sym}), market ${market}. Price ${fmt(s.price, market)} (${s.chg >= 0 ? "+" : ""}${s.chg}% today). REAL indicators — RSI ${n(s.rsi)}, MACD ${n(s.macd)} (signal ${n(s.macdSignal)}), ADX ${n(s.adx)}, ATR ${n(s.atr)}, 50-DMA ${n(s.sma50)}, 200-DMA ${n(s.sma200)}, support ${n(s.support)}, resistance ${n(s.resistance)}, 52w ${n(s.low52)}-${n(s.high52)}, volume ${n(s.vol)} vs 20d avg ${n(s.avgVol)}. Only use the figures given; if something is n/a, say so rather than guessing.`;
 
@@ -303,7 +303,7 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
       {/* ASK */}
       <div data-sec="ask" ref={(el) => (refs.current.ask = el)} style={secStyle}>
         <Pop>
-          <Heading icon={<Bot size={18} color="var(--primary)" />}>Ask Matrix</Heading>
+          <Heading icon={<Bot size={18} color="var(--primary)" />}>Ask the Oracle</Heading>
           <div className="card" style={{ padding: 14, height: 460 }}>
             <ChatPanel context={ctx} stock={s} suggestions={["Should I buy right now?", "Support & resistance levels?", "Is this a good time to enter?", "Bull vs bear case?"]} />
           </div>

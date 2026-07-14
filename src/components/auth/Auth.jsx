@@ -163,7 +163,7 @@ export function LoginModal({ onClose, onAuthed }) {
 const inpStyle = { width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: "12px 14px", fontSize: 15, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" };
 // Human-readable summary of the personalisation answers.
 
-export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, portfolio = [], trades = [], deposits = [], market = "IN" }) {
+export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, portfolio = [], trades = [], deposits = [], market = "IN", onBroker, brokerName }) {
   const WMKTS = [["IN", "🇮🇳 Indian stocks"], ["US", "🇺🇸 US stocks"], ["Crypto", "₿ Crypto"], ["FNO", "⚡ F&O"], ["Commodity", "🪙 Commodity"]];
   const summary = profileSummary(profile);
 
@@ -183,6 +183,23 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
             <div style={{ fontSize: 12.5, color: "var(--muted)" }}>{auth ? `Logged in · ${auth.phone}` : "Guest session"}</div>
           </div>
         </div>
+
+        {/* BROKER — where the prices come from */}
+        {onBroker && (
+          <button onClick={onBroker} className="tap card" style={{ width: "100%", marginTop: 14, padding: 13, display: "flex", justifyContent: "space-between", alignItems: "center", border: brokerName ? "1px solid var(--up)" : "1px solid var(--line)", background: "var(--surface)", cursor: "pointer", textAlign: "left" }}>
+            <div>
+              <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>
+                {brokerName ? `Connected to ${brokerName}` : "Connect your broker"}
+              </div>
+              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>
+                {brokerName ? "Prices are real-time" : "Prices are delayed ~15 min — connect for a live feed"}
+              </div>
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 800, color: brokerName ? "var(--up)" : "var(--primary)", flex: "0 0 auto" }}>
+              {brokerName ? "● LIVE" : "Connect"}
+            </span>
+          </button>
+        )}
 
         {/* TOTAL VALUE OVER TIME — cash + holdings, rebuilt from real closing prices */}
         <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, margin: "18px 2px 8px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>

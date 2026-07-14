@@ -71,7 +71,7 @@ export default function Screener({ onOpen, market, list, watchlists, addToWatch,
          on "Interpreting…" forever with no way out. Two seconds, then we give up
          and say so. Whichever finishes first wins. */
       setAiBusy(true);
-      setParsedNote("Asking Matrix to interpret…");
+      setParsedNote("Asking the Oracle to interpret…");
       setTimedOut(false);
 
       /* Don't THROW AWAY a slow answer — just stop blocking on it. If the model
@@ -84,7 +84,7 @@ export default function Screener({ onOpen, market, list, watchlists, addToWatch,
         if (late && late.length && cancelled.current !== text) {
           setFilters(late);
           setTimedOut(false);
-          setParsedNote("AI interpreted: " + late.map((c) => `${c.m} ${c.o} ${c.rhsType === "indicator" ? c.rhs : c.v}${c.tf && c.tf !== "1d" ? " · " + c.tf : ""}`).join(" · "));
+          setParsedNote("Oracle interpreted: " + late.map((c) => `${c.m} ${c.o} ${c.rhsType === "indicator" ? c.rhs : c.v}${c.tf && c.tf !== "1d" ? " · " + c.tf : ""}`).join(" · "));
           apply(late);
         }
       });
@@ -97,7 +97,7 @@ export default function Screener({ onOpen, market, list, watchlists, addToWatch,
 
       if (conds && conds !== "TIMEOUT" && conds.length) {
         setFilters(conds);
-        setParsedNote("AI interpreted: " + conds.map((c) => `${c.m} ${c.o} ${c.rhsType === "indicator" ? c.rhs : c.v}${c.tf && c.tf !== "1d" ? " · " + c.tf : ""}`).join(" · "));
+        setParsedNote("Oracle interpreted: " + conds.map((c) => `${c.m} ${c.o} ${c.rhsType === "indicator" ? c.rhs : c.v}${c.tf && c.tf !== "1d" ? " · " + c.tf : ""}`).join(" · "));
         apply(conds);
       } else {
         setParsedNote(conds === "TIMEOUT"

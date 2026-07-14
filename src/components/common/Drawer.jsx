@@ -104,7 +104,7 @@ export default function Drawer({ s, onClose, onDetails, onBuy }) {
           <VerdictTag v={s.verdict} size={15} />
         </div>
 
-        <div style={{ fontSize: 11.5, color: "var(--muted)", margin: "14px 2px 6px", fontWeight: 600 }}>Ask Matrix</div>
+        <div style={{ fontSize: 11.5, color: "var(--muted)", margin: "14px 2px 6px", fontWeight: 600 }}>Ask the Oracle</div>
         <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto" }}>
           {["Should I buy right now?", "Support & resistance?", "Good time to enter?"].map((q) => (
             <button key={q} onClick={() => onDetails(s)} className="pill tap" style={{ flex: "0 0 auto", border: "1px solid var(--line)", background: "var(--surface)", fontSize: 12, fontWeight: 600, padding: "7px 12px", color: "var(--ink)" }}>{q}</button>
