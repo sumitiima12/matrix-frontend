@@ -88,12 +88,30 @@ export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, us
           const totalQty = held.qty + qty;
           const avg = (held.buy * held.qty + fill * qty) / totalQty;
           return p.map((h) => (h.sym === stock.sym
-            ? { ...h, qty: totalQty, buy: +avg.toFixed(2), sl: opts.sl ?? h.sl, tp: opts.tp ?? h.tp, tsl: opts.tsl ?? h.tsl }
+            ? {
+                ...h, qty: totalQty, buy: +avg.toFixed(2),
+                // Adding intraday to a delivery holding would make the whole position
+                // subject to square-off. Delivery wins; intraday never escalates.
+                product: h.product === "MIS" && opts.product === "MIS" ? "MIS" : (h.product || "CNC"),
+                boughtAt: h.boughtAt || Date.now(),
+                sl: opts.sl ?? h.sl, tp: opts.tp ?? h.tp, tsl: opts.tsl ?? h.tsl,
+              }
             : h));
         }
         return [...p, {
           sym: stock.sym, qty, buy: fill, date: Date.now(),
-          market, fno: Boolean(stock.fno || stock.isFut),
+          market,
+          /* A position is an F&O position because you TRADED a derivative — not because
+             the underlying happens to have listed derivatives. `stock.fno` is true for
+             all 35 F&O-eligible names, so keying off it filed every RELIANCE and NIFTY50
+             buy under the F&O tab and made it vanish from the Indian portfolio. What
+             matters is the market you traded in. */
+          fno: Boolean(stock.isFut || market === "FNO"),
+          /* MIS = intraday (auto-squared-off before the close), CNC = delivery.
+             boughtAt is what the crypto square-off counts 23h45m from, so it must be
+             the real entry time, not the time we happened to notice the position. */
+          product: opts.product === "MIS" ? "MIS" : "CNC",
+          boughtAt: Date.now(),
           sl: opts.sl ?? null, tp: opts.tp ?? null, tsl: opts.tsl ?? null,
         }];
       });

@@ -21,7 +21,7 @@ export default function ChatPanel({ context, suggestions, compactMode, stock }) 
       <div ref={scroller} className="hide-scroll" style={{ flex: 1, overflowY: "auto", padding: "4px 2px", display: "flex", flexDirection: "column", gap: 10 }}>
         {msgs.length === 0 && (
           <div style={{ textAlign: "center", color: "var(--muted)", marginTop: 18, fontSize: 13 }}>
-            <Bot size={26} color="var(--primary)" /><div style={{ marginTop: 6 }}>Ask the Oracle — stocks, levels, strategy.</div>
+            <Bot size={26} color="var(--primary)" /><div style={{ marginTop: 6 }}>Ask Neo — stocks, levels, strategy.</div>
           </div>
         )}
         {msgs.map((m, i) => (
@@ -35,7 +35,7 @@ export default function ChatPanel({ context, suggestions, compactMode, stock }) 
             }}>{m.content}</div>
           </div>
         ))}
-        {busy && <div style={{ color: "var(--muted)", fontSize: 12.5, paddingLeft: 4 }}>The Oracle is thinking…</div>}
+        {busy && <div style={{ color: "var(--muted)", fontSize: 12.5, paddingLeft: 4 }}>Neo is thinking…</div>}
       </div>
       {suggestions && msgs.length === 0 && (
         <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "8px 2px" }}>
@@ -46,7 +46,7 @@ export default function ChatPanel({ context, suggestions, compactMode, stock }) 
       )}
       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
         <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && fire(text)}
-          placeholder="Ask the Oracle…" className="no-ring"
+          placeholder="Ask Neo…" className="no-ring"
           style={{ flex: 1, border: "1px solid var(--line)", borderRadius: 14, padding: "11px 14px", fontSize: 13.5, background: "var(--surface)" }} />
         <button onClick={() => fire(text)} className="tap" style={{ background: "var(--primary)", color: "#fff", border: "none", borderRadius: 14, width: 46, display: "grid", placeItems: "center" }}><Send size={17} /></button>
       </div>

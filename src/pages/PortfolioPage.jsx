@@ -99,7 +99,90 @@ function ManageHolding({ r, st, onBuy, onSell, onUpdate, onClose }) {
   );
 }
 
-export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, onUpdate, priceSnap = {}, onWhy, onOpen }) {
+export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, onUpdate, priceSnap = {}, onWhy, onOpen, mode = "virtual", realPortfolio = null, realErr = null, realLoading = false, onRefreshReal, brokerName }) {
+  /* REAL MODE shows the user's ACTUAL broker holdings. It is read-only and entirely
+     separate from the paper book — no paper position appears here, and no real
+     position leaks into the paper P&L. Mixing them would produce a portfolio that is
+     true of no account that exists. */
+  if (mode === "real") {
+    if (realLoading && !realPortfolio) {
+      return <div style={{ padding: "40px 16px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>Loading your {brokerName || "broker"} portfolio…</div>;
+    }
+    if (realErr) {
+      return (
+        <div style={{ padding: "40px 16px", textAlign: "center" }}>
+          <div style={{ color: "var(--down)", fontSize: 13, fontWeight: 700 }}>Couldn't load your real portfolio</div>
+          <div style={{ color: "var(--muted)", fontSize: 11.5, marginTop: 6, lineHeight: 1.5 }}>{realErr}</div>
+          <button onClick={onRefreshReal} className="tap disp" style={{ marginTop: 14, border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 10, padding: "9px 18px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>Try again</button>
+        </div>
+      );
+    }
+
+    const hold = (realPortfolio && realPortfolio.holdings) || [];
+    const cash = realPortfolio ? realPortfolio.cash : null;
+    const invested = hold.reduce((a, h) => a + (h.avg != null && h.qty ? h.avg * h.qty : 0), 0);
+    const value = hold.reduce((a, h) => a + (h.value != null ? h.value : 0), 0);
+    const pnl = hold.reduce((a, h) => a + (h.pnl != null ? h.pnl : 0), 0);
+
+    return (
+      <div style={{ padding: "6px 0 20px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "6px 2px 12px" }}>
+          <div className="disp" style={{ fontWeight: 700, fontSize: 22 }}>Real portfolio</div>
+          <span className="pill" style={{ fontSize: 9, fontWeight: 800, padding: "3px 8px", background: "var(--down-soft)", color: "var(--down)" }}>
+            {brokerName ? brokerName.toUpperCase() : "BROKER"}
+          </span>
+        </div>
+
+        <div className="card" style={{ padding: 15 }}>
+          <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>Holdings value</div>
+          <div className="mono" style={{ fontSize: 26, fontWeight: 800, marginTop: 3 }}>
+            {value ? "₹" + value.toLocaleString("en-IN", { maximumFractionDigits: 2 }) : "—"}
+          </div>
+          <div style={{ display: "flex", gap: 18, marginTop: 12, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>Invested</div>
+              <div className="mono" style={{ fontSize: 13, fontWeight: 800 }}>{invested ? "₹" + invested.toLocaleString("en-IN", { maximumFractionDigits: 0 }) : "—"}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>P&L</div>
+              <div className="mono" style={{ fontSize: 13, fontWeight: 800, color: pnl > 0 ? "var(--up)" : pnl < 0 ? "var(--down)" : "var(--ink)" }}>
+                {hold.length ? (pnl >= 0 ? "+" : "") + "₹" + pnl.toLocaleString("en-IN", { maximumFractionDigits: 0 }) : "—"}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>Available cash</div>
+              <div className="mono" style={{ fontSize: 13, fontWeight: 800 }}>{cash != null ? "₹" + cash.toLocaleString("en-IN", { maximumFractionDigits: 0 }) : "—"}</div>
+            </div>
+          </div>
+        </div>
+
+        {!hold.length ? (
+          <div style={{ padding: "34px 16px", textAlign: "center", color: "var(--muted)", fontSize: 12.5, lineHeight: 1.5 }}>
+            No holdings in your {brokerName || "broker"} account.
+          </div>
+        ) : hold.map((h) => (
+          <div key={h.sym} className="card" style={{ marginTop: 9, padding: 13, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>{h.sym}</div>
+              <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>
+                {h.qty} @ {h.avg != null ? "₹" + h.avg.toFixed(2) : "—"}
+              </div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div className="mono" style={{ fontSize: 13.5, fontWeight: 800 }}>{h.ltp != null ? "₹" + h.ltp.toFixed(2) : "—"}</div>
+              <div className="mono" style={{ fontSize: 10.5, fontWeight: 800, marginTop: 2, color: h.pnl == null ? "var(--muted)" : h.pnl >= 0 ? "var(--up)" : "var(--down)" }}>
+                {h.pnl == null ? "—" : (h.pnl >= 0 ? "+" : "") + "₹" + h.pnl.toFixed(0)}
+              </div>
+            </div>
+          </div>
+        ))}
+
+        <div style={{ fontSize: 10, color: "var(--muted)", textAlign: "center", marginTop: 16, lineHeight: 1.5 }}>
+          Read-only, straight from {brokerName || "your broker"}. Switch to Virtual for paper trading.
+        </div>
+      </div>
+    );
+  }
   const [expand, setExpand] = useState(null);   // sym with open trade panel
   const mkt = market === "FNO" ? "IN" : market;
   const mLabel = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", FNO: "⚡ F&O", Commodity: "🪙 Commodity" }[market];
@@ -211,7 +294,20 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
               className={onOpen ? "tap" : undefined}
               style={{ display: "flex", justifyContent: "space-between" }}
             >
-              <div><div className="disp" style={{ fontWeight: 700, fontSize: 14 }}>{r.sym}</div><div style={{ fontSize: 11, color: "var(--muted)" }}>{r.qty} units · held {r.days}d</div></div>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div className="disp" style={{ fontWeight: 700, fontSize: 14 }}>{r.sym}</div>
+                  {/* An intraday position will be closed for you. Say so on the position
+                      itself — not just in the confirm sheet you saw once. */}
+                  {r.product === "MIS" && (
+                    <span className="pill" title={r.m === "Crypto" ? "Auto-sells 23h45m after entry" : "Auto-sells 15 min before the close"}
+                      style={{ fontSize: 8.5, fontWeight: 800, padding: "2px 6px", background: "var(--amber-soft, var(--elev))", color: "var(--amber)" }}>
+                      INTRADAY
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--muted)" }}>{r.qty} units · held {r.days}d</div>
+              </div>
               <div style={{ textAlign: "right" }}>
                 <div className="mono" style={{ fontWeight: 700, fontSize: 14, color: r.pl >= 0 ? "var(--up)" : "var(--down)" }}>{r.pl >= 0 ? "+" : ""}{fmt(r.pl, r.m)}</div>
                 <div className="mono" style={{ fontSize: 12, color: r.pl >= 0 ? "var(--up)" : "var(--down)" }}>{r.plp >= 0 ? "+" : ""}{r.plp.toFixed(2)}%</div>

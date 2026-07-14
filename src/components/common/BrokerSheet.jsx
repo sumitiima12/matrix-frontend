@@ -1,54 +1,62 @@
-import React, { useEffect, useState } from "react";
-import { Link2, X, AlertTriangle, Check } from "lucide-react";
-import { brokerStatus, brokerLoginUrl, brokerSession, clearSession } from "../../services/brokerService";
-import { BROKER_COVERAGE } from "../../domain/brokerSymbols";
+import React, { useEffect, useMemo, useState } from "react";
+import { Check, Link2, Search, X, AlertTriangle, ExternalLink } from "lucide-react";
+import { BROKERS } from "../../domain/brokers";
+import { brokerStatus, brokerLoginUrl } from "../../services/brokerService";
 
 /**
  * BrokerSheet — connect a real broker.
  *
- * Every broker here is listed with what it can ACTUALLY do today, not what we wish
- * it did. Zerodha and FYERS have working real-time quote + order integrations.
- * The rest are listed as "coming" because their APIs key off numeric instrument
- * IDs we have not downloaded yet, and quoting the wrong instrument is worse than
- * quoting none. No greyed-out button pretending to be one tap away.
+ * Connecting gives you REAL-TIME prices. It does NOT arm real-money orders: that is
+ * a separate switch on the server (BROKER_TRADING_ENABLED), and this sheet says so,
+ * because the gap between "live prices" and "live money" is the most dangerous
+ * ambiguity in a trading app.
+ *
+ * Three states, kept distinct on purpose — they look identical to a user but have
+ * completely different fixes:
+ *
+ *   "Ready to connect"      the server has this broker's keys. Go.
+ *   "Keys not set on server" the adapter works; nobody added the API key to Render.
+ *   "Can't reach the server" we have NO IDEA what's configured. Not the same thing.
+ *
+ * Collapsing the last two into one grey "Not configured" is what sent us chasing
+ * a phantom bug when the backend was in fact reporting configured: true.
  */
 
-const ORDER = ["zerodha", "fyers", "dhan", "angelone", "groww", "delta", "schwab", "robinhood"];
+const TONE = {
+  ready:   { label: "Available",           c: "var(--up)" },
+  gateway: { label: "Needs local gateway", c: "var(--amber)" },
+  none:    { label: "No public API",       c: "var(--muted)" },
+};
 
-const MKT_TXT = { IN: "Indian stocks", FNO: "F&O", US: "US stocks", Crypto: "Crypto" };
-
-export default function BrokerSheet({ session, onConnected, onDisconnect, onClose }) {
-  const [status, setStatus] = useState(null);
+export default function BrokerSheet({ connectedId, onDisconnect, onClose }) {
+  const [q, setQ] = useState("");
+  const [server, setServer] = useState(null);
+  const [statusErr, setStatusErr] = useState(null);
   const [busy, setBusy] = useState(null);
   const [err, setErr] = useState(null);
-  const [manual, setManual] = useState({ broker: null, token: "" });
 
-  useEffect(() => { brokerStatus().then(setStatus); }, []);
+  useEffect(() => {
+    brokerStatus()
+      .then((d) => { setServer(d); setStatusErr(null); })
+      .catch((e) => { setServer(null); setStatusErr(String(e.message || e)); });
+  }, []);
 
-  const connect = async (id) => {
-    setErr(null); setBusy(id);
+  const shown = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    const list = t ? BROKERS.filter((b) => b.name.toLowerCase().includes(t)) : BROKERS;
+    const rank = { ready: 0, gateway: 1, none: 2 };
+    return [...list].sort((a, b) => rank[a.status] - rank[b.status]);
+  }, [q]);
+
+  const start = async (b) => {
+    setErr(null);
+    setBusy(b.id);
     try {
-      const url = await brokerLoginUrl(id, window.location.origin);
-      // The broker redirects back with a request_token / auth_code in the URL.
-      window.open(url, "_blank", "noopener");
-      setManual({ broker: id, token: "" });
+      const redirect = window.location.origin + window.location.pathname;
+      const url = await brokerLoginUrl(b.id, redirect);
+      window.location.href = url;     // the broker's own login page — we never see the password
     } catch (e) {
-      setErr(e.message);
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const finish = async () => {
-    if (!manual.broker || !manual.token.trim()) return;
-    setErr(null); setBusy(manual.broker);
-    try {
-      const s = await brokerSession(manual.broker, manual.token.trim());
-      onConnected && onConnected(s);
-      setManual({ broker: null, token: "" });
-    } catch (e) {
-      setErr(e.message);
-    } finally {
+      setErr(String(e.message || e));
       setBusy(null);
     }
   };
@@ -56,18 +64,21 @@ export default function BrokerSheet({ session, onConnected, onDisconnect, onClos
   return (
     <>
       <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 150 }} />
-      <div style={{
-        position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto",
-        background: "var(--surface)", borderRadius: "22px 22px 0 0", zIndex: 151,
-        maxHeight: "88vh", overflowY: "auto", padding: "16px 18px 28px",
-      }}>
+      <div
+        style={{
+          position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto",
+          background: "var(--surface)", borderRadius: "22px 22px 0 0", zIndex: 151,
+          maxHeight: "88vh", overflowY: "auto", padding: "16px 18px 26px",
+          boxShadow: "0 -16px 44px rgba(0,0,0,.3)",
+        }}
+      >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
           <div>
-            <div className="disp" style={{ fontSize: 19, fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }}>
-              <Link2 size={18} color="var(--primary)" /> Connect your broker
+            <div className="disp" style={{ fontSize: 19, fontWeight: 800, display: "flex", alignItems: "center", gap: 7 }}>
+              <Link2 size={17} /> Connect your broker
             </div>
             <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 3, lineHeight: 1.45 }}>
-              Yahoo prices are delayed ~15 minutes. A broker feed is live.
+              Yahoo prices are delayed ~15 minutes. A broker feed is live, and brings real open interest and depth.
             </div>
           </div>
           <button onClick={onClose} aria-label="Close" className="tap"
@@ -76,113 +87,106 @@ export default function BrokerSheet({ session, onConnected, onDisconnect, onClos
           </button>
         </div>
 
-        {session && (
-          <div className="card" style={{ marginTop: 14, padding: 13, border: "1px solid var(--up)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <Check size={15} color="var(--up)" />
-                <span className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>
-                  {(BROKER_COVERAGE[session.broker] || {}).name} connected
-                </span>
-              </div>
-              <button onClick={() => { clearSession(); onDisconnect && onDisconnect(); }} className="tap"
-                style={{ border: "1px solid var(--line)", background: "transparent", color: "var(--muted)", borderRadius: 9, padding: "6px 11px", fontWeight: 800, fontSize: 11.5, cursor: "pointer" }}>
-                Disconnect
-              </button>
-            </div>
-            <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 7, lineHeight: 1.45 }}>
-              Live prices are on. Trades still fill on paper — real-money orders need
-              to be switched on separately on the server.
-            </div>
-          </div>
-        )}
-
-        {err && (
-          <div style={{ display: "flex", gap: 8, marginTop: 12, padding: 11, borderRadius: 11, background: "var(--elev)" }}>
-            <AlertTriangle size={15} color="var(--down)" style={{ flex: "0 0 auto", marginTop: 1 }} />
-            <span style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.45 }}>{err}</span>
-          </div>
-        )}
-
-        {/* After the broker redirects back, paste the token it returned. */}
-        {manual.broker && (
-          <div className="card" style={{ marginTop: 12, padding: 13 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
-              Finish connecting {(BROKER_COVERAGE[manual.broker] || {}).name}
-            </div>
-            <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.5, marginBottom: 9 }}>
-              After logging in, your browser is redirected back with a
-              <span className="mono"> request_token</span> (Zerodha) or
-              <span className="mono"> auth_code</span> (FYERS) in the address bar. Paste it here.
-            </div>
-            <div style={{ display: "flex", gap: 6 }}>
-              <input
-                value={manual.token}
-                onChange={(e) => setManual((m) => ({ ...m, token: e.target.value }))}
-                placeholder="Paste the token"
-                aria-label="Broker request token"
-                className="no-ring mono"
-                style={{ flex: 1, minWidth: 0, border: "1px solid var(--line)", borderRadius: 10, padding: "9px 11px", fontSize: 12, background: "var(--elev)", color: "var(--ink)" }}
-              />
-              <button onClick={finish} disabled={!manual.token.trim() || busy} className="tap disp"
-                style={{ border: "none", background: "var(--primary)", color: "#fff", borderRadius: 10, padding: "9px 16px", fontWeight: 800, fontSize: 12.5, cursor: "pointer", opacity: manual.token.trim() ? 1 : 0.5 }}>
-                {busy ? "…" : "Connect"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 800, letterSpacing: ".04em", margin: "18px 2px 8px" }}>
-          BROKERS
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 13, padding: 11, borderRadius: 11, background: "var(--elev)" }}>
+          <AlertTriangle size={15} color="var(--amber)" style={{ flex: "0 0 auto", marginTop: 1 }} />
+          <span style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.5 }}>
+            Connecting gives Matrix <b style={{ color: "var(--ink)" }}>live market data</b>. Your trades stay on virtual
+            capital unless you switch to Real mode, which needs live trading enabled on the server.
+          </span>
         </div>
 
-        {ORDER.map((id) => {
-          const c = BROKER_COVERAGE[id];
-          if (!c) return null;
-          const configured = status && status.brokers && status.brokers[id] && status.brokers[id].configured;
-          const ready = c.realtime;                   // has a working integration
-          const isThis = session && session.broker === id;
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14, background: "var(--elev)", borderRadius: 12, padding: "10px 12px" }}>
+          <Search size={16} color="var(--muted)" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search brokers…"
+            aria-label="Search brokers"
+            className="no-ring"
+            style={{ flex: 1, minWidth: 0, border: "none", background: "transparent", color: "var(--ink)", fontSize: 13.5 }}
+          />
+        </div>
+
+        {err && <div style={{ fontSize: 11.5, color: "var(--down)", marginTop: 10, fontWeight: 600 }}>{err}</div>}
+
+        {statusErr && (
+          <div style={{ fontSize: 11, color: "var(--amber)", marginTop: 10, fontWeight: 600, lineHeight: 1.5 }}>
+            Couldn't reach the server to check which brokers are set up ({statusErr}). That is NOT the same as a
+            broker being unconfigured — the app simply cannot tell yet.
+          </div>
+        )}
+        {!server && !statusErr && (
+          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 10, fontWeight: 600 }}>Checking the server…</div>
+        )}
+
+        {shown.map((b) => {
+          const isConnected = connectedId === b.id;
+          const configured = Boolean(server && server.brokers && server.brokers[b.id] && server.brokers[b.id].configured);
+          const canConnect = b.status === "ready" && configured;
+          const tone = TONE[b.status] || TONE.none;
+
+          const stateLabel = isConnected ? "Connected"
+            : canConnect ? "Ready to connect"
+            : b.status === "ready" && server ? "Keys not set on server"
+            : b.status === "ready" ? tone.label
+            : tone.label;
+
+          const stateColor = isConnected || canConnect ? "var(--up)"
+            : b.status === "ready" && server ? "var(--amber)"
+            : tone.c;
 
           return (
-            <div key={id} className="card" style={{ marginTop: 8, padding: 12, display: "flex", alignItems: "center", gap: 10, opacity: ready ? 1 : 0.62 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>{c.name}</div>
-                <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>
-                  {c.markets.map((m) => MKT_TXT[m] || m).join(" · ")}
-                  {ready
-                    ? " · real-time"
-                    : " · integration not built yet"}
+            <div key={b.id} className="card" style={{ marginTop: 10, padding: 13, border: isConnected ? "1px solid var(--up)" : undefined }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                    <span className="disp" style={{ fontWeight: 800, fontSize: 14 }}>{b.name}</span>
+                    {isConnected && (
+                      <span className="pill" style={{ fontSize: 9, fontWeight: 800, padding: "2px 7px", background: "var(--up-soft)", color: "var(--up)", display: "flex", alignItems: "center", gap: 3 }}>
+                        <Check size={9} /> LIVE
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2, fontWeight: 700 }}>
+                    {b.markets.join(" · ")}
+                    <span style={{ color: stateColor, marginLeft: 8 }}>● {stateLabel}</span>
+                  </div>
                 </div>
+
+                {isConnected ? (
+                  <button onClick={onDisconnect} className="tap disp"
+                    style={{ flex: "0 0 auto", border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 10, padding: "8px 14px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>
+                    Disconnect
+                  </button>
+                ) : canConnect ? (
+                  <button onClick={() => start(b)} disabled={busy === b.id} className="tap disp"
+                    style={{ flex: "0 0 auto", border: "none", background: "var(--ink)", color: "var(--surface)", borderRadius: 10, padding: "8px 18px", fontWeight: 800, fontSize: 12, cursor: "pointer", opacity: busy === b.id ? 0.5 : 1 }}>
+                    {busy === b.id ? "…" : "Connect"}
+                  </button>
+                ) : null}
               </div>
 
-              {isThis ? (
-                <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "4px 9px", background: "var(--up-soft)", color: "var(--up)" }}>CONNECTED</span>
-              ) : ready ? (
-                <button
-                  onClick={() => connect(id)}
-                  disabled={busy === id || !configured}
-                  className="tap disp"
-                  style={{
-                    border: "none", borderRadius: 10, padding: "8px 14px", fontWeight: 800, fontSize: 12,
-                    background: configured ? "var(--primary)" : "var(--elev)",
-                    color: configured ? "#fff" : "var(--muted)",
-                    cursor: configured ? "pointer" : "not-allowed", flex: "0 0 auto",
-                  }}
-                  title={configured ? "" : "Server is missing this broker's API key"}
-                >
-                  {busy === id ? "…" : configured ? "Connect" : "Not configured"}
-                </button>
-              ) : (
-                <span className="pill" style={{ fontSize: 9.5, fontWeight: 700, padding: "4px 9px", background: "var(--elev)", color: "var(--muted)", flex: "0 0 auto" }}>SOON</span>
+              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>{b.note}</div>
+
+              {b.status === "ready" && server && !configured && (
+                <div style={{ fontSize: 10.5, color: "var(--amber)", marginTop: 6, fontWeight: 600, lineHeight: 1.45 }}>
+                  Add this broker's API key and secret to the server's environment variables, then redeploy.
+                </div>
+              )}
+
+              {b.docs && (
+                <a href={b.docs} target="_blank" rel="noreferrer"
+                  style={{ fontSize: 10.5, color: "var(--primary)", marginTop: 6, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 3 }}>
+                  API docs <ExternalLink size={10} />
+                </a>
               )}
             </div>
           );
         })}
 
-        <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 14, lineHeight: 1.5 }}>
-          Your API secret never reaches the browser — the login exchange happens on the
-          server. Tokens expire daily at both Zerodha and FYERS, so you'll re-connect each
-          morning; that's their rule, not ours.
+        <div style={{ fontSize: 10, color: "var(--muted)", textAlign: "center", marginTop: 14, lineHeight: 1.5 }}>
+          You log in on the broker's own site — Matrix never sees your password, and your API secret stays on the
+          server. Broker tokens expire daily, so you'll re-connect each morning. That's their rule, not ours.
         </div>
       </div>
     </>

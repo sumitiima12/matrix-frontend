@@ -49,6 +49,8 @@ import ErrorBoundary from "./components/common/ErrorBoundary";
 import WalletSheet from "./components/common/WalletSheet";
 import ConfirmOrder from "./components/common/ConfirmOrder";
 import BrokerSheet from "./components/common/BrokerSheet";
+import { brokerSymbol } from "./domain/brokerSymbols";
+import { brokerPlaceOrder } from "./services/brokerService";
 import MatrixRain from "./components/common/MatrixRain";
 import { useBroker } from "./hooks/useBroker";
 import Block from "./components/common/Block";
@@ -82,6 +84,7 @@ import { usePortfolio } from "./hooks/usePortfolio";
 import { useOrders } from "./hooks/useOrders";
 import { useNotifications } from "./hooks/useNotifications";
 import { useAutomation } from "./hooks/useAutomation";
+import { useSquareOff } from "./hooks/useSquareOff";
 import { getBroker } from "./services/broker/BrokerFactory";
 import {
   AreaChart, Area, BarChart, Bar, ResponsiveContainer, XAxis, YAxis,
@@ -223,6 +226,16 @@ function AppInner() {
     setSplash(false);
   }, []);
 
+  /* VIRTUAL vs REAL.
+     Virtual  = paper wallet, virtual capital, filled at the real live price.
+     Real     = the user's actual broker account. Real holdings, real money.
+     Default is Virtual, always, and the mode is NOT remembered across sessions —
+     waking up in Real mode because of a tap you made yesterday is exactly the kind
+     of thing that costs somebody money. You opt in each time. */
+  const [mode, setModeRaw] = useState(() => (lsGet("mx_mode") === "real" ? "real" : "virtual"));
+  const setMode = useCallback((v) => { lsSet("mx_mode", v); setModeRaw(v); }, []);
+  const [confirmReal, setConfirmReal] = useState(false);   // arming Real needs a deliberate yes
+
   const [deposits, setDeposits] = useState([]);
 
   const [brokerOpen, setBrokerOpen] = useState(false);
@@ -230,8 +243,24 @@ function AppInner() {
 
   /* A connected broker overwrites the delayed Yahoo prices with live ones, in place.
      Nothing downstream changes — the numbers just stop being 15 minutes old. */
-  const { connected: brokerLive, broker: liveBroker, connect: connectBroker, disconnect: disconnectBroker, lastTick: brokerTick } =
-    useBroker({ onTick: () => setLiveTick((t) => t + 1), userId });
+  const {
+    connected: brokerLive, broker: liveBroker, connect: connectBroker, disconnect: disconnectBroker,
+    lastTick: brokerTick, real: realPortfolio, realErr, realLoading, refreshPortfolio, session: brokerSession,
+  } = useBroker({ onTick: () => setLiveTick((t) => t + 1), userId });
+
+  /* Real mode is only reachable with a broker attached. If the broker drops (token
+     expired — they expire daily), fall straight back to Virtual rather than leaving
+     the user in a "Real" mode that has no account behind it. */
+  useEffect(() => {
+    if (mode === "real" && !brokerLive) {
+      setMode("virtual");
+      setBuyToast({ t: "Broker disconnected — back to Virtual mode", e: true });
+    }
+  }, [mode, brokerLive]);
+
+  useEffect(() => {
+    if (mode === "real" && brokerLive) refreshPortfolio();
+  }, [mode, brokerLive, refreshPortfolio]);
 
   /* Strategies live at APP ROOT, not inside the Automation page. They used to be
      page-local state, so they were thrown away the moment you navigated to Home —
@@ -263,6 +292,16 @@ function AppInner() {
      pipeline. Automated orders skip the confirm dialog on purpose. */
   useAutomation({ strats, onBuy: buyStockNow, onSell: sellStockNow, userId, enabled: !!auth });
 
+  /* Intraday positions close themselves — 15 min before the bell, or 23h45m after
+     entry for crypto. Paper only: a REAL intraday position is the broker's to square
+     off, and doing it twice would sell a position we do not hold. */
+  useSquareOff({
+    portfolio,
+    onSell: (sym, qty) => sellStockNow(ALL.find((a) => a.sym === sym), qty),
+    enabled: !!auth && mode === "virtual",
+    notify: (t) => setBuyToast({ t }),
+  });
+
   /* Wake the backend the moment the app opens. Render's free tier sleeps after 15
      minutes, and the first request then pays a ~30s cold start — which is why the
      screener's AI call "timed out" while Groq itself answers in under a second.
@@ -290,10 +329,44 @@ function AppInner() {
   /* Takes the quantity from the sheet, NOT the one we opened with — the user can
      change it there, and ignoring that would place a different order than the one
      they confirmed. */
-  const runConfirmedOrder = (finalQty) => {
+  /* THE FORK. A Virtual order hits the paper wallet. A Real order goes to the broker
+     and moves actual money. These must never cross: a real fill that also debits the
+     paper wallet would corrupt the paper P&L, and a paper fill that reached the broker
+     would be a trade the user never agreed to. One branch each, no shared path. */
+  const runConfirmedOrder = async (finalQty, product) => {
     if (!confirmOrder) return;
     const { s, qty, side, opts } = confirmOrder;
-    placeOrder({ stock: s, side, qty: finalQty || qty, opts });
+    const q = finalQty || qty;
+    const prod = product || "CNC";
+
+    if (mode === "real") {
+      if (!brokerLive) {                       // belt and braces; the toggle already guards this
+        setBuyToast({ t: "No broker connected — cannot place a real order", e: true });
+        setConfirmOrder(null);
+        return;
+      }
+      const bsym = brokerSymbol(s.sym, liveBroker.id);
+      if (!bsym) {
+        setBuyToast({ t: `${liveBroker.name} can't trade ${s.sym} — no symbol mapping`, e: true });
+        setConfirmOrder(null);
+        return;
+      }
+      setConfirmOrder(null);
+      try {
+        const r = await brokerPlaceOrder(
+          brokerSession, userId,
+          { symbol: bsym, side, qty: q, orderType: "MARKET", product: prod },
+          true,                                 // explicit live confirmation
+        );
+        setBuyToast({ t: `Real ${side.toLowerCase()} sent to ${liveBroker.name} — order ${r.orderId}` });
+        refreshPortfolio();
+      } catch (e) {
+        setBuyToast({ t: `Broker rejected the order: ${String(e.message || e)}`, e: true });
+      }
+      return;
+    }
+
+    placeOrder({ stock: s, side, qty: q, opts: { ...opts, product: prod } });   // virtual: paper wallet
     setConfirmOrder(null);
   };
   const [priceSnap, setPriceSnap] = useState({});
@@ -406,7 +479,7 @@ function AppInner() {
     return arr;
   }, [market, profile]);
 
-  const nav = [["home", Home, "Home"], ["ideas", Lightbulb, "Ideas"], ["ask", Bot, "Oracle"], ["automation", Bolt, "Neo"], ["portfolio", Briefcase, "Portfolio"], ["watchlist", Star, "Watch"]];
+  const nav = [["home", Home, "Home"], ["ideas", Lightbulb, "Ideas"], ["ask", Bot, "Neo"], ["automation", Bolt, "Auto"], ["portfolio", Briefcase, "Portfolio"], ["watchlist", Star, "Watch"]];
 
   return (
     <div className={"mx theme-" + theme} style={{ background: "var(--app-bg, var(--bg))", minHeight: "100vh" }}>
@@ -432,31 +505,58 @@ function AppInner() {
               <span style={{ color: "var(--primary)", fontSize: 19 }}>✦</span>
               <span className="gradtext" style={{ fontWeight: 700, fontSize: 20 }}>Matrix</span>
               <div style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: 3 }}>
-                {/* The header states WHERE the price came from. "LIVE" on a 15-minute
-                    delayed feed is a lie of omission — a trader reading it will size a
-                    position on it. Broker connected -> LIVE · <broker>. Otherwise the
-                    delay is named, and connecting is one tap away. */}
-                {brokerLive ? (
+                {/* WHERE THIS MARKET'S PRICE COMES FROM — per market, not per app.
+                    A broker covers some markets and not others: Zerodha prices NIFTY
+                    but not BTC. Saying "LIVE" across the whole app while Yahoo quietly
+                    serves crypto would be a lie of omission, and a trader will size a
+                    position on it. So: LIVE = broker feed. LIVE (YF) = Yahoo, ~15 min
+                    delayed. The label follows the market you are actually looking at. */}
+                {brokerLive && liveBroker && liveBroker.markets.includes(market) ? (
                   <span
                     className="pill"
-                    title={`Real-time feed from ${liveBroker ? liveBroker.name : "your broker"}.`}
+                    title={`Real-time feed from ${liveBroker.name}.`}
                     onClick={() => setBrokerOpen(true)}
                     style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".04em", padding: "2px 6px", display: "flex", alignItems: "center", gap: 3, background: "var(--up-soft)", color: "var(--up)", cursor: "pointer" }}
                   >
                     <span style={{ width: 4, height: 4, borderRadius: 4, background: "var(--up)" }} />
-                    LIVE · {liveBroker ? liveBroker.name.toUpperCase() : "BROKER"}
+                    LIVE
                   </span>
-                ) : (
-                  <button
+                ) : live ? (
+                  <span
+                    className="pill"
+                    title={`Yahoo Finance — delayed roughly 15 minutes on NSE. ${brokerLive ? `Your ${liveBroker ? liveBroker.name : "broker"} feed does not cover ${market}.` : "Connect a broker for a real-time feed."}`}
                     onClick={() => setBrokerOpen(true)}
-                    className="tap pill"
-                    title={`Prices are from Yahoo and are delayed ~15 minutes on NSE. Connect a broker for a real-time feed.`}
-                    style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".04em", padding: "3px 7px", display: "flex", alignItems: "center", gap: 3, background: "var(--primary-soft)", color: "var(--primary)", border: "none", cursor: "pointer" }}
+                    style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".04em", padding: "2px 6px", display: "flex", alignItems: "center", gap: 3, background: "var(--primary-soft)", color: "var(--primary)", cursor: "pointer" }}
                   >
                     <span style={{ width: 4, height: 4, borderRadius: 4, background: "var(--primary)" }} />
-                    CONNECT BROKER
-                  </button>
+                    LIVE (YF)
+                  </span>
+                ) : (
+                  <span className="pill" style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".04em", padding: "2px 6px", display: "flex", alignItems: "center", gap: 3, background: "var(--primary-soft)", color: "var(--muted)" }}>
+                    <span style={{ width: 4, height: 4, borderRadius: 4, background: "var(--muted)" }} />
+                    {marketOpen(market) ? "NO DATA" : "CLOSED"}
+                  </span>
                 )}
+
+                {/* VIRTUAL / REAL. Real is only offered once a broker is attached. */}
+                <button
+                  onClick={() => {
+                    if (mode === "real") { setMode("virtual"); return; }        // leaving Real is always free
+                    if (!brokerLive) { setBrokerOpen(true); return; }           // no broker, no Real
+                    setConfirmReal(true);                                       // entering Real needs a yes
+                  }}
+                  className="tap pill"
+                  title={mode === "real" ? "Real money. Orders go to your broker." : "Virtual capital. Orders are simulated at the real live price."}
+                  style={{
+                    fontSize: 8, fontWeight: 800, letterSpacing: ".04em", padding: "3px 8px",
+                    display: "flex", alignItems: "center", gap: 3, border: "none", cursor: "pointer",
+                    background: mode === "real" ? "var(--down-soft)" : "var(--elev)",
+                    color: mode === "real" ? "var(--down)" : "var(--muted)",
+                  }}
+                >
+                  <span style={{ width: 4, height: 4, borderRadius: 4, background: mode === "real" ? "var(--down)" : "var(--muted)" }} />
+                  {mode === "real" ? "REAL" : "VIRTUAL"}
+                </button>
                 {(brokerTick || liveAt) && <span style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 700 }}>{new Date(brokerTick || liveAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
               </div>
             </div>
@@ -497,11 +597,11 @@ function AppInner() {
               {tab === "trade" && <TradeView walletMap={walletMap} adjustWallet={adjustWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} recordTrade={recordTrade} />}
               {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} market={market} onWhy={openWhy} />}
               {tab === "automation" && <Automation market={market} onRecord={recordTrade} trades={trades} strats={strats} setStrats={setStrats} />}
-              {tab === "portfolio" && <Portfolio portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} onBuy={buyStock} onSell={sellStock} onUpdate={updateHolding} priceSnap={priceSnap} onWhy={openWhy} onOpen={openStock} />}
+              {tab === "portfolio" && <Portfolio mode={mode} realPortfolio={realPortfolio} realErr={realErr} realLoading={realLoading} onRefreshReal={refreshPortfolio} brokerName={liveBroker ? liveBroker.name : null} portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} onBuy={buyStock} onSell={sellStock} onUpdate={updateHolding} priceSnap={priceSnap} onWhy={openWhy} onOpen={openStock} />}
               {tab === "watchlist" && <WatchlistView watchlists={watchlists} activeWl={activeWl} setActiveWl={setActiveWl} createWatchlist={createWatchlist} deleteWatchlist={deleteWatchlist} toggleWatch={toggleWatch} onOpen={openStock} />}
               {tab === "ask" && (
                 <div className="fade">
-                  <div className="disp" style={{ fontWeight: 700, fontSize: 20, marginTop: 6 }}>Ask the Oracle</div>
+                  <div className="disp" style={{ fontWeight: 700, fontSize: 20, marginTop: 6 }}>Ask Neo</div>
                   <div style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 10 }}>Your AI markets expert. Ask about any stock, sector or strategy.</div>
                   <div className="card" style={{ padding: 14, height: 520 }}>
                     <ChatPanel suggestions={["Is it a good time to buy Indian IT?", "Explain RSI vs MACD simply", "Build me a swing-trade checklist", "What sectors look strong now?"]} />
@@ -544,6 +644,35 @@ function AppInner() {
           onOpenStock={openStock}
         />
       )}
+      {/* ARMING REAL MODE. Deliberately a full stop, not a toast. From here on, a
+          tap on Buy spends actual money — that deserves a sentence and a decision,
+          not a silently flipped switch. */}
+      {confirmReal && (
+        <>
+          <div onClick={() => setConfirmReal(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 190 }} />
+          <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--surface)", borderRadius: "22px 22px 0 0", zIndex: 191, padding: "20px 20px 26px", boxShadow: "0 -16px 44px rgba(0,0,0,.35)" }}>
+            <div className="disp" style={{ fontSize: 19, fontWeight: 800, color: "var(--down)" }}>Switch to Real money?</div>
+            <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.6 }}>
+              In Real mode, orders are sent to <b style={{ color: "var(--ink)" }}>{liveBroker ? liveBroker.name : "your broker"}</b> and
+              executed against your actual account with your actual money. Your Portfolio will show your real
+              holdings, not the paper ones.
+              <br /><br />
+              Your virtual wallet and paper trade history are kept separately and are not affected.
+            </div>
+            <div style={{ display: "flex", gap: 9, marginTop: 18 }}>
+              <button onClick={() => setConfirmReal(false)} className="tap disp"
+                style={{ flex: 1.3, border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 12, padding: 13, fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>
+                Stay in Virtual
+              </button>
+              <button onClick={() => { setMode("real"); setConfirmReal(false); setBuyToast({ t: "Real mode — orders now go to your broker", e: true }); }} className="tap disp"
+                style={{ flex: 1, border: "none", background: "var(--down)", color: "#fff", borderRadius: 12, padding: 13, fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>
+                Use Real
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
       {splash && <MatrixRain onDone={endSplash} />}
 
       {brokerPrompt && !brokerOpen && (

@@ -114,3 +114,8 @@ export async function brokerPlaceOrder(session, userId, order, confirmLive) {
   if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
   return d;
 }
+
+/** The user's REAL holdings and cash, from the broker. Read-only. */
+export async function brokerPortfolio(session, userId) {
+  return get("/api/broker/portfolio", authHeaders(session, userId));
+}

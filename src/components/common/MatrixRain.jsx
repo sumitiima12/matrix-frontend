@@ -21,8 +21,8 @@ import React, { useEffect, useRef, useState } from "react";
  */
 
 const GLYPHS = "01011010110100101アイウエオカキクケコサシスセソタチツテト0101";
-const DURATION = 1000;      // rain
-const FADE = 550;           // dissolve into the logo
+const DURATION = 2100;      // rain — long enough to actually read it
+const FADE = 900;           // dissolve into the wordmark
 
 export default function MatrixRain({ onDone }) {
   const canvasRef = useRef(null);
@@ -32,7 +32,7 @@ export default function MatrixRain({ onDone }) {
     const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduced) {
       setPhase("logo");
-      const t = setTimeout(() => { setPhase("gone"); onDone && onDone(); }, 700);
+      const t = setTimeout(() => { setPhase("gone"); onDone && onDone(); }, 1400);
       return () => clearTimeout(t);
     }
 
@@ -82,7 +82,7 @@ export default function MatrixRain({ onDone }) {
     draw();
 
     const t1 = setTimeout(() => setPhase("logo"), DURATION);
-    const t2 = setTimeout(() => { setPhase("gone"); onDone && onDone(); }, DURATION + FADE);
+    const t2 = setTimeout(() => { setPhase("gone"); onDone && onDone(); }, DURATION + FADE + 700);
 
     return () => {
       cancelAnimationFrame(raf);
@@ -136,11 +136,11 @@ export default function MatrixRain({ onDone }) {
         </div>
         <div
           style={{
-            fontSize: 9.5, fontWeight: 800, letterSpacing: ".34em",
-            color: "#22C55E", marginTop: 8, textTransform: "uppercase",
+            fontSize: 12.5, fontWeight: 700, letterSpacing: ".02em",
+            color: "#8AF0AE", marginTop: 12,
           }}
         >
-          Smart Trading
+          Welcome to the World of Matrix
         </div>
       </div>
     </div>

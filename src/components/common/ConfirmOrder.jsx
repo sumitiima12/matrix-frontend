@@ -22,6 +22,11 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel }) {
   const [qty, setQty] = useState(initialQty || 1);
   useEffect(() => { setQty(initialQty || 1); }, [initialQty, order && order.s && order.s.sym]);
 
+  /* Delivery by default. Intraday is the one that can be closed out from under you,
+     so it should be a choice you make, not one you inherit from a default. */
+  const [product, setProduct] = useState("CNC");
+  useEffect(() => { setProduct("CNC"); }, [order && order.s && order.s.sym]);
+
   if (!order) return null;
 
   const price = s.price;
@@ -64,6 +69,32 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel }) {
 
         <div style={{ marginTop: 10 }}>
           <Row k="Action" v={side} c={side === "BUY" ? "var(--up)" : "var(--down)"} />
+          {side === "BUY" && (
+            <div style={{ padding: "11px 0", borderBottom: "1px solid var(--line)" }}>
+              <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginBottom: 7 }}>Buy type</div>
+              <div style={{ display: "flex", gap: 6 }}>
+                {[
+                  ["CNC", "Delivery", "Hold as long as you like"],
+                  ["MIS", "Intraday", market === "Crypto" ? "Auto-sells 23h45m after buy" : "Auto-sells 15 min before close"],
+                ].map(([id, label, sub]) => (
+                  <button
+                    key={id}
+                    onClick={() => setProduct(id)}
+                    className="tap"
+                    style={{
+                      flex: 1, textAlign: "left", cursor: "pointer", borderRadius: 11, padding: "9px 11px",
+                      border: product === id ? "1.5px solid var(--ink)" : "1px solid var(--line)",
+                      background: product === id ? "var(--elev)" : "transparent",
+                    }}
+                  >
+                    <div className="disp" style={{ fontSize: 12.5, fontWeight: 800, color: "var(--ink)" }}>{label}</div>
+                    <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 2, lineHeight: 1.35 }}>{sub}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
             <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>
               {lot > 1 ? `Quantity (lots of ${lot})` : "Quantity"}
@@ -134,7 +165,7 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel }) {
             Cancel
           </button>
           <button
-            onClick={() => onConfirm(qty)}
+            onClick={() => onConfirm(qty, product)}
             disabled={price == null || short}
             className="tap disp"
             style={{

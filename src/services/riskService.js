@@ -32,6 +32,15 @@ export function isMarketOpen(market, now = new Date()) {
   return true;
 }
 
+/* Closing bell, in UTC minutes-since-midnight. Same numbers isMarketOpen uses, named
+   once so the square-off engine and the open/closed check can never drift apart. */
+export function marketCloseMins(market) {
+  if (market === "IN" || market === "FNO") return 600;    // 15:30 IST
+  if (market === "US") return 1260;                       // 16:00 ET (approx)
+  if (market === "Commodity") return 1410;
+  return null;                                            // Crypto never closes
+}
+
 const startOfDay = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
 
 /**

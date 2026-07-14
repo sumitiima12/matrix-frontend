@@ -53,6 +53,8 @@ export default function TradeHistory({ userId, trades, onClose }) {
   const RANGES = [["today", "Today"], ["7", "7d"], ["30", "30d"], ["90", "90d"], ["365", "1y"], ["all", "All"]];
   const MKTS = [["all", "All markets"], ["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["FNO", "⚡ F&O"], ["Commodity", "🪙 Commodity"]];
   const [range, setRange] = useState("30");
+  const [dFrom, setDFrom] = useState("");     // yyyy-mm-dd, custom range
+  const [dTo, setDTo] = useState("");
   const [mkt, setMkt] = useState("all");
   const [remote, setRemote] = useState(null);
   const [fSym, setFSym] = useState([]);
@@ -60,13 +62,33 @@ export default function TradeHistory({ userId, trades, onClose }) {
   const [fExit, setFExit] = useState([]);
   const [openF, setOpenF] = useState(null);
   const [view, setView] = useState("history");   // "history" | "journal"
-  const now = Date.now();
-  const from = useMemo(() => {
-    if (range === "all") return 0;
-    if (range === "today") { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); }
-    return Date.now() - (+range) * 86400000;
-  }, [range]);
-  useEffect(() => { let stop = false; setRemote(null); if (BACKEND_URL) fetchTrades(userId, from, Date.now()).then((t) => { if (!stop && t) setRemote(t); }).catch(() => {}); return () => { stop = true; }; }, [range, userId]);
+  /* WINDOW. A preset OR an explicit From/To. The presets are the common cases; the
+     date pickers are for "what did I do the week of the crash".
+
+     `to` is the END of the To day (23:59:59.999), not its start. A range of
+     14 Jul → 14 Jul must include the trades you made on the 14th; if `to` were
+     midnight-at-the-start-of-the-14th it would return nothing, and the user would
+     reasonably conclude the app had lost their trades. */
+  const custom = range === "custom" && (dFrom || dTo);
+
+  const { from, to } = useMemo(() => {
+    if (custom) {
+      const f = dFrom ? new Date(dFrom + "T00:00:00").getTime() : 0;
+      const t = dTo ? new Date(dTo + "T23:59:59.999").getTime() : Date.now();
+      return { from: f, to: t };
+    }
+    const t = Date.now();
+    if (range === "all") return { from: 0, to: t };
+    if (range === "today") { const d = new Date(); d.setHours(0, 0, 0, 0); return { from: d.getTime(), to: t }; }
+    return { from: t - (+range) * 86400000, to: t };
+  }, [range, dFrom, dTo, custom]);
+
+  useEffect(() => {
+    let stop = false;
+    setRemote(null);
+    if (BACKEND_URL) fetchTrades(userId, from, to).then((t) => { if (!stop && t) setRemote(t); }).catch(() => {});
+    return () => { stop = true; };
+  }, [from, to, userId]);
 
   const isOpen = (t) => t.exitAt == null || t.exit == null || t.exitType === "Open";
   // Live P&L for still-open positions, using the current price.
@@ -76,8 +98,13 @@ export default function TradeHistory({ userId, trades, onClose }) {
     const cur = s ? s.price : t.entry;
     return { ...t, open: true, cur, livePnl: +((cur - t.entry) * (t.qty || 1)).toFixed(2) };
   };
+  /* Date a trade by its EXIT if it's closed, its ENTRY if it's still open. A position
+     opened in March and still running is "current", not a March trade — filtering an
+     open position out of "last 7 days" because it was entered in March would hide a
+     live position from the user. */
+  const stamp = (t) => (isOpen(t) ? (t.entryAt || 0) : (t.exitAt || t.entryAt || 0));
   const src = (remote || trades)
-    .filter((t) => (isOpen(t) ? (t.entryAt || 0) : (t.exitAt || t.entryAt || 0)) >= from)
+    .filter((t) => { const ts = stamp(t); return ts >= from && ts <= to; })
     .map(withPnl);
   const allSyms = [...new Set(src.map((t) => t.sym))].sort();
   const TYPES = ["Manual", "Automate", "Auto Buy"];
@@ -112,6 +139,14 @@ export default function TradeHistory({ userId, trades, onClose }) {
         <div>
           <div className="disp" style={{ fontWeight: 700, fontSize: 17 }}>{view === "journal" ? "Trading journal" : "Trade history"}</div>
           <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{rows.length} trades{openN ? ` · ${openN} open` : ""} · P&amp;L {totalPnl >= 0 ? "+" : ""}{fmt(totalPnl, mkt === "all" ? "IN" : mkt)}</div>
+          {/* Name the window. "12 trades" means nothing without knowing 12 trades WHEN. */}
+          {custom && (
+            <div style={{ fontSize: 10, color: "var(--primary)", fontWeight: 700, marginTop: 1 }}>
+              {dFrom ? new Date(dFrom).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" }) : "the beginning"}
+              {" → "}
+              {dTo ? new Date(dTo).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" }) : "today"}
+            </div>
+          )}
         </div>
         {/* Export whatever is currently filtered, as CSV */}
         <button
@@ -143,12 +178,63 @@ export default function TradeHistory({ userId, trades, onClose }) {
         ))}
       </div>
 
-      {/* timeframe */}
+      {/* timeframe — presets, then an explicit From/To */}
       <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "8px 16px 4px" }}>
         {RANGES.map(([k, l]) => (
-          <button key={k} onClick={() => setRange(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "7px 14px", fontSize: 12, fontWeight: 700, border: "1px solid " + (range === k ? "var(--primary)" : "var(--line)"), background: range === k ? "var(--primary)" : "var(--surface)", color: range === k ? "var(--on-primary)" : "var(--ink)" }}>{l}</button>
+          <button
+            key={k}
+            onClick={() => { setRange(k); setDFrom(""); setDTo(""); }}   // a preset clears the custom dates
+            className="pill tap disp"
+            style={{ flex: "0 0 auto", padding: "7px 14px", fontSize: 12, fontWeight: 700, border: "1px solid " + (range === k ? "var(--primary)" : "var(--line)"), background: range === k ? "var(--primary)" : "var(--surface)", color: range === k ? "var(--on-primary)" : "var(--ink)" }}
+          >
+            {l}
+          </button>
         ))}
+        <button
+          onClick={() => setRange("custom")}
+          className="pill tap disp"
+          style={{ flex: "0 0 auto", padding: "7px 14px", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", border: "1px solid " + (range === "custom" ? "var(--primary)" : "var(--line)"), background: range === "custom" ? "var(--primary)" : "var(--surface)", color: range === "custom" ? "var(--on-primary)" : "var(--ink)" }}
+        >
+          Custom
+        </button>
       </div>
+
+      {range === "custom" && (
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-end", padding: "8px 16px 2px", flexWrap: "wrap" }}>
+          <label style={{ flex: 1, minWidth: 128 }}>
+            <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4, letterSpacing: ".04em" }}>FROM</div>
+            <input
+              type="date"
+              value={dFrom}
+              max={dTo || undefined}                              // can't start after you end
+              onChange={(e) => setDFrom(e.target.value)}
+              className="no-ring mono"
+              style={{ width: "100%", border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: "9px 10px", fontSize: 12.5, fontWeight: 700 }}
+            />
+          </label>
+          <label style={{ flex: 1, minWidth: 128 }}>
+            <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4, letterSpacing: ".04em" }}>TO</div>
+            <input
+              type="date"
+              value={dTo}
+              min={dFrom || undefined}
+              max={new Date().toISOString().slice(0, 10)}         // no trades in the future
+              onChange={(e) => setDTo(e.target.value)}
+              className="no-ring mono"
+              style={{ width: "100%", border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: "9px 10px", fontSize: 12.5, fontWeight: 700 }}
+            />
+          </label>
+          {(dFrom || dTo) && (
+            <button
+              onClick={() => { setDFrom(""); setDTo(""); }}
+              className="pill tap disp"
+              style={{ flex: "0 0 auto", padding: "9px 12px", fontSize: 11.5, fontWeight: 700, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--muted)" }}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      )}
 
       {/* multi-select filters */}
       <div style={{ display: "flex", gap: 7, flexWrap: "wrap", padding: "6px 16px 10px" }}>
