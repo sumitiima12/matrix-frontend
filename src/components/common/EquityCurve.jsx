@@ -17,7 +17,7 @@ export default function EquityCurve({ market = "IN", portfolio, trades, deposits
   const [mode, setMode] = useState("value");   // "value" = cash + holdings | "pnl" = cumulative profit
   const { loading, series, excluded } = useEquityCurve(market, portfolio, trades, deposits, wallet, days);
 
-  const ccy = market === "FNO" ? "IN" : market;
+  const ccy = market;
 
   const metric = mode === "pnl" ? "pnl" : "total";
   const last = series && series.length ? series[series.length - 1] : null;

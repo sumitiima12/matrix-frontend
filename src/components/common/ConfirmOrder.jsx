@@ -1,4 +1,3 @@
-import OptionPicker from "./OptionPicker";
 import React, { useEffect, useState } from "react";
 import { AlertTriangle, Minus, Plus, X } from "lucide-react";
 import { fmt, pct } from "../../lib/format";
@@ -27,11 +26,7 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
      so it should be a choice you make, not one you inherit from a default. */
   const [product, setProduct] = useState("CNC");
 
-  /* STOCK or OPTION. Only offered where options actually exist — the F&O underlyings.
-     Selecting "Option" hands over to the picker, which is bound to the broker's real
-     contract list; it cannot produce a symbol the exchange doesn't list. */
-  const [instrument, setInstrument] = useState("stock");
-  useEffect(() => { setProduct("CNC"); }, [order && order.s && order.s.sym]);
+    useEffect(() => { setProduct("CNC"); }, [order && order.s && order.s.sym]);
 
   if (!order) return null;
 
@@ -74,49 +69,6 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
         </div>
 
         {/* Stock vs Option. Options need a broker: the contract list is theirs. */}
-        {side === "BUY" && (s.fno || market === "FNO") && (
-          <div style={{ display: "flex", gap: 7, marginTop: 12 }}>
-            {[["stock", "Stock"], ["option", "Option"]].map(([k, l]) => (
-              <button
-                key={k}
-                onClick={() => setInstrument(k)}
-                className="tap disp"
-                style={{
-                  flex: 1, padding: "9px 0", borderRadius: 10, fontSize: 12.5, fontWeight: 800, cursor: "pointer",
-                  border: "1px solid " + (instrument === k ? "var(--primary)" : "var(--line)"),
-                  background: instrument === k ? "var(--primary)" : "var(--surface)",
-                  color: instrument === k ? "#fff" : "var(--ink)",
-                }}
-              >
-                {l}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {instrument === "option" ? (
-          <OptionPicker
-            underlying={s.under || s.sym}
-            spot={s.price}
-            userId={userId}
-            onPick={({ contract, qty, lots, lotSize }) =>
-              onConfirm({
-                ...order,
-                instrument: "option",
-                optionSymbol: contract.symbol,      // the BROKER's symbol, verbatim
-                strike: contract.strike,
-                optType: contract.type,
-                expiry: contract.expiry,
-                qty,                                 // contracts, not lots
-                lots,
-                lotSize,
-                price: contract.ltp != null ? contract.ltp : undefined,
-                product,
-              })
-            }
-          />
-        ) : (
-        <>
         <div style={{ marginTop: 10 }}>
           <Row k="Action" v={side} c={side === "BUY" ? "var(--up)" : "var(--down)"} />
           {side === "BUY" && (
@@ -229,8 +181,6 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
             {side === "BUY" ? "Buy" : "Sell"} {units} {units === 1 ? "unit" : "units"}
           </button>
         </div>
-        </>
-        )}
 
         <div style={{ fontSize: 10.5, color: "var(--muted)", textAlign: "center", marginTop: 10, lineHeight: 1.45 }}>
           Paper trade. Virtual capital, filled at the real live price.

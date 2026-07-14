@@ -26,7 +26,7 @@ export function isMarketOpen(market, now = new Date()) {
   const day = now.getUTCDay();
   if (day === 0 || day === 6) return false;
   const mins = now.getUTCHours() * 60 + now.getUTCMinutes();
-  if (market === "IN" || market === "FNO") return mins >= 225 && mins <= 600;      // 09:15–16:00 IST
+  if (market === "IN") return mins >= 225 && mins <= 600;      // 09:15–16:00 IST
   if (market === "US") return mins >= 810 && mins <= 1260;                          // 09:30–16:00 ET (approx, EDT)
   if (market === "Commodity") return mins >= 240 && mins <= 1410;
   return true;
@@ -35,7 +35,7 @@ export function isMarketOpen(market, now = new Date()) {
 /* Closing bell, in UTC minutes-since-midnight. Same numbers isMarketOpen uses, named
    once so the square-off engine and the open/closed check can never drift apart. */
 export function marketCloseMins(market) {
-  if (market === "IN" || market === "FNO") return 600;    // 15:30 IST
+  if (market === "IN") return 600;    // 15:30 IST
   if (market === "US") return 1260;                       // 16:00 ET (approx)
   if (market === "Commodity") return 1410;
   return null;                                            // Crypto never closes

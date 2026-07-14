@@ -101,12 +101,18 @@ export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, us
         return [...p, {
           sym: stock.sym, qty, buy: fill, date: Date.now(),
           market,
-          /* A position is an F&O position because you TRADED a derivative — not because
-             the underlying happens to have listed derivatives. `stock.fno` is true for
-             all 35 F&O-eligible names, so keying off it filed every RELIANCE and NIFTY50
-             buy under the F&O tab and made it vanish from the Indian portfolio. What
-             matters is the market you traded in. */
-          fno: Boolean(stock.isFut || market === "FNO"),
+          /* STORE THE MARKET ON THE HOLDING.
+             The portfolio used to work out a holding's market by looking its SYMBOL up in
+             the universe. That breaks for options: "NSE:NIFTY26JUL24050CE" is a broker
+             contract string, not a universe entry, so marketOf() returns nothing and the
+             position matches no tab — you would own it and never see it. The market you
+             traded in is a fact known at order time; record it rather than re-derive it. */
+          /* The order's own market wins: an automation option passes market:"IN"
+             explicitly, and its symbol ("NSE:NIFTY26JUL24050CE") cannot be looked up in
+             the universe — so if we didn't record it, the position would match no tab. */
+          market: opts.market || market || "IN",
+          isOpt: Boolean(stock.isOpt),
+          under: stock.under || null,
           /* MIS = intraday (auto-squared-off before the close), CNC = delivery.
              boughtAt is what the crypto square-off counts 23h45m from, so it must be
              the real entry time, not the time we happened to notice the position. */

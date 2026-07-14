@@ -1,7 +1,7 @@
 /**
  * domain/strategies.js — starter strategies and the instruments automations can trade.
  */
-import { ALL, FNO } from "./universe";
+import { ALL } from "./universe";
 import { TEMPLATES } from "./strategyLang";
 
 /**
@@ -19,8 +19,6 @@ export const SEED_STRATS = [
   { id: "s3", name: "Bollinger squeeze", market: "IN", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[1].cfg, cap: 150000, symbols: ["SBIN", "AXISBANK"], created: Date.now() - 84 * 864e5 },
 
   // ── F&O ────────────────────────────────────────────────────────────────────
-  { id: "s4", name: "Index trend rider", market: "FNO", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[0].cfg, cap: 500000, symbols: ["NIFTY50", "BANKNIFTY"], created: Date.now() - 210 * 864e5 },
-  { id: "s5", name: "CCI reversal", market: "FNO", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[3].cfg, cap: 300000, symbols: ["BANKNIFTY"], created: Date.now() - 96 * 864e5 },
 
   // ── US equity ──────────────────────────────────────────────────────────────
   { id: "s6", name: "Big tech momentum", market: "US", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[2].cfg, cap: 10000, symbols: ["AAPL", "MSFT", "NVDA"], created: Date.now() - 74 * 864e5 },
@@ -35,7 +33,7 @@ export const SEED_STRATS = [
   { id: "s11", name: "Crude momentum", market: "Commodity", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[2].cfg, cap: 10000, symbols: ["CRUDEOIL"], created: Date.now() - 57 * 864e5 },
 ];
 
-export const ACTIVATE_SYMS = [...new Set([...FNO.map((s) => s.sym), "AAPL", "NVDA", "MSFT", "AMZN", "GOOGL", "META", "TSLA", "BTC", "ETH", "SOL", "DOGE"])].filter((sym) => ALL.some((a) => a.sym === sym));
+export const ACTIVATE_SYMS = [...new Set(ALL.map((x) => x.sym))];
 
 /**
  * Real strategy performance, computed from the trades the strategy ACTUALLY

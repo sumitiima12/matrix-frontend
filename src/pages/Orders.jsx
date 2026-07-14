@@ -3,7 +3,7 @@ import { tradesToCSV, downloadCSV, tradeFilename } from "../lib/csv";
 import { Bolt, Bot, Briefcase, Check, ChevronLeft, Home, Lightbulb, Moon, Search, Star, Sun, User, Wallet, X, Download } from "lucide-react";
 import { BACKEND_URL } from "../config";
 import { fmt, getUserId, lsGet, lsSet } from "../lib/format";
-import { ALL, FNO, UNIVERSE, marketOf, yahooSymbol } from "../domain/universe";
+import { ALL, UNIVERSE, marketOf, yahooSymbol } from "../domain/universe";
 import { fetchIndicators, fetchLiveQuotes, fetchTrades, marketOpen, postTrade, resolveExitFromCandles } from "../domain/api";
 import { DEFAULT_LIMITS, validateOrder } from "../services/riskService";
 import FilterChip from "../components/common/FilterChip";
@@ -51,7 +51,7 @@ function JournalPanel({ trades = [] }) {
 
 export default function TradeHistory({ userId, trades, onClose }) {
   const RANGES = [["today", "Today"], ["7", "7d"], ["30", "30d"], ["90", "90d"], ["365", "1y"], ["all", "All"]];
-  const MKTS = [["all", "All markets"], ["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["FNO", "⚡ F&O"], ["Commodity", "🪙 Commodity"]];
+  const MKTS = [["all", "All markets"], ["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["Commodity", "🪙 Commodity"]];
   const [range, setRange] = useState("30");
   const [dFrom, setDFrom] = useState("");     // yyyy-mm-dd, custom range
   const [dTo, setDTo] = useState("");

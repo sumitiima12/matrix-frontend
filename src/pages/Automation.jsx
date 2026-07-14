@@ -8,9 +8,10 @@ import { BACKEND_URL } from "../config";
 import { chgColor, clamp, fmt, pct } from "../lib/format";
 import { useBacktestStats } from "../hooks/useBacktestStats";
 import { SMAarr, EMAarr, RSIarr, MACDarr, BBarr, CCIarr, ATRarr, VWAParr, ADXarr, CF } from "../lib/series";
-import { ALL, FNO, UNIVERSE, marketOf } from "../domain/universe";
+import { ALL, UNIVERSE, marketOf } from "../domain/universe";
 import { aiInterpretStrategy } from "../domain/api";
 import { useCandles } from "../hooks/useCandles";
+import OptionLeg from "../components/common/OptionLeg";
 import MultiSelect from "../components/common/MultiSelect";
 import { selStyle } from "../components/common/styles";
 
@@ -185,7 +186,6 @@ const OPSET = [[">", ">"], ["<", "<"], [">=", "≥"], ["<=", "≤"], ["==", "="]
 function TemplateCard({ t, onActivate, onToggleBt, btActive, market = "IN" }) {
   // Only symbols that belong to the market you are looking at.
   const symbolOptions = useMemo(() => {
-    if (market === "FNO") return FNO.map((s) => s.sym);
     return (UNIVERSE[market] || []).map((s) => s.sym);
   }, [market]);
   const [syms, setSyms] = useState([]);
@@ -404,7 +404,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
      list, so on the US or Crypto tab the builder offered you Indian F&O names —
      symbols the strategy would then try (and fail) to trade in that wallet. */
   const DEPLOY_OPTIONS = useMemo(() => (
-    market === "FNO" ? FNO.map((s) => s.sym) : (UNIVERSE[market] || []).map((s) => s.sym)
+    (UNIVERSE[market] || []).map((s) => s.sym)
   ), [market]);
   const [pEntry, setPEntry] = useState("Buy when EMA 9 crosses above EMA 21 and RSI is above 55.");
   const [pExit, setPExit] = useState("Exit when RSI crosses above 85 or MACD histogram becomes negative or MACD line crosses below MACD signal line.");
@@ -420,6 +420,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
   const [stratName, setStratName] = useState("");
   const [showBuilder, setShowBuilder] = useState(false);
   const [showBt, setShowBt] = useState(false);
+  const [optLeg, setOptLeg] = useState({ enabled: false, expiry: "Current week", type: "CE", moneyness: "ATM", steps: 1, lots: 1 });
   const [btOpen, setBtOpen] = useState(null);
   const [btTpl, setBtTpl] = useState(null);
   const [notifs, setNotifs] = useState([]);
@@ -461,11 +462,13 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
     ? `# Indicators\n${defLines}\n\n# Entry\nif ${chain(entryConds)}:\n    enter_trade(stop_loss=${sl}%, take_profit=${tp}%)\n\n# Exit\nif ${chain(exitConds)}:\n    exit_trade()`
     : `# Timeframe: ${tf}\n# Indicators (auto-detected from your text)\n${plainDefLines || "# (none detected yet)"}\n\n# ENTRY\nif ${chainCode(eParsed.conds) || "<describe entry rules>"}:\n    enter_trade(stop_loss=${sl}%, take_profit=${tp}%)\n\n# EXIT\nif ${chainCode(xParsed.conds) || "<describe exit rules>"}:\n    exit_trade()`;
 
+  /* The option leg travels WITH the strategy, not with a symbol — "when this fires, buy
+     the ATM call" is a property of the strategy. */
   const saveStrategy = (makeActive) => {
     const name = stratName.trim() || (mode === "builder" ? "Custom strategy" : "Plain-English strategy");
     const id = "u" + Date.now();
     const symbols = deploySyms.length ? deploySyms : ["NIFTY50"];
-    const strat = { id, name, by: "You", active: makeActive, alerts: false, cfg, cap: parseInt(capital) || 100000, symbols, created: Date.now() };
+    const strat = { id, name, by: "You", active: makeActive, alerts: false, cfg, opt: optLeg, cap: parseInt(capital) || 100000, symbols, created: Date.now() };
     setStrats((p) => [strat, ...p]);
     setStratName(""); setShowBuilder(false);
     setToast(makeActive
@@ -505,7 +508,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
   const TF_OPTS = ["3m", "5m", "10m", "15m", "30m", "1h", "1D"];
 
   // dashboard aggregation — scoped to the selected market
-  const amkt = market === "FNO" ? "IN" : market;
+  const amkt = market;
   const inMkt = (s) => !(s.symbols && s.symbols.length) || s.symbols.some((x) => marketOf(x) === amkt);
   const shown = strats.filter((s) => inMkt(s) && (dashBy === "All" || s.by === dashBy) && (symFilter.length === 0 || (s.symbols || []).some((x) => symFilter.includes(x))));
   const perf = shown.map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
@@ -731,6 +734,9 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
                 <BacktestResult cfg={cfg} />
               </div>
             )}
+
+            {/* OPTION LEG — trade the option instead of the stock when this fires. */}
+            <OptionLeg symbols={deploySyms.length ? deploySyms : ["NIFTY50"]} value={optLeg} onChange={setOptLeg} />
 
             {/* Save */}
             <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--line)" }}>

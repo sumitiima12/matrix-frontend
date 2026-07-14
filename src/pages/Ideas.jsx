@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { currentIdeas, resolveIdea } from "../domain/ideas";
 import { BACKEND_URL } from "../config";
 import { fmt } from "../lib/format";
-import { ALL, FNO, marketOf } from "../domain/universe";
+import { ALL, marketOf } from "../domain/universe";
 import { fetchHistory } from "../domain/api";
 import MiniCandles from "../components/charts/MiniCandles";
 import { selStyle } from "../components/common/styles";
@@ -90,10 +90,10 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy }) {
     return () => clearInterval(id);
   }, []);
   const [open, setOpen] = useState(false);
-  const mkt = market === "FNO" ? "IN" : market;
+  const mkt = market;
   /* Ordered by POTENTIAL LEFT to the target, measured off the live price — so the
      ideas with the most room still to run lead, and ones that already hit sink. */
-  const shown = market === "FNO" ? [] : ideas
+  const shown = ideas
     .filter((i) => marketOf(i.sym) === mkt)
     .map((i) => {
       const st = ALL.find((a) => a.sym === i.sym);
@@ -110,8 +110,7 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy }) {
       </div>
 
       <IdeasDashboard ideas={shown} />
-      {market === "FNO" && <div className="card" style={{ marginTop: 12, padding: 20, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>Ideas aren't available for F&O. Switch to a stock market (Indian / US) to see trade ideas.</div>}
-      {market !== "FNO" && shown.length === 0 && <div className="card" style={{ marginTop: 12, padding: 16, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No ideas for this market yet. Post one, or switch markets from the tabs above.</div>}
+      {shown.length === 0 && <div className="card" style={{ marginTop: 12, padding: 16, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No ideas for this market yet. Post one, or switch markets from the tabs above.</div>}
       {shown.map((idea, i) => {
         const s = ALL.find((a) => a.sym === idea.sym); const m = marketOf(idea.sym);
         return (

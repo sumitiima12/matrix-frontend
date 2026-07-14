@@ -22,40 +22,15 @@ export default function CarouselCard({
         <div style={{ textAlign: "right", flex: "0 0 auto" }}>
           <div className="mono" style={{ fontWeight: 800, fontSize: 14, whiteSpace: "nowrap" }}>{fmt(s.price, market)}</div>
           <Change v={s.chg} />
-          {/* F&O: this is the UNDERLYING's spot price, NOT an option premium.
-              An ATM premium needs a live option chain, which neither Yahoo nor our
-              backend has — so we say "spot" instead of letting a spot price sit under
-              a heading that implies it's a premium. Someone sizing a position on a
-              number labelled wrongly is exactly the harm we keep guarding against. */}
-          {s.fno && <div style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 700, marginTop: 1 }}>spot</div>}
         </div>
       </div>
-
-      {/* Real NSE lot size, and what one contract actually costs. */}
-      {s.fno && s.lot ? (
-        <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-          <span className="pill" style={{ fontSize: 9, fontWeight: 800, padding: "3px 7px", background: "var(--elev)", color: "var(--ink)" }}>
-            LOT {s.lot}
-          </span>
-          {s.price != null && (
-            <span className="pill" style={{ fontSize: 9, fontWeight: 800, padding: "3px 7px", background: "var(--elev)", color: "var(--muted)" }}>
-              1 lot ≈ {fmt(s.price * s.lot, market)}
-            </span>
-          )}
-          {s.expiry && (
-            <span className="pill" style={{ fontSize: 9, fontWeight: 800, padding: "3px 7px", background: "var(--elev)", color: "var(--muted)" }}>
-              {s.expiry}
-            </span>
-          )}
-        </div>
-      ) : null}
 
       {children}
 
       {/* Explicit quantity — replaces the old bare "+" that silently bought 1. */}
       {onBuy && (
         <div style={{ marginTop: 11, display: "flex", justifyContent: "flex-end" }} onClick={(e) => e.stopPropagation()}>
-          <BuyButton s={s} market={market} onBuy={onBuy} lot={s.lot || 1} fullWidth />
+          <BuyButton s={s} market={market} onBuy={onBuy} fullWidth />
         </div>
       )}
     </div>

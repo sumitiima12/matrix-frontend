@@ -27,9 +27,8 @@ import { analyzeHolding, portfolioHealth, sectorExposure } from "./services/port
 import { analyzeJournal } from "./services/journalService";
 import BuyButton from "./components/common/BuyButton";
 import { PATTERNS, TF_N } from "./lib/patterns";
-import { ALL, UNIVERSE, IN_STOCKS, US_STOCKS, CRYPTO, COMMODITY, FNO, marketOf, yahooSymbol, istParts, marketHoursLabel } from "./domain/universe";
+import { ALL, UNIVERSE, IN_STOCKS, US_STOCKS, CRYPTO, COMMODITY, marketOf, yahooSymbol, istParts, marketHoursLabel } from "./domain/universe";
 import { SEED_STRATS } from "./domain/strategies";
-import { makeFuture, lotSize, LOTS, currentExpiry } from "./domain/fno";
 import { techSignal, dailyPicks } from "./domain/signals";
 import Change from "./components/common/Change";
 import AddBtn from "./components/common/AddBtn";
@@ -349,44 +348,9 @@ function AppInner() {
   const runConfirmedOrder = async (finalQty, product) => {
     if (!confirmOrder) return;
     const { s, qty, side, opts } = confirmOrder;
+    const q = finalQty || qty;
+    const prod = product || "CNC";
 
-    /* The confirm sheet calls back in one of two shapes:
-         stock  -> (finalQty, product)
-         option -> (orderObject) with the BROKER's own contract symbol already resolved
-       An option order carries a symbol we did NOT construct — it came from the broker's
-       live contract list — plus quantity already converted from lots to contracts. */
-    const isOpt = finalQty && typeof finalQty === "object";
-    const opt = isOpt ? finalQty : null;
-
-    const q = isOpt ? opt.qty : (finalQty || qty);
-    const prod = (isOpt ? opt.product : product) || "CNC";
-
-    if (isOpt) {
-      // Trade the option contract, under its real symbol, at its real premium.
-      const oStock = {
-        ...s,
-        sym: opt.optionSymbol,               // e.g. NSE:NIFTY26JUL24050CE — the broker's string
-        name: `${s.sym} ${opt.strike} ${opt.optType === "CE" ? "CALL" : "PUT"}`,
-        price: opt.price != null ? opt.price : s.price,
-        fno: true,
-        isFut: false,
-        isOpt: true,
-        lot: opt.lotSize,
-        under: s.sym,
-        strike: opt.strike,
-        optType: opt.optType,
-        expiry: opt.expiry,
-      };
-      if (oStock.price == null) {
-        setBuyToast({ t: "No live premium for that contract — refusing to price the order", e: true });
-        setConfirmOrder(null);
-        return;
-      }
-      buyStockNow(oStock, q, { ...opts, product: prod, tradeType: opts.tradeType || "Manual" });
-      setBuyToast({ t: `Bought ${opt.lots} lot${opt.lots > 1 ? "s" : ""} · ${opt.optionSymbol}` });
-      setConfirmOrder(null);
-      return;
-    }
 
     if (mode === "real") {
       if (!brokerLive) {                       // belt and braces; the toggle already guards this
@@ -428,7 +392,7 @@ function AppInner() {
   useEffect(() => {
     const st = lsGet("mx_state_" + userId, null);
     setPortfolio((st && st.portfolio) || []);
-    setWalletMap((st && st.walletMap) || { IN: 1000000, US: 1000000, Crypto: 1000000, FNO: 1000000, Commodity: 1000000 });
+    setWalletMap((st && st.walletMap) || { IN: 1000000, US: 1000000, Crypto: 1000000, Commodity: 1000000 });
     setDeposits((st && st.deposits) || []);
     setStrats((st && st.strats) || SEED_STRATS);
     const wl = (st && st.watchlists) || [{ id: "w1", name: "My Watchlist", syms: ["RELIANCE", "TCS"] }];
@@ -644,7 +608,7 @@ function AppInner() {
           </div>
           {!detail && ["home", "ideas", "automation", "portfolio"].includes(tab) && (
             <div className="hide-scroll" style={{ display: "flex", gap: 8, overflowX: "auto", padding: "0 18px 12px" }}>
-              {[["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["FNO", "⚡ F&O"], ["Commodity", "🪙 Commodity"]].map(([k, l]) => (
+              {[["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["Commodity", "🪙 Commodity"]].map(([k, l]) => (
                 <button key={k} onClick={() => setMarket(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "8px 14px", fontWeight: 700, fontSize: 12.5, border: "1px solid " + (market === k ? "var(--primary)" : "var(--line)"), background: market === k ? "var(--primary)" : "var(--surface)", color: market === k ? "var(--on-primary)" : "var(--ink)" }}>{l}</button>
               ))}
             </div>
@@ -786,7 +750,6 @@ function AppInner() {
             wallet={walletMap[confirmOrder.market] ?? 0}
             onConfirm={runConfirmedOrder}
             onCancel={() => setConfirmOrder(null)}
-            userId={userId}
           />
         </ErrorBoundary>
       )}
@@ -796,10 +759,10 @@ function AppInner() {
           onAdd={(mkt, amt) => {
             adjustWallet(mkt, amt);
             setDeposits((d) => [...d, { at: Date.now(), market: mkt, amount: amt }]);
-            setBuyToast({ t: `Added ${fmt(amt, mkt === "FNO" ? "IN" : mkt)} to your ${MKT_LABEL[mkt] || mkt} wallet` });
+            setBuyToast({ t: `Added ${fmt(amt, mkt)} to your ${MKT_LABEL[mkt] || mkt} wallet` });
           }}
           onReset={() => {
-            setWalletMap({ IN: 1000000, US: 1000000, Crypto: 1000000, FNO: 1000000, Commodity: 1000000 });
+            setWalletMap({ IN: 1000000, US: 1000000, Crypto: 1000000, Commodity: 1000000 });
             setDeposits([]);   // the ledger describes the wallets; reset both or neither
             setBuyToast({ t: "All wallets reset to their starting balance" });
           }}

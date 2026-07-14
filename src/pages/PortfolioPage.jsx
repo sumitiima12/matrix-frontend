@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Briefcase, ChevronRight, Home, SlidersHorizontal } from "lucide-react";
 import { fmt } from "../lib/format";
-import { ALL, FNO, marketOf } from "../domain/universe";
+import { ALL, marketOf } from "../domain/universe";
 import { techSignal } from "../domain/signals";
 import { analyzeHolding, portfolioHealth, sectorExposure } from "../services/portfolioService";
 
@@ -191,8 +191,8 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
   }
   const [expand, setExpand] = useState(null);   // sym with open trade panel
   const [fType, setFType] = useState([]);      // Manual / Auto Buy / Automate
-  const mkt = market === "FNO" ? "IN" : market;
-  const mLabel = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", FNO: "⚡ F&O", Commodity: "🪙 Commodity" }[market];
+  const mkt = market;
+  const mLabel = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", Commodity: "🪙 Commodity" }[market];
 
   /* Holdings whose symbol is no longer in the universe (e.g. LAB — real, but Yahoo
      carries no feed for it, so we cannot price it). marketOf() used to call these
@@ -204,7 +204,21 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
   const typeOf = (h) => h.tradeType || "Manual";
 
   const rows = portfolio
-    .filter((h) => market === "FNO" ? h.fno : (marketOf(h.sym) === mkt && !h.fno))
+    /* F&O holdings live under Indian now that the F&O tab is gone. The old filter
+       (`marketOf(h.sym) === mkt && !h.fno`) EXCLUDED them from Indian and showed them
+       only on the F&O tab — so removing that tab would have made any open F&O position
+       invisible while you still owned it. */
+    /* There is no F&O tab. Options bought by automation file under INDIAN — they carry
+       market:"IN" from the order, so they land here alongside the stocks. We do NOT try to
+       re-derive their market from the symbol: "NSE:NIFTY26JUL24050CE" is a broker contract
+       string, not a universe entry, and marketOf() would return nothing — the position
+       would match no tab and you'd own something you couldn't see.
+
+       Legacy FUTURES positions (from when futures existed) are dropped: they can no longer
+       be priced or exited by any code path in the app, so showing a live-looking P&L for
+       them would be a fiction. */
+    .filter((h) => !h.isFut && !/\sFUT$/.test(h.sym || ""))
+    .filter((h) => (h.market || marketOf(h.sym)) === mkt)
     .filter((h) => (fType.length ? fType.includes(typeOf(h)) : true))
     .map((h) => {
     const m = marketOf(h.sym);
@@ -296,7 +310,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
           single option is noise. */}
       {(() => {
         const present = TRADE_TYPES.filter((t) =>
-          portfolio.some((h) => (market === "FNO" ? h.fno : (marketOf(h.sym) === mkt && !h.fno)) && typeOf(h) === t));
+          portfolio.some((h) => (h.market || marketOf(h.sym)) === mkt && typeOf(h) === t));
         if (present.length < 2) return null;
         const color = (t) => (t === "Auto Buy" ? "var(--primary)" : t === "Automate" ? "#8B5CF6" : "var(--muted)");
         return (

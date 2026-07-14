@@ -1,7 +1,7 @@
 /**
  * lib/format.js — pure formatting & small utilities. No side effects, no I/O.
  */
-export const CUR = { IN: "₹", US: "$", Crypto: "$", Commodity: "$", FNO: "₹" };
+export const CUR = { IN: "₹", US: "$", Crypto: "$", Commodity: "$" };
 export const MKT_LABEL = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", Commodity: "🪙 Commodity", FNO: "⚡ F&O" };
 
 export function fmt(n, market = "IN") {

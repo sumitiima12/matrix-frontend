@@ -4,8 +4,7 @@ import { dailyPicks, techSignal } from "../domain/signals";
 import { Building2, ChevronRight, Lightbulb, Newspaper, Pencil, Sparkles, TrendingUp, Zap } from "lucide-react";
 import { BACKEND_URL } from "../config";
 import { CUR, DAY, chgColor, clamp, compact, fmt, lsGet, lsSet, pct, timeAgo } from "../lib/format";
-import { ALL, FNO, GLOBAL_MKTS, UNIVERSE, marketOf } from "../domain/universe";
-import { makeFuture } from "../domain/fno";
+import { ALL, GLOBAL_MKTS, UNIVERSE, marketOf } from "../domain/universe";
 import { askMatrix, fetchNews, fetchNewsFeed } from "../domain/api";
 import AddBtn from "../components/common/AddBtn";
 import BuyButton from "../components/common/BuyButton";
@@ -126,7 +125,7 @@ function MarketPulseStrip({ market, list, onOpen, liveTick = 0 }) {
 }
 
 function StockIdeasStrip({ onOpen, onBuy, market, liveTick = 0 }) {
-  const mkt = market === "FNO" ? "IN" : market;
+  const mkt = market;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const ideas = useMemo(() => currentIdeas(), [liveTick]);
   const all = ideas.filter((i) => marketOf(i.sym) === mkt);
@@ -381,11 +380,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       .sort((a, b) => b.left - a.left)
       .map((x) => x.s)
       .slice(0, 8);
-    // makeFuture returns null when we have no REAL lot size — drop those rather
-    // than render a contract sized on a guess.
-    return market === "FNO"
-      ? base.map((s) => { const f = makeFuture(s); return f && { ...f, pickSignal: s.pickSignal, pickReason: s.pickReason, pickPattern: s.pickPattern, pickStop: s.pickStop, pickTarget: s.pickTarget, pickSlPct: s.pickSlPct, pickTpPct: s.pickTpPct, pickRR: s.pickRR }; }).filter(Boolean)
-      : base;
+    return base;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list, market, pickHour, liveTick]);
   /**
@@ -428,8 +423,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
      obvious one that doesn't. */
   const inNews = list.slice(0, 12);
   const smart = list.filter((s) => s.inst);
-  const optOf = (s) => makeFuture(s);
-  const trendingView = market === "FNO" ? trending.map(optOf).filter(Boolean) : trending;
+  const trendingView = trending;
 
   // portfolio dashboard math
   const dash = portfolio.reduce((a, h) => {
@@ -454,8 +448,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const MKT_LABEL = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", Commodity: "🪙 Commodity", FNO: "⚡ F&O" };
   const autoOn = !!autoOnMap[market];                       // on/off for the currently selected market
   const capNum = Math.max(1000, parseInt(deployCapital) || 100000);
-  const aggCur = market === "FNO" ? "IN" : market;          // currency of the selected market
-  const isFNO = market === "FNO";
+  const aggCur = market;          // currency of the selected market
   const dayStr = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
   const mkTime = (addMin) => { const base = 9 * 60 + 15 + addMin; const h = Math.floor(base / 60), mm = base % 60; return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`; };
   const autoTargets = (s) => {
@@ -472,15 +465,6 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const perCap = capNum / Math.max(1, autoPicks.length);
   const autoTrades = autoPicks.map((s) => {
     const m = marketOf(s.sym);
-    if (isFNO) {
-      // F&O auto-buy trades the CURRENT-MONTH FUTURES of the underlying, 1 lot.
-      const f = makeFuture(s);
-      if (!f) return null;              // no real lot size -> cannot size the trade
-      const auto = autoTargets(s);
-      const ov = autoOverrides[f.sym];
-      return { sym: f.sym, under: s.sym, m: "FNO", isFut: true, expiry: f.expiry, qty: f.lot,
-               entry: s.price, tpPct: ov ? ov.tp : auto.tp, slPct: ov ? ov.sl : auto.sl, auto };
-    }
     const auto = autoTargets(s);
     const ov = autoOverrides[s.sym];
     const tpPct = ov ? ov.tp : auto.tp;
@@ -501,7 +485,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       const u = ALL.find((a) => a.sym === (t.under || t.sym));
       if (!u) return;
       // F&O: buy the futures contract (priced off the underlying, qty = 1 lot).
-      const inst = t.isFut ? { ...u, sym: t.sym, name: `${u.name} — ${t.expiry} Futures` } : u;
+      const inst = u;   // no futures: auto-buy trades the stock itself
       onBuy(inst, t.qty, { tp: t.tpPct, sl: t.slPct, tradeType: "Auto Buy" });
     });
     lsSet(key, true);
@@ -679,7 +663,6 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 16 }}>💎</span>
                   <div style={{ minWidth: 0 }}><div className="disp" style={{ fontWeight: 700, fontSize: 15.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.sym}</div><div style={{ fontSize: 11, color: "rgba(255,255,255,.75)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</div></div>
-                  {s.isFut && <span className="pill disp" style={{ marginLeft: "auto", fontSize: 9.5, fontWeight: 800, padding: "3px 9px", background: "rgba(255,255,255,.18)", color: "#fff", whiteSpace: "nowrap" }}>FUT · {s.expiry}</span>}
                 </div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 12 }}>
                   <span className="mono" style={{ fontWeight: 800, fontSize: 19 }}>{fmt(s.price, market)}</span>
@@ -728,7 +711,6 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     s={s}
                     market={market}
                     onBuy={onBuy}
-                    lot={s.isFut ? (s.lot || 1) : 1}
                     opts={{ tp: s.pickTpPct, sl: s.pickSlPct, tradeType: "Manual" }}
                     variant="light"
                     fullWidth
@@ -749,7 +731,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       </Pop>
 
       {/* Ideas carousel (not for F&O or Commodity) */}
-      {market !== "FNO" && market !== "Commodity" && <StockIdeasStrip onOpen={onOpen} onBuy={onBuy} market={market} liveTick={liveTick} />}
+      {market !== "Commodity" && <StockIdeasStrip onOpen={onOpen} onBuy={onBuy} market={market} liveTick={liveTick} />}
 
       {/* F&O Picks (Indian derivatives) */}
 
@@ -774,14 +756,14 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       )}
 
       {/* Screener — not for F&O or Commodity */}
-      {market !== "FNO" && market !== "Commodity" && (
+      {market !== "Commodity" && (
         <Pop style={{ marginTop: 40 }}>
           <Screener onOpen={onOpen} market={market} list={list} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} />
         </Pop>
       )}
 
       {/* Gainers / Losers — not for F&O or Commodity */}
-      {market !== "FNO" && market !== "Commodity" && (
+      {market !== "Commodity" && (
         <Section title="Top gainers & losers" icon={<Zap size={17} color="#E8A33D" />}
           right={
             <div className="pill" style={{ display: "flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3 }}>
@@ -798,11 +780,11 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
 
 
       {/* In the news — REAL headlines fetched live (not for F&O) */}
-      {market !== "FNO" && <LiveNewsStrip symbols={inNews.map((s) => s.sym)} onOpen={onOpen} list={list} market={market} />}
+      {<LiveNewsStrip symbols={inNews.map((s) => s.sym)} onOpen={onOpen} list={list} market={market} />}
 
       {/* Smart money — REAL institutional holders from Yahoo (quoteSummary).
           Hidden entirely when no holder data is available: no invented names. */}
-      {market !== "FNO" && market !== "Commodity" && smart.length > 0 && (
+      {market !== "Commodity" && smart.length > 0 && (
         <Section title="Smart Money picks" icon={<Building2 size={17} color="var(--primary)" />}>
           <div className="hide-scroll" style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
             {smart.map((s) => (

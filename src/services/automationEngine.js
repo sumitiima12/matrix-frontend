@@ -1,4 +1,5 @@
 import { closedCandles } from "../lib/series";
+import { resolveOptionOrder } from "../domain/options";
 import { chainEval, resolveOperand } from "../domain/strategyLang";
 
 /**
@@ -85,7 +86,7 @@ export function evaluate({ cfg, candles: raw, position, price, now = Date.now() 
  * @param onBuy/onSell  order placers (these go through the real order pipeline)
  * @returns updated positions + a log of what it did
  */
-export function runOnce({ strats, getCandles, getStock, positions, capitalOf, onBuy, onSell }) {
+export function runOnce({ strats, getCandles, getStock, getChain, positions, capitalOf, onBuy, onSell }) {
   const next = { ...positions };
   const log = [];
 
@@ -106,6 +107,59 @@ export function runOnce({ strats, getCandles, getStock, positions, capitalOf, on
       const intent = evaluate({ cfg: strat.cfg, candles, position, price: stock.price });
 
       if (intent.action === "BUY" && !position) {
+        /* OPTION LEG. The strategy says "trade the option, not the stock" — so the exact
+           contract is resolved HERE, at the moment the signal fires, against the broker's
+           live chain. Not at configuration time: a strike that was ATM when you set the
+           strategy up is not ATM after a 400-point move.
+
+           If the chain won't load, or the ladder doesn't reach the requested strike, or we
+           have no real lot size — the strategy DOES NOT TRADE. An automation firing on a
+           guessed contract is far worse than one that skips a signal. */
+        const wantOpt = strat.opt && strat.opt.enabled;
+
+        if (wantOpt) {
+          const chain = getChain ? getChain(sym) : null;
+          if (!chain) {
+            log.push({ sym, strat: strat.name, action: "SKIP", reason: "option chain unavailable — not guessing a contract" });
+            return;
+          }
+          const r = resolveOptionOrder(chain, strat.opt, stock.price);
+          if (!r || r.contract.ltp == null) {
+            log.push({ sym, strat: strat.name, action: "SKIP", reason: "no listed contract, or no live premium, for that strike" });
+            return;
+          }
+
+          const optStock = {
+            ...stock,
+            sym: r.contract.symbol,              // the BROKER's symbol, verbatim
+            name: `${sym} ${r.strike} ${r.type === "CE" ? "CALL" : "PUT"}`,
+            price: r.contract.ltp,               // the real premium, not the spot
+            under: sym,
+            isOpt: true,
+            lot: r.lotSize,
+            strike: r.strike,
+            optType: r.type,
+            expiry: r.expiry,
+          };
+
+          onBuy(optStock, r.qty, {
+            tp: strat.cfg && strat.cfg.tp,
+            sl: strat.cfg && strat.cfg.sl,
+            tradeType: "Automate",
+            strategy: strat.name,
+            strategyId: strat.id,
+            market: "IN",                        // options file under Indian. There is no F&O market.
+          });
+
+          next[key] = {
+            qty: r.qty, entry: r.contract.ltp, at: Date.now(),
+            optSymbol: r.contract.symbol, lotSize: r.lotSize,
+            strike: r.strike, optType: r.type, expiry: r.expiry,
+          };
+          log.push({ sym, strat: strat.name, action: "BUY", qty: r.qty, price: r.contract.ltp, contract: r.contract.symbol, reason: intent.reason });
+          return;
+        }
+
         const cap = capitalOf(strat) / syms.length;
         const qty = Math.max(1, Math.floor(cap / stock.price));
         if (!Number.isFinite(qty) || qty < 1) return;
@@ -116,16 +170,42 @@ export function runOnce({ strats, getCandles, getStock, positions, capitalOf, on
           tradeType: "Automate",
           strategy: strat.name,
           strategyId: strat.id,
+          market: "IN",
         });
         next[key] = { qty, entry: stock.price, at: Date.now() };
         log.push({ sym, strat: strat.name, action: "BUY", qty, price: stock.price, reason: intent.reason });
       }
 
       if (intent.action === "SELL" && position) {
+        /* Sell THE CONTRACT WE BOUGHT — not the underlying, and not whatever is ATM now.
+           The position remembers its own symbol. We also need its CURRENT premium: exiting
+           at the spot price, or at the entry premium, would book a P&L that never happened.
+           If we can't price the contract this minute, we skip and try again next minute
+           rather than recording an invented exit. */
+        if (position.optSymbol) {
+          const chain = getChain ? getChain(sym) : null;
+          const live = chain && chain.contracts.find((c) => c.symbol === position.optSymbol);
+
+          if (!live || live.ltp == null) {
+            log.push({ sym, strat: strat.name, action: "SKIP", reason: "cannot price the option to exit — will retry" });
+            return;
+          }
+
+          onSell(
+            { ...stock, sym: position.optSymbol, price: live.ltp, isOpt: true, lot: position.lotSize, under: sym },
+            position.qty,
+            { tradeType: "Automate", strategy: strat.name, strategyId: strat.id, market: "IN" }
+          );
+          delete next[key];
+          log.push({ sym, strat: strat.name, action: "SELL", qty: position.qty, price: live.ltp, contract: position.optSymbol, reason: intent.reason });
+          return;
+        }
+
         onSell(stock, position.qty, {
           tradeType: "Automate",
           strategy: strat.name,
           strategyId: strat.id,
+          market: "IN",
         });
         delete next[key];
         log.push({ sym, strat: strat.name, action: "SELL", qty: position.qty, price: stock.price, reason: intent.reason });

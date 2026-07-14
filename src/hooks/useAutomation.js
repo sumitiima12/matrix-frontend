@@ -1,3 +1,4 @@
+import { fetchOptionChain } from "../services/optionService";
 import { useEffect, useRef } from "react";
 import { runOnce } from "../services/automationEngine";
 import { fetchHistory, marketOpen } from "../domain/api";
@@ -20,6 +21,10 @@ import { lsGet, lsSet } from "../lib/format";
  * fill price would not be real.
  */
 export function useAutomation({ strats, onBuy, onSell, userId, enabled = true }) {
+  /* Option chains, refreshed each tick for any strategy with an option leg. The engine
+     runs synchronously, so the chain has to be in hand BEFORE it evaluates — we cannot
+     await inside the rule loop. */
+  const chains = useRef({});
   const positions = useRef(null);
   const candles = useRef({});          // sym -> real candles, refreshed each tick
   const key = `mx_auto_pos_${userId || "guest"}`;
@@ -52,12 +57,28 @@ export function useAutomation({ strats, onBuy, onSell, userId, enabled = true })
         } catch { /* leave whatever we had; missing data -> no order */ }
       }));
 
+      /* Pull the live option chain for every underlying an option strategy trades. If a
+         chain fails, we leave it ABSENT rather than stale — the engine then skips that
+         signal instead of resolving a strike against yesterday's ladder. */
+      const optUnderlyings = [...new Set(
+        active.filter((s) => s.opt && s.opt.enabled).flatMap((s) => s.symbols || [])
+      )];
+
+      await Promise.all(optUnderlyings.map(async (sym) => {
+        try {
+          chains.current[sym] = await fetchOptionChain(sym, userId);
+        } catch {
+          delete chains.current[sym];       // absent, not stale
+        }
+      }));
+
       if (stop) return;
 
       const { positions: next, log } = runOnce({
         strats: active,
         getCandles: (sym) => candles.current[sym] || null,
         getStock: (sym) => ALL.find((a) => a.sym === sym) || null,
+        getChain: (sym) => chains.current[sym] || null,
         positions: positions.current,
         capitalOf: (s) => s.cap || 100000,
         onBuy,
