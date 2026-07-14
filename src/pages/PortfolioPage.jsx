@@ -105,7 +105,7 @@ function ManageHolding({ r, st, onBuy, onSell, onUpdate, onClose }) {
   );
 }
 
-export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, onUpdate, priceSnap = {}, onWhy, onOpen, mode = "virtual", realPortfolio = null, realErr = null, realLoading = false, onRefreshReal, brokerName }) {
+export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, onUpdate, onRemove, priceSnap = {}, onWhy, onOpen, mode = "virtual", realPortfolio = null, realErr = null, realLoading = false, onRefreshReal, brokerName }) {
   /* REAL MODE shows the user's ACTUAL broker holdings. It is read-only and entirely
      separate from the paper book — no paper position appears here, and no real
      position leaks into the paper P&L. Mixing them would produce a portfolio that is
@@ -194,12 +194,28 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
   const mkt = market;
   const mLabel = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", Commodity: "🪙 Commodity" }[market];
 
-  /* Holdings whose symbol is no longer in the universe (e.g. LAB — real, but Yahoo
-     carries no feed for it, so we cannot price it). marketOf() used to call these
-     "IN", which is why they appeared under Indian holdings. They are not hidden —
-     hiding someone's position would be worse — they are listed honestly, unpriced. */
-  const orphans = portfolio.filter((h) => !h.fno && marketOf(h.sym) === null);
-  // F&O portfolio shows only F&O (futures/options) positions — never plain stock holdings
+  /* Positions we can no longer price: the symbol isn't in the universe, so no feed
+     carries it (LAB is the real example — a dollar-priced token, not an Indian stock).
+
+     These were being dumped under the INDIAN tab, which is precisely the thing the old
+     comment claimed not to do. A dollar-denominated token is not an Indian holding, and
+     showing it there makes the Indian portfolio wrong.
+
+     Now they appear under the market they were actually BOUGHT in, which the order
+     records. Options carry market:"IN" and are priced fine, so they never land here. */
+  const orphans = portfolio.filter(
+    (h) => !h.isFut && !h.isOpt && marketOf(h.sym) === null && (h.market || null) === market
+  );
+
+  /* Positions with NO recorded market at all — bought before the order started recording
+     it. They belong to no tab, so if we simply filtered them out they would sit in storage
+     forever, invisible and unremovable. We surface them once, clearly labelled, with a way
+     to delete them. Hiding a position is not the same as it not existing. */
+  const unplaceable = portfolio.filter(
+    (h) => !h.isFut && !h.isOpt && marketOf(h.sym) === null && !h.market
+  );
+
+
   const TRADE_TYPES = ["Manual", "Auto Buy", "Automate"];
   const typeOf = (h) => h.tradeType || "Manual";
 
@@ -399,7 +415,37 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
 
       {/* Positions we can no longer price. Never silently dropped, never filed under
           a market they don't belong to. */}
-      {market === "IN" && orphans.length > 0 && (
+      {/* NO MARKET RECORDED. Shown once so it can be dealt with — explicitly NOT presented
+          as an Indian holding, which is what the old code did. */}
+      {market === "IN" && unplaceable.length > 0 && (
+        <div className="card" style={{ marginTop: 14, padding: 14, border: "1px dashed var(--line)", background: "var(--elev)" }}>
+          <div className="disp" style={{ fontWeight: 800, fontSize: 12.5, color: "var(--muted)" }}>
+            Positions with no market recorded
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 5, lineHeight: 1.5 }}>
+            These were bought before the app recorded which market a trade belonged to, and no feed
+            carries them now — so they can't be priced or filed. They are <b>not</b> Indian holdings
+            and are excluded from every valuation. Remove them if you no longer want them.
+          </div>
+          {unplaceable.map((h) => (
+            <div key={h.sym} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, gap: 10 }}>
+              <span className="disp" style={{ fontWeight: 700 }}>{h.sym}</span>
+              <span className="mono" style={{ color: "var(--muted)", fontSize: 11.5, marginLeft: "auto" }}>
+                {h.qty} units
+              </span>
+              <button
+                onClick={() => onRemove && onRemove(h.sym)}
+                className="tap disp"
+                style={{ border: "1px solid var(--down)", background: "transparent", color: "var(--down)", borderRadius: 9, padding: "5px 11px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {orphans.length > 0 && (
         <div className="card" style={{ marginTop: 14, padding: 14, border: "1px dashed var(--line)" }}>
           <div className="disp" style={{ fontWeight: 800, fontSize: 12.5, color: "var(--muted)" }}>Not currently priceable</div>
           <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 5, lineHeight: 1.5 }}>
