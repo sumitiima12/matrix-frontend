@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { AlertTriangle, Minus, Plus, X } from "lucide-react";
 import { fmt, pct } from "../../lib/format";
+import OptionPicker from "./OptionPicker";
+import { isOptionable } from "../../domain/fno";
 
 /**
  * ConfirmOrder — the "are you sure" step before any MANUAL buy or sell.
@@ -25,6 +27,12 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
   /* Delivery by default. Intraday is the one that can be closed out from under you,
      so it should be a choice you make, not one you inherit from a default. */
   const [product, setProduct] = useState("CNC");
+
+  /* STOCK or OPTION. Offered on anything with a REAL NSE lot size — that IS what
+     F&O-eligible means. There is no F&O market tab; an option bought here files under
+     INDIAN, like the underlying it derives from. */
+  const [instrument, setInstrument] = useState("stock");
+  const canOption = side === "BUY" && isOptionable(s.sym);
 
     useEffect(() => { setProduct("CNC"); }, [order && order.s && order.s.sym]);
 
@@ -68,7 +76,50 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
           <span style={{ fontSize: 11.5, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
         </div>
 
-        {/* Stock vs Option. Options need a broker: the contract list is theirs. */}
+        {/* Stock vs Option. Options need a broker — the contract list is theirs. */}
+        {canOption && (
+          <div style={{ display: "flex", gap: 7, marginTop: 12 }}>
+            {[["stock", "Stock"], ["option", "Option"]].map(([k, l]) => (
+              <button
+                key={k}
+                onClick={() => setInstrument(k)}
+                className="tap disp"
+                style={{
+                  flex: 1, padding: "9px 0", borderRadius: 10, fontSize: 12.5, fontWeight: 800, cursor: "pointer",
+                  border: "1px solid " + (instrument === k ? "var(--primary)" : "var(--line)"),
+                  background: instrument === k ? "var(--primary)" : "var(--surface)",
+                  color: instrument === k ? "#fff" : "var(--ink)",
+                }}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {canOption && instrument === "option" ? (
+          <OptionPicker
+            underlying={s.sym}
+            spot={s.price}
+            userId={userId}
+            onPick={({ contract, qty, lots, lotSize }) =>
+              onConfirm({
+                instrument: "option",
+                optionSymbol: contract.symbol,     // the BROKER's symbol, verbatim
+                strike: contract.strike,
+                optType: contract.type,
+                expiry: contract.expiry,
+                price: contract.ltp,               // the real premium, not the spot
+                qty,                                // contracts, not lots
+                lots,
+                lotSize,
+                product,
+                market: "IN",                       // no F&O market — options are Indian
+              })
+            }
+          />
+        ) : (
+        <>
         <div style={{ marginTop: 10 }}>
           <Row k="Action" v={side} c={side === "BUY" ? "var(--up)" : "var(--down)"} />
           {side === "BUY" && (
@@ -181,6 +232,8 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
             {side === "BUY" ? "Buy" : "Sell"} {units} {units === 1 ? "unit" : "units"}
           </button>
         </div>
+        </>
+        )}
 
         <div style={{ fontSize: 10.5, color: "var(--muted)", textAlign: "center", marginTop: 10, lineHeight: 1.45 }}>
           Paper trade. Virtual capital, filled at the real live price.

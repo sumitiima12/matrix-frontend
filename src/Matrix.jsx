@@ -348,8 +348,41 @@ function AppInner() {
   const runConfirmedOrder = async (finalQty, product) => {
     if (!confirmOrder) return;
     const { s, qty, side, opts } = confirmOrder;
-    const q = finalQty || qty;
-    const prod = product || "CNC";
+
+    /* The confirm sheet calls back in one of two shapes:
+         stock  -> (finalQty, product)
+         option -> (orderObject), carrying the BROKER's own contract symbol, already
+                   resolved against the live chain, with quantity converted from lots to
+                   contracts. We never build that symbol ourselves. */
+    const isOptOrder = finalQty && typeof finalQty === "object";
+    const o = isOptOrder ? finalQty : null;
+
+    const q = isOptOrder ? o.qty : (finalQty || qty);
+    const prod = (isOptOrder ? o.product : product) || "CNC";
+
+    if (isOptOrder) {
+      if (o.price == null) {
+        setBuyToast({ t: "No live premium for that contract — refusing to price the order", e: true });
+        setConfirmOrder(null);
+        return;
+      }
+      const optStock = {
+        ...s,
+        sym: o.optionSymbol,
+        name: `${s.sym} ${o.strike} ${o.optType === "CE" ? "CALL" : "PUT"}`,
+        price: o.price,                    // the premium, not the spot
+        under: s.sym,
+        isOpt: true,
+        lot: o.lotSize,
+        strike: o.strike,
+        optType: o.optType,
+        expiry: o.expiry,
+      };
+      buyStockNow(optStock, q, { ...opts, product: prod, market: "IN", tradeType: opts.tradeType || "Manual" });
+      setBuyToast({ t: `Bought ${o.lots} lot${o.lots > 1 ? "s" : ""} · ${o.optionSymbol}` });
+      setConfirmOrder(null);
+      return;
+    }
 
 
     if (mode === "real") {
