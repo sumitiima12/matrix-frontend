@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { currentIdeas } from "../domain/ideas";
 import { dailyPicks, techSignal } from "../domain/signals";
-import { Activity, Building2, ChevronRight, Lightbulb, Newspaper, Pencil, Sparkles, TrendingUp, Zap } from "lucide-react";
+import { Building2, ChevronRight, Lightbulb, Newspaper, Pencil, Sparkles, TrendingUp, Zap } from "lucide-react";
 import { BACKEND_URL } from "../config";
 import { CUR, DAY, chgColor, clamp, compact, fmt, lsGet, lsSet, pct, timeAgo } from "../lib/format";
 import { ALL, FNO, GLOBAL_MKTS, UNIVERSE, marketOf } from "../domain/universe";
 import { makeFuture } from "../domain/fno";
-import { askMatrix, fetchNews } from "../domain/api";
+import { askMatrix, fetchNews, fetchNewsFeed } from "../domain/api";
 import AddBtn from "../components/common/AddBtn";
 import BuyButton from "../components/common/BuyButton";
 import TagRow from "../components/common/TagRow";
@@ -178,53 +178,99 @@ function StockIdeasStrip({ onOpen, onBuy, market, liveTick = 0 }) {
   );
 }
 
-function LiveNewsStrip({ symbols = [], onOpen, list = [], market = "IN", onBuy }) {
+function LiveNewsStrip({ symbols = [], onOpen, list = [], market = "IN" }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [tag, setTag] = useState(null);          // Earnings / Dividend / Split / Bulk deal…
   const key = symbols.join(",");
+
+  /* Was: ONE headline from ONE symbol, six times — and any symbol Yahoo had nothing
+     for simply dropped out, which is why the strip usually showed a single stock.
+     Now: a real feed across the whole list, newest first, de-duplicated, and tagged by
+     event type so you can pull out just the earnings or just the bulk deals. */
   useEffect(() => {
     let stop = false;
-    setLoading(true); setItems([]);
-    if (!BACKEND_URL || !symbols.length) { setLoading(false); return; }
-    Promise.all(symbols.slice(0, 6).map((sym) =>
-      fetchNews(sym).then((n) => (n && n.length ? { sym, n: n[0] } : null)).catch(() => null)
-    )).then((rows) => {
-      if (stop) return;
-      setItems(rows.filter(Boolean));
-      setLoading(false);
-    });
+    setLoading(true);
+    setItems([]);
+    if (!BACKEND_URL || !symbols.length) { setLoading(false); return undefined; }
+
+    fetchNewsFeed(symbols.slice(0, 12))
+      .then((n) => { if (!stop) { setItems(n); setLoading(false); } })
+      .catch(() => { if (!stop) setLoading(false); });
+
     return () => { stop = true; };
   }, [key]);
 
+  const tags = [...new Set(items.map((x) => x.tag).filter(Boolean))];
+  const shown = tag ? items.filter((x) => x.tag === tag) : items;
+
+  const TAG_COLOR = {
+    Earnings: "var(--primary)", Dividend: "var(--up)", Split: "#8B5CF6",
+    "Bulk deal": "#E8A33D", Buyback: "var(--up)", "M&A": "#EC4899", "Order win": "var(--up)",
+  };
+
   return (
     <Section title="In the news" icon={<Newspaper size={17} color="#E8A33D" />}>
+      {tags.length > 1 && (
+        <div className="hide-scroll" style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 8 }}>
+          {tags.map((t) => (
+            <button
+              key={t}
+              onClick={() => setTag(tag === t ? null : t)}
+              className="pill tap disp"
+              style={{
+                flex: "0 0 auto", padding: "5px 11px", fontSize: 11, fontWeight: 700, cursor: "pointer",
+                border: "1px solid " + (tag === t ? (TAG_COLOR[t] || "var(--primary)") : "var(--line)"),
+                background: tag === t ? (TAG_COLOR[t] || "var(--primary)") : "var(--surface)",
+                color: tag === t ? "#fff" : "var(--ink)",
+              }}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
+
       {loading ? (
-        <div className="card" style={{ padding: 18, color: "var(--muted)", fontSize: 12.5 }}>Loading latest headlines…</div>
-      ) : items.length === 0 ? (
-        <div className="card" style={{ padding: 18, color: "var(--muted)", fontSize: 12.5 }}>{BACKEND_URL ? "No recent headlines right now." : "Connect the backend to load live news."}</div>
+        <div className="card" style={{ padding: 18, color: "var(--muted)", fontSize: 12.5 }}>Loading headlines…</div>
+      ) : shown.length === 0 ? (
+        <div className="card" style={{ padding: 18, color: "var(--muted)", fontSize: 12.5 }}>
+          {BACKEND_URL ? "No recent headlines for these symbols." : "Connect the backend to load real news."}
+        </div>
       ) : (
         <div className="hide-scroll" style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
-          {items.map(({ sym, n }) => {
-            const s = list.find((a) => a.sym === sym);
+          {shown.slice(0, 14).map((n, i) => {
+            const s = list.find((a) => a.sym === n.sym);
             return (
-              /* Tapping a news card opens the SYMBOL, exactly like every other card
-                 in the app — it no longer throws the user out to Yahoo. Price and a
-                 BUY are on the card, so the news is actionable where it sits. */
-              <div key={sym} onClick={() => s && onOpen(s)} className="card tap" style={{ flex: "0 0 auto", width: 250, padding: 14 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-                  <span className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>{sym}</span>
+              /* Tapping opens the SYMBOL, like every other card in the app. No Buy button:
+                 a headline is a reason to look, not a reason to trade on the spot. */
+              <div
+                key={n.sym + i}
+                onClick={() => s && onOpen(s)}
+                className="card tap"
+                style={{ flex: "0 0 auto", width: 250, padding: 14, cursor: s ? "pointer" : "default" }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
+                  <span className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>{n.sym}</span>
                   {s && <span className="mono" style={{ fontWeight: 800, fontSize: 13 }}>{fmt(s.price, market)}</span>}
                 </div>
                 {s && <div style={{ marginTop: 2 }}><Change v={s.chg} /></div>}
 
-                <div style={{ marginTop: 8, fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{n.t}</div>
-                <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 7 }}>{timeAgo(n.d)}{n.src ? " · " + n.src : ""}</div>
-
-                {s && onBuy && (
-                  <div style={{ marginTop: 11 }} onClick={(e) => e.stopPropagation()}>
-                    <BuyButton s={s} market={market} onBuy={onBuy} lot={s.lot || 1} fullWidth />
-                  </div>
+                {n.tag && (
+                  <span
+                    className="pill"
+                    style={{ display: "inline-block", marginTop: 8, fontSize: 9, fontWeight: 800, padding: "3px 7px", background: "var(--elev)", color: TAG_COLOR[n.tag] || "var(--primary)" }}
+                  >
+                    {n.tag.toUpperCase()}
+                  </span>
                 )}
+
+                <div style={{ marginTop: 7, fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                  {n.t}
+                </div>
+                <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 7 }}>
+                  {n.src ? n.src + " · " : ""}{n.d ? timeAgo(n.d) : ""}
+                </div>
               </div>
             );
           })}
@@ -233,10 +279,6 @@ function LiveNewsStrip({ symbols = [], onOpen, list = [], market = "IN", onBuy }
     </Section>
   );
 }
-
-/* Market update — generated by the LLM from REAL live numbers (breadth, top
-   movers, index change). No hardcoded editorial. Falls back to a plain factual
-   summary of the same real numbers if the LLM is unreachable. */
 
 function MarketBrief({ market, list = [] }) {
   const [text, setText] = useState(null);
@@ -379,12 +421,15 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const glList = list.filter((s) => !s.isIndex && s.chg != null);
   const gainers = [...glList].sort((a, b) => b.chg - a.chg).slice(0, 5);
   const losers = [...glList].sort((a, b) => a.chg - b.chg).slice(0, 5);
-  const traded = [...list].filter((s) => s.vol != null).sort((a, b) => (b.vol || 0) - (a.vol || 0)).slice(0, 6);
-  const inNews = [...list].sort((a, b) => (b.vol || 0) - (a.vol || 0)).slice(0, 6);
+  /* We have NO volume in the quote feed, so this cannot be "the most liquid names" —
+     it is simply the first twelve of the current market list. It used to .sort() by
+     s.vol, which was always undefined: the comparator did nothing and the result only
+     LOOKED ranked. An ordering that pretends to mean something is worse than an
+     obvious one that doesn't. */
+  const inNews = list.slice(0, 12);
   const smart = list.filter((s) => s.inst);
   const optOf = (s) => makeFuture(s);
   const trendingView = market === "FNO" ? trending.map(optOf).filter(Boolean) : trending;
-  const tradedView = market === "FNO" ? traded.map(optOf).filter(Boolean) : traded;
 
   // portfolio dashboard math
   const dash = portfolio.reduce((a, h) => {
@@ -607,7 +652,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       </div>
 
       {profile && (
-        <div className="card metal" style={{ marginTop: 14, padding: 14, background: "linear-gradient(135deg,#5B5B63,#313138)", border: "none", color: "#fff" }}>
+        <div className="card metal" style={{ marginTop: 14, padding: 14, background: "linear-gradient(135deg,#F2F3F5 0%,#DCDEE2 18%,#C8CBD0 34%,#EDEFF1 50%,#C4C7CC 66%,#D8DADE 82%,#EFF0F2 100%)", border: "1px solid #B9BDC3", color: "#1C1D21", boxShadow: "inset 0 1px 0 rgba(255,255,255,.85), 0 2px 10px rgba(0,0,0,.10)" }}>
           <div style={{ fontSize: 12, opacity: .9 }}>Tuned for you</div>
           <div className="disp" style={{ fontWeight: 700, fontSize: 15, marginTop: 2 }}>{profile.style} investor · {profile.risk} risk</div>
           <div style={{ fontSize: 12, opacity: .92, marginTop: 4 }}>Picks below are weighted toward {profile.caps.join(", ") || "all caps"}{profile.sectors.length ? ` and ${profile.sectors.join(", ")}` : ""}.</div>
@@ -619,17 +664,17 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
         <div className="hide-scroll" style={{ display: "flex", gap: 13, overflowX: "auto", paddingBottom: 8, paddingTop: 2 }}>
           {picks.map((s) => (
             /* Grey, not the accent gradient. */
-            <div key={s.sym} onClick={() => onOpen(s)} className="card tap glow metal" style={{ flex: "0 0 auto", width: 272, padding: 0, position: "relative", overflow: "hidden", border: "none", background: "linear-gradient(135deg,#5B5B63,#313138)" }}>
-              <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 80% at 0% 0%, rgba(255,255,255,.18), transparent 45%)", pointerEvents: "none" }} />
-              <div style={{ padding: 17, position: "relative", color: "#fff" }}>
+            <div key={s.sym} onClick={() => onOpen(s)} className="card tap glow metal" style={{ flex: "0 0 auto", width: 272, padding: 0, position: "relative", overflow: "hidden", border: "1px solid #B9BDC3", background: "linear-gradient(135deg,#F2F3F5 0%,#DCDEE2 18%,#C8CBD0 34%,#EDEFF1 50%,#C4C7CC 66%,#D8DADE 82%,#EFF0F2 100%)", color: "#1C1D21", boxShadow: "inset 0 1px 0 rgba(255,255,255,.85), 0 2px 10px rgba(0,0,0,.10)" }}>
+              <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 80% at 0% 0%, rgba(28,29,33,.10), transparent 45%)", pointerEvents: "none" }} />
+              <div style={{ padding: 17, position: "relative", color: "#1C1D21" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 16 }}>💎</span>
-                  <div style={{ minWidth: 0 }}><div className="disp" style={{ fontWeight: 700, fontSize: 15.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.sym}</div><div style={{ fontSize: 11, color: "rgba(255,255,255,.7)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</div></div>
-                  {s.isFut && <span className="pill disp" style={{ marginLeft: "auto", fontSize: 9.5, fontWeight: 800, padding: "3px 9px", background: "rgba(255,255,255,.18)", color: "#fff", whiteSpace: "nowrap" }}>FUT · {s.expiry}</span>}
+                  <div style={{ minWidth: 0 }}><div className="disp" style={{ fontWeight: 700, fontSize: 15.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.sym}</div><div style={{ fontSize: 11, color: "#5A5E66", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</div></div>
+                  {s.isFut && <span className="pill disp" style={{ marginLeft: "auto", fontSize: 9.5, fontWeight: 800, padding: "3px 9px", background: "rgba(28,29,33,.10)", color: "#1C1D21", whiteSpace: "nowrap" }}>FUT · {s.expiry}</span>}
                 </div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 12 }}>
                   <span className="mono" style={{ fontWeight: 800, fontSize: 19 }}>{fmt(s.price, market)}</span>
-                  <span style={{ fontSize: 10.5, color: "rgba(255,255,255,.75)", fontWeight: 700 }}>{s.chg == null ? "—" : (s.chg >= 0 ? "▲ " : "▼ ") + pct(s.chg, 2, false)}{s.isFut ? ` · lot ${s.lot}` : ""}</span>
+                  <span style={{ fontSize: 10.5, color: "#5A5E66", fontWeight: 700 }}>{s.chg == null ? "—" : (s.chg >= 0 ? "▲ " : "▼ ") + pct(s.chg, 2, false)}{s.isFut ? ` · lot ${s.lot}` : ""}</span>
                 </div>
                 {/* REAL technical tags from the tag engine — Golden Cross, Bull Flag,
                     Breakout, Volume Spike and so on, each true and each backed by a
@@ -637,7 +682,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                   {computeTags(s.under ? { ...s, sym: s.under } : s).slice(0, 3).map((t) => (
                     <span key={t.id} className="pill" title={t.evidence}
-                      style={{ fontSize: 10, fontWeight: 800, background: "rgba(255,255,255,.18)", color: "#fff", padding: "3px 9px" }}>
+                      style={{ fontSize: 10, fontWeight: 800, background: "rgba(28,29,33,.10)", color: "#1C1D21", padding: "3px 9px" }}>
                       {t.label}
                     </span>
                   ))}
@@ -737,22 +782,14 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
             </div>
           }>
           <div className="card" style={{ padding: "4px 14px" }}>
-            {(glMode === "Gainers" ? gainers : losers).map((s) => <ListRow key={s.sym} s={s} market={market} onOpen={onOpen} onBuy={onBuy} />)}
+            {(glMode === "Gainers" ? gainers : losers).map((s) => <ListRow key={s.sym} s={s} market={market} onOpen={onOpen} />)}
           </div>
         </Section>
       )}
 
-      {/* Most traded — carousel; F&O shows ATM options */}
-      <Section title="Most traded" icon={<Activity size={17} color="var(--primary)" />}>
-        <div className="hide-scroll" style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
-          {tradedView.map((s) => (
-            <CarouselCard key={s.sym} s={s} market={market} onOpen={onOpen} onBuy={onBuy} width={210} />
-          ))}
-        </div>
-      </Section>
 
       {/* In the news — REAL headlines fetched live (not for F&O) */}
-      {market !== "FNO" && <LiveNewsStrip symbols={inNews.map((s) => s.sym)} onOpen={onOpen} list={list} market={market} onBuy={onBuy} />}
+      {market !== "FNO" && <LiveNewsStrip symbols={inNews.map((s) => s.sym)} onOpen={onOpen} list={list} market={market} />}
 
       {/* Smart money — REAL institutional holders from Yahoo (quoteSummary).
           Hidden entirely when no holder data is available: no invented names. */}

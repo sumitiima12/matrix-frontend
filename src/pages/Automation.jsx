@@ -340,14 +340,13 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
   const [dashRange, setDashRange] = useState(365);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3400); return () => clearTimeout(t); }, [toast]);
   function fireAlert(a) {
-    let text;
-    try {
-      const data = candles("NIFTY50", 23450, 0.62, 80);
-      const bt = a.cfg && a.cfg.mode !== "plain" ? backtest(a.cfg, data) : null;
-      const last = bt && bt.trades.length ? bt.trades[bt.trades.length - 1] : null;
-      const kind = last ? (["Signal", "TP", "SL", "EOD"].includes(last.reason) ? "Exit" : "Entry") : null;
-      text = last ? `${a.name}: ${kind} signal on NIFTY50 @ ${last.exit.toFixed(2)}` : `${a.name}: alerts armed — watching for entry/exit signals`;
-    } catch { text = `${a.name}: alerts armed`; }
+    /* This used to run a backtest over SIMULATED NIFTY candles and report the result
+       as though it were a live signal — "Exit signal on NIFTY50 @ 23,412.55" — a
+       number that came from a random walk, on a symbol the strategy might not even
+       trade. The generator is gone; the honest message is that alerts are armed and
+       the engine will fire when a real rule triggers on real candles. */
+    const on = (a.symbols && a.symbols.length) ? a.symbols.join(", ") : "its symbols";
+    const text = `${a.name}: alerts armed — you'll be notified when it triggers on ${on}`;
     setNotifs((p) => [{ id: Date.now() + Math.random(), text, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }, ...p].slice(0, 8));
     setToast(text);
   }
@@ -568,7 +567,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
                     <span className="disp" style={{ fontWeight: 700, fontSize: 13.5 }}>Backtest · {btTpl} <span style={{ color: "var(--muted)", fontWeight: 600, fontSize: 11 }}>· pick a stock or index</span></span>
                     <X size={18} className="tap" color="var(--muted)" onClick={() => setBtTpl(null)} />
                   </div>
-                  <BacktestResult cfg={(TEMPLATES.find((x) => x.name === btTpl) || {}).cfg} defaultSym={(syms && syms[0]) || undefined} />
+                  <BacktestResult cfg={(TEMPLATES.find((x) => x.name === btTpl) || {}).cfg} defaultSym={DEPLOY_OPTIONS[0]} />
                 </div>
               )}
 

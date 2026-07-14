@@ -18,6 +18,13 @@ export default function ListRow({ s, market, onOpen, right, onBuy }) {
       <div style={{ textAlign: "right" }}>
         <div className="mono" style={{ fontWeight: 700, fontSize: 13 }}>{fmt(s.price, market)}</div>
         {right || <Change v={s.chg} />}
+        {/* F&O rows carry the REAL NSE lot size, and label the price as SPOT — it is
+            the underlying's price, not an option premium. We have no option chain. */}
+        {s.fno && s.lot ? (
+          <div style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 700, marginTop: 1 }}>
+            spot · lot {s.lot}
+          </div>
+        ) : null}
       </div>
       {onBuy && (
         <div onClick={(e) => e.stopPropagation()} style={{ flex: "0 0 auto" }}>

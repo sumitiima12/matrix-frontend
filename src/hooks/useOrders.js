@@ -112,6 +112,10 @@ export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, us
              the real entry time, not the time we happened to notice the position. */
           product: opts.product === "MIS" ? "MIS" : "CNC",
           boughtAt: Date.now(),
+          // How this position was acquired. It was already stamped on the TRADE log but
+          // never on the HOLDING, so the portfolio had no way to tell a strategy's
+          // position from one you opened yourself.
+          tradeType: opts.tradeType || "Manual",
           sl: opts.sl ?? null, tp: opts.tp ?? null, tsl: opts.tsl ?? null,
         }];
       });

@@ -65,6 +65,12 @@ function ManageHolding({ r, st, onBuy, onSell, onUpdate, onClose }) {
   const [tsl, setTsl] = useState(r.tsl ? String(r.tsl) : "");
   const [tp, setTp] = useState(r.tp ? String(r.tp) : "");
   const saveRisk = () => { onUpdate && onUpdate(r.sym, { sl: sl === "" ? undefined : +sl, tsl: tsl === "" ? undefined : +tsl, tp: tp === "" ? undefined : +tp }); onClose && onClose(); };
+  // The +/- button style. Referenced but never defined — every "Manage" panel threw.
+  const qBtn = {
+    border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)",
+    borderRadius: 9, display: "grid", placeItems: "center", cursor: "pointer", fontWeight: 800,
+  };
+
   const stepper = (val, setter, max) => (
     <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto" }}>
       <button onClick={() => setter((q) => Math.max(1, q - 1))} className="tap" style={{ ...qBtn, width: 30, height: 30, fontSize: 16 }}>–</button>
@@ -184,6 +190,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
     );
   }
   const [expand, setExpand] = useState(null);   // sym with open trade panel
+  const [fType, setFType] = useState([]);      // Manual / Auto Buy / Automate
   const mkt = market === "FNO" ? "IN" : market;
   const mLabel = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", FNO: "⚡ F&O", Commodity: "🪙 Commodity" }[market];
 
@@ -193,7 +200,13 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
      hiding someone's position would be worse — they are listed honestly, unpriced. */
   const orphans = portfolio.filter((h) => !h.fno && marketOf(h.sym) === null);
   // F&O portfolio shows only F&O (futures/options) positions — never plain stock holdings
-  const rows = portfolio.filter((h) => market === "FNO" ? h.fno : (marketOf(h.sym) === mkt && !h.fno)).map((h) => {
+  const TRADE_TYPES = ["Manual", "Auto Buy", "Automate"];
+  const typeOf = (h) => h.tradeType || "Manual";
+
+  const rows = portfolio
+    .filter((h) => market === "FNO" ? h.fno : (marketOf(h.sym) === mkt && !h.fno))
+    .filter((h) => (fType.length ? fType.includes(typeOf(h)) : true))
+    .map((h) => {
     const m = marketOf(h.sym);
     const cur = priceSnap[h.sym] != null ? priceSnap[h.sym] : h.buy;   // frozen until next buy/sell
     const inv = h.buy * h.qty, val = cur * h.qty;
@@ -278,6 +291,44 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
           <div><div style={{ opacity: .7 }}>Total P/L</div><div className="mono" style={{ fontWeight: 700, color: totalPL >= 0 ? "#5CF0B5" : "#FF8FA0" }}>{totalPL >= 0 ? "+" : ""}{fmt(totalPL, mkt)}</div></div>
         </div>
       </div>
+      {/* TRADE TYPE — tell your own trades apart from the ones a strategy opened.
+          Only shown when there is more than one kind in the book: a filter with a
+          single option is noise. */}
+      {(() => {
+        const present = TRADE_TYPES.filter((t) =>
+          portfolio.some((h) => (market === "FNO" ? h.fno : (marketOf(h.sym) === mkt && !h.fno)) && typeOf(h) === t));
+        if (present.length < 2) return null;
+        const color = (t) => (t === "Auto Buy" ? "var(--primary)" : t === "Automate" ? "#8B5CF6" : "var(--muted)");
+        return (
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 12 }}>
+            {present.map((t) => {
+              const on = fType.includes(t);
+              return (
+                <button
+                  key={t}
+                  onClick={() => setFType((prev) => (on ? prev.filter((x) => x !== t) : [...prev, t]))}
+                  className="pill tap disp"
+                  style={{
+                    padding: "6px 12px", fontSize: 11.5, fontWeight: 700, cursor: "pointer",
+                    border: "1px solid " + (on ? color(t) : "var(--line)"),
+                    background: on ? color(t) : "var(--surface)",
+                    color: on ? "#fff" : "var(--ink)",
+                  }}
+                >
+                  {t}
+                </button>
+              );
+            })}
+            {fType.length > 0 && (
+              <button onClick={() => setFType([])} className="pill tap disp"
+                style={{ padding: "6px 11px", fontSize: 11.5, fontWeight: 700, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--muted)", cursor: "pointer" }}>
+                Clear
+              </button>
+            )}
+          </div>
+        );
+      })()}
+
       {rows.length === 0 ? (
         <div className="card" style={{ marginTop: 16, padding: 30, textAlign: "center", color: "var(--muted)" }}>
           <Briefcase size={28} color="var(--muted)" /><div style={{ marginTop: 8, fontSize: 13.5 }}>{market === "FNO" ? "No F&O positions. Futures & options you trade will show here — stock holdings stay under their own market." : `No ${mLabel} holdings yet. Buy from this market, or switch markets from the tabs above.`}</div>

@@ -52,6 +52,7 @@ import BrokerSheet from "./components/common/BrokerSheet";
 import { brokerSymbol } from "./domain/brokerSymbols";
 import { brokerPlaceOrder } from "./services/brokerService";
 import MatrixRain from "./components/common/MatrixRain";
+import Toggle from "./components/common/Toggle";
 import { useBroker } from "./hooks/useBroker";
 import Block from "./components/common/Block";
 import Spark from "./components/common/Spark";
@@ -242,11 +243,17 @@ function AppInner() {
   const [brokerPrompt, setBrokerPrompt] = useState(false);   // shown once, after onboarding
 
   /* A connected broker overwrites the delayed Yahoo prices with live ones, in place.
-     Nothing downstream changes — the numbers just stop being 15 minutes old. */
+     Nothing downstream changes — the numbers just stop being 15 minutes old.
+
+     We count broker ticks ourselves: useMarketData's tick is read-only, and the memos
+     keyed on it (Hot Stocks, Picks) would otherwise freeze while live broker prices
+     changed underneath them. */
+  const [brokerTicks, setBrokerTicks] = useState(0);
+
   const {
     connected: brokerLive, broker: liveBroker, connect: connectBroker, disconnect: disconnectBroker,
     lastTick: brokerTick, real: realPortfolio, realErr, realLoading, refreshPortfolio, session: brokerSession,
-  } = useBroker({ onTick: () => setLiveTick((t) => t + 1), userId });
+  } = useBroker({ onTick: () => setBrokerTicks((t) => t + 1), userId });
 
   /* Real mode is only reachable with a broker attached. If the broker drops (token
      expired — they expire daily), fall straight back to Virtual rather than leaving
@@ -290,7 +297,13 @@ function AppInner() {
   /* THE AUTOMATION LOOP. Evaluates every active strategy's entry/exit rules
      against real candles once a minute and places real orders through the normal
      pipeline. Automated orders skip the confirm dialog on purpose. */
-  useAutomation({ strats, onBuy: buyStockNow, onSell: sellStockNow, userId, enabled: !!auth });
+  useAutomation({
+    strats,
+    onBuy: (s, q, opts = {}) => buyStockNow(s, q, { ...opts, tradeType: "Automate" }),
+    onSell: (s, q, opts = {}) => sellStockNow(s, q, { ...opts, tradeType: "Automate" }),
+    userId,
+    enabled: !!auth,
+  });
 
   /* Intraday positions close themselves — 15 min before the bell, or 23h45m after
      entry for crypto. Paper only: a REAL intraday position is the broker's to square
@@ -398,7 +411,12 @@ function AppInner() {
   const [search, setSearch] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [tradePreset, setTradePreset] = useState(null);
-  const { live, liveAt, tick: liveTick } = useMarketData(market);
+  const { live, liveAt, tick: marketTick } = useMarketData(market);
+
+  /* One tick for the whole app, advancing on EITHER feed. Downstream memos key on
+     this; if they keyed only on the Yahoo tick they would sit frozen while a live
+     broker feed updated prices in place. */
+  const liveTick = marketTick + brokerTicks;
 
   /* ---- Watchlists ----
      `watch` is every symbol across every list — that is what the star on a card
@@ -505,65 +523,9 @@ function AppInner() {
               <span style={{ color: "var(--primary)", fontSize: 19 }}>✦</span>
               <span className="gradtext" style={{ fontWeight: 700, fontSize: 20 }}>Matrix</span>
               <div style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: 3 }}>
-                {/* WHERE THIS MARKET'S PRICE COMES FROM — per market, not per app.
-                    A broker covers some markets and not others: Zerodha prices NIFTY
-                    but not BTC. Saying "LIVE" across the whole app while Yahoo quietly
-                    serves crypto would be a lie of omission, and a trader will size a
-                    position on it. So: LIVE = broker feed. LIVE (YF) = Yahoo, ~15 min
-                    delayed. The label follows the market you are actually looking at. */}
-                {brokerLive && liveBroker && liveBroker.markets.includes(market) ? (
-                  <span
-                    className="pill"
-                    title={`Real-time feed from ${liveBroker.name}.`}
-                    onClick={() => setBrokerOpen(true)}
-                    style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".04em", padding: "2px 6px", display: "flex", alignItems: "center", gap: 3, background: "var(--up-soft)", color: "var(--up)", cursor: "pointer" }}
-                  >
-                    <span style={{ width: 4, height: 4, borderRadius: 4, background: "var(--up)" }} />
-                    LIVE
-                  </span>
-                ) : live ? (
-                  <span
-                    className="pill"
-                    title={`Yahoo Finance — delayed roughly 15 minutes on NSE. ${brokerLive ? `Your ${liveBroker ? liveBroker.name : "broker"} feed does not cover ${market}.` : "Connect a broker for a real-time feed."}`}
-                    onClick={() => setBrokerOpen(true)}
-                    style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".04em", padding: "2px 6px", display: "flex", alignItems: "center", gap: 3, background: "var(--primary-soft)", color: "var(--primary)", cursor: "pointer" }}
-                  >
-                    <span style={{ width: 4, height: 4, borderRadius: 4, background: "var(--primary)" }} />
-                    LIVE (YF)
-                  </span>
-                ) : (
-                  <span className="pill" style={{ fontSize: 8, fontWeight: 800, letterSpacing: ".04em", padding: "2px 6px", display: "flex", alignItems: "center", gap: 3, background: "var(--primary-soft)", color: "var(--muted)" }}>
-                    <span style={{ width: 4, height: 4, borderRadius: 4, background: "var(--muted)" }} />
-                    {marketOpen(market) ? "NO DATA" : "CLOSED"}
-                  </span>
-                )}
-
-                {/* VIRTUAL / REAL. Real is only offered once a broker is attached. */}
-                <button
-                  onClick={() => {
-                    if (mode === "real") { setMode("virtual"); return; }        // leaving Real is always free
-                    if (!brokerLive) { setBrokerOpen(true); return; }           // no broker, no Real
-                    setConfirmReal(true);                                       // entering Real needs a yes
-                  }}
-                  className="tap pill"
-                  title={mode === "real" ? "Real money. Orders go to your broker." : "Virtual capital. Orders are simulated at the real live price."}
-                  style={{
-                    fontSize: 8, fontWeight: 800, letterSpacing: ".04em", padding: "3px 8px",
-                    display: "flex", alignItems: "center", gap: 3, border: "none", cursor: "pointer",
-                    background: mode === "real" ? "var(--down-soft)" : "var(--elev)",
-                    color: mode === "real" ? "var(--down)" : "var(--muted)",
-                  }}
-                >
-                  <span style={{ width: 4, height: 4, borderRadius: 4, background: mode === "real" ? "var(--down)" : "var(--muted)" }} />
-                  {mode === "real" ? "REAL" : "VIRTUAL"}
-                </button>
-                {(brokerTick || liveAt) && <span style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 700 }}>{new Date(brokerTick || liveAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
-              <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label="Toggle dark mode" className="tap pill" style={{ width: 34, height: 34, display: "grid", placeItems: "center", background: "var(--elev)", border: "1px solid var(--line)", color: "var(--ink)" }}>
-                {theme === "dark" ? <Sun size={16} /> : <Moon size={15} />}
-              </button>
               {/* The wallet icon opens the WALLET, not the profile sheet. */}
               <button onClick={() => setWalletOpen(true)} aria-label="Wallet" className="tap pill gold-border" style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 11px", whiteSpace: "nowrap", flexShrink: 0, background: "transparent", cursor: "pointer" }}>
                 <Wallet size={15} color="var(--gold)" />
@@ -572,6 +534,73 @@ function AppInner() {
               <div onClick={() => setShowProfile(true)} className="tap glow" style={{ width: 34, height: 34, borderRadius: 11, background: "var(--feature-grad)", display: "grid", placeItems: "center", color: "#fff", flexShrink: 0 }}><User size={17} /></div>
             </div>
           </div>
+
+          {/* SLIM STATUS STRIP — feed, mode, theme, last tick.
+              These were crowded into the title row where the app name lives. They are
+              status, not identity: they belong on their own line where they can be read
+              at a glance and where the mode switch is a real switch, not a chip. */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 18px 10px", flexWrap: "wrap" }}>
+            {/* WHERE THIS MARKET'S PRICE COMES FROM. Per market, not per app: a broker
+                covers some markets and not others (Zerodha prices NIFTY, not BTC). Saying
+                "LIVE" app-wide while Yahoo quietly served crypto would be a lie you'd size
+                a position on. */}
+            {brokerLive && liveBroker && liveBroker.markets.includes(market) ? (
+              <span
+                className="pill tap"
+                onClick={() => setBrokerOpen(true)}
+                title={`Real-time feed from ${liveBroker.name}.`}
+                style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".04em", padding: "3px 7px", display: "flex", alignItems: "center", gap: 4, background: "var(--up-soft)", color: "var(--up)", cursor: "pointer" }}
+              >
+                <span style={{ width: 4, height: 4, borderRadius: 4, background: "var(--up)" }} />
+                LIVE · {liveBroker.name.toUpperCase()}
+              </span>
+            ) : live ? (
+              <span
+                className="pill tap"
+                onClick={() => setBrokerOpen(true)}
+                title={brokerLive ? `Your ${liveBroker ? liveBroker.name : "broker"} feed does not cover ${market}. Yahoo is delayed ~15 minutes.` : "Yahoo Finance — delayed ~15 minutes on NSE. Connect a broker for a real-time feed."}
+                style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".04em", padding: "3px 7px", display: "flex", alignItems: "center", gap: 4, background: "var(--primary-soft)", color: "var(--primary)", cursor: "pointer" }}
+              >
+                <span style={{ width: 4, height: 4, borderRadius: 4, background: "var(--primary)" }} />
+                LIVE (15m DELAY)
+              </span>
+            ) : (
+              <span className="pill" style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".04em", padding: "3px 7px", display: "flex", alignItems: "center", gap: 4, background: "var(--elev)", color: "var(--muted)" }}>
+                <span style={{ width: 4, height: 4, borderRadius: 4, background: "var(--muted)" }} />
+                {marketOpen(market) ? "NO DATA" : "CLOSED"}
+              </span>
+            )}
+
+            {/* VIRTUAL / REAL. Red when armed — this one spends real money. */}
+            <Toggle
+              on={mode === "real"}
+              offLabel="VIRTUAL"
+              onLabel="REAL"
+              onColor="var(--down)"
+              label="Virtual or Real trading"
+              onChange={(next) => {
+                if (!next) { setMode("virtual"); return; }        // leaving Real is always free
+                if (!brokerLive) { setBrokerOpen(true); return; } // no broker, no Real
+                setConfirmReal(true);                              // entering Real needs a yes
+              }}
+            />
+
+            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 9 }}>
+              {(brokerTick || liveAt) && (
+                <span className="mono" style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 700 }}>
+                  {new Date(brokerTick || liveAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              )}
+              <Toggle
+                on={theme === "dark"}
+                onChange={(next) => setTheme(next ? "dark" : "light")}
+                label="Dark mode"
+                onColor="var(--ink)"
+              />
+              {theme === "dark" ? <Moon size={12} color="var(--muted)" /> : <Sun size={12} color="var(--muted)" />}
+            </div>
+          </div>
+
           <div style={{ padding: "0 18px 14px" }}>
             <div onClick={() => setSearch(true)} className="tap" style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--elev)", border: "1px solid var(--line)", borderRadius: 14, padding: "11px 13px", color: "var(--muted)", fontSize: 13.5 }}>
               <Search size={17} /> Search any stock, crypto or commodity…

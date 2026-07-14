@@ -1,5 +1,4 @@
 import Block from "./Block";
-import { useScrollTransition } from "../../hooks/useScrollTransition";
 import React, { useEffect, useRef, useState } from "react";
 import { Activity, Building2, ChevronRight, Newspaper, Plus, X } from "lucide-react";
 import { fmt } from "../../lib/format";
@@ -18,14 +17,10 @@ export default function Drawer({ s, onClose, onDetails, onBuy }) {
   const [dy, setDy] = useState(0);
   const sheetRef = useRef(null);
 
-  /* Netflix-style expand: keep scrolling past the end of the sheet and it opens
-     into the full research page. Drag-down-to-dismiss still works as before. */
-  const { progress: expand } = useScrollTransition({
-    ref: sheetRef,
-    threshold: 90,
-    onTrigger: () => onDetails && onDetails(),
-    enabled: Boolean(s),
-  });
+  /* The "keep scrolling past the end and it opens the full page" transition is GONE.
+     Reading the drawer means scrolling down it — and scrolling down navigated you away
+     mid-read, so the sheet appeared to vanish. A scroll gesture should scroll. Opening
+     the full page is what the button is for. */
 
   if (!s) return null;
   const market = marketOf(s.sym);
@@ -57,14 +52,14 @@ export default function Drawer({ s, onClose, onDetails, onBuy }) {
           width: "100%", maxWidth: 460,
           borderRadius: "24px 24px 0 0",
           maxHeight: "88vh", overflowY: "auto", padding: 18,
-          // pulling up past the end lifts the sheet toward full screen
-          transform: dy > 0 ? `translateY(${dy}px)` : (expand > 0 ? `translateY(${-expand * 28}px) scale(${1 + expand * 0.02})` : "none"),
-          transition: dy === 0 && expand === 0 ? "transform .22s ease" : "none",
+          transform: dy > 0 ? `translateY(${dy}px)` : "none",
+          transition: dy === 0 ? "transform .22s ease" : "none",
+          // the sheet scrolls; it does not navigate
+          overscrollBehavior: "contain",
         }}
       >
         <div onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE} style={{ padding: "2px 0 10px", margin: "-2px 0 0", cursor: "grab", touchAction: "none" }}>
           <div style={{ width: 40, height: 4, background: "var(--line)", borderRadius: 9, margin: "0 auto" }} />
-          <div style={{ textAlign: "center", fontSize: 9.5, color: "var(--muted)", marginTop: 6, fontWeight: 600 }}>↑ drag up for full details</div>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div>
@@ -120,19 +115,6 @@ export default function Drawer({ s, onClose, onDetails, onBuy }) {
           </button>
         </div>
 
-        {/* Discoverability: the scroll-to-expand gesture needs to announce itself once. */}
-        <div
-          style={{
-            textAlign: "center",
-            paddingTop: 16,
-            fontSize: 11,
-            fontWeight: 700,
-            color: expand > 0.15 ? "var(--primary)" : "var(--muted)",
-            opacity: 0.5 + expand * 0.5,
-          }}
-        >
-          {expand > 0.15 ? "Release for full research ↑" : "Keep scrolling for full research ↑"}
-        </div>
       </div>
     </div>
   );

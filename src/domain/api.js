@@ -84,3 +84,20 @@ export async function resolveExitFromCandles(trade, risk = {}) {
   return null;   // still open
 }
 
+
+/**
+ * News across MANY symbols, tagged by event type (Earnings, Dividend, Split, Bulk deal…).
+ * The single-symbol fetchNews is why "In the news" only ever showed one stock.
+ */
+export async function fetchNewsFeed(symbols, { taggedOnly = false } = {}) {
+  if (!BACKEND_URL || !symbols || !symbols.length) return [];
+  try {
+    const u = `${BACKEND_URL}/api/news/feed?symbols=${encodeURIComponent(symbols.join(","))}${taggedOnly ? "&tagged=1" : ""}`;
+    const r = await fetch(u);
+    if (!r.ok) return [];
+    const d = await r.json();
+    return d.news || [];
+  } catch {
+    return [];
+  }
+}

@@ -1,4 +1,4 @@
-import { SMAarr, EMAarr, RSIarr, MACDarr, BBarr, CCIarr, ATRarr, VWAParr, ADXarr } from "../lib/series";
+import { SMAarr, EMAarr, RSIarr, MACDarr, BBarr, CCIarr, ATRarr, VWAParr, ADXarr, CF } from "../lib/series";
 /**
  * domain/strategyLang.js — the strategy rule language.
  *
