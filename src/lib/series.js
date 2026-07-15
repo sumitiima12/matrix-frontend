@@ -39,6 +39,39 @@ export function ADXarr(c, p) {
   return EMAarr(dx, p);
 }
 
+/**
+ * Supertrend — the classic ATR trailing-stop trend line.
+ *
+ * Returns a value per bar for the trend line plus a direction (+1 up / -1 down).
+ * When the direction flips, price has crossed the line: a close crossing ABOVE the
+ * line is a bullish flip, a close crossing BELOW it is bearish. `p` is the ATR
+ * period, `mult` the ATR multiplier (band width).
+ */
+export function STarr(c, p = 10, mult = 3) {
+  const n = c.length;
+  const atr = ATRarr(c, p);
+  const line = Array(n).fill(NaN);
+  const dir = Array(n).fill(1);
+  let prevFUpper = NaN, prevFLower = NaN, prevLine = NaN, trend = 1;
+  for (let i = 0; i < n; i++) {
+    const a = atr[i];
+    if (isNaN(a)) { line[i] = NaN; dir[i] = 1; continue; }
+    const hl2 = (c[i].h + c[i].l) / 2;
+    const bUpper = hl2 + mult * a;
+    const bLower = hl2 - mult * a;
+    const cPrev = i > 0 ? c[i - 1].c : c[i].c;
+    const fUpper = (isNaN(prevFUpper) || bUpper < prevFUpper || cPrev > prevFUpper) ? bUpper : prevFUpper;
+    const fLower = (isNaN(prevFLower) || bLower > prevFLower || cPrev < prevFLower) ? bLower : prevFLower;
+    if (isNaN(prevLine)) trend = 1;
+    else if (prevLine === prevFUpper) trend = c[i].c > fUpper ? 1 : -1;
+    else trend = c[i].c < fLower ? -1 : 1;
+    line[i] = trend === 1 ? fLower : fUpper;
+    dir[i] = trend;
+    prevFUpper = fUpper; prevFLower = fLower; prevLine = line[i];
+  }
+  return { line, dir };
+}
+
 export const CF = { open: "o", high: "h", low: "l", close: "c" };
 
 /**

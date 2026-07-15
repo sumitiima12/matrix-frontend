@@ -1,4 +1,4 @@
-import { SMAarr, EMAarr, RSIarr, MACDarr, BBarr, CCIarr, ATRarr, VWAParr, ADXarr, CF } from "../lib/series";
+import { SMAarr, EMAarr, RSIarr, MACDarr, BBarr, CCIarr, ATRarr, VWAParr, ADXarr, STarr, CF } from "../lib/series";
 /**
  * domain/strategyLang.js — the strategy rule language.
  *
@@ -32,6 +32,7 @@ export function resolveOperand(op, defs, c, closes, vols, cache) {
         case "BB": { const b = BBarr(closes, len); series = b[attr || "middle"]; break; }
         case "KC": { const mid = EMAarr(closes, len), at = ATRarr(c, len); series = attr === "upper" ? mid.map((v, i) => v + 1.5 * at[i]) : attr === "lower" ? mid.map((v, i) => v - 1.5 * at[i]) : mid; break; }
         case "ADX": series = ADXarr(c, len); break;
+        case "Supertrend": { const st = STarr(c, len, Number(d.mult) || 3); series = attr === "dir" ? st.dir : st.line; break; }
         case "DMA": series = SMAarr(closes, len); break;
         case "Volume": series = vols; break;
         case "CurrentCandle": case "CurrentDay": { const f = CF[attr] || "c"; series = c.map((x) => x[f]); break; }
@@ -101,6 +102,7 @@ export const IND_CATALOG = [
   { type: "ATR", label: "ATR", needsLen: true, attrs: [] },
   { type: "VWAP", label: "VWAP", needsLen: false, attrs: [] },
   { type: "ADX", label: "ADX", needsLen: true, attrs: [] },
+  { type: "Supertrend", label: "Supertrend", needsLen: true, attrs: ["line", "dir"] },
   { type: "DMA", label: "DMA (displaced MA)", needsLen: true, attrs: [] },
   { type: "Volume", label: "Volume", needsLen: false, attrs: [] },
   { type: "CurrentCandle", label: "Current candle", needsLen: false, attrs: ["open", "high", "low", "close"] },
@@ -255,6 +257,7 @@ function humanIndicator(def) {
     case "MACD": return `MACD`;
     case "BB": return `the Bollinger Bands`;
     case "ADX": return `ADX`;
+    case "Supertrend": return `Supertrend`;
     case "CCI": return `CCI`;
     case "ATR": return `ATR`;
     case "VWAP": return `VWAP`;
