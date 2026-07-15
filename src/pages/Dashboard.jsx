@@ -534,23 +534,34 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       {/* Global markets live strip */}
       <GlobalStrip />
 
-      {/* TUNED FOR YOU — hoisted above the dashboard card. Sleeker: no explanatory
-          sentence, just the profile line and a compact row of cap/sector chips. */}
+      {/* TUNED FOR YOU. Two stacked pairs: trading style over risk profile, cap tier over
+          sector preferences — each value sits under its own label rather than being
+          crammed onto one line. */}
       {profile && (
-        <div className="card metalblack" style={{ marginTop: 14, padding: "13px 15px", border: "none", color: "#fff" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div>
-              <div style={{ fontSize: 10.5, opacity: .6, fontWeight: 700, letterSpacing: ".04em" }}>TUNED FOR YOU</div>
-              <div className="disp" style={{ fontWeight: 700, fontSize: 14.5, marginTop: 2 }}>
-                {profile.style} · {profile.risk} risk
-              </div>
+        <div className="card metalblack" style={{ marginTop: 14, padding: "14px 16px", border: "none", color: "#fff" }}>
+          <div style={{ fontSize: 10.5, opacity: .55, fontWeight: 700, letterSpacing: ".04em", marginBottom: 12 }}>TUNED FOR YOU</div>
+
+          <div style={{ display: "flex", gap: 22 }}>
+            {/* Trading style, and risk profile beneath it */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 9.5, opacity: .5, fontWeight: 700, letterSpacing: ".03em" }}>TRADING STYLE</div>
+              <div className="disp" style={{ fontWeight: 700, fontSize: 14, marginTop: 2 }}>{profile.style}</div>
+
+              <div style={{ fontSize: 9.5, opacity: .5, fontWeight: 700, letterSpacing: ".03em", marginTop: 12 }}>RISK PROFILE</div>
+              <div className="disp" style={{ fontWeight: 700, fontSize: 14, marginTop: 2 }}>{profile.risk}</div>
             </div>
-            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: "60%" }}>
-              {[...(profile.caps.length ? profile.caps : ["All caps"]), ...profile.sectors].slice(0, 5).map((tag) => (
-                <span key={tag} style={{ fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 20, background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.14)" }}>
-                  {tag}
-                </span>
-              ))}
+
+            {/* Cap tier, and sector preferences beneath it */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 9.5, opacity: .5, fontWeight: 700, letterSpacing: ".03em" }}>MARKET CAP</div>
+              <div className="disp" style={{ fontWeight: 700, fontSize: 14, marginTop: 2 }}>
+                {profile.caps.length ? profile.caps.join(" · ") : "All caps"}
+              </div>
+
+              <div style={{ fontSize: 9.5, opacity: .5, fontWeight: 700, letterSpacing: ".03em", marginTop: 12 }}>SECTOR PREFERENCES</div>
+              <div className="disp" style={{ fontWeight: 700, fontSize: 14, marginTop: 2, lineHeight: 1.35 }}>
+                {profile.sectors.length ? profile.sectors.join(" · ") : "All sectors"}
+              </div>
             </div>
           </div>
         </div>
@@ -687,7 +698,6 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           {picks.map((s) => (
             /* Grey, not the accent gradient. */
             <div key={s.sym} onClick={() => onOpen(s)} className="card tap glow metalblack" style={{ flex: "0 0 auto", width: 272, padding: 0, position: "relative", overflow: "hidden", border: "none" }}>
-              <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 80% at 0% 0%, rgba(255,255,255,.10), transparent 45%)", pointerEvents: "none" }} />
               <div style={{ padding: 17, position: "relative", color: "#fff" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 16 }}>💎</span>

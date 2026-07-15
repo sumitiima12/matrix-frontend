@@ -90,9 +90,31 @@ export function runOnce({ strats, getCandles, getStock, getChain, positions, cap
   const next = { ...positions };
   const log = [];
 
+  /* Per-strategy, per-DAY counters. Stored under a reserved key in the same positions map
+     so they survive across ticks (the engine is otherwise stateless between runs). The day
+     stamp resets them automatically when the date rolls over — a "max 5 trades a day" limit
+     that never reset would silently kill the strategy on day two. */
+  const today = new Date().toISOString().slice(0, 10);
+  const counterKey = (id) => `__count|${id}`;
+  const getCount = (id) => {
+    const c = next[counterKey(id)];
+    return c && c.day === today ? c : { day: today, entries: 0, reentries: 0 };
+  };
+
   (strats || []).filter((s) => s.active).forEach((strat) => {
     const syms = strat.symbols || [];
     if (!syms.length) return;
+
+    /* Caps, with the documented defaults. maxTrades counts FRESH entries in the day;
+       maxReentries counts entries on a symbol the strategy has already traded and exited
+       today (a re-entry). Both default the way the UI shows them: 5 and 5. */
+    const maxTrades = strat.maxTrades != null ? strat.maxTrades : 5;
+    const maxReentries = strat.maxReentries != null ? strat.maxReentries : 5;
+    const count = getCount(strat.id);
+    if (count.entries >= maxTrades) {
+      log.push({ strat: strat.name, action: "SKIP", reason: `daily trade cap reached (${maxTrades})` });
+      return;
+    }
 
     syms.forEach((sym) => {
       const stock = getStock(sym);
@@ -104,9 +126,28 @@ export function runOnce({ strats, getCandles, getStock, getChain, positions, cap
       const key = `${strat.id}|${sym}`;
       const position = next[key] || null;
 
+      /* Has this strategy already traded-and-exited this symbol today? If so, a new entry
+         is a RE-ENTRY and counts against the separate re-entry budget. */
+      const exitedKey = `__exited|${strat.id}|${sym}`;
+      const exitedToday = next[exitedKey] === today;
+
       const intent = evaluate({ cfg: strat.cfg, candles, position, price: stock.price });
 
       if (intent.action === "BUY" && !position) {
+        /* Re-entry budget. If we've already traded and exited this symbol today, this is a
+           re-entry — refuse once the re-entry cap is hit. */
+        if (exitedToday && count.reentries >= maxReentries) {
+          log.push({ sym, strat: strat.name, action: "SKIP", reason: `re-entry cap reached (${maxReentries})` });
+          return;
+        }
+        /* Also respect the daily fresh-trade cap at the per-symbol level (the top-level
+           guard catches it before the symbol loop; this catches entries accumulated
+           earlier in THIS tick across multiple symbols). */
+        if (count.entries >= maxTrades) {
+          log.push({ sym, strat: strat.name, action: "SKIP", reason: `daily trade cap reached (${maxTrades})` });
+          return;
+        }
+
         /* OPTION LEG. The strategy says "trade the option, not the stock" — so the exact
            contract is resolved HERE, at the moment the signal fires, against the broker's
            live chain. Not at configuration time: a strike that was ATM when you set the
@@ -156,13 +197,29 @@ export function runOnce({ strats, getCandles, getStock, getChain, positions, cap
             optSymbol: r.contract.symbol, lotSize: r.lotSize,
             strike: r.strike, optType: r.type, expiry: r.expiry,
           };
+          count.entries += 1;
+          if (exitedToday) count.reentries += 1;
+          next[counterKey(strat.id)] = count;
           log.push({ sym, strat: strat.name, action: "BUY", qty: r.qty, price: r.contract.ltp, contract: r.contract.symbol, reason: intent.reason });
           return;
         }
 
-        const cap = capitalOf(strat) / syms.length;
-        const qty = Math.max(1, Math.floor(cap / stock.price));
+        /* EXPLICIT quantity. The strategy now carries a share/lot count (default 1) rather
+           than a rupee capital that we divide by price — the user asked for exactly N,
+           they get exactly N. Falls back to the old capital-sizing only if an older
+           strategy has no qty saved. */
+        const qty = strat.qty != null
+          ? Math.max(1, strat.qty)
+          : Math.max(1, Math.floor((capitalOf(strat) / syms.length) / stock.price));
         if (!Number.isFinite(qty) || qty < 1) return;
+
+        /* LIMIT price is computed HERE, at fire time, from the live signal price — not
+           stored at config time, when the price was something else entirely. For a buy the
+           limit sits BELOW the trigger by the offset, so we buy a small pullback rather
+           than chasing the breakout. A MARKET order carries no price. */
+        const isLimit = strat.entryType === "Limit";
+        const off = isLimit ? (Number(strat.limitOffset) || 0) / 100 : 0;
+        const limitPrice = isLimit ? +(stock.price * (1 - off)).toFixed(2) : null;
 
         onBuy(stock, qty, {
           tp: strat.cfg && strat.cfg.tp,
@@ -171,8 +228,14 @@ export function runOnce({ strats, getCandles, getStock, getChain, positions, cap
           strategy: strat.name,
           strategyId: strat.id,
           market: "IN",
+          product: strat.buyType === "NRML" ? "NRML" : "MIS",   // Intraday -> MIS
+          orderType: isLimit ? "LIMIT" : "MARKET",
+          ...(limitPrice != null ? { limitPrice } : {}),
         });
         next[key] = { qty, entry: stock.price, at: Date.now() };
+        count.entries += 1;
+        if (exitedToday) count.reentries += 1;
+        next[counterKey(strat.id)] = count;
         log.push({ sym, strat: strat.name, action: "BUY", qty, price: stock.price, reason: intent.reason });
       }
 
@@ -197,6 +260,7 @@ export function runOnce({ strats, getCandles, getStock, getChain, positions, cap
             { tradeType: "Automate", strategy: strat.name, strategyId: strat.id, market: "IN" }
           );
           delete next[key];
+          next[exitedKey] = today;
           log.push({ sym, strat: strat.name, action: "SELL", qty: position.qty, price: live.ltp, contract: position.optSymbol, reason: intent.reason });
           return;
         }
@@ -208,6 +272,7 @@ export function runOnce({ strats, getCandles, getStock, getChain, positions, cap
           market: "IN",
         });
         delete next[key];
+        next[exitedKey] = today;
         log.push({ sym, strat: strat.name, action: "SELL", qty: position.qty, price: stock.price, reason: intent.reason });
       }
     });

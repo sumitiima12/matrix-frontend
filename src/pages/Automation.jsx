@@ -299,6 +299,32 @@ function CondBuilder2({ label, conds, setConds, operands }) {
   );
 }
 
+/* Segmented two/three-option toggle — used for Buy Type and Entry Type. */
+function SegF({ label, options, value, set }) {
+  return (
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>{label}</div>
+      <div style={{ display: "flex", gap: 6 }}>
+        {options.map((o) => (
+          <button
+            key={o}
+            onClick={() => set(o)}
+            className="tap disp"
+            style={{
+              flex: 1, padding: "8px 6px", borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: "pointer",
+              border: "1px solid " + (value === o ? "var(--primary)" : "var(--line)"),
+              background: value === o ? "var(--primary)" : "var(--surface)",
+              color: value === o ? "#fff" : "var(--ink)",
+            }}
+          >
+            {o}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function NumF({ label, v, set }) {
   return <div style={{ flex: 1 }}><div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 600, marginBottom: 5 }}>{label}</div>
     <input value={v} onChange={(e) => set(e.target.value)} className="no-ring mono" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 10, padding: 10, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }} /></div>;
@@ -406,7 +432,14 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
   ]);
   const [sl, setSl] = useState("3");
   const [tp, setTp] = useState("8");
-  const [capital, setCapital] = useState("100000");
+  const [capital, setCapital] = useState("1");         // QUANTITY, default 1 (was a rupee capital amount)
+
+  /* Order-execution defaults for the automation. */
+  const [buyType, setBuyType] = useState("Intraday");   // Intraday (MIS) | NRML
+  const [entryType, setEntryType] = useState("Market"); // Market | Limit
+  const [limitOffset, setLimitOffset] = useState("0.1"); // % away from signal price for a LIMIT
+  const [maxTrades, setMaxTrades] = useState("5");      // max fresh entries per day
+  const [maxReentries, setMaxReentries] = useState("5");// max re-entries after an exit
   const [tf, setTf] = useState("5m");
   const [deploySyms, setDeploySyms] = useState(["NIFTY50"]);
   const [symFilter, setSymFilter] = useState([]);
@@ -478,7 +511,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
     const name = stratName.trim() || (mode === "builder" ? "Custom strategy" : "Plain-English strategy");
     const id = "u" + Date.now();
     const symbols = deploySyms.length ? deploySyms : ["NIFTY50"];
-    const strat = { id, name, by: "You", active: makeActive, alerts: false, cfg, opt: optLeg, cap: parseInt(capital) || 100000, symbols, created: Date.now() };
+    const strat = { id, name, by: "You", active: makeActive, alerts: false, cfg, opt: optLeg, qty: Math.max(1, parseInt(capital) || 1), buyType, entryType, limitOffset: entryType === "Limit" ? (parseFloat(limitOffset) || 0) : null, maxTrades: Math.max(1, parseInt(maxTrades) || 5), maxReentries: Math.max(0, parseInt(maxReentries) || 5), cap: parseInt(capital) || 1, symbols, created: Date.now() };
     setStrats((p) => [strat, ...p]);
     setStratName(""); setShowBuilder(false);
     setToast(makeActive
@@ -722,10 +755,38 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
               <NumF label="Take profit %" v={tp} set={setTp} />
             </div>
             <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Quantity (₹)</div>
+              <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Quantity</div>
               <input value={capital} onChange={(e) => setCapital(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" placeholder="100000" className="no-ring mono" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 14, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }} />
-              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 5 }}>Sizes this strategy's P&amp;L. Default ₹1,00,000.</div>
+              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 5 }}>Number of shares (or lots, for options) placed on each entry.</div>
             </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+              <SegF label="Buy Type" options={["Intraday", "NRML"]} value={buyType} set={setBuyType} />
+              <SegF label="Entry Type" options={["Market", "Limit"]} value={entryType} set={setEntryType} />
+            </div>
+
+            {entryType === "Limit" && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Limit offset %</div>
+                <input
+                  value={limitOffset}
+                  onChange={(e) => setLimitOffset(e.target.value.replace(/[^0-9.]/g, ""))}
+                  inputMode="decimal"
+                  placeholder="0.1"
+                  className="no-ring mono"
+                  style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px", background: "var(--surface)", color: "var(--ink)", fontSize: 14 }}
+                />
+                <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 5, lineHeight: 1.5 }}>
+                  How far below the signal price to place a buy (and above it to place a sell). At 0.1%,
+                  a buy signal at 100 places the limit at 99.90. The order fills only if price reaches it.
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+              <NumF label="Max trades / day" v={maxTrades} set={(x) => setMaxTrades(String(x).replace(/[^0-9]/g, ""))} />
+              <NumF label="Max re-entries" v={maxReentries} set={(x) => setMaxReentries(String(x).replace(/[^0-9]/g, ""))} />
+            </div>
+
             <div style={{ marginTop: 14 }}>
               <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Deploy on — symbol(s)</div>
               <MultiSelect label="Symbols" options={DEPLOY_OPTIONS} value={deploySyms} onChange={setDeploySyms} allLabel="Select…" />

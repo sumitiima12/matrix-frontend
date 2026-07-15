@@ -67,7 +67,10 @@ export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, us
 
     // 2 ── BROKER ADAPTER. The app never knows which broker is behind this.
     const res = await broker.placeOrder({
-      symbol: stock.sym, side, qty, price, market, orderType: opts.orderType || "MARKET",
+      symbol: stock.sym, side, qty, price, market,
+      orderType: opts.orderType || "MARKET",
+      ...(opts.limitPrice != null ? { limitPrice: opts.limitPrice } : {}),
+      product: opts.product,
     });
 
     // 3 ── ORDER STATUS.
