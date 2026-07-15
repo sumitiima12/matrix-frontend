@@ -169,7 +169,12 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
         ) : hold.map((h) => (
           <div key={h.sym} className="card" style={{ marginTop: 9, padding: 13, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
-              <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>{h.sym}</div>
+              <div className="disp" style={{ fontWeight: 800, fontSize: 13.5, display: "flex", alignItems: "center", gap: 6 }}>
+                {h.sym}
+                {h.source === "positions" && (
+                  <span style={{ fontSize: 8, fontWeight: 800, padding: "2px 6px", borderRadius: 6, background: "var(--elev)", color: "var(--muted)", letterSpacing: ".03em" }}>POSITION</span>
+                )}
+              </div>
               <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>
                 {h.qty} @ {h.avg != null ? "₹" + h.avg.toFixed(2) : "—"}
               </div>

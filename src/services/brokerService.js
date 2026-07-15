@@ -35,7 +35,7 @@ function loadAll() {
     const out = {};
     for (const [broker, s] of Object.entries(m)) {
       // Broker tokens die daily; don't hold a stale handle overnight.
-      if (s && s.sessionId && s.at && Date.now() - s.at < 20 * 3600 * 1000) out[broker] = s;
+      if (s && s.sessionId && s.at && Date.now() - s.at < 24 * 3600 * 1000) out[broker] = s;
     }
     return out;
   } catch { return {}; }
