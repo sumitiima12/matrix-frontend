@@ -152,8 +152,8 @@ const CSS = `
 .metalblack::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.14),transparent);pointer-events:none;}
 .metalblack::after{content:"";position:absolute;inset:0;background:radial-gradient(120% 90% at 50% 0%,rgba(255,255,255,.04),transparent 55%);pointer-events:none;}
 /* Theme-aware Neo icon: show the dark-bg (silver) mark in dark theme, the darkened mark in light theme. */
-.theme-dark .neo-ico-light{display:none}
-.theme-light .neo-ico-dark{display:none}
+.theme-dark .neo-ico-light{display:none !important}
+.theme-light .neo-ico-dark{display:none !important}
 /* Homepage cards — premium metallic treatment: edge highlight + rim light + edge reflection (box-shadow), specular highlight (::before). */
 .home-metal .card{position:relative;border:1px solid rgba(255,255,255,.12);box-shadow:inset 0 1.4px 0 rgba(255,255,255,.22), inset 0 0 0 1px rgba(255,255,255,.05), inset 0 -1px 0 rgba(255,255,255,.05), inset 24px 0 42px -34px rgba(255,255,255,.14), inset -24px 0 42px -34px rgba(255,255,255,.14), 0 24px 56px -22px rgba(0,0,0,.85), 0 8px 20px rgba(0,0,0,.4)}
 .home-metal .card::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(130% 80% at 18% -12%, rgba(255,255,255,.13), rgba(255,255,255,0) 46%)}
