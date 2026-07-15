@@ -52,6 +52,8 @@ import { brokerSymbol } from "./domain/brokerSymbols";
 import { brokerPlaceOrder } from "./services/brokerService";
 import MatrixRain from "./components/common/MatrixRain";
 import MLogo from "./components/common/MLogo";
+import NeoIcon from "./components/common/NeoIcon";
+import headerLogo from "./assets/brand/header-logo.png";
 import { Footer, LegalOverlay } from "./components/common/LegalPages";
 import Toggle from "./components/common/Toggle";
 import { useBroker } from "./hooks/useBroker";
@@ -148,6 +150,13 @@ const CSS = `
 .metalblack{position:relative;overflow:hidden;background:linear-gradient(160deg,#333438 0%,#2B2B2B 45%,#232325 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.08), inset 0 0 0 1px rgba(255,255,255,.04), 0 16px 40px rgba(0,0,0,.45);}
 .metalblack::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.14),transparent);pointer-events:none;}
 .metalblack::after{content:"";position:absolute;inset:0;background:radial-gradient(120% 90% at 50% 0%,rgba(255,255,255,.04),transparent 55%);pointer-events:none;}
+/* Homepage cards — premium metallic treatment: edge highlight + rim light + edge reflection (box-shadow), specular highlight (::before). */
+.home-metal .card{position:relative;border:1px solid rgba(255,255,255,.12);box-shadow:inset 0 1.4px 0 rgba(255,255,255,.22), inset 0 0 0 1px rgba(255,255,255,.05), inset 0 -1px 0 rgba(255,255,255,.05), inset 24px 0 42px -34px rgba(255,255,255,.14), inset -24px 0 42px -34px rgba(255,255,255,.14), 0 24px 56px -22px rgba(0,0,0,.85), 0 8px 20px rgba(0,0,0,.4)}
+.home-metal .card::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(130% 80% at 18% -12%, rgba(255,255,255,.13), rgba(255,255,255,0) 46%)}
+/* Matrix's Picks — clean deep-black (no dirty grey). */
+.pickcard{background:linear-gradient(162deg,#151519 0%,#0c0c0f 58%,#070709 100%)}
+.theme-light .home-metal .card{border-color:rgba(20,20,30,.10);box-shadow:inset 0 1.2px 0 rgba(255,255,255,.9), inset 0 0 0 1px rgba(255,255,255,.5), inset 0 -1px 0 rgba(20,20,30,.05), inset 24px 0 42px -34px rgba(255,255,255,.6), inset -24px 0 42px -34px rgba(255,255,255,.6), 0 18px 44px -22px rgba(20,20,30,.16), 0 6px 16px rgba(20,20,30,.05)}
+.theme-light .home-metal .card::before{background:radial-gradient(130% 80% at 18% -12%, rgba(255,255,255,.7), rgba(255,255,255,0) 46%)}
 @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .fade{animation:fadeUp .3s ease both}
 @keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
@@ -597,7 +606,7 @@ function AppInner() {
     return arr;
   }, [market, profile]);
 
-  const nav = [["home", Home, "Home"], ["ideas", Lightbulb, "Ideas"], ["portfolio", Briefcase, "Portfolio"], ["automation", Bolt, "Auto"], ["ask", Bot, "Neo"], ["watchlist", Star, "Watch"]];
+  const nav = [["home", Home, "Home"], ["ideas", Lightbulb, "Ideas"], ["portfolio", Briefcase, "Portfolio"], ["automation", Bolt, "Auto"], ["ask", NeoIcon, "NEO"], ["watchlist", Star, "Watch"]];
 
   return (
     <div className={"mx theme-" + theme} style={{ background: "var(--app-bg, var(--bg))", minHeight: "100vh" }}>
@@ -620,11 +629,7 @@ function AppInner() {
         <div className="glass" style={{ position: "sticky", top: 0, zIndex: 30, background: "var(--header-bg)", borderBottom: "1px solid var(--line)" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px 8px", gap: 8 }}>
             <div onClick={() => { setTab("home"); setDetail(null); }} className="tap disp" style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-              <span style={{ color: "var(--ink)", display: "inline-flex" }}><MLogo size={30} /></span>
-              <div style={{ display: "flex", flexDirection: "column", lineHeight: 1 }}>
-                <span className="gradtext" style={{ fontWeight: 800, fontSize: 20 }}>Matrix</span>
-                <span style={{ fontWeight: 700, fontSize: 10, letterSpacing: "0.22em", color: "var(--muted)", marginTop: 1 }}>ONE</span>
-              </div>
+              <img src={headerLogo} alt="Matrix One" style={{ height: 32, width: "auto", display: "block", flexShrink: 0 }} />
               <div style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: 3 }}>
               </div>
             </div>

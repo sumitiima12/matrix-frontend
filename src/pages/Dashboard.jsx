@@ -578,7 +578,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const periodLabel = plPeriod === "today" ? "today" : plPeriod === "month" ? "this month" : "last 12 months";
 
   return (
-    <div>
+    <div className="home-metal">
       {/* Global markets live strip */}
       <GlobalStrip />
 
@@ -723,8 +723,8 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
         )}
         <div className="hide-scroll" style={{ display: "flex", gap: 13, overflowX: "auto", paddingBottom: 8, paddingTop: 2 }}>
           {picks.map((s) => (
-            /* Grey, not the accent gradient. */
-            <div key={s.sym} onClick={() => onOpen(s)} className="card tap glow metalblack" style={{ flex: "0 0 auto", width: 272, padding: 0, position: "relative", overflow: "hidden", border: "none" }}>
+            /* Clean deep-black card (no dirty grey), with the homepage metallic edges. */
+            <div key={s.sym} onClick={() => onOpen(s)} className="card tap glow pickcard" style={{ flex: "0 0 auto", width: 272, padding: 0, position: "relative", overflow: "hidden" }}>
               <div style={{ padding: 17, position: "relative", color: "#fff" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 16 }}>💎</span>

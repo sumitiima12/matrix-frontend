@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useMatrixChat } from "../hooks/useMatrixChat";
-import { Bot, Send } from "lucide-react";
+import { Send } from "lucide-react";
+import NeoIcon from "../components/common/NeoIcon";
 
 /**
  * Neo — the chat surface.
@@ -21,7 +22,7 @@ export default function ChatPanel({ context, suggestions, compactMode, stock }) 
       <div ref={scroller} className="hide-scroll" style={{ flex: 1, overflowY: "auto", padding: "4px 2px", display: "flex", flexDirection: "column", gap: 10 }}>
         {msgs.length === 0 && (
           <div style={{ textAlign: "center", color: "var(--muted)", marginTop: 18, fontSize: 13 }}>
-            <Bot size={26} color="var(--primary)" /><div style={{ marginTop: 6 }}>Ask Neo — stocks, levels, strategy.</div>
+            <div style={{ display: "inline-flex" }}><NeoIcon size={30} /></div><div style={{ marginTop: 6 }}>Ask Neo — stocks, levels, strategy.</div>
           </div>
         )}
         {msgs.map((m, i) => (

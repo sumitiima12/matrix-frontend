@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useScrollTransition } from "../hooks/useScrollTransition";
-import { Activity, Bot, Building2, ChevronLeft, Newspaper, Plus, Sparkles, Star } from "lucide-react";
+import { Activity, Building2, ChevronLeft, Newspaper, Plus, Sparkles, Star } from "lucide-react";
+import NeoIcon from "../components/common/NeoIcon";
 import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { BACKEND_URL } from "../config";
 import { clamp, compact, fmt, timeAgo } from "../lib/format";
@@ -355,7 +356,7 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
       {/* ASK */}
       <div data-sec="ask" ref={(el) => (refs.current.ask = el)} style={secStyle}>
         <Pop>
-          <Heading icon={<Bot size={18} color="var(--primary)" />}>Ask Neo</Heading>
+          <Heading icon={<NeoIcon size={18} />}>Ask Neo</Heading>
           <div className="card" style={{ padding: 14, height: 460 }}>
             <ChatPanel context={ctx} stock={s} suggestions={["Should I buy right now?", "Support & resistance levels?", "Is this a good time to enter?", "Bull vs bear case?"]} />
           </div>
