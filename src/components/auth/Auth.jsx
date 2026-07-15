@@ -163,7 +163,7 @@ export function LoginModal({ onClose, onAuthed }) {
 const inpStyle = { width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: "12px 14px", fontSize: 15, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" };
 // Human-readable summary of the personalisation answers.
 
-export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, portfolio = [], trades = [], deposits = [], market = "IN", onBroker, brokerName }) {
+export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, onAdmin, portfolio = [], trades = [], deposits = [], market = "IN", onBroker, brokerName }) {
   const WMKTS = [["IN", "🇮🇳 Indian stocks"], ["US", "🇺🇸 US stocks"], ["Crypto", "₿ Crypto"], ["FNO", "⚡ F&O"], ["Commodity", "🪙 Commodity"]];
   const summary = profileSummary(profile);
 
@@ -252,6 +252,11 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
           <button onClick={() => { onClose && onClose(); onPersonalise && onPersonalise(); }} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--surface)", color: "var(--primary)", border: "1px solid var(--primary)", borderRadius: 12, padding: 11, fontWeight: 800, fontSize: 13, display: "flex", gap: 7, alignItems: "center", justifyContent: "center" }}><Sparkles size={15} /> {profile ? "Update my answers" : "Personalise Matrix"}</button>
         </div>
 
+        {auth && onAdmin && (
+          <button onClick={() => { onAdmin(); }} className="tap card" style={{ width: "100%", textAlign: "left", padding: "13px 15px", marginBottom: 9, border: "1px solid var(--line)", background: "transparent", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>
+            Admin console
+          </button>
+        )}
         {auth ? (
           <button onClick={() => { onClose && onClose(); onLogout && onLogout(); }} className="tap disp" style={{ width: "100%", margin: "16px 0 8px", background: "var(--surface)", color: "var(--down)", border: "1px solid var(--line)", borderRadius: 14, padding: 12, fontWeight: 800, fontSize: 13.5, display: "flex", gap: 7, alignItems: "center", justifyContent: "center" }}><LogOut size={16} /> Log out</button>
         ) : (

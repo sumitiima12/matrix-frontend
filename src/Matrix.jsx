@@ -72,6 +72,8 @@ const Ideas = React.lazy(() => import("./pages/Ideas"));
 const WatchlistView = React.lazy(() => import("./pages/Watchlist"));
 import ChatPanel from "./pages/AIAssistant";
 const TradeView = React.lazy(() => import("./pages/Trade"));
+import AdminPanel from "./components/common/AdminPanel";
+import { adminCheck } from "./services/adminService";
 import ProfileSheet, { LoginScreen, Onboarding, LoginModal } from "./components/auth/Auth";
 import SearchOverlay from "./components/common/SearchOverlay";
 import MiniCandles from "./components/charts/MiniCandles";
@@ -478,6 +480,20 @@ function AppInner() {
   const [detail, setDetail] = useState(null);
   const [search, setSearch] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [adminKey, setAdminKey] = useState("");
+  /* Open the admin console: prompt for the key, verify with the backend (which checks the
+     key AND that this userId is an admin), and only then mount the panel. The key lives in
+     memory for the session only. */
+  const openAdmin = async () => {
+    const key = typeof window !== "undefined" ? window.prompt("Admin key:") : "";
+    if (!key) return;
+    const ok = await adminCheck(userId, key);
+    if (!ok) { setBuyToast({ t: "Not authorized for admin.", e: true }); return; }
+    setAdminKey(key);
+    setAdminOpen(true);
+    setShowProfile(false);
+  };
   const [tradePreset, setTradePreset] = useState(null);
   const { live, liveAt, tick: marketTick } = useMarketData(market);
 
@@ -849,7 +865,8 @@ function AppInner() {
           <SearchOverlay onClose={() => setSearch(false)} onOpen={openStock} />
         </ErrorBoundary>
       )}
-      {showProfile && <ProfileSheet onBroker={() => { setShowProfile(false); setBrokerOpen(true); }} brokerName={liveBroker ? liveBroker.name : null} profile={profile} walletMap={walletMap} portfolio={portfolio} trades={trades} deposits={deposits} market={market} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={doLogout} onPersonalise={() => setRepersonalise(true)} />}
+      {showProfile && <ProfileSheet onAdmin={openAdmin} onBroker={() => { setShowProfile(false); setBrokerOpen(true); }} brokerName={liveBroker ? liveBroker.name : null} profile={profile} walletMap={walletMap} portfolio={portfolio} trades={trades} deposits={deposits} market={market} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={doLogout} onPersonalise={() => setRepersonalise(true)} />}
+      {adminOpen && <AdminPanel userId={userId} adminKey={adminKey} onClose={() => { setAdminOpen(false); setAdminKey(""); }} />}
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} onAuthed={onAuthed} />}
       {histOpen && <TradeHistory userId={userId} trades={trades} onClose={() => setHistOpen(false)} />}
       {buyToast && (
