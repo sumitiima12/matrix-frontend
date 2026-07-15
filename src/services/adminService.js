@@ -59,3 +59,15 @@ export async function adminSetBlocked(userId, key, phone, blocked) {
   if (!r.ok) throw new Error(d.error || `admin ${r.status}`);
   return d;
 }
+
+/** Admin backstop: reset a user's PIN to a new value. */
+export async function adminResetPin(userId, key, phone, newPin) {
+  const r = await fetch(`${BACKEND_URL}/api/admin/reset-pin`, {
+    method: "POST",
+    headers: headers(userId, key),
+    body: JSON.stringify({ phone, newPin }),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || `admin ${r.status}`);
+  return d;
+}

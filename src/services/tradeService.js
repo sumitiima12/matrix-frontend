@@ -66,8 +66,24 @@ export async function listTrades(userId, from, to) {
   } catch { return null; }
 }
 
-export async function register(phone, pin, name) {
-  const d = await post("/api/register", { phone, pin, name }, false);
+export async function register(phone, pin, name, secQuestion, secAnswer) {
+  const d = await post("/api/register", { phone, pin, name, secQuestion, secAnswer }, false);
+  if (d && d.token) setAuthToken(d.token);
+  return d;
+}
+
+/** Forgot-PIN step 1: fetch the user's security question. */
+export async function forgotQuestion(phone) {
+  if (!BACKEND_URL) return null;
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/forgot/question?phone=${encodeURIComponent(phone)}`);
+    return r.json().catch(() => ({ ok: false }));
+  } catch { return { ok: false, error: "network" }; }
+}
+
+/** Forgot-PIN step 2: submit the answer + new PIN. On success, returns a token (logs in). */
+export async function forgotReset(phone, answer, newPin) {
+  const d = await post("/api/forgot/reset", { phone, answer, newPin }, false);
   if (d && d.token) setAuthToken(d.token);
   return d;
 }

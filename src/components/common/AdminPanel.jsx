@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { adminListUsers, adminGetUser, adminSetBlocked } from "../../services/adminService";
+import { adminListUsers, adminGetUser, adminSetBlocked, adminResetPin } from "../../services/adminService";
 
 /**
  * AdminPanel — a full-screen admin console. Gated: it only mounts once the caller has
@@ -29,6 +29,15 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
     finally { setLoadingDetail(false); }
   };
 
+  const resetPin = async (phone) => {
+    const np = typeof window !== "undefined" ? window.prompt(`New PIN for ${phone} (4+ digits):`) : "";
+    if (!np) return;
+    if (String(np).length < 4) { setErr("PIN must be at least 4 digits."); return; }
+    setBusy(true);
+    try { await adminResetPin(userId, adminKey, phone, np); setErr(null); alert("PIN reset."); }
+    catch (e) { setErr(String(e.message || e)); }
+    finally { setBusy(false); }
+  };
   const toggleBlock = async (phone, next) => {
     setBusy(true);
     try {
@@ -77,6 +86,14 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
                   background: selected.user.blocked ? "var(--up)" : "var(--down)", color: "#fff", opacity: busy ? 0.6 : 1 }}
               >
                 {selected.user.blocked ? "Unblock" : "Block"}
+              </button>
+              <button
+                onClick={() => resetPin(selected.phone)}
+                disabled={busy}
+                className="tap disp"
+                style={{ marginLeft: 8, border: "1px solid var(--line)", borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: 12, cursor: "pointer", background: "transparent", color: "var(--ink)", opacity: busy ? 0.6 : 1 }}
+              >
+                Reset PIN
               </button>
             </div>
             {selected.user.blocked && (

@@ -13,7 +13,7 @@ import { MATRIX_PERSONA, BACKEND_URL } from "../config";
 import { yahooSymbol, marketOf } from "./universe";
 import { getQuotes, getHistory, getNews, getIndicators, getIntraday } from "../services/marketService";
 import { ask as aiAsk, interpretScreen, interpretStrategy, marketBrief } from "../services/aiService";
-import { saveTrade, listTrades, register, login } from "../services/tradeService";
+import { saveTrade, listTrades, register, login, forgotQuestion as _fq, forgotReset as _fr } from "../services/tradeService";
 import { isMarketOpen } from "../services/riskService";
 
 /* ----------------------------- AI ----------------------------- */
@@ -40,7 +40,9 @@ export async function fetchLiveQuotes(appSyms) {
 /* ------------------------ Trades & auth ------------------------ */
 export const postTrade = (userId, trade) => saveTrade(userId, trade);
 export const fetchTrades = (userId, from, to) => listTrades(userId, from, to);
-export const apiRegister = (phone, pin, name) => register(phone, pin, name);
+export const apiRegister = (phone, pin, name, secQuestion, secAnswer) => register(phone, pin, name, secQuestion, secAnswer);
+export const apiForgotQuestion = (phone) => _fq(phone);
+export const apiForgotReset = (phone, answer, newPin) => _fr(phone, answer, newPin);
 export const apiLogin = (phone, pin) => login(phone, pin);
 export const marketOpen = (market) => isMarketOpen(market);
 

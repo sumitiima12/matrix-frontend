@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { } from "../../domain/universe";
 import { fmt, profileSummary } from "../../lib/format";
 import { Check, ChevronLeft, Clock, LogIn, LogOut, Sparkles, User } from "lucide-react";
-import { apiLogin, apiRegister } from "../../domain/api";
+import { apiLogin, apiRegister, apiForgotQuestion, apiForgotReset } from "../../domain/api";
 import EquityCurve from "../common/EquityCurve";
 
 /**
@@ -14,13 +14,15 @@ export function LoginScreen({ onAuthed, onGuest }) {
   const [mobile, setMobile] = useState("");
   const [pin, setPin] = useState("");
   const [name, setName] = useState("");
+  const [secQ, setSecQ] = useState(""); const [secA, setSecA] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const field = { width: "100%", background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.28)", borderRadius: 14, padding: "14px 16px", fontSize: 15, color: "#fff", outline: "none" };
   const submit = async () => {
     if (mobile.length < 6 || pin.length < 4) { setErr("Enter your mobile number and a 4+ digit PIN."); return; }
+    if (tab === "signup" && (!secQ.trim() || !secA.trim())) { setErr("Set a security question and answer to recover your PIN later."); return; }
     setErr(null); setBusy(true);
-    const res = tab === "login" ? await apiLogin(mobile, pin) : await apiRegister(mobile, pin, name);
+    const res = tab === "login" ? await apiLogin(mobile, pin) : await apiRegister(mobile, pin, name, secQ, secA);
     setBusy(false);
     if (res && res.ok) onAuthed({ phone: res.userId, name: res.name || name || "" });
     else setErr((res && res.error) || "Something went wrong.");
@@ -120,42 +122,107 @@ export function Onboarding({ onDone, onSkip, initial }) {
 export function LoginModal({ onClose, onAuthed }) {
   const [tab, setTab] = useState("login");
   const [phone, setPhone] = useState(""); const [pin, setPin] = useState(""); const [name, setName] = useState("");
+  const [secQ, setSecQ] = useState(""); const [secA, setSecA] = useState("");
   const [busy, setBusy] = useState(false); const [err, setErr] = useState(null);
+
+  // Forgot-PIN sub-flow state.
+  const [mode, setMode] = useState("auth");   // "auth" | "forgot"
+  const [fStep, setFStep] = useState(1);        // 1: enter phone -> 2: answer + new pin
+  const [fQuestion, setFQuestion] = useState(""); const [fAnswer, setFAnswer] = useState(""); const [fNewPin, setFNewPin] = useState("");
+
   const submit = async () => {
     setErr(null); setBusy(true);
-    const res = tab === "login" ? await apiLogin(phone, pin) : await apiRegister(phone, pin, name);
+    let res;
+    if (tab === "login") res = await apiLogin(phone, pin);
+    else res = await apiRegister(phone, pin, name, secQ, secA);
     setBusy(false);
     if (res && res.ok) onAuthed({ phone: res.userId, name: res.name || name || "" });
     else setErr((res && res.error) || "Something went wrong.");
   };
+
+  const forgotLookup = async () => {
+    setErr(null); setBusy(true);
+    const res = await apiForgotQuestion(phone);
+    setBusy(false);
+    if (res && res.ok && res.question) { setFQuestion(res.question); setFStep(2); }
+    else setErr((res && res.message) || (res && res.error) || "No security question is set for this number.");
+  };
+  const forgotSubmit = async () => {
+    setErr(null); setBusy(true);
+    const res = await apiForgotReset(phone, fAnswer, fNewPin);
+    setBusy(false);
+    if (res && res.ok) onAuthed({ phone: res.userId, name: res.name || "" });
+    else setErr((res && res.error) || "That answer doesn't match.");
+  };
+
+  const label = (t) => <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, marginBottom: 4, marginTop: 12 }}>{t}</div>;
+
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(10,10,20,.4)", zIndex: 90, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
-      <div onClick={(e) => e.stopPropagation()} className="sheet card" style={{ width: "100%", maxWidth: 460, borderRadius: "24px 24px 0 0", padding: 22 }}>
-        <div style={{ width: 40, height: 4, background: "var(--line)", borderRadius: 9, margin: "0 auto 16px" }} />
-        <div className="disp" style={{ fontWeight: 700, fontSize: 19 }}>{tab === "login" ? "Log in" : "Create account"}</div>
-        <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 3 }}>Use your phone number and a PIN to save trades, automations and preferences across visits.</div>
-        <div className="pill" style={{ display: "flex", background: "var(--bg)", padding: 4, marginTop: 16 }}>
-          {["login", "register"].map((x) => (
-            <button key={x} onClick={() => { setTab(x); setErr(null); }} className="pill tap disp" style={{ flex: 1, padding: 9, border: "none", fontWeight: 700, fontSize: 13, background: tab === x ? "var(--primary)" : "transparent", color: tab === x ? "var(--on-primary)" : "var(--muted)" }}>{x === "login" ? "Log in" : "Register"}</button>
-          ))}
-        </div>
-        {tab === "register" && (
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, marginBottom: 4 }}>Name (optional)</div>
-            <input value={name} onChange={(e) => setName(e.target.value)} className="no-ring" style={inpStyle} placeholder="Your name" />
-          </div>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(10,10,20,.4)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 2000 }}>
+      <div onClick={(e) => e.stopPropagation()} className="sheet card" style={{ width: "100%", maxWidth: 460, borderRadius: "22px 22px 0 0", padding: "18px 18px 26px" }}>
+        <div style={{ width: 40, height: 4, background: "var(--line)", borderRadius: 9, margin: "0 auto 14px" }} />
+
+        {mode === "auth" ? (
+          <>
+            <div className="disp" style={{ fontWeight: 700, fontSize: 19 }}>{tab === "login" ? "Log in" : "Create account"}</div>
+            <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 3 }}>Use your phone number and a PIN to save trades, automations and preferences across visits.</div>
+            <div className="pill" style={{ display: "flex", background: "var(--bg)", padding: 4, marginTop: 14, borderRadius: 12 }}>
+              {["login", "register"].map((x) => (
+                <button key={x} onClick={() => { setTab(x); setErr(null); }} className="pill tap disp" style={{ flex: 1, padding: "8px 0", borderRadius: 9, border: "none", fontWeight: 800, fontSize: 13, cursor: "pointer", background: tab === x ? "var(--primary)" : "transparent", color: tab === x ? "#fff" : "var(--muted)" }}>{x === "login" ? "Log in" : "Register"}</button>
+              ))}
+            </div>
+
+            {tab === "register" && (<>
+              {label("Name")}
+              <input value={name} onChange={(e) => setName(e.target.value)} className="no-ring" style={inpStyle} placeholder="Your name" />
+            </>)}
+
+            {label("Phone number")}
+            <input value={phone} onChange={(e) => setPhone(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" className="no-ring" style={inpStyle} placeholder="10-digit mobile" />
+
+            {label("PIN (4+ digits)")}
+            <input value={pin} onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" type="password" className="no-ring" style={inpStyle} placeholder="••••" />
+
+            {tab === "register" && (<>
+              {label("Security question (you'll answer this to recover your PIN)")}
+              <input value={secQ} onChange={(e) => setSecQ(e.target.value)} className="no-ring" style={inpStyle} placeholder="e.g. Name of my first pet?" />
+              {label("Answer")}
+              <input value={secA} onChange={(e) => setSecA(e.target.value)} className="no-ring" style={inpStyle} placeholder="Your answer" />
+              <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>Pick something only you know and won't forget. It's stored securely (hashed) and is the only way to reset your PIN yourself.</div>
+            </>)}
+
+            {err && <div style={{ fontSize: 12, color: "var(--down)", marginTop: 12, fontWeight: 600 }}>{err}</div>}
+            <button onClick={submit} disabled={busy} className="tap disp glow" style={{ width: "100%", marginTop: 16, padding: 13, borderRadius: 12, border: "none", background: "var(--primary)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer", opacity: busy ? 0.7 : 1 }}>{busy ? "Please wait…" : tab === "login" ? "Log in" : "Create account"}</button>
+
+            {tab === "login" && (
+              <button onClick={() => { setMode("forgot"); setFStep(1); setErr(null); }} className="tap disp" style={{ width: "100%", marginTop: 10, background: "none", border: "none", color: "var(--primary)", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>Forgot PIN?</button>
+            )}
+            <button onClick={onClose} className="tap disp" style={{ width: "100%", marginTop: 8, background: "none", border: "none", color: "var(--muted)", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>Cancel</button>
+          </>
+        ) : (
+          /* FORGOT-PIN FLOW */
+          <>
+            <div className="disp" style={{ fontWeight: 700, fontSize: 19 }}>Reset your PIN</div>
+            <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 3 }}>Answer your security question to set a new PIN.</div>
+
+            {fStep === 1 ? (<>
+              {label("Phone number")}
+              <input value={phone} onChange={(e) => setPhone(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" className="no-ring" style={inpStyle} placeholder="10-digit mobile" />
+              {err && <div style={{ fontSize: 12, color: "var(--down)", marginTop: 12, fontWeight: 600 }}>{err}</div>}
+              <button onClick={forgotLookup} disabled={busy} className="tap disp glow" style={{ width: "100%", marginTop: 16, padding: 13, borderRadius: 12, border: "none", background: "var(--primary)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer", opacity: busy ? 0.7 : 1 }}>{busy ? "Please wait…" : "Continue"}</button>
+            </>) : (<>
+              <div style={{ marginTop: 14, padding: 12, background: "var(--bg)", borderRadius: 12, fontSize: 13, fontWeight: 700 }}>{fQuestion}</div>
+              {label("Your answer")}
+              <input value={fAnswer} onChange={(e) => setFAnswer(e.target.value)} className="no-ring" style={inpStyle} placeholder="Answer" />
+              {label("New PIN (4+ digits)")}
+              <input value={fNewPin} onChange={(e) => setFNewPin(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" type="password" className="no-ring" style={inpStyle} placeholder="••••" />
+              {err && <div style={{ fontSize: 12, color: "var(--down)", marginTop: 12, fontWeight: 600 }}>{err}</div>}
+              <button onClick={forgotSubmit} disabled={busy} className="tap disp glow" style={{ width: "100%", marginTop: 16, padding: 13, borderRadius: 12, border: "none", background: "var(--primary)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer", opacity: busy ? 0.7 : 1 }}>{busy ? "Please wait…" : "Reset PIN & log in"}</button>
+            </>)}
+
+            <button onClick={() => { setMode("auth"); setErr(null); }} className="tap disp" style={{ width: "100%", marginTop: 10, background: "none", border: "none", color: "var(--muted)", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>← Back to log in</button>
+          </>
         )}
-        <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, marginBottom: 4 }}>Phone number</div>
-          <input value={phone} onChange={(e) => setPhone(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" className="no-ring mono" style={inpStyle} placeholder="9876543210" />
-        </div>
-        <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, marginBottom: 4 }}>PIN (4+ digits)</div>
-          <input value={pin} onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" type="password" className="no-ring mono" style={inpStyle} placeholder="••••" />
-        </div>
-        {err && <div style={{ fontSize: 12, color: "var(--down)", marginTop: 10, fontWeight: 600 }}>{err}</div>}
-        <button onClick={submit} disabled={busy} className="tap disp glow" style={{ width: "100%", marginTop: 16, background: "linear-gradient(120deg,var(--primary),var(--primary-2))", color: "var(--on-primary)", border: "none", borderRadius: 14, padding: 14, fontWeight: 800, fontSize: 14.5, opacity: busy ? 0.6 : 1 }}>{busy ? "Please wait…" : tab === "login" ? "Log in" : "Create account"}</button>
-        <button onClick={onClose} className="tap disp" style={{ width: "100%", marginTop: 10, background: "transparent", color: "var(--muted)", border: "none", fontWeight: 700, fontSize: 13 }}>Continue as guest</button>
       </div>
     </div>
   );
