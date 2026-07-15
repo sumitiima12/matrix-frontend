@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import splashM from "../../assets/brand/splash-m.png";
+import splashIcon from "../../assets/brand/splash-icon.png";
+import splashWord from "../../assets/brand/header-logo-dark.png";
 
 /**
  * Splash — the cold-open. Black-and-white digital rain (the classic Matrix cascade,
@@ -12,9 +13,9 @@ import splashM from "../../assets/brand/splash-m.png";
  *  - Shown once per browser session (the caller gates on sessionStorage).
  */
 
-const REVEAL = 900;    // logo scales/fades in
-const HOLD = 1100;     // sits fully visible while the rain runs
-const FADE = 650;      // whole splash fades out
+const REVEAL = 900;    // icon scales/fades in
+const HOLD = 1600;     // sits fully visible while the shimmer sweeps a couple of times
+const FADE = 700;      // whole splash fades out
 
 export default function MatrixRain({ onDone }) {
   const [phase, setPhase] = useState("in");   // in -> hold -> out -> gone
@@ -111,37 +112,59 @@ export default function MatrixRain({ onDone }) {
 
       <style>{`
         @keyframes mx-logo-in {
-          0%   { opacity: 0; transform: scale(0.82); filter: blur(6px); }
+          0%   { opacity: 0; transform: scale(0.80); filter: blur(8px); }
           60%  { opacity: 1; filter: blur(0); }
           100% { opacity: 1; transform: scale(1); filter: blur(0); }
         }
         @keyframes mx-word-in {
-          0%   { opacity: 0; transform: translateY(6px); }
-          100% { opacity: 1; transform: translateY(0); }
+          0%   { opacity: 0; transform: translateY(10px); letter-spacing: .06em; }
+          100% { opacity: 1; transform: translateY(0); letter-spacing: 0; }
         }
         @keyframes mx-shimmer {
-          0%   { background-position: 190% 0; }
-          100% { background-position: -90% 0; }
+          0%   { background-position: 220% 0; }
+          100% { background-position: -120% 0; }
+        }
+        @keyframes mx-glow {
+          0%,100% { opacity: .35; transform: scale(1); }
+          50%     { opacity: .7;  transform: scale(1.12); }
         }
       `}</style>
 
-      <div style={{ position: "relative", zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center" }}>
-        {/* The real Matrix One lockup — scale + fade-in, with a moving shimmer masked to its shape */}
-        <div style={{ position: "relative", width: 260, maxWidth: "72vw", animation: "mx-logo-in 900ms cubic-bezier(.2,.7,.2,1) both" }}>
-          <img src={splashM} alt="Matrix One" style={{ width: "100%", height: "auto", display: "block" }} />
-          <div
-            style={{
+      <div style={{ position: "relative", zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center", gap: 26 }}>
+        {/* The favicon M — soft glow + scale/fade-in, with a moving shimmer masked to its shape */}
+        <div style={{ position: "relative", width: 128, height: 128, display: "grid", placeItems: "center", animation: "mx-logo-in 900ms cubic-bezier(.2,.7,.2,1) both" }}>
+          {/* soft pulsing halo behind the mark */}
+          <div style={{ position: "absolute", width: 150, height: 150, borderRadius: "50%", background: "radial-gradient(circle, rgba(255,255,255,.22), transparent 68%)", animation: "mx-glow 2600ms ease-in-out infinite", pointerEvents: "none" }} />
+          <div style={{ position: "relative", width: 118, height: 118 }}>
+            <img src={splashIcon} alt="Matrix One" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+            <div style={{
               position: "absolute", inset: 0, pointerEvents: "none",
-              background: "linear-gradient(100deg, transparent 40%, rgba(255,255,255,.85) 50%, transparent 60%)",
-              backgroundSize: "260% 100%",
-              animation: "mx-shimmer 2.2s linear 0.4s infinite",
-              WebkitMaskImage: `url(${splashM})`, maskImage: `url(${splashM})`,
+              background: "linear-gradient(105deg, transparent 42%, rgba(255,255,255,.95) 50%, transparent 58%)",
+              backgroundSize: "300% 100%",
+              animation: "mx-shimmer 2000ms linear 0.5s infinite",
+              WebkitMaskImage: `url(${splashIcon})`, maskImage: `url(${splashIcon})`,
               WebkitMaskSize: "contain", maskSize: "contain",
               WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat",
               WebkitMaskPosition: "center", maskPosition: "center",
               mixBlendMode: "screen",
-            }}
-          />
+            }} />
+          </div>
+        </div>
+
+        {/* The wordmark below — fades up just after the icon, with its own trailing shimmer */}
+        <div style={{ position: "relative", width: 208, maxWidth: "64vw", animation: "mx-word-in 620ms cubic-bezier(.2,.7,.2,1) 420ms both" }}>
+          <img src={splashWord} alt="Matrix One" style={{ width: "100%", height: "auto", display: "block" }} />
+          <div style={{
+            position: "absolute", inset: 0, pointerEvents: "none",
+            background: "linear-gradient(105deg, transparent 42%, rgba(255,255,255,.9) 50%, transparent 58%)",
+            backgroundSize: "300% 100%",
+            animation: "mx-shimmer 2000ms linear 0.9s infinite",
+            WebkitMaskImage: `url(${splashWord})`, maskImage: `url(${splashWord})`,
+            WebkitMaskSize: "contain", maskSize: "contain",
+            WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat",
+            WebkitMaskPosition: "center", maskPosition: "center",
+            mixBlendMode: "screen",
+          }} />
         </div>
       </div>
     </div>
