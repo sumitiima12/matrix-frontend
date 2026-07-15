@@ -4,6 +4,8 @@ import { fmt, profileSummary } from "../../lib/format";
 import { Check, ChevronLeft, Clock, LogIn, LogOut, Sparkles, User } from "lucide-react";
 import { apiLogin, apiRegister, apiForgotQuestion, apiForgotReset, apiGetSecurityQuestion, apiSetSecurityQuestion } from "../../domain/api";
 import EquityCurve from "../common/EquityCurve";
+import headerLogo from "../../assets/brand/header-logo.png";
+import splashLockup from "../../assets/brand/splash-m.png";
 
 /**
  * Auth & profile — login, onboarding and the profile sheet.
@@ -35,10 +37,8 @@ export function LoginScreen({ onAuthed, onGuest }) {
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "30px", position: "relative", maxWidth: 460, margin: "0 auto", width: "100%" }}>
         <div style={{ textAlign: "center", marginBottom: 34 }}>
-          <div className="disp" style={{ fontWeight: 700, fontSize: 46, color: "#fff", letterSpacing: "-.02em", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-            <span style={{ fontSize: 38 }}>✦</span> Matrix
-          </div>
-          <div style={{ color: "rgba(255,255,255,.7)", fontSize: 12.5, fontWeight: 600, letterSpacing: ".22em", marginTop: 6 }}>SMART TRADING</div>
+          <img src={splashLockup} alt="Matrix One" style={{ width: 210, maxWidth: "62%", height: "auto", display: "inline-block" }} />
+          <div style={{ color: "rgba(255,255,255,.7)", fontSize: 12.5, fontWeight: 600, letterSpacing: ".22em", marginTop: 10 }}>SMART TRADING</div>
         </div>
 
         <div style={{ display: "flex", background: "rgba(255,255,255,.1)", borderRadius: 14, padding: 4, marginBottom: 16 }}>
@@ -100,7 +100,7 @@ export function Onboarding({ onDone, onSkip, initial }) {
         <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 700 }}>Step {step + 1} of {steps.length}</span>
       </div>
       <div style={{ display: "flex", gap: 5 }}>{steps.map((_, i) => <div key={i} style={{ flex: 1, height: 4, borderRadius: 4, background: i <= step ? "var(--primary)" : "var(--line)" }} />)}</div>
-      <div className="disp" style={{ fontWeight: 700, fontSize: 24, marginTop: 30, display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: "var(--primary)" }}>✦</span> Matrix</div>
+      <div style={{ marginTop: 30 }}><img src={headerLogo} alt="Matrix One" style={{ height: 34, width: "auto", display: "block" }} /></div>
       <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>Let's personalise your edge.</div>
       <div className="disp" style={{ fontWeight: 700, fontSize: 19, marginTop: 30 }}>{cur.q}</div>
       <div style={{ marginTop: 16, flex: 1 }}>
