@@ -418,7 +418,7 @@ function TrendingRow({ s, market, onOpen, onBuy, onWhy }) {
   );
 }
 
-export default function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, watch, toggleWatch, profile, portfolio = [], wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [], liveTick = 0, onWhy }) {
+export default function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, onAutoBuy, mode, watch, toggleWatch, profile, portfolio = [], wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [], liveTick = 0, onWhy }) {
   const [glMode, setGlMode] = useState("Gainers");
   // Picks refresh ONCE AN HOUR (not on every tick) so they don't churn.
   const [pickHour, setPickHour] = useState(() => Math.floor(Date.now() / 3600000));
@@ -547,7 +547,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       if (!u) return;
       // F&O: buy the futures contract (priced off the underlying, qty = 1 lot).
       const inst = u;   // no futures: auto-buy trades the stock itself
-      onBuy(inst, t.qty, { tp: t.tpPct, sl: t.slPct, tradeType: "Auto Buy" });
+      (onAutoBuy || onBuy)(inst, t.qty, { tp: t.tpPct, sl: t.slPct, tradeType: "Auto Buy" });
     });
     lsSet(key, true);
   }, [autoOn, market]);
@@ -617,7 +617,17 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   </div>
                   <label className="tap" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700 }}>
                     {autoOn ? "On" : "Off"}
-                    <span onClick={() => setAutoOnMap((m) => ({ ...m, [market]: !m[market] }))} style={{ width: 38, height: 22, borderRadius: 999, background: autoOn ? "#22C55E" : "rgba(255,255,255,.3)", position: "relative", transition: "background .2s", flexShrink: 0 }}>
+                    <span onClick={() => {
+                      const turningOn = !autoOn;
+                      if (turningOn && mode === "real" && !lsGet("mx_autobuy_warned", false)) {
+                        const ok = typeof window === "undefined" || window.confirm(
+                          "Auto-Buy will place REAL orders on its own, without asking you each time. It will also auto-sell when your stop-loss or target is hit. Turn it on?"
+                        );
+                        if (!ok) return;
+                        lsSet("mx_autobuy_warned", true);
+                      }
+                      setAutoOnMap((m) => ({ ...m, [market]: !m[market] }));
+                    }} style={{ width: 38, height: 22, borderRadius: 999, background: autoOn ? "#22C55E" : "rgba(255,255,255,.3)", position: "relative", transition: "background .2s", flexShrink: 0 }}>
                       <span style={{ position: "absolute", top: 2, left: autoOn ? 18 : 2, width: 18, height: 18, borderRadius: 999, background: "#fff", transition: "left .2s" }} />
                     </span>
                   </label>

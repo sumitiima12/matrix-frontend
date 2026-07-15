@@ -130,9 +130,17 @@ export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, us
       });
     } else {
       adjustWallet(market, cost);
+      const sellQty = Number(qty) || 0;
       setPortfolio((p) => p
-        .map((h) => (h.sym === stock.sym ? { ...h, qty: h.qty - qty } : h))
-        .filter((h) => h.qty > 0));
+        .map((h) => {
+          // Target the exact holding: same symbol AND same market. Falls back to marketOf
+          // when a holding has no explicit market (older positions).
+          const hMarket = h.market || marketOf(h.sym);
+          const isMatch = h.sym === stock.sym && hMarket === market;
+          if (!isMatch) return h;
+          return { ...h, qty: (Number(h.qty) || 0) - sellQty };
+        })
+        .filter((h) => (Number(h.qty) || 0) > 1e-9));   // > tiny epsilon: kills float dust too
     }
 
     // 5 ── TRADE JOURNAL.

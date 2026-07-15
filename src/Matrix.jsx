@@ -292,8 +292,12 @@ function AppInner() {
   const [confirmOrder, setConfirmOrder] = useState(null);
 
   const buyStock  = (stock, qty = 1, opts = {}) => { setConfirmOrder({ s: stock, qty, side: "BUY",  opts, market: marketOf(stock.sym) || market, lot: opts.lot || 1 }); return true; };
-  const sellStock = (stock, qty = 1, opts = {}) => { setConfirmOrder({ s: stock, qty, side: "SELL", opts, market: marketOf(stock.sym) || market, lot: opts.lot || 1 }); return true; };
+  const sellStock = (stock, qty = 1, opts = {}) => { setConfirmOrder({ s: stock, qty, side: "SELL", opts, market: opts.market || marketOf(stock.sym) || market, lot: opts.lot || 1 }); return true; };
 
+  /* AUTO-BUY places orders WITHOUT the per-trade confirm drawer. In Real mode the first
+     time it's about to fire we show a single heads-up (see Dashboard), then never again.
+     Auto-sell on SL/TP is already handled by the exit monitor in useOrders. */
+  const autoBuyNow = (stock, qty = 1, opts = {}) => buyStockNow(stock, qty, { ...opts, tradeType: "Auto Buy" });
   const buyStockNow  = (stock, qty = 1, opts = {}) => { placeOrder({ stock, side: "BUY",  qty, opts }); return true; };
   const sellStockNow = (stock, qty = 1, opts = {}) => { placeOrder({ stock, side: "SELL", qty, opts }); return true; };
 
@@ -443,7 +447,7 @@ function AppInner() {
       return;
     }
 
-    placeOrder({ stock: s, side, qty: q, opts: { ...opts, product: prod } });   // virtual: paper wallet
+    placeOrder({ stock: s, side, qty: q, opts: { ...opts, product: prod, market: confirmOrder.market || opts.market } });   // virtual: paperer wallet
     setConfirmOrder(null);
   };
   const [priceSnap, setPriceSnap] = useState({});
@@ -687,7 +691,7 @@ function AppInner() {
             <DetailPage s={detail} onBack={() => setDetail(null)} watched={watch.includes(detail.sym)} toggleWatch={toggleWatch} onTrade={goTrade} onBuy={buyStock} />
           ) : (
             <>
-              {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} trades={trades} liveTick={liveTick} onWhy={openWhy} />}
+              {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} onAutoBuy={autoBuyNow} mode={mode} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} trades={trades} liveTick={liveTick} onWhy={openWhy} />}
               {tab === "trade" && <TradeView walletMap={walletMap} adjustWallet={adjustWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} recordTrade={recordTrade} />}
               {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} market={market} onWhy={openWhy} />}
               {tab === "automation" && <Automation market={market} onRecord={recordTrade} trades={trades} strats={strats} setStrats={setStrats} onExitAll={exitAllStrategies} />}

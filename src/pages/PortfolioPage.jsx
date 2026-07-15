@@ -4,6 +4,7 @@ import { fmt } from "../lib/format";
 import { ALL, marketOf } from "../domain/universe";
 import { techSignal } from "../domain/signals";
 import { analyzeHolding, portfolioHealth, sectorExposure } from "../services/portfolioService";
+import { analyzePortfolio } from "../services/aiService";
 
 /**
  * Portfolio — holdings with AI intelligence, health score and sector exposure.
@@ -88,7 +89,7 @@ function ManageHolding({ r, st, onBuy, onSell, onUpdate, onClose }) {
       {/* Sell */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 9 }}>
         {stepper(sellQty, setSellQty, r.qty)}
-        <button onClick={() => { onSell && onSell(st, sellQty); onClose && onClose(); }} className="tap disp" style={{ flex: 1, background: "linear-gradient(120deg,var(--down),#D93A4E)", color: "#fff", border: "none", borderRadius: 10, padding: 11, fontWeight: 800, fontSize: 13 }}>Sell · {sellQty}</button>
+        <button onClick={() => { onSell && onSell(st, sellQty, { market: r.market || r.m }); onClose && onClose(); }} className="tap disp" style={{ flex: 1, background: "linear-gradient(120deg,var(--down),#D93A4E)", color: "#fff", border: "none", borderRadius: 10, padding: 11, fontWeight: 800, fontSize: 13 }}>Sell · {sellQty}</button>
       </div>
       <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 7 }}>You hold {r.qty} units · sell up to {r.qty}.</div>
       <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600, margin: "12px 0 6px" }}>Risk orders (%)</div>
@@ -111,6 +112,16 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
      position leaks into the paper P&L. Mixing them would produce a portfolio that is
      true of no account that exists. */
   if (mode === "real") {
+    /* FYERS holds Indian (NSE) stock only. On any other market tab, real trading isn't
+       wired up — say so plainly rather than showing Indian holdings under US/Crypto. */
+    if (market !== "IN") {
+      return (
+        <div style={{ padding: "48px 20px", textAlign: "center", color: "var(--muted)", fontSize: 13, lineHeight: 1.7 }}>
+          Real trading isn't available for this market yet.<br />
+          Switch to <b style={{ color: "var(--ink)" }}>Indian</b> to see your FYERS holdings, or switch to Virtual for paper trading here.
+        </div>
+      );
+    }
     if (realLoading && !realPortfolio) {
       return <div style={{ padding: "40px 16px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>Loading your {brokerName || "broker"} portfolio…</div>;
     }
@@ -129,6 +140,28 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
     const invested = hold.reduce((a, h) => a + (h.avg != null && h.qty ? h.avg * h.qty : 0), 0);
     const value = hold.reduce((a, h) => a + (h.value != null ? h.value : 0), 0);
     const pnl = hold.reduce((a, h) => a + (h.pnl != null ? h.pnl : 0), 0);
+
+    /* Health from real holdings — only the components FYERS data can honestly support. */
+    const realHealth = (() => {
+      const priced = hold.filter((h) => h.value != null && h.value > 0);
+      if (!priced.length) return null;
+      const inv = priced.reduce((a, h) => a + h.value, 0);
+      const weights = priced.map((h) => (inv ? h.value / inv : 0));
+      const hhi = weights.reduce((a, w) => a + w * w, 0);
+      const concentration = Math.max(0, Math.min(100, Math.round((1 - hhi) * 125)));
+      const biggest = priced.reduce((a, b) => (b.value > a.value ? b : a), priced[0]);
+      const biggestPct = inv ? Math.round((biggest.value / inv) * 100) : 0;
+      const losers = priced.filter((h) => h.pnl != null && h.pnl < 0).length;
+      const drawdown = Math.round((1 - losers / priced.length) * 100);
+      const score = Math.round((concentration + drawdown) / 2);
+      return {
+        score, biggest: biggest.sym, biggestPct, losers, total: priced.length,
+        components: [
+          { label: "Diversification", value: concentration, hint: `Largest position ${biggest.sym} is ${biggestPct}% of holdings` },
+          { label: "Drawdown pressure", value: drawdown, hint: `${losers} of ${priced.length} position${priced.length > 1 ? "s" : ""} underwater` },
+        ],
+      };
+    })();
 
     return (
       <div style={{ padding: "6px 0 20px" }}>
@@ -161,6 +194,32 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
             </div>
           </div>
         </div>
+
+        {realHealth && (
+          <div className="card" style={{ padding: 15, marginTop: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div className="disp" style={{ fontWeight: 800, fontSize: 14 }}>Portfolio health</div>
+              <div className="mono" style={{ fontWeight: 800, fontSize: 16, color: realHealth.score >= 60 ? "var(--up)" : realHealth.score >= 40 ? "var(--ink)" : "var(--down)" }}>
+                {realHealth.score}<span style={{ fontSize: 11, color: "var(--muted)" }}>/100</span>
+              </div>
+            </div>
+            {realHealth.components.map((c) => (
+              <div key={c.label} style={{ marginTop: 11 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5 }}>
+                  <span style={{ color: "var(--muted)", fontWeight: 700 }}>{c.label}</span>
+                  <span className="mono" style={{ fontWeight: 800 }}>{c.value}</span>
+                </div>
+                <div style={{ height: 5, background: "var(--line)", borderRadius: 4, marginTop: 4, overflow: "hidden" }}>
+                  <div style={{ width: c.value + "%", height: "100%", background: c.value >= 60 ? "var(--up)" : c.value >= 40 ? "var(--muted)" : "var(--down)" }} />
+                </div>
+                <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 3 }}>{c.hint}</div>
+              </div>
+            ))}
+            <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 11, lineHeight: 1.5 }}>
+              Based on your live FYERS holdings. Trend and stop-protection scores aren't shown here — they need technical analysis we only run on tracked stocks.
+            </div>
+          </div>
+        )}
 
         {!hold.length ? (
           <div style={{ padding: "34px 16px", textAlign: "center", color: "var(--muted)", fontSize: 12.5, lineHeight: 1.5 }}>
@@ -196,6 +255,8 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
   }
   const [expand, setExpand] = useState(null);   // sym with open trade panel
   const [fType, setFType] = useState([]);      // Manual / Auto Buy / Automate
+  const [aiReview, setAiReview] = useState(null);   // { overall, holdings: [...] } | null
+  const [aiLoading, setAiLoading] = useState(false);
   const mkt = market;
   const mLabel = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", Commodity: "🪙 Commodity" }[market];
 
@@ -363,6 +424,69 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
           </div>
         );
       })()}
+
+      {rows.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <button
+            onClick={async () => {
+              setAiLoading(true);
+              setAiReview(null);
+              try {
+                const payload = rows.map((r) => {
+                  const a = intel[r.sym] || {};
+                  return {
+                    sym: r.sym, qty: r.qty, avg: r.buy, ltp: r.cur,
+                    trend: a.trend || null, rsi: a.rsi != null ? a.rsi : null,
+                  };
+                });
+                const res = await analyzePortfolio(payload);
+                setAiReview(res);
+              } catch (e) {
+                setAiReview({ overall: "Couldn't reach Oracle right now — try again in a moment.", holdings: [] });
+              } finally {
+                setAiLoading(false);
+              }
+            }}
+            disabled={aiLoading}
+            className="tap disp glow"
+            style={{ width: "100%", padding: "13px", borderRadius: 12, border: "none", background: "var(--primary)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: aiLoading ? "default" : "pointer", opacity: aiLoading ? 0.7 : 1 }}
+          >
+            {aiLoading ? "Oracle is analyzing…" : "✨ Analyze my portfolio"}
+          </button>
+
+          {aiReview && (
+            <div className="card fade" style={{ marginTop: 12, padding: 15 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
+                <span className="disp" style={{ fontWeight: 800, fontSize: 14 }}>Oracle's read</span>
+                <span className="pill" style={{ fontSize: 8.5, fontWeight: 800, padding: "2px 7px", background: "var(--primary-soft)", color: "var(--primary)" }}>AI</span>
+              </div>
+              <div style={{ fontSize: 12.5, lineHeight: 1.6, color: "var(--ink)" }}>{aiReview.overall}</div>
+
+              {aiReview.holdings && aiReview.holdings.length > 0 && (
+                <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 9 }}>
+                  {aiReview.holdings.map((h) => {
+                    const vColor = /Exit|Trim/.test(h.verdict) ? "var(--down)" : /Add|Hold/.test(h.verdict) ? "var(--up)" : "var(--muted)";
+                    return (
+                      <div key={h.sym} style={{ borderTop: "1px solid var(--line)", paddingTop: 9 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span className="disp" style={{ fontWeight: 800, fontSize: 12.5 }}>{h.sym}</span>
+                          <span className="pill" style={{ fontSize: 9, fontWeight: 800, padding: "2px 8px", background: vColor, color: "#fff" }}>{h.verdict}</span>
+                        </div>
+                        {h.insight && <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 4, lineHeight: 1.5 }}>{h.insight}</div>}
+                        {h.action && <div style={{ fontSize: 11, color: "var(--ink)", marginTop: 3, fontWeight: 600 }}>→ {h.action}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 12, lineHeight: 1.5 }}>
+                Oracle interprets your real holding numbers — it isn't financial advice. Verdicts follow the data you hold; always do your own check before acting.
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {rows.length === 0 ? (
         <div className="card" style={{ marginTop: 16, padding: 30, textAlign: "center", color: "var(--muted)" }}>

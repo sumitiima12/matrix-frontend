@@ -100,3 +100,90 @@ export async function analyzeStock(stock, signal, market = "IN") {
     return localRecommendation(stock, signal);
   }
 }
+
+/**
+ * analyzePortfolio — whole-book review through Oracle. Each holding's REAL, already-computed
+ * numbers (price, avg, P&L%, trend, RSI when we have it) are handed to the model; the model
+ * interprets, it does NOT invent figures. Returns { overall, holdings: [{sym, verdict, insight,
+ * action}] }. Falls back to a grounded local read if the backend/JSON is unavailable.
+ */
+export async function analyzePortfolio(holdings) {
+  if (!holdings || !holdings.length) {
+    return { overall: "No open positions to analyze.", holdings: [] };
+  }
+
+  // Feed ONLY real values. Anything null is sent as "n/a" so the model never guesses.
+  const rows = holdings.map((h) => ({
+    sym: h.sym,
+    qty: h.qty,
+    avg: h.avg != null ? +Number(h.avg).toFixed(2) : null,
+    ltp: h.ltp != null ? +Number(h.ltp).toFixed(2) : null,
+    pnlPct: (h.avg && h.ltp) ? +(((h.ltp / h.avg) - 1) * 100).toFixed(2) : null,
+    trend: h.trend || null,
+    rsi: h.rsi != null ? Math.round(h.rsi) : null,
+  }));
+
+  const system =
+    "You are Oracle, a markets analyst reviewing a real trading portfolio. " +
+    "You are given each holding's actual figures. Use ONLY these numbers — never invent prices, " +
+    "targets, or statistics not present in the data. If a field is null, say the data isn't available " +
+    "rather than guessing. Be concise and practical. " +
+    "Output ONLY JSON, no markdown, in this exact shape: " +
+    '{"overall":"<2-3 sentence portfolio-level read>","holdings":[{"sym":"<symbol>",' +
+    '"verdict":"<Hold|Trim|Add|Exit|Watch>","insight":"<one sentence on what the numbers show>",' +
+    '"action":"<one concrete, optional next step>"}]}. ' +
+    "Verdicts must follow the numbers: a large loss with a downtrend leans Exit/Trim; a healthy " +
+    "gain in an uptrend leans Hold/Add. Never recommend leverage or averaging down into a falling knife.";
+
+  const user = "Holdings (real data):\n" + JSON.stringify(rows, null, 2);
+
+  try {
+    const out = await ask([{ role: "user", content: user }], system, 1200);
+    const cleaned = (out || "").replace(/```json|```/g, "").trim();
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+    if (start === -1 || end === -1) throw new Error("no json");
+    const parsed = JSON.parse(cleaned.slice(start, end + 1));
+    // Guard the shape.
+    const byId = {};
+    (parsed.holdings || []).forEach((x) => { if (x && x.sym) byId[x.sym] = x; });
+    return {
+      overall: String(parsed.overall || "").trim() || localPortfolioRead(rows).overall,
+      holdings: rows.map((r) => {
+        const a = byId[r.sym] || {};
+        return {
+          sym: r.sym,
+          verdict: a.verdict || localVerdict(r),
+          insight: (a.insight || "").trim() || localInsight(r),
+          action: (a.action || "").trim() || "",
+        };
+      }),
+    };
+  } catch {
+    return localPortfolioRead(rows);
+  }
+}
+
+/* Grounded local fallback — no LLM, purely from the numbers. Honest, never invented. */
+function localVerdict(r) {
+  if (r.pnlPct == null) return "Watch";
+  if (r.pnlPct <= -8) return "Trim";
+  if (r.pnlPct >= 15 && r.trend === "Uptrend") return "Hold";
+  if (r.trend === "Downtrend" && r.pnlPct < 0) return "Trim";
+  return "Hold";
+}
+function localInsight(r) {
+  const bits = [];
+  if (r.pnlPct != null) bits.push(`${r.pnlPct >= 0 ? "up" : "down"} ${Math.abs(r.pnlPct)}% from your average`);
+  if (r.trend) bits.push(r.trend.toLowerCase());
+  if (r.rsi != null) bits.push(`RSI ${r.rsi}`);
+  return bits.length ? `${r.sym} is ${bits.join(", ")}.` : `Limited data available for ${r.sym}.`;
+}
+function localPortfolioRead(rows) {
+  const priced = rows.filter((r) => r.pnlPct != null);
+  const losers = priced.filter((r) => r.pnlPct < 0).length;
+  const overall = priced.length
+    ? `${priced.length} priced position${priced.length > 1 ? "s" : ""}, ${losers} underwater. Review the trimmed names below; the rest look steady on the numbers you hold.`
+    : "Live prices weren't available for these holdings, so this is a limited read.";
+  return { overall, holdings: rows.map((r) => ({ sym: r.sym, verdict: localVerdict(r), insight: localInsight(r), action: "" })) };
+}
