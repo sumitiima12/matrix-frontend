@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useMemo, useRef, useEffect } from "react";
+import React, { useCallback, useState, useMemo, useRef, useEffect, Suspense } from "react";
 import { fetchIndicators, fetchTrades, marketOpen, postTrade, resolveExitFromCandles, fetchLiveQuotes } from "./domain/api";
 import {
   Search, User, Wallet, Home, Repeat, Lightbulb, Bot, Bolt, Briefcase,
@@ -63,15 +63,15 @@ import MultiSelect from "./components/common/MultiSelect";
 import WatchAddButton from "./components/common/WatchAddButton";
 import ResearchVerdict from "./components/ai/ResearchVerdict";
 import HomeView from "./pages/Dashboard";
-import DetailPage from "./pages/StockDetail";
-import Portfolio from "./pages/PortfolioPage";
-import TradeHistory from "./pages/Orders";
-import Automation from "./pages/Automation";
-import Screener from "./pages/Screener";
-import Ideas from "./pages/Ideas";
-import WatchlistView from "./pages/Watchlist";
+const DetailPage = React.lazy(() => import("./pages/StockDetail"));
+const Portfolio = React.lazy(() => import("./pages/PortfolioPage"));
+const TradeHistory = React.lazy(() => import("./pages/Orders"));
+const Automation = React.lazy(() => import("./pages/Automation"));
+const Screener = React.lazy(() => import("./pages/Screener"));
+const Ideas = React.lazy(() => import("./pages/Ideas"));
+const WatchlistView = React.lazy(() => import("./pages/Watchlist"));
 import ChatPanel from "./pages/AIAssistant";
-import TradeView from "./pages/Trade";
+const TradeView = React.lazy(() => import("./pages/Trade"));
 import ProfileSheet, { LoginScreen, Onboarding, LoginModal } from "./components/auth/Auth";
 import SearchOverlay from "./components/common/SearchOverlay";
 import MiniCandles from "./components/charts/MiniCandles";
@@ -682,6 +682,7 @@ function AppInner() {
         {/* BODY */}
         <div style={{ padding: "0 18px", position: "relative", zIndex: 1 }}>
           <ErrorBoundary name={detail ? "Stock detail" : tab}>
+          <Suspense fallback={<div style={{ padding: 40, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>Loading…</div>}>
           {detail ? (
             <DetailPage s={detail} onBack={() => setDetail(null)} watched={watch.includes(detail.sym)} toggleWatch={toggleWatch} onTrade={goTrade} onBuy={buyStock} />
           ) : (
@@ -703,6 +704,7 @@ function AppInner() {
               )}
             </>
           )}
+          </Suspense>
           </ErrorBoundary>
         </div>
       </div>
