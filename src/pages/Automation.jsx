@@ -299,7 +299,7 @@ function CondBuilder2({ label, conds, setConds, operands }) {
   );
 }
 
-/* Segmented two/three-option toggle — used for Buy Type and Entry Type. */
+/* Segmented two/three-option toggle — used for Buy Type and Order Type. */
 function SegF({ label, options, value, set }) {
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
@@ -413,7 +413,7 @@ function SampleStrategyCard({ s, onActivate }) {
   );
 }
 
-export default function Automation({ market = "IN", onRecord, trades = [], strats = [], setStrats }) {
+export default function Automation({ market = "IN", onRecord, trades = [], strats = [], setStrats, onExitAll }) {
   const [mode, setMode] = useState("plain");   // plain English is the default entry point
   const [defs, setDefs] = useState([
     { id: 1, type: "EMA", len: "50", tf: "1D", name: "EMA1" },
@@ -517,7 +517,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
     setToast(makeActive
       ? `${name} is live on ${symbols.join(", ")} — it will place orders when its rules trigger.`
       : `${name} saved as a draft. Activate it to start trading.`);
-    setStratTab("mine");
+    setStratTab("mine"); setTopTab("mine");
     setTimeout(() => stratsRef.current && stratsRef.current.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   };
   const activateTemplate = (t, syms) => {
@@ -528,7 +528,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
     // running strategies under the samples.
     setStrats((p) => [{ id, name: t.name, by: "You", active: true, alerts: false, cfg: t.cfg, cap: 100000, symbols, created: Date.now() }, ...p]);
     setToast(`${t.name} is live on ${symbols.join(", ")} — it will place orders when its rules trigger.`);
-    setStratTab("mine");
+    setStratTab("mine"); setTopTab("mine");
     setTimeout(() => stratsRef.current && stratsRef.current.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   };
 
@@ -566,6 +566,8 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
        MINE    (created by the user): scored on their ACTUAL closed trades. A
                 strategy with no closed trades shows "—", not a made-up win rate. */
   const [stratTab, setStratTab] = useState("sample");
+  const [topTab, setTopTab] = useState("build");   // build | sample | mine  (top selector)
+  const [activeTab, setActiveTab] = useState("active"); // active | inactive (inside My strategies)
   const stratsRef = useRef(null);
   const sampleStrats = perf.filter(({ s }) => s.by === "Matrix");
   const myStrats     = perf.filter(({ s }) => s.by !== "Matrix");
@@ -671,6 +673,28 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
         </div>
       </div>
 
+      {/* TOP SELECTOR — one place to switch between building, samples, and your own. */}
+      <div style={{ display: "flex", gap: 7, marginTop: 18 }}>
+        {[["build", "Build"], ["sample", `Samples (${sampleStrats.length})`], ["mine", `My strategies (${myStrats.length})`]].map(([k, label]) => (
+          <button
+            key={k}
+            onClick={() => setTopTab(k)}
+            className="tap disp"
+            style={{
+              flex: 1, borderRadius: 11, padding: "10px 6px", fontWeight: 800, fontSize: 12,
+              cursor: "pointer",
+              border: "1px solid " + (topTab === k ? "var(--primary)" : "var(--line)"),
+              background: topTab === k ? "var(--primary)" : "var(--surface)",
+              color: topTab === k ? "#fff" : "var(--ink)",
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* BUILD ZONE */}
+      {topTab === "build" && (<>
       {/* Create a new automated strategy */}
       <button onClick={() => setShowBuilder((v) => !v)} className="tap disp glow" style={{ width: "100%", marginTop: 16, background: showBuilder ? "var(--surface)" : "linear-gradient(120deg,var(--primary),var(--primary-2))", color: showBuilder ? "var(--ink)" : "#fff", border: showBuilder ? "1px solid var(--line)" : "none", borderRadius: 16, padding: 15, fontWeight: 700, fontSize: 14.5, display: "flex", gap: 8, alignItems: "center", justifyContent: "center" }}>
         {showBuilder ? <><X size={17} /> Close builder</> : <><Plus size={18} /> Create a New Automated Strategy</>}
@@ -761,7 +785,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
               <SegF label="Buy Type" options={["Intraday", "NRML"]} value={buyType} set={setBuyType} />
-              <SegF label="Entry Type" options={["Market", "Limit"]} value={entryType} set={setEntryType} />
+              <SegF label="Order Type" options={["Market", "Limit"]} value={entryType} set={setEntryType} />
             </div>
 
             {entryType === "Limit" && (
@@ -840,48 +864,65 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
           </div>
         </>
       )}
+      </>)}
 
-      {/* Strategies — Sample (Matrix-authored) vs My strategies (yours) */}
+      {/* SAMPLES + MY STRATEGIES — driven by the TOP selector now, not a second tab row. */}
+      {topTab !== "build" && (<>
       <div ref={stratsRef} className="disp" style={{ fontWeight: 700, fontSize: 18, margin: "28px 2px 4px", scrollMarginTop: 80 }}>Strategies</div>
       <div className="gold-line" style={{ width: 44, margin: "0 0 14px 2px", borderRadius: 2 }} />
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
-        {[["sample", `Sample strategies (${sampleStrats.length})`], ["mine", `My strategies (${myStrats.length})`]].map(([k, label]) => (
-          <button
-            key={k}
-            onClick={() => setStratTab(k)}
-            className="tap disp"
-            style={{
-              flex: 1, borderRadius: 11, padding: "10px 8px", fontWeight: 800, fontSize: 12.5, cursor: "pointer",
-              border: "1px solid " + (stratTab === k ? "var(--primary)" : "var(--line)"),
-              background: stratTab === k ? "var(--primary-soft)" : "var(--surface)",
-              color: stratTab === k ? "var(--primary)" : "var(--ink)",
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
 
-      {stratTab === "sample" ? (
+      {topTab === "sample" ? (
         sampleStrats.length === 0
-          ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No sample strategies for this filter.</div>
+          ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No sample strategies for this market.</div>
           : sampleStrats.map(({ s }) => <SampleStrategyCard key={s.id} s={s} onActivate={useTemplateStrategy} />)
       ) : myStrats.length === 0 ? (
-        <div className="card" style={{ marginTop: 12, padding: 20, textAlign: "center", color: "var(--muted)", fontSize: 12.5 }}>
-          You haven't created a strategy yet. Build one below, or start from a sample.
+        <div className="card" style={{ marginTop: 12, padding: 20, textAlign: "center", color: "var(--muted)", fontSize: 12.5, lineHeight: 1.6 }}>
+          You haven't created a strategy yet. Build one from the Build tab, or start from a sample.
         </div>
       ) : (
         <>
-          <div style={{ fontSize: 11.5, fontWeight: 800, color: "var(--up)", letterSpacing: ".04em", margin: "14px 2px 10px", display: "flex", alignItems: "center", gap: 6 }}>● ACTIVE <span style={{ color: "var(--muted)", fontWeight: 700 }}>({myActive.length})</span></div>
-          {myActive.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 12 }}>None active.</div>
-            : myActive.map(({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>)}
+          {/* ACTIVE / INACTIVE — side-by-side tabs. */}
+          <div style={{ display: "flex", gap: 7, marginBottom: 12 }}>
+            {[["active", `Active (${myActive.length})`], ["inactive", `Inactive (${myInactive.length})`]].map(([k, label]) => (
+              <button
+                key={k}
+                onClick={() => setActiveTab(k)}
+                className="tap disp"
+                style={{
+                  flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 12, cursor: "pointer",
+                  border: "1px solid " + (activeTab === k ? "var(--primary)" : "var(--line)"),
+                  background: activeTab === k ? "var(--primary-soft)" : "var(--surface)",
+                  color: activeTab === k ? "var(--primary)" : "var(--ink)",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
 
-          <div style={{ fontSize: 11.5, fontWeight: 800, color: "var(--muted)", letterSpacing: ".04em", margin: "16px 2px 10px", display: "flex", alignItems: "center", gap: 6 }}>● INACTIVE <span style={{ fontWeight: 700 }}>({myInactive.length})</span></div>
-          {myInactive.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--muted)" }}>None inactive.</div>
-            : myInactive.map(({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>)}
+          {activeTab === "active" ? (
+            myActive.length === 0
+              ? <div style={{ fontSize: 12.5, color: "var(--muted)" }}>None active.</div>
+              : <>
+                  {/* EXIT ALL — flattens every active strategy's open position at once. */}
+                  <button
+                    onClick={() => { if (onExitAll && (typeof window === "undefined" || window.confirm("Exit all open positions and stop every active strategy?"))) onExitAll(); }}
+                    className="tap disp"
+                    style={{ width: "100%", marginBottom: 12, padding: "11px", borderRadius: 11, border: "1px solid var(--down)", background: "transparent", color: "var(--down)", fontWeight: 800, fontSize: 13, cursor: "pointer" }}
+                  >
+                    Exit all active strategies
+                  </button>
+                  {myActive.map(({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>)}
+                </>
+          ) : (
+            myInactive.length === 0
+              ? <div style={{ fontSize: 12.5, color: "var(--muted)" }}>None inactive.</div>
+              : myInactive.map(({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>)
+          )}
         </>
       )}
+      </>)}
 
       {toast && (
         <div style={{ position: "fixed", left: 0, right: 0, bottom: 96, display: "flex", justifyContent: "center", zIndex: 80, pointerEvents: "none" }}>

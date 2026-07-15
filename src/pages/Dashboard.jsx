@@ -329,6 +329,52 @@ function MarketBrief({ market, list = [] }) {
  * TrendingRow — shows WHY something is trending, not just that it is.
  * Every number here comes from real 5-minute candles.
  */
+/**
+ * TunedStrip — a very slim personalisation strip. The four preferences (style, risk, caps,
+ * sectors) rotate through one at a time, like the hot-stocks ticker, so the whole thing
+ * stays a single thin line. Its job is a light "this is tuned to you" touch, not a data
+ * panel — hence the small type and minimal height.
+ */
+function TunedStrip({ profile }) {
+  const items = React.useMemo(() => {
+    if (!profile) return [];
+    return [
+      ["Style", profile.style],
+      ["Risk", profile.risk],
+      ["Caps", profile.caps && profile.caps.length ? profile.caps.join(" · ") : "All caps"],
+      ["Sectors", profile.sectors && profile.sectors.length ? profile.sectors.join(" · ") : "All sectors"],
+    ].filter(([, v]) => v);
+  }, [profile]);
+
+  const [i, setI] = React.useState(0);
+  React.useEffect(() => {
+    if (items.length < 2) return undefined;
+    const t = setInterval(() => setI((p) => (p + 1) % items.length), 2600);
+    return () => clearInterval(t);
+  }, [items.length]);
+
+  if (!items.length) return null;
+  const [label, value] = items[i % items.length];
+
+  return (
+    <div className="card metalblack" style={{ marginTop: 14, padding: "7px 12px", border: "none", color: "#fff", display: "flex", alignItems: "center", gap: 8, overflow: "hidden" }}>
+      <span style={{ fontSize: 8.5, opacity: .5, fontWeight: 700, letterSpacing: ".05em", flex: "0 0 auto" }}>TUNED FOR YOU</span>
+      <span style={{ width: 1, height: 11, background: "rgba(255,255,255,.18)", flex: "0 0 auto" }} />
+      {/* key on i so each preference fades in as it rotates */}
+      <span key={i} className="fade" style={{ fontSize: 10.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, minWidth: 0 }}>
+        <span style={{ opacity: .55 }}>{label} </span>
+        <span style={{ fontWeight: 700 }}>{value}</span>
+      </span>
+      {/* dot indicators */}
+      <span style={{ display: "flex", gap: 3, flex: "0 0 auto" }}>
+        {items.map((_, k) => (
+          <span key={k} style={{ width: 4, height: 4, borderRadius: 4, background: k === (i % items.length) ? "rgba(255,255,255,.85)" : "rgba(255,255,255,.22)" }} />
+        ))}
+      </span>
+    </div>
+  );
+}
+
 function TrendingRow({ s, market, onOpen, onBuy, onWhy }) {
   const m5 = s.chg5m, m15 = s.chg15m, surge = s.volSurge;
   const tone = (v) => (v == null ? "var(--muted)" : v >= 0 ? "var(--up)" : "var(--down)");
@@ -534,38 +580,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       {/* Global markets live strip */}
       <GlobalStrip />
 
-      {/* TUNED FOR YOU. Two stacked pairs: trading style over risk profile, cap tier over
-          sector preferences — each value sits under its own label rather than being
-          crammed onto one line. */}
-      {profile && (
-        <div className="card metalblack" style={{ marginTop: 14, padding: "14px 16px", border: "none", color: "#fff" }}>
-          <div style={{ fontSize: 10.5, opacity: .55, fontWeight: 700, letterSpacing: ".04em", marginBottom: 12 }}>TUNED FOR YOU</div>
-
-          <div style={{ display: "flex", gap: 22 }}>
-            {/* Trading style, and risk profile beneath it */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 9.5, opacity: .5, fontWeight: 700, letterSpacing: ".03em" }}>TRADING STYLE</div>
-              <div className="disp" style={{ fontWeight: 700, fontSize: 14, marginTop: 2 }}>{profile.style}</div>
-
-              <div style={{ fontSize: 9.5, opacity: .5, fontWeight: 700, letterSpacing: ".03em", marginTop: 12 }}>RISK PROFILE</div>
-              <div className="disp" style={{ fontWeight: 700, fontSize: 14, marginTop: 2 }}>{profile.risk}</div>
-            </div>
-
-            {/* Cap tier, and sector preferences beneath it */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 9.5, opacity: .5, fontWeight: 700, letterSpacing: ".03em" }}>MARKET CAP</div>
-              <div className="disp" style={{ fontWeight: 700, fontSize: 14, marginTop: 2 }}>
-                {profile.caps.length ? profile.caps.join(" · ") : "All caps"}
-              </div>
-
-              <div style={{ fontSize: 9.5, opacity: .5, fontWeight: 700, letterSpacing: ".03em", marginTop: 12 }}>SECTOR PREFERENCES</div>
-              <div className="disp" style={{ fontWeight: 700, fontSize: 14, marginTop: 2, lineHeight: 1.35 }}>
-                {profile.sectors.length ? profile.sectors.join(" · ") : "All sectors"}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <TunedStrip profile={profile} />
 
       {/* Portfolio / Auto-Buy dashboard card */}
       <div className="card glow metalblack" style={{ marginTop: 14, padding: 16, border: "none", color: "#fff", position: "relative", overflow: "hidden" }}>

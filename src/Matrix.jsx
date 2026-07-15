@@ -300,13 +300,32 @@ function AppInner() {
   /* THE AUTOMATION LOOP. Evaluates every active strategy's entry/exit rules
      against real candles once a minute and places real orders through the normal
      pipeline. Automated orders skip the confirm dialog on purpose. */
-  useAutomation({
+  const autoPositions = useAutomation({
     strats,
     onBuy: (s, q, opts = {}) => buyStockNow(s, q, { ...opts, tradeType: "Automate" }),
     onSell: (s, q, opts = {}) => sellStockNow(s, q, { ...opts, tradeType: "Automate" }),
     userId,
     enabled: !!auth,
   });
+
+  /* EXIT ALL. Flattens every OPEN automation position at the live price, then deactivates
+     all active strategies so nothing re-enters. Two distinct actions — closing what's open,
+     and stopping what would open next — because deactivating alone would leave live
+     positions running untended. */
+  const exitAllStrategies = () => {
+    const open = (autoPositions && autoPositions.current) || {};
+    let exited = 0;
+    Object.entries(open).forEach(([key, pos]) => {
+      if (!pos || key.startsWith("__")) return;               // skip counter/bookkeeping keys
+      const sym = pos.optSymbol || key.split("|")[1];
+      const stock = ALL.find((a) => a.sym === sym) || { sym, price: pos.entry, isOpt: !!pos.optSymbol, lot: pos.lotSize };
+      if (pos.qty > 0) { sellStockNow(stock, pos.qty, { tradeType: "Automate", market: "IN" }); exited++; }
+      delete open[key];
+    });
+    if (autoPositions) autoPositions.current = open;
+    setStrats((p) => p.map((s) => s.active ? { ...s, active: false } : s));
+    setBuyToast({ t: exited ? `Exited ${exited} open position${exited > 1 ? "s" : ""} and stopped all strategies` : "All strategies stopped" });
+  };
 
   /* Intraday positions close themselves — 15 min before the bell, or 23h45m after
      entry for crypto. Paper only: a REAL intraday position is the broker's to square
@@ -670,7 +689,7 @@ function AppInner() {
               {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} trades={trades} liveTick={liveTick} onWhy={openWhy} />}
               {tab === "trade" && <TradeView walletMap={walletMap} adjustWallet={adjustWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} recordTrade={recordTrade} />}
               {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} market={market} onWhy={openWhy} />}
-              {tab === "automation" && <Automation market={market} onRecord={recordTrade} trades={trades} strats={strats} setStrats={setStrats} />}
+              {tab === "automation" && <Automation market={market} onRecord={recordTrade} trades={trades} strats={strats} setStrats={setStrats} onExitAll={exitAllStrategies} />}
               {tab === "portfolio" && <Portfolio mode={mode} realPortfolio={realPortfolio} realErr={realErr} realLoading={realLoading} onRefreshReal={refreshPortfolio} brokerName={liveBroker ? liveBroker.name : null} portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} onBuy={buyStock} onSell={sellStock} onUpdate={updateHolding} priceSnap={priceSnap} onWhy={openWhy} onOpen={openStock} onRemove={(sym) => { setPortfolio((prev) => prev.filter((h) => h.sym !== sym)); setBuyToast({ t: `${sym} removed` }); }} />}
               {tab === "watchlist" && <WatchlistView watchlists={watchlists} activeWl={activeWl} setActiveWl={setActiveWl} createWatchlist={createWatchlist} deleteWatchlist={deleteWatchlist} toggleWatch={toggleWatch} onOpen={openStock} />}
               {tab === "ask" && (
