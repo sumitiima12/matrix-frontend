@@ -207,6 +207,30 @@ select option{background:var(--surface);color:var(--ink)}
 
 
 
+/**
+ * Merge the current SEED_STRATS (samples + premium) into a user's SAVED strategy list.
+ *
+ * Strategies are persisted per user, and the seed only ran the first time. So when we
+ * ship new curated strategies (or add the premium flag), existing users never see them —
+ * their saved list is frozen at whatever the seed was on their first visit. This reconciles
+ * on every load: it refreshes every seed strategy's curated fields (name, rules, premium,
+ * description) while preserving the user's runtime state (active/alerts/symbols), adds any
+ * new seed strategies, and keeps the user's own strategies untouched.
+ */
+function seededStrats(saved) {
+  const savedArr = Array.isArray(saved) ? saved : [];
+  const byId = new Map(savedArr.map((s) => [s.id, s]));
+  const seedIds = new Set(SEED_STRATS.map((s) => s.id));
+  const merged = SEED_STRATS.map((seed) => {
+    const prev = byId.get(seed.id);
+    return prev
+      ? { ...seed, active: !!prev.active, alerts: !!prev.alerts, symbols: prev.symbols && prev.symbols.length ? prev.symbols : seed.symbols, cap: prev.cap || seed.cap, tf: prev.tf || seed.tf }
+      : { ...seed };
+  });
+  const userOwn = savedArr.filter((s) => !seedIds.has(s.id));
+  return [...userOwn, ...merged];
+}
+
 function AppInner() {
   // Theme persists across sessions — it reset to light on every reload before.
   const [theme, setTheme] = useState(() => lsGet("mx_theme", "light"));
@@ -476,7 +500,7 @@ function AppInner() {
     setPortfolio((st && st.portfolio) || []);
     setWalletMap((st && st.walletMap) || { IN: 1000000, US: 1000000, Crypto: 1000000, Commodity: 1000000 });
     setDeposits((st && st.deposits) || []);
-    setStrats((st && st.strats) || SEED_STRATS);
+    setStrats(seededStrats(st && st.strats));
     const wl = (st && st.watchlists) || [{ id: "w1", name: "My Watchlist", syms: ["RELIANCE", "TCS"] }];
     setWatchlists(wl); setActiveWl(wl[wl.length - 1] ? wl[wl.length - 1].id : "w1");
     setProfile((st && st.profile) || null);
