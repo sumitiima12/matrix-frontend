@@ -10,6 +10,7 @@ import { useBacktestStats } from "../hooks/useBacktestStats";
 import { SMAarr, EMAarr, RSIarr, MACDarr, BBarr, CCIarr, ATRarr, VWAParr, ADXarr, CF } from "../lib/series";
 import { ALL, UNIVERSE, marketOf } from "../domain/universe";
 import { aiInterpretStrategy } from "../domain/api";
+import { humanizeStrategy } from "../domain/strategyLang";
 import { useCandles } from "../hooks/useCandles";
 import OptionLeg from "../components/common/OptionLeg";
 import MultiSelect from "../components/common/MultiSelect";
@@ -195,7 +196,16 @@ function TemplateCard({ t, onActivate, onToggleBt, btActive, market = "IN" }) {
         <span className="disp" style={{ fontWeight: 700, fontSize: 13 }}>{t.name}</span>
         <span className="pill" style={{ fontSize: 10, background: "var(--primary-soft)", color: "var(--primary)", fontWeight: 700, padding: "2px 8px" }}>{t.tag}</span>
       </div>
-      <pre className="mono" style={{ fontSize: 10, background: "var(--bg)", borderRadius: 12, padding: 10, marginTop: 10, whiteSpace: "pre-wrap", lineHeight: 1.4 }}>{t.code}</pre>
+      {/* Plain-English rules — derived from the SAME cfg the strategy runs on, so the
+          description can't drift from the behaviour. */}
+      <div style={{ background: "var(--bg)", borderRadius: 12, padding: 11, marginTop: 10 }}>
+        {(humanizeStrategy(t.cfg) || []).map((b, k) => (
+          <div key={k} style={{ fontSize: 11, marginBottom: 4, lineHeight: 1.45 }}>
+            <span style={{ color: "var(--muted)", fontWeight: 700 }}>{b.k} </span>
+            <span style={{ fontWeight: 600 }}>{b.v}</span>
+          </div>
+        ))}
+      </div>
       <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, margin: "10px 0 6px" }}>Symbol to activate on</div>
       {/* One symbol, from THIS market. The old picker was a multi-select over a
           fixed cross-market list, so TSLA and NVDA showed up while you were on
@@ -256,17 +266,17 @@ function CondBuilder2({ label, conds, setConds, operands }) {
               ))}
             </div>
           )}
-          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", background: "var(--bg)", borderRadius: 12, padding: 8 }}>
-            <select aria-label="Select option" value={c.la} onChange={(e) => upd(i, "la", e.target.value)} style={{ ...selStyle, flex: "1 1 104px" }}>{operands.map((o) => <option key={o}>{o}</option>)}</select>
-            <select aria-label="Select option" value={c.op} onChange={(e) => upd(i, "op", e.target.value)} style={{ ...selStyle, flex: "1 1 96px" }}>{OPSET.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+          <div className="hide-scroll" style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "nowrap", overflowX: "auto", background: "var(--bg)", borderRadius: 12, padding: 8 }}>
+            <select aria-label="Select option" value={c.la} onChange={(e) => upd(i, "la", e.target.value)} style={{ ...selStyle, flex: "0 0 116px" }}>{operands.map((o) => <option key={o}>{o}</option>)}</select>
+            <select aria-label="Select option" value={c.op} onChange={(e) => upd(i, "op", e.target.value)} style={{ ...selStyle, flex: "0 0 104px" }}>{OPSET.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
             <div className="pill" style={{ display: "flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 2, flex: "0 0 auto" }}>
               {[["ind", "Ind"], ["num", "#"]].map(([k, l]) => (
                 <button key={k} onClick={() => upd(i, "bType", k)} className="pill tap" style={{ fontSize: 10.5, fontWeight: 800, padding: "4px 9px", border: "none", background: c.bType === k ? "var(--primary)" : "transparent", color: c.bType === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
               ))}
             </div>
             {c.bType === "ind"
-              ? <select aria-label="Select option" value={c.b} onChange={(e) => upd(i, "b", e.target.value)} style={{ ...selStyle, flex: "1 1 104px" }}>{operands.map((o) => <option key={o}>{o}</option>)}</select>
-              : <input value={c.b} onChange={(e) => upd(i, "b", e.target.value)} className="no-ring mono" style={{ ...selStyle, flex: "1 1 64px", textAlign: "center" }} />}
+              ? <select aria-label="Select option" value={c.b} onChange={(e) => upd(i, "b", e.target.value)} style={{ ...selStyle, flex: "0 0 116px" }}>{operands.map((o) => <option key={o}>{o}</option>)}</select>
+              : <input value={c.b} onChange={(e) => upd(i, "b", e.target.value)} className="no-ring mono" style={{ ...selStyle, flex: "0 0 72px", textAlign: "center" }} />}
             {/* The "within N bars" operators need their N. Shown only when relevant. */}
             {(c.op === "crossed_above_within" || c.op === "crossed_below_within") && (
               <div className="pill" style={{ display: "flex", alignItems: "center", gap: 4, background: "var(--elev)", border: "1px solid var(--line)", padding: "3px 7px" }}>
@@ -378,7 +388,7 @@ function SampleStrategyCard({ s, onActivate }) {
 }
 
 export default function Automation({ market = "IN", onRecord, trades = [], strats = [], setStrats }) {
-  const [mode, setMode] = useState("builder");
+  const [mode, setMode] = useState("plain");   // plain English is the default entry point
   const [defs, setDefs] = useState([
     { id: 1, type: "EMA", len: "50", tf: "1D", name: "EMA1" },
     { id: 2, type: "EMA", len: "200", tf: "1D", name: "EMA2" },
@@ -414,11 +424,11 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
     const out = await aiInterpretStrategy(`ENTRY: ${pEntry}\nEXIT: ${pExit}`);
     setAiStratBusy(false);
     if (out) { setAiStrat(out); const sm = out.match(/STOP:\s*(\d+)/i); const tm = out.match(/TARGET:\s*(\d+)/i); if (sm) setSl(sm[1]); if (tm) setTp(tm[1]); }
-    else setAiStrat("Couldn't reach the AI interpreter — this needs the backend deployed with a Groq (or other) key. The local parser still handles common phrasings.");
+    else setAiStrat("Couldn't reach Neo — the backend needs an AI key set.");
   };
 
   const [stratName, setStratName] = useState("");
-  const [showBuilder, setShowBuilder] = useState(false);
+  const [showBuilder, setShowBuilder] = useState(true);   // create-strategy panel open by default
   const [showBt, setShowBt] = useState(false);
   const [optLeg, setOptLeg] = useState({ enabled: false, expiry: "Current week", type: "CE", moneyness: "ATM", steps: 1, lots: 1 });
   const [btOpen, setBtOpen] = useState(null);
@@ -701,7 +711,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
                 <textarea value={pExit} onChange={(e) => setPExit(e.target.value)} placeholder="e.g. Exit when RSI crosses above 85 or MACD histogram becomes negative or MACD line crosses below MACD signal line." className="no-ring" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13, minHeight: 84, background: "var(--elev)", resize: "vertical", lineHeight: 1.5 }} />
                 {xParsed.conds.length > 0 && <div style={{ fontSize: 10.5, color: "var(--up)", marginTop: 6, fontWeight: 700 }}>✓ Parsed: {chainCode(xParsed.conds)}</div>}
                 {unparsed.length > 0 && <div style={{ fontSize: 10.5, color: "#F59E42", marginTop: 8, fontWeight: 600 }}>⚠ Couldn't parse: "{unparsed.join('", "')}". Try phrasing like "RSI crosses above 85" or "EMA 9 crosses above SMA 39" — or let AI interpret it below.</div>}
-                <button onClick={aiInterpret} disabled={aiStratBusy} className="tap disp" style={{ marginTop: 10, background: "var(--primary-soft)", color: "var(--primary)", border: "1px solid var(--primary)", borderRadius: 12, padding: "9px 14px", fontWeight: 800, fontSize: 12, display: "inline-flex", gap: 6, alignItems: "center", opacity: aiStratBusy ? 0.6 : 1 }}><Sparkles size={14} /> {aiStratBusy ? "Interpreting…" : "Interpret with AI (Groq)"}</button>
+                <button onClick={aiInterpret} disabled={aiStratBusy} className="tap disp" style={{ marginTop: 10, background: "var(--primary-soft)", color: "var(--primary)", border: "1px solid var(--primary)", borderRadius: 12, padding: "9px 14px", fontWeight: 800, fontSize: 12, display: "inline-flex", gap: 6, alignItems: "center", opacity: aiStratBusy ? 0.6 : 1 }}><Sparkles size={14} /> {aiStratBusy ? "Neo is reading…" : "Interpret with Neo"}</button>
                 {aiStrat && <div className="card" style={{ marginTop: 10, padding: 12, background: "var(--elev)", fontSize: 12, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{aiStrat}</div>}
                 <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, display: "flex", gap: 6 }}><Sparkles size={13} color="var(--primary)" style={{ flex: "0 0 auto", marginTop: 1 }} /> Matrix converts your text into the executable code below on the <b style={{ margin: "0 3px" }}>{tf}</b> timeframe — recognises RSI, MACD (line/signal/histogram), EMA/SMA(n), Bollinger bands, ADX, CCI, VWAP, volume, price, with crosses-above/below, greater/less-than and becomes-positive/negative.</div>
               </>
@@ -712,7 +722,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
               <NumF label="Take profit %" v={tp} set={setTp} />
             </div>
             <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Capital deployed (₹)</div>
+              <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Quantity (₹)</div>
               <input value={capital} onChange={(e) => setCapital(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" placeholder="100000" className="no-ring mono" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 14, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }} />
               <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 5 }}>Sizes this strategy's P&amp;L. Default ₹1,00,000.</div>
             </div>

@@ -95,3 +95,25 @@ export function dailyPicks(list) {
       pickScore: t.score,
     }));
 }
+
+/**
+ * Technical strength, 0–100 — derived from the SAME signal score the verdict uses.
+ *
+ * There used to be a second, ad-hoc formula living inside StockDetail:
+ *     50 + (rsi-50)*0.6 + smaBonus + macdBonus + adxBonus
+ * while the Buy/Hold/Sell verdict came from techSignal().score. Two independent opinions,
+ * both labelled "technical", shown on the same screen — so the app could tell you "Buy,
+ * 60% confidence" directly above a gauge reading "bearish", and both were "right" by their
+ * own arithmetic. That isn't nuance, it's a bug: a verdict and its evidence must come from
+ * one calculation.
+ *
+ * Now the gauge IS the verdict's score, mapped to a dial. If the gauge is bearish, the
+ * verdict is bearish. They cannot disagree, because they are the same number.
+ */
+export function techStrength(s) {
+  const t = techSignal(s);
+  if (!t) return null;
+  // techSignal scores roughly -1 .. +6. Map that span onto the dial.
+  const pct = Math.round(((t.score + 1) / 7) * 100);
+  return Math.max(3, Math.min(97, pct));
+}

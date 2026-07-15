@@ -14,24 +14,87 @@ import { BACKEND_URL } from "../config";
  * exchange. Anything shipped to the browser is readable by anyone with devtools.
  */
 
-const KEY = "mx_broker_session";
+const KEY = "mx_broker_sessions";
 
-export function loadSession() {
+/**
+ * ONE BROKER PER MARKET, all connected at once.
+ *
+ * This used to be a single session: connecting Schwab silently evicted FYERS, so you could
+ * never have live Indian and live US data together. No broker covers every market — FYERS
+ * has no US equities, Schwab has no NSE, Delta is crypto-only — so a single-session model
+ * could not deliver a live portfolio.
+ *
+ * Sessions are now keyed BY BROKER. Each market routes to whichever connected broker
+ * covers it. Storage stays session-scoped and holds only opaque session ids — never a
+ * broker token; those stay on the server. (See the module header.)
+ */
+function loadAll() {
   try {
-    const s = JSON.parse(sessionStorage.getItem(KEY) || "null");
-    if (!s || !s.sessionId) return null;
-    // Broker tokens die daily; don't hold a stale handle overnight.
-    if (!s.at || Date.now() - s.at > 20 * 3600 * 1000) return null;
-    return s;
-  } catch { return null; }
+    const m = JSON.parse(sessionStorage.getItem(KEY) || "{}");
+    if (!m || typeof m !== "object") return {};
+    const out = {};
+    for (const [broker, s] of Object.entries(m)) {
+      // Broker tokens die daily; don't hold a stale handle overnight.
+      if (s && s.sessionId && s.at && Date.now() - s.at < 20 * 3600 * 1000) out[broker] = s;
+    }
+    return out;
+  } catch { return {}; }
+}
+
+function saveAll(map) {
+  try { sessionStorage.setItem(KEY, JSON.stringify(map)); } catch { /* private mode */ }
+}
+
+/** Every connected broker, keyed by broker id. */
+export function loadSessions() {
+  return loadAll();
+}
+
+/** The session for ONE broker. */
+export function loadSessionFor(broker) {
+  return loadAll()[broker] || null;
+}
+
+/**
+ * Back-compat: "the" session, for callers that predate multi-broker (e.g. the option chain,
+ * which is NSE-only and therefore always wants the Indian broker). Returns the Indian
+ * broker's session if there is one, else any connected session.
+ */
+export function loadSession() {
+  const all = loadAll();
+  const keys = Object.keys(all);
+  if (!keys.length) return null;
+  const indian = keys.find((k) => (BROKER_MARKETS[k] || []).includes("IN"));
+  return all[indian || keys[0]];
 }
 
 export function saveSession(s) {
-  try { sessionStorage.setItem(KEY, JSON.stringify(s)); } catch { /* private mode */ }
+  if (!s || !s.broker || !s.sessionId) return;
+  const all = loadAll();
+  all[s.broker] = s;
+  saveAll(all);
 }
 
-export function clearSession() {
-  try { sessionStorage.removeItem(KEY); } catch { /* ignore */ }
+/** Disconnect ONE broker (or all, if no broker given). */
+export function clearSession(broker) {
+  if (!broker) { try { sessionStorage.removeItem(KEY); } catch { /* ignore */ } return; }
+  const all = loadAll();
+  delete all[broker];
+  saveAll(all);
+}
+
+/** Which markets each broker can actually serve. */
+export const BROKER_MARKETS = {
+  fyers: ["IN"], zerodha: ["IN"], dhan: ["IN"], angelone: ["IN"], groww: ["IN"],
+  delta: ["Crypto"],
+  schwab: ["US"],
+};
+
+/** The connected broker that covers a given market, or null. */
+export function brokerForMarket(market) {
+  const all = loadAll();
+  const hit = Object.keys(all).find((b) => (BROKER_MARKETS[b] || []).includes(market));
+  return hit ? { broker: hit, session: all[hit] } : null;
 }
 
 /** Identify ourselves to the backend: opaque id + who we are. Never a broker token. */

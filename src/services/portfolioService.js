@@ -140,9 +140,8 @@ export function portfolioHealth(analyses, wallet = 0) {
   const biggest = analyses.reduce((a, b) => (b.value > a.value ? b : a), analyses[0]);
   const biggestPct = invested ? (biggest.value / invested) * 100 : 0;
 
-  // 2. Cash buffer
+  // Cash % is still used by the flags below, but is no longer a health component.
   const cashPct = equity ? (wallet / equity) * 100 : 0;
-  const cashScore = cashPct >= 15 ? 100 : Math.round((cashPct / 15) * 100);
 
   // 3. Protection — how many positions have a stop armed
   const protectedN = analyses.filter((x) => x.suggestedStop != null).length;
@@ -158,7 +157,6 @@ export function portfolioHealth(analyses, wallet = 0) {
 
   const components = [
     { k: "Diversification", v: concentrationScore, why: `Largest position is ${biggestPct.toFixed(0)}% of the book (${biggest.sym}).` },
-    { k: "Cash buffer", v: cashScore, why: `${cashPct.toFixed(0)}% of equity is in cash.` },
     { k: "Downside protection", v: protectionScore, why: `${protectedN} of ${analyses.length} positions have a stop armed.` },
     { k: "Trend alignment", v: trendScore, why: `${upN} of ${analyses.length} holdings are in an uptrend.` },
     { k: "Drawdown pressure", v: ddScore, why: `${losers} of ${analyses.length} positions are underwater.` },

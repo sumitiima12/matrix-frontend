@@ -5,7 +5,8 @@ import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Too
 import { BACKEND_URL } from "../config";
 import { clamp, compact, fmt, timeAgo } from "../lib/format";
 import { marketOf } from "../domain/universe";
-import { techSignal } from "../domain/signals";
+import { techSignal, techStrength } from "../domain/signals";
+import { strengthFromCandles, STRENGTH_TFS } from "../domain/strength";
 import { fetchHistory, fetchNews } from "../domain/api";
 import { analyzeStock } from "../services/aiService";
 import BarBlock from "../components/common/BarBlock";
@@ -101,7 +102,25 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
   const [chartType, setChartType] = useState("candles");
   const [deepBusy, setDeepBusy] = useState(false);
   const [analysis, setAnalysis] = useState(null);   // structured research verdict
+  const [strengthTf, setStrengthTf] = useState("1d");
+  const [tfStrength, setTfStrength] = useState(null);
+  const [tfLoading, setTfLoading] = useState(false);
   const [liveNews, setLiveNews] = useState(null);
+
+  /* Pull the candles for whichever timeframe is selected and recompute the indicators from
+     them. "1d" is excluded — it uses the verdict's own score, so the gauge and the
+     Buy/Hold/Sell call cannot disagree. */
+  useEffect(() => {
+    if (strengthTf === "1d") { setTfStrength(null); return undefined; }
+    let stop = false;
+    setTfLoading(true);
+    setTfStrength(null);
+    fetchHistory(s.sym, strengthTf)
+      .then((c) => { if (!stop) setTfStrength(strengthFromCandles(c)); })
+      .catch(() => { if (!stop) setTfStrength(null); })
+      .finally(() => { if (!stop) setTfLoading(false); });
+    return () => { stop = true; };
+  }, [s.sym, strengthTf]);
   const [liveCandles, setLiveCandles] = useState(null);
   const refs = useRef({});
   useEffect(() => {
@@ -261,14 +280,47 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
       <div data-sec="tech" ref={(el) => (refs.current.tech = el)} style={secStyle}>
         <Pop>
           <Heading icon={<Activity size={18} color="var(--primary)" />}>Technicals</Heading>
-          {s.rsi != null ? (
-            <Gauge value={clamp(
-              50 + (s.rsi - 50) * 0.6
-                 + (s.sma50 != null && s.price > s.sma50 ? 10 : -10)
-                 + (s.sma50 != null && s.sma200 != null && s.sma50 > s.sma200 ? 8 : -8)
-                 + (s.macd != null && s.macdSignal != null && s.macd > s.macdSignal ? 8 : -8)
-                 + (s.adx != null && s.adx > 25 ? 6 : 0), 5, 96) | 0} label="Technical strength (live)" />
-          ) : null}
+          {/* TIMEFRAME CHIPS. Each one recomputes the indicators from THAT timeframe's
+              candles — a daily RSI tells you nothing about the last 30 minutes. "1d" uses
+              the verdict's own score, so the gauge and the Buy/Hold/Sell call agree. */}
+          <div className="hide-scroll" style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 6, marginBottom: 4 }}>
+            {STRENGTH_TFS.map((t) => (
+              <button
+                key={t}
+                onClick={() => setStrengthTf(t)}
+                className="pill tap disp"
+                style={{
+                  flex: "0 0 auto", padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer",
+                  border: "1px solid " + (strengthTf === t ? "var(--primary)" : "var(--line)"),
+                  background: strengthTf === t ? "var(--primary)" : "var(--surface)",
+                  color: strengthTf === t ? "#fff" : "var(--ink)",
+                }}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+
+          {strengthTf === "1d" ? (
+            s.rsi != null ? <Gauge value={techStrength(s) ?? 50} label="Technical strength · 1d" /> : null
+          ) : tfLoading ? (
+            <div style={{ padding: 20, textAlign: "center", color: "var(--muted)", fontSize: 12.5 }}>
+              Loading {strengthTf} candles…
+            </div>
+          ) : tfStrength ? (
+            <>
+              <Gauge value={tfStrength.value} label={`Technical strength · ${strengthTf}`} />
+              <div style={{ fontSize: 10.5, color: "var(--muted)", textAlign: "center", marginTop: -4 }}>
+                RSI {tfStrength.rsi} · MACD {tfStrength.macd ?? "—"} · from {tfStrength.bars} real {strengthTf} candles
+              </div>
+            </>
+          ) : (
+            /* Not enough bars to warm RSI(14)/MACD(26) up. Showing a number computed from
+               twelve candles and calling it an RSI would be worse than showing nothing. */
+            <div style={{ padding: 16, textAlign: "center", color: "var(--muted)", fontSize: 12.5, lineHeight: 1.5 }}>
+              Not enough {strengthTf} history to compute indicators honestly.
+            </div>
+          )}
           <StatGrid rows={[
             ["RSI (14)", s.rsi + (s.rsi > 70 ? " · overbought" : s.rsi < 30 ? " · oversold" : " · neutral")],
             ["MACD", (s.macd >= 0 ? "+" : "") + s.macd + (s.macd >= 0 ? " · bullish" : " · bearish")],

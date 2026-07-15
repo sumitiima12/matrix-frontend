@@ -141,6 +141,9 @@ const CSS = `
 .glow{box-shadow:var(--glow)}
 .metal{position:relative;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.16), inset 0 0 0 1px rgba(255,255,255,.06), 0 22px 48px -20px rgba(0,0,0,.72)}
 .metal::before{content:"";position:absolute;top:0;left:-30%;width:35%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.10) 50%,transparent);transform:skewX(-16deg);pointer-events:none}
+.metalblack{position:relative;overflow:hidden;background:linear-gradient(145deg,#2A2B2E 0%,#151517 40%,#0C0C0E 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.10), inset 0 0 0 1px rgba(255,255,255,.05), 0 22px 48px rgba(0,0,0,.55);}
+.metalblack::before{content:"";position:absolute;top:0;left:-30%;width:35%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.10),transparent);transform:skewX(-18deg);pointer-events:none;}
+.metalblack::after{content:"";position:absolute;inset:0;background:radial-gradient(120% 80% at 80% 0%,rgba(255,255,255,.06),transparent 60%);pointer-events:none;}
 @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .fade{animation:fadeUp .3s ease both}
 @keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
@@ -252,6 +255,7 @@ function AppInner() {
   const {
     connected: brokerLive, broker: liveBroker, connect: connectBroker, disconnect: disconnectBroker,
     lastTick: brokerTick, real: realPortfolio, realErr, realLoading, refreshPortfolio, session: brokerSession,
+    brokerFor, marketMap: brokerMarketMap, connectedBrokers,
   } = useBroker({ onTick: () => setBrokerTicks((t) => t + 1), userId });
 
   /* Real mode is only reachable with a broker attached. If the broker drops (token
@@ -386,21 +390,29 @@ function AppInner() {
 
 
     if (mode === "real") {
-      if (!brokerLive) {                       // belt and braces; the toggle already guards this
-        setBuyToast({ t: "No broker connected — cannot place a real order", e: true });
+      /* ROUTE BY MARKET. With FYERS, Schwab and Delta connected at once, "the broker" is
+         ambiguous — an Indian buy must go to the Indian broker even while the US and crypto
+         feeds are also live. Sending a NIFTY order to Schwab would be rejected at best, and
+         filled on some unrelated instrument at worst. */
+      const mkt = marketOf(s.sym) || s.market || market;
+      const route = brokerFor(mkt);
+
+      if (!route) {
+        setBuyToast({ t: `No broker connected for ${MKT_LABEL[mkt] || mkt} — cannot place a real order`, e: true });
         setConfirmOrder(null);
         return;
       }
-      const bsym = brokerSymbol(s.sym, liveBroker.id);
+
+      const bsym = brokerSymbol(s.sym, route.id);
       if (!bsym) {
-        setBuyToast({ t: `${liveBroker.name} can't trade ${s.sym} — no symbol mapping`, e: true });
+        setBuyToast({ t: `${route.meta.name} can't trade ${s.sym} — no symbol mapping`, e: true });
         setConfirmOrder(null);
         return;
       }
       setConfirmOrder(null);
       try {
         const r = await brokerPlaceOrder(
-          brokerSession, userId,
+          route.session, userId,
           { symbol: bsym, side, qty: q, orderType: "MARKET", product: prod },
           true,                                 // explicit live confirmation
         );
@@ -530,7 +542,7 @@ function AppInner() {
     return arr;
   }, [market, profile]);
 
-  const nav = [["home", Home, "Home"], ["ideas", Lightbulb, "Ideas"], ["ask", Bot, "Neo"], ["automation", Bolt, "Auto"], ["portfolio", Briefcase, "Portfolio"], ["watchlist", Star, "Watch"]];
+  const nav = [["home", Home, "Home"], ["ideas", Lightbulb, "Ideas"], ["portfolio", Briefcase, "Portfolio"], ["automation", Bolt, "Auto"], ["ask", Bot, "Neo"], ["watchlist", Star, "Watch"]];
 
   return (
     <div className={"mx theme-" + theme} style={{ background: "var(--app-bg, var(--bg))", minHeight: "100vh" }}>
@@ -684,7 +696,10 @@ function AppInner() {
           (backdrop-filter), the .fade keyframes (transform) and <Pop>, any of
           which can silently re-anchor a fixed child and make the bar scroll away.
           Hoisting it here removes the possibility entirely. */}
-      {!detail && !onboarding && (
+      {/* The bottom bar hides whenever ANY sheet is open. A nav bar floating over a drawer
+          is both visually wrong and a real hazard: the tap targets overlap the sheet's own
+          controls, so a thumb reaching for "Buy" can land on "Watch". */}
+      {!detail && !onboarding && !drawer && !confirmOrder && !walletOpen && !brokerOpen && !search && !showProfile && (
         <div className="glass" style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--header-bg)", borderTop: "1px solid var(--line)", borderRadius: "22px 22px 0 0", boxShadow: "0 -10px 34px rgba(40,10,80,.3)", display: "flex", padding: "9px 4px 11px", zIndex: 100 }}>
           {nav.map(([k, Icon, label]) => (
             <button key={k} onClick={() => { setTab(k); setTradePreset(null); }} className="tap" style={{ flex: 1, border: "none", background: "transparent", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: tab === k ? "var(--primary)" : "var(--muted)" }}>
@@ -765,8 +780,9 @@ function AppInner() {
       {brokerOpen && (
         <ErrorBoundary name="Broker">
           <BrokerSheet
-            connectedId={liveBroker ? liveBroker.id : null}
-            onDisconnect={() => { disconnectBroker(); setBrokerOpen(false); setBuyToast({ t: "Broker disconnected — prices are delayed again" }); }}
+            connectedIds={connectedBrokers}
+            marketMap={brokerMarketMap}
+            onDisconnect={(bid) => { disconnectBroker(bid); setBuyToast({ t: "Broker disconnected — that market falls back to delayed prices" }); }}
             onClose={() => setBrokerOpen(false)}
             onConnect={async (id, token) => {
               // Delta connects with no OAuth token; the server signs with its own keys.

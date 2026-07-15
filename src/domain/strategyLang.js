@@ -176,20 +176,21 @@ export function chainCode(conds) { return conds.map((c, i) => `${i ? " " + (c.ga
 
 export const TEMPLATES = [
   /* BB breakout with momentum confirmation.
-     Entry demands FIVE things line up on the same completed candle: a close that has
-     just crossed the upper band, a green candle, RSI above 60, a positive MACD
-     histogram and a fresh MACD/signal cross. That is a deliberately narrow gate — it
-     will not fire often, and it is not supposed to.
+     Entry demands THREE things line up on the same completed candle: a close that has
+     just crossed the upper band, RSI above 60, and a positive MACD histogram. The band
+     break already implies the candle pushed up through resistance, so the separate
+     green-candle check was largely redundant.
 
-     Note MACD1.hist > 0 and MACD1.line crosses_above MACD1.signal overlap: the
-     histogram IS line minus signal, so it is positive exactly when the line is above
-     the signal. Kept because the user asked for both; it costs nothing.
+     The MACD is confirmed by histogram > 0, which is positive exactly when the MACD line
+     is above its signal — so "momentum is positive" is still required, we just don't also
+     demand the cross to happen ON the breakout bar (a near-coincidence that suppressed
+     most entries).
 
      Exit is deliberately WIDE (OR): the trend breaking (close under the middle band),
      momentum turning (MACD cross down), or the move going parabolic (RSI > 90). Any
      one of them is enough. Quick to leave, slow to enter. */
   { name: "BB breakout + MACD", tag: "Momentum",
-    code: "BB1 = BollingerBand(length=20)\nRSI1 = RSI(length=14)\nMACD1 = MACD()\nCC1 = CurrentCandle()\n\nif CC1.close crosses_above BB1.upper\n   AND CC1.close > CC1.open\n   AND RSI1 > 60\n   AND MACD1.hist > 0\n   AND MACD1.line crosses_above MACD1.signal:\n    enter_trade()\n\nif CC1.close crosses_below BB1.middle\n   OR MACD1.line crosses_below MACD1.signal\n   OR RSI1 > 90:\n    exit_trade()",
+    code: "BB1 = BollingerBand(length=20)\nRSI1 = RSI(length=14)\nMACD1 = MACD()\nCC1 = CurrentCandle()\n\nif CC1.close crosses_above BB1.upper\n   AND RSI1 > 60\n   AND MACD1.hist > 0:\n    enter_trade()\n\nif CC1.close crosses_below BB1.middle\n   OR MACD1.line crosses_below MACD1.signal\n   OR RSI1 > 90:\n    exit_trade()",
     cfg: {
       mode: "builder",
       defs: [
@@ -200,10 +201,8 @@ export const TEMPLATES = [
       ],
       entry: [
         { la: "CC1.close", op: "crosses_above", bType: "ind", b: "BB1.upper" },
-        { gate: "AND", la: "CC1.close", op: ">", bType: "ind", b: "CC1.open" },
         { gate: "AND", la: "RSI1", op: ">", bType: "num", b: "60" },
         { gate: "AND", la: "MACD1.hist", op: ">", bType: "num", b: "0" },
-        { gate: "AND", la: "MACD1.line", op: "crosses_above", bType: "ind", b: "MACD1.signal" },
       ],
       exit: [
         { la: "CC1.close", op: "crosses_below", bType: "ind", b: "BB1.middle" },
@@ -237,3 +236,59 @@ export const TEMPLATES = [
 ];
 
 // Reusable multi-select (chips). Empty value array = "All".
+
+/**
+ * Turn a strategy's structured cfg into plain English.
+ *
+ * The sample-strategy cards used to print the raw DSL ("EMA1 = EMA(length=50)\nif EMA1 >
+ * EMA2 AND RSI1 < 70: enter_trade()") — which is precise but reads like code, not an idea.
+ * This renders the SAME cfg as sentences, so a starter idea reads the way a person would
+ * describe it. It's derived from the executable rules, not a hand-written blurb, so it
+ * cannot drift from what the strategy actually does.
+ */
+function humanIndicator(def) {
+  const L = def.len ? ` ${def.len}` : "";
+  switch (def.type) {
+    case "EMA": return `the ${def.len}-period EMA`;
+    case "SMA": return `the ${def.len}-day moving average`;
+    case "RSI": return `RSI`;
+    case "MACD": return `MACD`;
+    case "BB": return `the Bollinger Bands`;
+    case "ADX": return `ADX`;
+    case "CCI": return `CCI`;
+    case "ATR": return `ATR`;
+    case "VWAP": return `VWAP`;
+    default: return `${def.type}${L}`;
+  }
+}
+
+const OP_WORDS = {
+  ">": "is above", "<": "is below", ">=": "is at or above", "<=": "is at or below",
+  "==": "equals", "crosses_above": "crosses above", "crosses_below": "crosses below",
+  crossed_above_within: "crosses above", crossed_below_within: "crosses below",
+};
+
+function humanCond(cond, defs) {
+  const byName = (n) => defs.find((d) => d.name === n);
+  const left = byName(cond.la) ? humanIndicator(byName(cond.la)) : cond.la;
+  const op = OP_WORDS[cond.op] || cond.op;
+  let right;
+  if (cond.bType === "ind" && byName(cond.b)) right = humanIndicator(byName(cond.b));
+  else if (cond.bType === "num" || cond.bType === "price") right = cond.b;
+  else right = cond.b;
+  const gate = cond.gate ? `${cond.gate.toLowerCase()} ` : "";
+  return `${gate}${left} ${op} ${right}`;
+}
+
+export function humanizeStrategy(cfg) {
+  if (!cfg) return null;
+  const defs = cfg.defs || [];
+  const entry = (cfg.entry || []).map((c) => humanCond(c, defs));
+  const exit = (cfg.exit || []).map((c) => humanCond(c, defs));
+  const bits = [];
+  if (entry.length) bits.push({ k: "Buy when", v: entry.join(" ") });
+  if (exit.length) bits.push({ k: "Sell when", v: exit.join(" ") });
+  if (cfg.sl) bits.push({ k: "Stop loss", v: `${cfg.sl}%` });
+  if (cfg.tp) bits.push({ k: "Target", v: `${cfg.tp}%` });
+  return bits;
+}

@@ -200,12 +200,27 @@ function LiveNewsStrip({ symbols = [], onOpen, list = [], market = "IN" }) {
     return () => { stop = true; };
   }, [key]);
 
-  const tags = [...new Set(items.map((x) => x.tag).filter(Boolean))];
-  const shown = tag ? items.filter((x) => x.tag === tag) : items;
+  /* Headlines that match none of the event patterns — a product launch, a management
+     change, a regulatory note. They were always IN the feed (under "All"), but there was
+     no way to isolate them, so they were effectively invisible unless you scrolled past
+     everything else. "Others" is that filter. It is a real bucket, not a catch-all label:
+     it holds exactly the items the tagger could not classify, and we don't pretend to
+     have classified them. */
+  const untagged = items.filter((x) => !x.tag).length;
+  const tags = [
+    ...new Set(items.map((x) => x.tag).filter(Boolean)),
+    ...(untagged ? ["Others"] : []),
+  ];
+
+  const shown =
+    tag === "Others" ? items.filter((x) => !x.tag)
+    : tag ? items.filter((x) => x.tag === tag)
+    : items;
 
   const TAG_COLOR = {
     Earnings: "var(--primary)", Dividend: "var(--up)", Split: "#8B5CF6",
     "Bulk deal": "#E8A33D", Buyback: "var(--up)", "M&A": "#EC4899", "Order win": "var(--up)",
+    Others: "var(--muted)",
   };
 
   return (
@@ -519,8 +534,30 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       {/* Global markets live strip */}
       <GlobalStrip />
 
+      {/* TUNED FOR YOU — hoisted above the dashboard card. Sleeker: no explanatory
+          sentence, just the profile line and a compact row of cap/sector chips. */}
+      {profile && (
+        <div className="card metalblack" style={{ marginTop: 14, padding: "13px 15px", border: "none", color: "#fff" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <div style={{ fontSize: 10.5, opacity: .6, fontWeight: 700, letterSpacing: ".04em" }}>TUNED FOR YOU</div>
+              <div className="disp" style={{ fontWeight: 700, fontSize: 14.5, marginTop: 2 }}>
+                {profile.style} · {profile.risk} risk
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: "60%" }}>
+              {[...(profile.caps.length ? profile.caps : ["All caps"]), ...profile.sectors].slice(0, 5).map((tag) => (
+                <span key={tag} style={{ fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 20, background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.14)" }}>
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Portfolio / Auto-Buy dashboard card */}
-      <div className="card glow metal" style={{ marginTop: 14, padding: 16, border: "none", background: "var(--feature-grad)", color: "#fff", position: "relative", overflow: "hidden" }}>
+      <div className="card glow metalblack" style={{ marginTop: 14, padding: 16, border: "none", color: "#fff", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "relative" }}>
           {/* slider */}
           <div className="pill" style={{ display: "inline-flex", background: "rgba(0,0,0,.28)", padding: 3, marginBottom: 14 }}>
@@ -635,14 +672,6 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
         </div>
       </div>
 
-      {profile && (
-        <div className="card metal" style={{ marginTop: 14, padding: 14, background: "linear-gradient(135deg,#5B5B63,#313138)", border: "none", color: "#fff" }}>
-          <div style={{ fontSize: 12, opacity: .9 }}>Tuned for you</div>
-          <div className="disp" style={{ fontWeight: 700, fontSize: 15, marginTop: 2 }}>{profile.style} investor · {profile.risk} risk</div>
-          <div style={{ fontSize: 12, opacity: .92, marginTop: 4 }}>Picks below are weighted toward {profile.caps.join(", ") || "all caps"}{profile.sectors.length ? ` and ${profile.sectors.join(", ")}` : ""}.</div>
-        </div>
-      )}
-
       {/* Matrix picks */}
       <Section title="Matrix's Picks" icon={<Sparkles size={17} color="var(--primary-2)" />}>
         {/* An empty carousel is a void the user has to interpret. Say what's happening:
@@ -657,7 +686,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
         <div className="hide-scroll" style={{ display: "flex", gap: 13, overflowX: "auto", paddingBottom: 8, paddingTop: 2 }}>
           {picks.map((s) => (
             /* Grey, not the accent gradient. */
-            <div key={s.sym} onClick={() => onOpen(s)} className="card tap glow metal" style={{ flex: "0 0 auto", width: 272, padding: 0, position: "relative", overflow: "hidden", border: "none", background: "linear-gradient(135deg,#5B5B63,#313138)" }}>
+            <div key={s.sym} onClick={() => onOpen(s)} className="card tap glow metalblack" style={{ flex: "0 0 auto", width: 272, padding: 0, position: "relative", overflow: "hidden", border: "none" }}>
               <div style={{ position: "absolute", inset: 0, background: "radial-gradient(120% 80% at 0% 0%, rgba(255,255,255,.10), transparent 45%)", pointerEvents: "none" }} />
               <div style={{ padding: 17, position: "relative", color: "#fff" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -685,6 +714,9 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     </button>
                   )}
                 </div>
+                <div style={{ marginTop: 10, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,.18)", fontSize: 12, color: "rgba(255,255,255,.92)", lineHeight: 1.55, display: "flex", gap: 6 }}>
+                  <Sparkles size={14} color="#fff" style={{ flex: "0 0 auto", marginTop: 2 }} /><span>{s.pickReason || ""}</span>
+                </div>
                 {/* REAL stop / target from support-resistance + ATR */}
                 {s.pickTarget != null && (
                   <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
@@ -702,9 +734,6 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     </div>}
                   </div>
                 )}
-                <div style={{ marginTop: 10, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,.18)", fontSize: 12, color: "rgba(255,255,255,.92)", lineHeight: 1.55, display: "flex", gap: 6 }}>
-                  <Sparkles size={14} color="#fff" style={{ flex: "0 0 auto", marginTop: 2 }} /><span>{s.pickReason || ""}</span>
-                </div>
                 {/* Buy with explicit quantity; the pick's REAL stop & target are armed with it. */}
                 <div style={{ marginTop: 13 }} onClick={(e) => e.stopPropagation()}>
                   <BuyButton

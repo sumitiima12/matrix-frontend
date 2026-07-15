@@ -3,7 +3,7 @@ import { ALL } from "../domain/universe";
 import { brokerSymbol, fromBrokerSymbol, mappableSymbols } from "../domain/brokerSymbols";
 import { brokerById } from "../domain/brokers";
 import {
-  loadSession, saveSession, clearSession,
+  loadSessions, saveSession, clearSession, BROKER_MARKETS,
   brokerSession, brokerQuotes, brokerLogout, brokerPortfolio,
 } from "../services/brokerService";
 
@@ -25,7 +25,8 @@ import {
  * app falls back to Yahoo, rather than flying a "LIVE" badge over stale numbers.
  */
 export function useBroker({ onTick, userId, intervalMs = 2000 } = {}) {
-  const [session, setSession] = useState(() => loadSession());
+  /* A MAP of broker -> session. One broker per market, several at once. */
+  const [sessions, setSessions] = useState(() => loadSessions());
   const [lastTick, setLastTick] = useState(null);
   const [error, setError] = useState(null);
 
@@ -36,8 +37,30 @@ export function useBroker({ onTick, userId, intervalMs = 2000 } = {}) {
   const tickRef = useRef(onTick);
   tickRef.current = onTick;
 
-  const connected = Boolean(session && session.sessionId && session.broker);
-  const broker = connected ? brokerById(session.broker) : null;
+  const connectedBrokers = Object.keys(sessions);
+  const connected = connectedBrokers.length > 0;
+
+  /* The "primary" broker, for the header pill and anything still expecting one. Prefer the
+     Indian one — it's the home market and the one options require. */
+  const primaryId =
+    connectedBrokers.find((b) => (BROKER_MARKETS[b] || []).includes("IN")) || connectedBrokers[0] || null;
+  const session = primaryId ? sessions[primaryId] : null;
+  const broker = primaryId ? brokerById(primaryId) : null;
+
+  /* Which broker serves a given market — null if none is connected for it. This is what
+     routes an order: an Indian buy must go to the Indian broker even while Schwab and
+     Delta are also live. */
+  const brokerFor = useCallback((market) => {
+    const id = connectedBrokers.find((b) => (BROKER_MARKETS[b] || []).includes(market));
+    return id ? { id, session: sessions[id], meta: brokerById(id) } : null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions]);
+
+  /** market -> broker id, for the UI to show what covers what. */
+  const marketMap = { IN: null, US: null, Crypto: null };
+  Object.keys(marketMap).forEach((m) => {
+    marketMap[m] = connectedBrokers.find((b) => (BROKER_MARKETS[b] || []).includes(m)) || null;
+  });
 
   /** Finish the OAuth handshake. Returns a promise — the caller awaits it. */
   const connect = useCallback(async (brokerId, requestToken) => {
@@ -45,8 +68,8 @@ export function useBroker({ onTick, userId, intervalMs = 2000 } = {}) {
     try {
       // The SERVER exchanges the token and keeps it; we get an opaque session id.
       const s = await brokerSession(brokerId, requestToken, userId);
-      saveSession(s);
-      setSession(s);
+      saveSession(s);                               // ADDS to the map; does not evict others
+      setSessions((p) => ({ ...p, [s.broker]: s }));
       return s;
     } catch (e) {
       setError(String(e.message || e));
@@ -54,75 +77,97 @@ export function useBroker({ onTick, userId, intervalMs = 2000 } = {}) {
     }
   }, [userId]);
 
-  const disconnect = useCallback(() => {
-    brokerLogout(session, userId);                  // drop it server-side too
-    clearSession();
-    setSession(null);
+  /** Disconnect ONE broker (or all, if none named). The others keep streaming. */
+  const disconnect = useCallback((brokerId) => {
+    const targets = brokerId ? [brokerId] : Object.keys(sessions);
+    targets.forEach((b) => {
+      if (sessions[b]) brokerLogout(sessions[b], userId);   // drop it server-side too
+      clearSession(b);
+    });
+    setSessions((p) => {
+      const c = { ...p };
+      targets.forEach((b) => delete c[b]);
+      return c;
+    });
     setReal(null);
     setError(null);
-  }, [session, userId]);
+  }, [sessions, userId]);
 
   /* Live quote polling. */
   useEffect(() => {
     if (!connected) return undefined;
     let stop = false;
 
-    /* Only the symbols this broker can actually price. BROKER_COVERAGE is metadata
-       (markets, capabilities) — NOT a symbol list; iterating it would request nothing
-       and no quote would ever arrive. mappableSymbols does the real work. */
-    const covered = mappableSymbols(session.broker, ALL.map((a) => a.sym));
-    if (!covered.length) return undefined;
-
+    /* EVERY connected broker is polled, each for the symbols IT can price. FYERS covers
+       the Indian names, Schwab the US ones, Delta the crypto — so a single tick can update
+       three markets from three different feeds. A broker that fails is dropped for that
+       tick alone; the others still deliver, rather than one dead US token blanking the
+       Indian prices too. */
     const pull = async () => {
-      const map = {};
-      const bsyms = [];
-      covered.forEach((sym) => {
-        const b = brokerSymbol(sym, session.broker);
-        if (b) { map[b] = sym; bsyms.push(b); }
-      });
-      if (!bsyms.length) return;
+      const active = Object.values(sessions).filter((x) => x && x.sessionId);
+      if (!active.length) return;
 
-      try {
-        const quotes = await brokerQuotes(session, userId, bsyms);
-        if (stop) return;
+      const results = await Promise.all(active.map(async (sess) => {
+        const covered = mappableSymbols(sess.broker, ALL.map((a) => a.sym));
+        if (!covered.length) return { n: 0 };
 
-        let n = 0;
-        Object.entries(quotes).forEach(([bsym, q]) => {
-          const our = map[bsym] || fromBrokerSymbol(bsym, session.broker);
-          const s = ALL.find((a) => a.sym === our);
-          if (!s || q.price == null) return;        // no price -> leave the old one alone
-          s.price = q.price;
-          if (q.chg != null) s.chg = q.chg;
-          if (q.vol != null) s.vol = q.vol;
-          if (q.oi != null) s.oi = q.oi;
-          if (q.bid != null) s.bid = q.bid;
-          if (q.ask != null) s.ask = q.ask;
-          s.hasData = true;
-          s.liveSource = session.broker;            // this price is live, not delayed
-          n++;
+        const map = {};
+        const bsyms = [];
+        covered.forEach((sym) => {
+          const b = brokerSymbol(sym, sess.broker);
+          if (b) { map[b] = sym; bsyms.push(b); }
         });
+        if (!bsyms.length) return { n: 0 };
 
-        if (n) {
-          setLastTick(Date.now());
-          setError(null);
-          if (tickRef.current) tickRef.current(n);
+        try {
+          const quotes = await brokerQuotes(sess, userId, bsyms);
+          if (stop) return { n: 0 };
+
+          let n = 0;
+          Object.entries(quotes).forEach(([bsym, q]) => {
+            const our = map[bsym] || fromBrokerSymbol(bsym, sess.broker);
+            const s = ALL.find((a) => a.sym === our);
+            if (!s || q.price == null) return;      // no price -> leave the old one alone
+            s.price = q.price;
+            if (q.chg != null) s.chg = q.chg;
+            if (q.vol != null) s.vol = q.vol;
+            if (q.oi != null) s.oi = q.oi;
+            if (q.bid != null) s.bid = q.bid;
+            if (q.ask != null) s.ask = q.ask;
+            s.hasData = true;
+            s.liveSource = sess.broker;             // this price is live, not delayed
+            n++;
+          });
+          return { n };
+        } catch (e) {
+          const msg = String(e.message || e);
+          /* A dead token is the normal end of a broker day. Drop THAT broker only — the
+             others keep streaming. Blanking every feed because one expired would be worse
+             than the outage itself. */
+          if (/session|token|auth|401|403/i.test(msg)) {
+            clearSession(sess.broker);
+            setSessions((p) => { const c = { ...p }; delete c[sess.broker]; return c; });
+          }
+          return { n: 0, err: `${sess.broker}: ${msg}` };
         }
-      } catch (e) {
-        if (stop) return;
-        const msg = String(e.message || e);
-        setError(msg);
-        // A dead token is the normal end of a broker day. Fall back; don't retry blindly.
-        if (/session|token|auth|401|403/i.test(msg)) {
-          clearSession();
-          setSession(null);
-        }
+      }));
+
+      if (stop) return;
+
+      const total = results.reduce((a, r) => a + (r.n || 0), 0);
+      const errs = results.map((r) => r.err).filter(Boolean);
+      setError(errs.length && !total ? errs.join(" · ") : null);
+
+      if (total) {
+        setLastTick(Date.now());
+        if (tickRef.current) tickRef.current(total);
       }
     };
 
     pull();
     const id = setInterval(pull, intervalMs);
     return () => { stop = true; clearInterval(id); };
-  }, [connected, session, userId, intervalMs]);
+  }, [connected, sessions, userId, intervalMs]);
 
   /** The REAL portfolio. Only pulled when the user is actually in Real mode. */
   const refreshPortfolio = useCallback(async () => {
@@ -144,5 +189,7 @@ export function useBroker({ onTick, userId, intervalMs = 2000 } = {}) {
     session, connected, broker, error, lastTick,
     connect, disconnect,
     real, realErr, realLoading, refreshPortfolio,
+    /* multi-broker */
+    sessions, connectedBrokers, brokerFor, marketMap,
   };
 }

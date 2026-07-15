@@ -25,11 +25,34 @@ export async function getQuotes(ySyms) {
 }
 
 /** Real OHLCV candles, normalised to { i, t, o, h, l, c, v }. */
+/**
+ * Fold N candles into one. This is how a 4h candle is genuinely built from 60m bars:
+ * open of the first, close of the last, the highest high, the lowest low, volume summed.
+ * Anything else — e.g. relabelling a 90m bar as "4h" — misstates the period every
+ * indicator is then computed on.
+ */
+function aggregate(candles, n) {
+  const out = [];
+  for (let i = 0; i < candles.length; i += n) {
+    const g = candles.slice(i, i + n);
+    if (!g.length) continue;
+    out.push({
+      t: g[0].t,
+      o: g[0].o,
+      c: g[g.length - 1].c,
+      h: Math.max(...g.map((x) => x.h)),
+      l: Math.min(...g.map((x) => x.l)),
+      v: g.reduce((a, x) => a + (x.v || 0), 0),
+    });
+  }
+  return out.map((c, i) => ({ ...c, i }));
+}
+
 export async function getHistory(ySym, tf) {
   const m = TF_YF[tf] || TF_YF["1d"];
   const d = await get(`/api/history?symbol=${encodeURIComponent(ySym)}&range=${m.r}&interval=${m.i}`);
   if (!d) return null;
-  return (d.candles || [])
+  const rows = (d.candles || [])
     .filter((c) => c.o != null && c.c != null && c.h != null && c.l != null)
     .map((c, i) => ({
       i,
@@ -40,6 +63,8 @@ export async function getHistory(ySym, tf) {
       c: +(+c.c).toFixed(2),
       v: c.v,
     }));
+
+  return m.agg ? aggregate(rows, m.agg) : rows;
 }
 
 /** Real headlines: [{ t, d, src, url }]. */

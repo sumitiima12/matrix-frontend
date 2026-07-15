@@ -28,7 +28,15 @@ const TONE = {
   none:    { label: "No public API",       c: "var(--muted)" },
 };
 
-export default function BrokerSheet({ connectedId, onDisconnect, onClose, onConnect }) {
+/**
+ * ONE BROKER PER MARKET — all connected at the same time.
+ *
+ * connectedIds is now a SET, not a single id: FYERS for Indian, Schwab for US, Delta for
+ * crypto. No single broker covers all three, so a one-at-a-time model could never give you
+ * a fully live portfolio. Connecting a second broker no longer evicts the first.
+ */
+export default function BrokerSheet({ connectedIds = [], marketMap = {}, onDisconnect, onClose, onConnect }) {
+  const connectedId = connectedIds[0] || null;   // back-compat for the copy below
   const [q, setQ] = useState("");
   const [server, setServer] = useState(null);
   const [statusErr, setStatusErr] = useState(null);
@@ -86,8 +94,29 @@ export default function BrokerSheet({ connectedId, onDisconnect, onClose, onConn
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
           <div>
             <div className="disp" style={{ fontSize: 19, fontWeight: 800, display: "flex", alignItems: "center", gap: 7 }}>
-              <Link2 size={17} /> Connect your broker
+              <Link2 size={17} /> Connect your brokers
             </div>
+
+        {/* WHICH MARKET IS COVERED BY WHAT. This is the whole point of multi-broker: you can
+            see at a glance that Indian is live on FYERS while US has nothing connected. */}
+        <div style={{ display: "flex", gap: 7, marginTop: 12 }}>
+          {[["IN", "Indian"], ["US", "US"], ["Crypto", "Crypto"]].map(([m, label]) => {
+            const bid = marketMap[m];
+            const meta = bid ? BROKERS.find((x) => x.id === bid) : null;
+            return (
+              <div key={m} style={{
+                flex: 1, padding: "8px 6px", borderRadius: 10, textAlign: "center",
+                border: "1px solid " + (bid ? "var(--up)" : "var(--line)"),
+                background: bid ? "rgba(34,197,94,.08)" : "var(--elev)",
+              }}>
+                <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700, letterSpacing: ".03em" }}>{label.toUpperCase()}</div>
+                <div className="disp" style={{ fontSize: 11, fontWeight: 800, marginTop: 3, color: bid ? "var(--up)" : "var(--muted)" }}>
+                  {meta ? meta.name : "Not connected"}
+                </div>
+              </div>
+            );
+          })}
+        </div>
             <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 3, lineHeight: 1.45 }}>
               Yahoo prices are delayed ~15 minutes. A broker feed is live, and brings real open interest and depth.
             </div>
@@ -131,7 +160,7 @@ export default function BrokerSheet({ connectedId, onDisconnect, onClose, onConn
         )}
 
         {shown.map((b) => {
-          const isConnected = connectedId === b.id;
+          const isConnected = connectedIds.includes(b.id);
           const configured = Boolean(server && server.brokers && server.brokers[b.id] && server.brokers[b.id].configured);
           const canConnect = b.status === "ready" && configured;
           const tone = TONE[b.status] || TONE.none;
@@ -165,7 +194,7 @@ export default function BrokerSheet({ connectedId, onDisconnect, onClose, onConn
                 </div>
 
                 {isConnected ? (
-                  <button onClick={onDisconnect} className="tap disp"
+                  <button onClick={() => onDisconnect(b.id)} className="tap disp"
                     style={{ flex: "0 0 auto", border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 10, padding: "8px 14px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>
                     Disconnect
                   </button>

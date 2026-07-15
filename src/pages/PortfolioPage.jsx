@@ -400,7 +400,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
             {(r.sl || r.tsl || r.tp) && <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, fontWeight: 600, display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
               <span className="pill" style={{ fontSize: 9, fontWeight: 800, padding: "2px 7px", background: "var(--up-soft)", color: "var(--up)" }}>● ARMED</span>
               {r.tp ? `🎯 TP +${r.tp}% ` : ""}{r.sl ? `· 🛑 SL −${r.sl}% ` : ""}{r.tsl ? `· 🔻 TSL ${r.tsl}%` : ""}
-              <span style={{ opacity: .8 }}>· auto-sells when hit</span>
+              <span style={{ opacity: .8 }}></span>
             </div>}
 
             {/* ---- AI COPILOT: per-holding recommendation (real data only) ---- */}
