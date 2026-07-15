@@ -805,6 +805,7 @@ function AppInner() {
       {brokerOpen && (
         <ErrorBoundary name="Broker">
           <BrokerSheet
+            userId={userId}
             connectedIds={connectedBrokers}
             marketMap={brokerMarketMap}
             onDisconnect={(bid) => { disconnectBroker(bid); setBuyToast({ t: "Broker disconnected — that market falls back to delayed prices" }); }}

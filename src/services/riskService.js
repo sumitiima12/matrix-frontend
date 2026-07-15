@@ -61,7 +61,8 @@ export function validateOrder(order, account) {
   // --- basic sanity ---
   if (!sym) reasons.push("No symbol on the order.");
   if (!qty || qty <= 0 || !Number.isFinite(qty)) reasons.push("Quantity must be a positive number.");
-  if (!price || price <= 0 || !Number.isFinite(price)) reasons.push("No live price available for this symbol — order blocked.");
+  // Price gates BUYS only — a SELL closes a position you already own and must not be trapped by a missing quote.
+  if (side === "BUY" && (!price || price <= 0 || !Number.isFinite(price))) reasons.push("No live price available for this order.");
   if (reasons.length) return { ok: false, reasons, warnings };
 
   const value = qty * price;

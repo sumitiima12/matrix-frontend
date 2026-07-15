@@ -79,7 +79,10 @@ export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, us
       return { ok: false, reasons: [res.reason || "Broker rejected the order."], warnings: [] };
     }
 
-    const fill = res.avgPrice ?? price;
+    // A sell with a momentarily-missing quote falls back to the position's own price so the
+    // close still books a sane value. Buys always have a price (the risk engine required it).
+    const heldNow = portfolio.find((h) => h.sym === stock.sym);
+    const fill = res.avgPrice ?? price ?? (heldNow ? (heldNow.buy ?? heldNow.avg) : null) ?? 0;
     const cost = fill * qty;
 
     // 4 ── PORTFOLIO UPDATE.

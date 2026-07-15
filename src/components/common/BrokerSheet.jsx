@@ -35,7 +35,7 @@ const TONE = {
  * crypto. No single broker covers all three, so a one-at-a-time model could never give you
  * a fully live portfolio. Connecting a second broker no longer evicts the first.
  */
-export default function BrokerSheet({ connectedIds = [], marketMap = {}, onDisconnect, onClose, onConnect }) {
+export default function BrokerSheet({ userId, connectedIds = [], marketMap = {}, onDisconnect, onClose, onConnect }) {
   const connectedId = connectedIds[0] || null;   // back-compat for the copy below
   const [q, setQ] = useState("");
   const [server, setServer] = useState(null);
@@ -44,7 +44,7 @@ export default function BrokerSheet({ connectedIds = [], marketMap = {}, onDisco
   const [err, setErr] = useState(null);
 
   useEffect(() => {
-    brokerStatus()
+    brokerStatus(userId)
       .then((d) => { setServer(d); setStatusErr(null); })
       .catch((e) => { setServer(null); setStatusErr(String(e.message || e)); });
   }, []);
@@ -72,7 +72,7 @@ export default function BrokerSheet({ connectedIds = [], marketMap = {}, onDisco
       }
 
       const redirect = window.location.origin + window.location.pathname;
-      const url = await brokerLoginUrl(b.id, redirect);
+      const url = await brokerLoginUrl(b.id, redirect, userId);
       window.location.href = url;     // the broker's own login page — we never see the password
     } catch (e) {
       setErr(String(e.message || e));

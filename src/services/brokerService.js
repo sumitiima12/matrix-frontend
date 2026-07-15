@@ -116,8 +116,8 @@ async function get(path, headers = {}) {
 }
 
 /** Which brokers this server actually has credentials for. */
-export async function brokerStatus() {
-  return get("/api/broker/status");
+export async function brokerStatus(userId) {
+  return get(`/api/broker/status${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`);
 }
 
 /** Step 1: the broker's own login page. We never see the user's password. */

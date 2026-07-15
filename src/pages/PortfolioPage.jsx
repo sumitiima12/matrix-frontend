@@ -106,7 +106,74 @@ function ManageHolding({ r, st, onBuy, onSell, onUpdate, onClose }) {
   );
 }
 
+
+function MiniStat({ label, value, color }) {
+  return (
+    <div>
+      <div style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 700, letterSpacing: ".03em" }}>{label.toUpperCase()}</div>
+      <div className="mono" style={{ fontSize: 12, fontWeight: 800, color: color || "var(--ink)", marginTop: 1 }}>{value}</div>
+    </div>
+  );
+}
+
+/* Shared "Analyze my portfolio" button + Oracle's read panel — used by both virtual and
+   real mode so the two behave identically. */
+function AnalyzeBlock({ onRun, loading, review }) {
+  return (
+    <div style={{ marginTop: 14 }}>
+      <button
+        onClick={onRun}
+        disabled={loading}
+        className="tap disp glow"
+        style={{ width: "100%", padding: "13px", borderRadius: 12, border: "none", background: "var(--primary)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: loading ? "default" : "pointer", opacity: loading ? 0.7 : 1 }}
+      >
+        {loading ? "Oracle is analyzing…" : "✨ Analyze my portfolio"}
+      </button>
+      {review && (
+        <div className="card fade" style={{ marginTop: 12, padding: 15 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
+            <span className="disp" style={{ fontWeight: 800, fontSize: 14 }}>Oracle's read</span>
+            <span className="pill" style={{ fontSize: 8.5, fontWeight: 800, padding: "2px 7px", background: "var(--primary-soft)", color: "var(--primary)" }}>AI</span>
+          </div>
+          <div style={{ fontSize: 12.5, lineHeight: 1.6, color: "var(--ink)" }}>{review.overall}</div>
+          {review.holdings && review.holdings.length > 0 && (
+            <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 9 }}>
+              {review.holdings.map((h) => {
+                const vColor = /Exit|Trim/.test(h.verdict) ? "var(--down)" : /Add|Hold/.test(h.verdict) ? "var(--up)" : "var(--muted)";
+                return (
+                  <div key={h.sym} style={{ borderTop: "1px solid var(--line)", paddingTop: 9 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span className="disp" style={{ fontWeight: 800, fontSize: 12.5 }}>{h.sym}</span>
+                      <span className="pill" style={{ fontSize: 9, fontWeight: 800, padding: "2px 8px", background: vColor, color: "#fff" }}>{h.verdict}</span>
+                    </div>
+                    {h.insight && <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 4, lineHeight: 1.5 }}>{h.insight}</div>}
+                    {h.action && <div style={{ fontSize: 11, color: "var(--ink)", marginTop: 3, fontWeight: 600 }}>→ {h.action}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 12, lineHeight: 1.5 }}>
+            Oracle interprets your real holding numbers — it isn't financial advice. Always do your own check before acting.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, onUpdate, onRemove, priceSnap = {}, onWhy, onOpen, mode = "virtual", realPortfolio = null, realErr = null, realLoading = false, onRefreshReal, brokerName }) {
+  /* Whole-book AI review state — shared by BOTH virtual and real mode. Declared up here so
+     the real-mode early-return below can use it too. */
+  const [aiReview, setAiReview] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const runAnalyze = async (payload) => {
+    setAiLoading(true); setAiReview(null);
+    try { setAiReview(await analyzePortfolio(payload)); }
+    catch { setAiReview({ overall: "Couldn't reach Oracle right now — try again in a moment.", holdings: [] }); }
+    finally { setAiLoading(false); }
+  };
+
   /* REAL MODE shows the user's ACTUAL broker holdings. It is read-only and entirely
      separate from the paper book — no paper position appears here, and no real
      position leaks into the paper P&L. Mixing them would produce a portfolio that is
@@ -225,27 +292,68 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
           <div style={{ padding: "34px 16px", textAlign: "center", color: "var(--muted)", fontSize: 12.5, lineHeight: 1.5 }}>
             No holdings in your {brokerName || "broker"} account.
           </div>
-        ) : hold.map((h) => (
-          <div key={h.sym} className="card" style={{ marginTop: 9, padding: 13, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <div className="disp" style={{ fontWeight: 800, fontSize: 13.5, display: "flex", alignItems: "center", gap: 6 }}>
-                {h.sym}
-                {h.source === "positions" && (
-                  <span style={{ fontSize: 8, fontWeight: 800, padding: "2px 6px", borderRadius: 6, background: "var(--elev)", color: "var(--muted)", letterSpacing: ".03em" }}>POSITION</span>
-                )}
+        ) : hold.map((h) => {
+          // Real technicals ONLY when the stock is in our universe. For anything FYERS holds
+          // that we don't track, we show price/P&L and say analysis isn't available — we
+          // never invent a confidence or risk score.
+          const uni = ALL.find((a) => a.sym === h.sym);
+          const sig = uni ? techSignal(uni) : null;
+          const pnlPct = (h.avg && h.ltp) ? ((h.ltp / h.avg) - 1) * 100 : null;
+          return (
+            <div key={h.sym} className="card" style={{ marginTop: 9, padding: 13 }}>
+              <div
+                onClick={() => uni && onOpen && onOpen(uni)}
+                className={uni && onOpen ? "tap" : undefined}
+                style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: uni && onOpen ? "pointer" : "default" }}
+              >
+                <div>
+                  <div className="disp" style={{ fontWeight: 800, fontSize: 13.5, display: "flex", alignItems: "center", gap: 6 }}>
+                    {h.sym}
+                    {h.source === "positions" && (
+                      <span style={{ fontSize: 8, fontWeight: 800, padding: "2px 6px", borderRadius: 6, background: "var(--elev)", color: "var(--muted)", letterSpacing: ".03em" }}>POSITION</span>
+                    )}
+                  </div>
+                  <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>
+                    {h.qty} @ {h.avg != null ? "₹" + h.avg.toFixed(2) : "—"}
+                  </div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div className="mono" style={{ fontSize: 13.5, fontWeight: 800 }}>{h.ltp != null ? "₹" + h.ltp.toFixed(2) : "—"}</div>
+                  <div className="mono" style={{ fontSize: 10.5, fontWeight: 800, marginTop: 2, color: h.pnl == null ? "var(--muted)" : h.pnl >= 0 ? "var(--up)" : "var(--down)" }}>
+                    {h.pnl == null ? "—" : (h.pnl >= 0 ? "+" : "") + "₹" + h.pnl.toFixed(0)}
+                    {pnlPct != null && <span style={{ opacity: .8 }}> ({pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(1)}%)</span>}
+                  </div>
+                </div>
               </div>
-              <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>
-                {h.qty} @ {h.avg != null ? "₹" + h.avg.toFixed(2) : "—"}
-              </div>
+
+              {/* Real technicals row — only when we actually have them. All values come from
+                  the live signal/universe entry; nothing here is invented. */}
+              {sig ? (
+                <div style={{ display: "flex", gap: 14, marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--line)", flexWrap: "wrap", alignItems: "center" }}>
+                  {sig.signal && <MiniStat label="Signal" value={sig.signal} color={/Buy|Bull/i.test(sig.signal) ? "var(--up)" : /Sell|Bear/i.test(sig.signal) ? "var(--down)" : "var(--muted)"} />}
+                  {uni.rsi != null && <MiniStat label="RSI" value={String(Math.round(uni.rsi))} color={uni.rsi > 70 ? "var(--down)" : uni.rsi < 30 ? "var(--up)" : "var(--ink)"} />}
+                  {sig.rr != null && <MiniStat label="R:R" value={sig.rr + ":1"} color="var(--ink)" />}
+                  {uni && onOpen && <button onClick={() => onOpen(uni)} className="tap disp" style={{ marginLeft: "auto", fontSize: 11, fontWeight: 800, color: "var(--primary)", background: "none", border: "none", cursor: "pointer" }}>Manage →</button>}
+                </div>
+              ) : (
+                <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--line)" }}>
+                  Trend and risk analysis isn't available for this holding — it's not in Matrix's tracked universe.
+                </div>
+              )}
             </div>
-            <div style={{ textAlign: "right" }}>
-              <div className="mono" style={{ fontSize: 13.5, fontWeight: 800 }}>{h.ltp != null ? "₹" + h.ltp.toFixed(2) : "—"}</div>
-              <div className="mono" style={{ fontSize: 10.5, fontWeight: 800, marginTop: 2, color: h.pnl == null ? "var(--muted)" : h.pnl >= 0 ? "var(--up)" : "var(--down)" }}>
-                {h.pnl == null ? "—" : (h.pnl >= 0 ? "+" : "") + "₹" + h.pnl.toFixed(0)}
-              </div>
-            </div>
-          </div>
-        ))}
+          );
+        })}
+
+        {hold.length > 0 && (
+          <AnalyzeBlock
+            loading={aiLoading}
+            review={aiReview}
+            onRun={() => runAnalyze(hold.map((h) => ({
+              sym: h.sym, qty: h.qty, avg: h.avg, ltp: h.ltp,
+              trend: null, rsi: null,   // FYERS holdings carry no technicals; Oracle reads price/P&L only
+            })))}
+          />
+        )}
 
         <div style={{ fontSize: 10, color: "var(--muted)", textAlign: "center", marginTop: 16, lineHeight: 1.5 }}>
           Read-only, straight from {brokerName || "your broker"}. Switch to Virtual for paper trading.
@@ -255,8 +363,6 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
   }
   const [expand, setExpand] = useState(null);   // sym with open trade panel
   const [fType, setFType] = useState([]);      // Manual / Auto Buy / Automate
-  const [aiReview, setAiReview] = useState(null);   // { overall, holdings: [...] } | null
-  const [aiLoading, setAiLoading] = useState(false);
   const mkt = market;
   const mLabel = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", Commodity: "🪙 Commodity" }[market];
 
@@ -426,66 +532,14 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
       })()}
 
       {rows.length > 0 && (
-        <div style={{ marginTop: 14 }}>
-          <button
-            onClick={async () => {
-              setAiLoading(true);
-              setAiReview(null);
-              try {
-                const payload = rows.map((r) => {
-                  const a = intel[r.sym] || {};
-                  return {
-                    sym: r.sym, qty: r.qty, avg: r.buy, ltp: r.cur,
-                    trend: a.trend || null, rsi: a.rsi != null ? a.rsi : null,
-                  };
-                });
-                const res = await analyzePortfolio(payload);
-                setAiReview(res);
-              } catch (e) {
-                setAiReview({ overall: "Couldn't reach Oracle right now — try again in a moment.", holdings: [] });
-              } finally {
-                setAiLoading(false);
-              }
-            }}
-            disabled={aiLoading}
-            className="tap disp glow"
-            style={{ width: "100%", padding: "13px", borderRadius: 12, border: "none", background: "var(--primary)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: aiLoading ? "default" : "pointer", opacity: aiLoading ? 0.7 : 1 }}
-          >
-            {aiLoading ? "Oracle is analyzing…" : "✨ Analyze my portfolio"}
-          </button>
-
-          {aiReview && (
-            <div className="card fade" style={{ marginTop: 12, padding: 15 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
-                <span className="disp" style={{ fontWeight: 800, fontSize: 14 }}>Oracle's read</span>
-                <span className="pill" style={{ fontSize: 8.5, fontWeight: 800, padding: "2px 7px", background: "var(--primary-soft)", color: "var(--primary)" }}>AI</span>
-              </div>
-              <div style={{ fontSize: 12.5, lineHeight: 1.6, color: "var(--ink)" }}>{aiReview.overall}</div>
-
-              {aiReview.holdings && aiReview.holdings.length > 0 && (
-                <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 9 }}>
-                  {aiReview.holdings.map((h) => {
-                    const vColor = /Exit|Trim/.test(h.verdict) ? "var(--down)" : /Add|Hold/.test(h.verdict) ? "var(--up)" : "var(--muted)";
-                    return (
-                      <div key={h.sym} style={{ borderTop: "1px solid var(--line)", paddingTop: 9 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <span className="disp" style={{ fontWeight: 800, fontSize: 12.5 }}>{h.sym}</span>
-                          <span className="pill" style={{ fontSize: 9, fontWeight: 800, padding: "2px 8px", background: vColor, color: "#fff" }}>{h.verdict}</span>
-                        </div>
-                        {h.insight && <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 4, lineHeight: 1.5 }}>{h.insight}</div>}
-                        {h.action && <div style={{ fontSize: 11, color: "var(--ink)", marginTop: 3, fontWeight: 600 }}>→ {h.action}</div>}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 12, lineHeight: 1.5 }}>
-                Oracle interprets your real holding numbers — it isn't financial advice. Verdicts follow the data you hold; always do your own check before acting.
-              </div>
-            </div>
-          )}
-        </div>
+        <AnalyzeBlock
+          loading={aiLoading}
+          review={aiReview}
+          onRun={() => runAnalyze(rows.map((r) => {
+            const a = intel[r.sym] || {};
+            return { sym: r.sym, qty: r.qty, avg: r.buy, ltp: r.cur, trend: a.trend || null, rsi: a.rsi != null ? a.rsi : null };
+          }))}
+        />
       )}
 
       {rows.length === 0 ? (
