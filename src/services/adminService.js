@@ -21,6 +21,17 @@ export async function adminCheck(userId, key) {
   } catch { return false; }
 }
 
+/** Visibility-only: is this userId an admin candidate? No key needed — only decides whether
+ *  to show the admin button. Grants no access. */
+export async function adminIsAdminUser(userId) {
+  if (!BACKEND_URL || !userId) return false;
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/admin/is-admin-user`, { headers: { "X-User-Id": userId } });
+    const d = await r.json().catch(() => ({}));
+    return !!d.adminUser;
+  } catch { return false; }
+}
+
 /** List all users. */
 export async function adminListUsers(userId, key) {
   const r = await fetch(`${BACKEND_URL}/api/admin/users`, { headers: headers(userId, key) });
