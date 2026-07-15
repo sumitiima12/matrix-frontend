@@ -61,7 +61,7 @@ function Stat({ k, v, c }) { return <div><div style={{ color: "var(--muted)" }}>
 
 function ManageHolding({ r, st, onBuy, onSell, onUpdate, onClose }) {
   const [buyQty, setBuyQty] = useState(1);
-  const [sellQty, setSellQty] = useState(1);
+  const [sellQty, setSellQty] = useState(r.qty || 1);   // default to selling the whole holding
   const [sl, setSl] = useState(r.sl ? String(r.sl) : "");
   const [tsl, setTsl] = useState(r.tsl ? String(r.tsl) : "");
   const [tp, setTp] = useState(r.tp ? String(r.tp) : "");
