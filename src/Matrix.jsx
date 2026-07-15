@@ -154,7 +154,7 @@ const CSS = `
 .sheet{animation:sheetUp .28s cubic-bezier(.22,1,.36,1) both}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
 .shine{background:linear-gradient(90deg,rgba(255,255,255,0) 0%,rgba(160,160,170,.55) 50%,rgba(255,255,255,0) 100%);background-size:200% 100%;animation:shimmer 2.6s infinite}
-.gradtext{background:linear-gradient(120deg,var(--primary),var(--primary-2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.gradtext{background:linear-gradient(120deg,var(--ink),var(--muted));-webkit-background-clip:text;background-clip:text;color:transparent}
 .gold-text{background:var(--gold-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
 .gold-line{height:1px;background:var(--gold-grad);opacity:.85}
 .silver-line{height:1px;background:var(--silver-grad);opacity:.7}
@@ -620,7 +620,7 @@ function AppInner() {
         <div className="glass" style={{ position: "sticky", top: 0, zIndex: 30, background: "var(--header-bg)", borderBottom: "1px solid var(--line)" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px 8px", gap: 8 }}>
             <div onClick={() => { setTab("home"); setDetail(null); }} className="tap disp" style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-              <MLogo size={30} />
+              <span style={{ color: "var(--ink)", display: "inline-flex" }}><MLogo size={30} /></span>
               <div style={{ display: "flex", flexDirection: "column", lineHeight: 1 }}>
                 <span className="gradtext" style={{ fontWeight: 800, fontSize: 20 }}>Matrix</span>
                 <span style={{ fontWeight: 700, fontSize: 10, letterSpacing: "0.22em", color: "var(--muted)", marginTop: 1 }}>ONE</span>

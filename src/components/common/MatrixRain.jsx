@@ -66,30 +66,15 @@ export default function MatrixRain({ onDone }) {
       `}</style>
 
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
-        {/* The mark, rendered in monochrome, with a sheen sweeping across once */}
+        {/* The mark — a clean scale + fade-in (no sheen; suits the outline ring) */}
         <div
           style={{
-            position: "relative",
             width: 96,
             height: 96,
             animation: "mx-logo-in 900ms cubic-bezier(.2,.7,.2,1) both",
-            overflow: "hidden",
-            borderRadius: 26,
           }}
         >
           <MLogoMono size={96} />
-          {/* one-pass white sheen */}
-          <div
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              width: "45%",
-              height: "100%",
-              background: "linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent)",
-              animation: "mx-sheen 900ms ease 550ms both",
-            }}
-          />
         </div>
 
         {/* Wordmark, monochrome, fades up just after the logo */}
@@ -106,8 +91,8 @@ export default function MatrixRain({ onDone }) {
 function MLogoMono({ size = 96 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="MatrixOne">
-      <rect x="2" y="2" width="96" height="96" rx="26" fill="#111" stroke="rgba(255,255,255,.14)" strokeWidth="1.5" />
-      <path d="M24 74 V30 L50 58 L76 30 V74" stroke="#fff" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+      <circle cx="50" cy="50" r="47" fill="none" stroke="#fff" strokeWidth="3" />
+      <path d="M32 66 V34 L50 54 L68 34 V66" stroke="#fff" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" fill="none" />
     </svg>
   );
 }

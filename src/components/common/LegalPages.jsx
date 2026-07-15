@@ -231,6 +231,22 @@ export function FAQ({ onClose }) {
       q: "Is my information safe, and can I delete it?",
       a: "Your PIN and security answer are stored only as one-way hashes, sessions use expiring tokens, and broker tokens never reach your browser. You can request access to or deletion of your data any time by emailing " + CONTACT_EMAIL + ".",
     },
+    {
+      q: "Does MatrixOne place trades on my behalf?",
+      a: "Only if you explicitly connect your own broker account and confirm an order. By default the app is for paper (virtual) trading and research. Any real order is placed with your own broker using credentials you provide, and you remain fully responsible for it. We never trade without your explicit action.",
+    },
+    {
+      q: "Is there any charge to use MatrixOne?",
+      a: "No. MatrixOne is a free personal project, not a commercial service. There are no subscriptions, fees, or paid tips. It exists purely for research and learning.",
+    },
+    {
+      q: "What is \"paper trading\" and how is it different from real trading?",
+      a: "Paper trading simulates buying and selling with virtual money, so you can test ideas with no financial risk. Nothing is sent to a real exchange and no real money moves. Real trading only happens if you separately connect a live broker and confirm orders yourself.",
+    },
+    {
+      q: "Why does the app sometimes take a moment to load data?",
+      a: "The backend runs on a free hosting tier that sleeps when idle, so the first request after a pause can take up to a minute to wake it. After that it responds normally. Market data may also be delayed depending on the source.",
+    },
   ];
   return (
     <Page title="FAQ" onClose={onClose}>
