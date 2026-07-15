@@ -8,6 +8,8 @@ import { lsGet, lsSet, getUserId } from "../lib/format";
  * Signing in with phone + PIN switches to a server-backed id, so history follows
  * them across devices.
  */
+import { setAuthToken } from "../services/tradeService";
+
 export function useAuth() {
   const [guestId] = useState(getUserId);
   const [auth, setAuth] = useState(() => lsGet("mx_auth", null));  // { phone, name } | null
@@ -24,6 +26,7 @@ export function useAuth() {
   const logout = () => {
     setAuth(null);
     lsSet("mx_auth", null);
+    setAuthToken(null);   // drop the session token so no authed calls succeed after logout
   };
 
   return { auth, userId, guestId, isAuthed: Boolean(auth), loginOpen, setLoginOpen, login, logout };

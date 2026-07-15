@@ -19,7 +19,7 @@ import { CUR, MKT_LABEL, fmt, compact, clamp, hash, lcg, DAY, timeAgo, lsGet, ls
 import { smaSeries, emaSeries as emaSeriesC, bollingerSeries, macdSeries, rsiSeries, OVERLAYS, CHART_TFS } from "./lib/indicators";
 import { getQuotes, getHistory, getNews, getIndicators } from "./services/marketService";
 import { ask as aiAsk, interpretScreen, interpretStrategy, marketBrief } from "./services/aiService";
-import { saveTrade as apiSaveTrade, listTrades, register as apiRegisterSvc, login as apiLoginSvc } from "./services/tradeService";
+import { saveTrade as apiSaveTrade, listTrades, register as apiRegisterSvc, login as apiLoginSvc, setOnUnauthorized, getAuthToken } from "./services/tradeService";
 import { validateOrder, isMarketOpen, DEFAULT_LIMITS } from "./services/riskService";
 import { analyzeStock } from "./services/aiService";
 import { recTone } from "./services/researchService";
@@ -480,6 +480,11 @@ function AppInner() {
   const [detail, setDetail] = useState(null);
   const [search, setSearch] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  /* A 401 from any data call means the token is missing/expired — prompt a re-login. Also
+     covers the one-time migration: users logged in before tokens existed have mx_auth but
+     no token, so their first authed call 401s and this brings up the login modal once. */
+  useEffect(() => { setOnUnauthorized(() => { if (auth) setLoginOpen(true); }); }, [auth, setLoginOpen]);
+  useEffect(() => { if (auth && !getAuthToken()) setLoginOpen(true); }, [auth, setLoginOpen]);
   const [isAdminUser, setIsAdminUser] = useState(false);   // controls whether the button shows
   const [adminOpen, setAdminOpen] = useState(false);
   const [adminKey, setAdminKey] = useState("");
