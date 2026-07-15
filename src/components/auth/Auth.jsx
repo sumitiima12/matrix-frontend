@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { } from "../../domain/universe";
 import { fmt, profileSummary } from "../../lib/format";
 import { Check, ChevronLeft, Clock, LogIn, LogOut, Sparkles, User } from "lucide-react";
-import { apiLogin, apiRegister, apiForgotQuestion, apiForgotReset } from "../../domain/api";
+import { apiLogin, apiRegister, apiForgotQuestion, apiForgotReset, apiGetSecurityQuestion, apiSetSecurityQuestion } from "../../domain/api";
 import EquityCurve from "../common/EquityCurve";
 
 /**
@@ -230,6 +230,54 @@ export function LoginModal({ onClose, onAuthed }) {
 const inpStyle = { width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: "12px 14px", fontSize: 15, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" };
 // Human-readable summary of the personalisation answers.
 
+/* Set/change your security question (recovery). Logged-in only; the backend derives the
+   account from the auth token, so a user can only set their own. */
+function SecurityQuestionCard() {
+  const [open, setOpen] = React.useState(false);
+  const [existing, setExisting] = React.useState(null);   // { hasQuestion, question }
+  const [q, setQ] = React.useState(""); const [ans, setAns] = React.useState("");
+  const [busy, setBusy] = React.useState(false); const [msg, setMsg] = React.useState(null);
+
+  const load = async () => {
+    const r = await apiGetSecurityQuestion();
+    if (r && r.ok) { setExisting(r); if (r.question) setQ(r.question); }
+  };
+  React.useEffect(() => { load(); }, []);
+
+  const save = async () => {
+    if (!q.trim() || !ans.trim()) { setMsg({ e: true, t: "Enter a question and an answer." }); return; }
+    setBusy(true); setMsg(null);
+    const r = await apiSetSecurityQuestion(q.trim(), ans.trim());
+    setBusy(false);
+    if (r && r.ok) { setMsg({ e: false, t: "Saved. You can use this to recover your PIN." }); setAns(""); setExisting({ hasQuestion: true, question: q.trim() }); setTimeout(() => setOpen(false), 1200); }
+    else setMsg({ e: true, t: (r && r.error) || "Couldn't save." });
+  };
+
+  const inp = { width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: "11px 13px", fontSize: 14, fontWeight: 600, background: "var(--elev)", color: "var(--ink)", marginTop: 8 };
+
+  return (
+    <div className="card" style={{ padding: 0, marginBottom: 9, overflow: "hidden" }}>
+      <button onClick={() => setOpen((v) => !v)} className="tap" style={{ width: "100%", textAlign: "left", padding: "13px 15px", border: "none", background: "transparent", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "var(--ink)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span>Security question {existing && existing.hasQuestion ? "(set)" : "(not set)"}</span>
+        <span style={{ color: "var(--muted)" }}>{open ? "\u2013" : "+"}</span>
+      </button>
+      {open && (
+        <div style={{ padding: "0 15px 15px" }}>
+          <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.5, marginBottom: 4 }}>
+            {existing && existing.hasQuestion ? "Update your recovery question and answer." : "Set a question only you can answer, so you can reset your PIN if you forget it."}
+          </div>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="e.g. First pet's name?" style={inp} />
+          <input value={ans} onChange={(e) => setAns(e.target.value)} placeholder="Answer" style={inp} />
+          {msg && <div style={{ fontSize: 11.5, color: msg.e ? "var(--down)" : "var(--up)", marginTop: 8, fontWeight: 600 }}>{msg.t}</div>}
+          <button onClick={save} disabled={busy} className="tap disp glow" style={{ width: "100%", marginTop: 10, padding: 11, borderRadius: 12, border: "none", background: "var(--primary)", color: "#fff", fontWeight: 800, fontSize: 13, cursor: "pointer", opacity: busy ? 0.7 : 1 }}>
+            {busy ? "Saving\u2026" : "Save security question"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, onAdmin, portfolio = [], trades = [], deposits = [], market = "IN", onBroker, brokerName }) {
   const WMKTS = [["IN", "🇮🇳 Indian stocks"], ["US", "🇺🇸 US stocks"], ["Crypto", "₿ Crypto"], ["FNO", "⚡ F&O"], ["Commodity", "🪙 Commodity"]];
   const summary = profileSummary(profile);
@@ -319,6 +367,7 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
           <button onClick={() => { onClose && onClose(); onPersonalise && onPersonalise(); }} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--surface)", color: "var(--primary)", border: "1px solid var(--primary)", borderRadius: 12, padding: 11, fontWeight: 800, fontSize: 13, display: "flex", gap: 7, alignItems: "center", justifyContent: "center" }}><Sparkles size={15} /> {profile ? "Update my answers" : "Personalise Matrix"}</button>
         </div>
 
+        {auth && <SecurityQuestionCard />}
         {auth && onAdmin && (
           <button onClick={() => { onAdmin(); }} className="tap card" style={{ width: "100%", textAlign: "left", padding: "13px 15px", marginBottom: 9, border: "1px solid var(--line)", background: "transparent", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>
             Admin console

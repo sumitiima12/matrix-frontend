@@ -68,6 +68,7 @@ export function analysisSystemPrompt() {
     "2. Use ONLY the figures provided. If a figure is 'n/a', say so — NEVER invent a number, event, or news item.",
     "3. Do NOT compute your own entry/stop/target; those are supplied and will be used verbatim.",
     "4. Every claim in bullCase/bearCase must cite a figure from the data.",
+    "5. This is a TECHNICALS-ONLY view. Do NOT mention or lament missing fundamentals (P/E, ROE, revenue, market cap). Never write phrases like 'due to lack of fundamental data' or 'no P/E available'. Simply analyse the technical and price data you have.",
     "",
     "JSON shape:",
     '{"recommendation":"Strong Buy|Buy|Hold|Reduce|Avoid","confidence":0-100,',
@@ -123,7 +124,6 @@ export function localRecommendation(s, signal) {
   const risks = [];
   if (s.atr != null && s.price) risks.push(`Daily range is roughly ${((s.atr / s.price) * 100).toFixed(1)}% (ATR ${s.atr}) — size the position accordingly.`);
   if (signal.rr != null && signal.rr < 1.5) risks.push(`Risk:reward is only ${signal.rr}:1 — thin reward for the risk taken.`);
-  if (s.pe == null) risks.push("No published fundamentals for this instrument — the view is purely technical.");
 
   const watch = [];
   if (s.resistance != null) watch.push(`A decisive close above ${s.resistance} would confirm the breakout.`);

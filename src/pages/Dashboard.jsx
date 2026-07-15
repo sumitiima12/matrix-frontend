@@ -297,7 +297,9 @@ function LiveNewsStrip({ symbols = [], onOpen, list = [], market = "IN" }) {
 function MarketBrief({ market, list = [] }) {
   const [text, setText] = useState(null);
   const [busy, setBusy] = useState(true);
-  const withData = list.filter((s) => s.hasData && s.chg != null);
+  // Exclude indices (India VIX, Nifty, etc.) — they are not stocks and must not appear
+  // as gainers/losers in the market brief.
+  const withData = list.filter((s) => s.hasData && s.chg != null && !s.isIndex);
   const key = market + "|" + Math.floor(Date.now() / 3600000) + "|" + withData.length;
   useEffect(() => {
     let stop = false;

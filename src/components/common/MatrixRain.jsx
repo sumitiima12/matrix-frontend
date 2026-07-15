@@ -1,148 +1,113 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 
 /**
- * MatrixRain — the cold-open.
+ * Splash — the cold-open. A clean black-and-white reveal of the MatrixOne mark: the logo
+ * scales and fades in with a soft sheen, holds briefly, then dissolves. No digital rain, no
+ * message — just the logo appearing with a premium, minimal effect.
  *
- * Digital rain for ~1s, then it dissolves into the Matrix wordmark. Canvas, not
- * SVG: this is a few hundred glyphs redrawn every frame, which is exactly what a
- * canvas is for and exactly what the DOM is not.
- *
- * Two things it does NOT do:
- *
- *  - It does not block the app. Data fetching starts behind it on mount; the rain
- *    is an overlay on a live app, not a gate in front of a dead one. A splash that
- *    delays the first quote by a second is a splash that costs the user a second.
- *
- *  - It does not run for people who asked it not to. `prefers-reduced-motion` is
- *    respected: they get the wordmark, no animation. Flickering high-contrast glyphs
- *    are a genuine problem for photosensitive users, and this is decoration.
- *
- * Shown once per browser session, not on every re-render or route change.
+ * Notes:
+ *  - It never blocks the app: data fetches start behind it; this is an overlay, not a gate.
+ *  - It respects `prefers-reduced-motion`: those users get a still logo, no animation.
+ *  - Shown once per browser session (the caller gates on sessionStorage).
  */
 
-const GLYPHS = "01011010110100101アイウエオカキクケコサシスセソタチツテト0101";
-const DURATION = 2100;      // rain — long enough to actually read it
-const FADE = 900;           // dissolve into the wordmark
+const REVEAL = 900;    // logo scales/fades in
+const HOLD = 650;      // sits fully visible
+const FADE = 550;      // whole splash fades out
 
 export default function MatrixRain({ onDone }) {
-  const canvasRef = useRef(null);
-  const [phase, setPhase] = useState("rain");   // rain -> logo -> gone
+  const [phase, setPhase] = useState("in");   // in -> hold -> out -> gone
 
   useEffect(() => {
     const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduced) {
-      setPhase("logo");
-      const t = setTimeout(() => { setPhase("gone"); onDone && onDone(); }, 1400);
+      const t = setTimeout(() => { setPhase("gone"); onDone && onDone(); }, 1200);
       return () => clearTimeout(t);
     }
-
-    const canvas = canvasRef.current;
-    if (!canvas) return undefined;
-    const ctx = canvas.getContext("2d");
-
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
-    canvas.style.width = w + "px";
-    canvas.style.height = h + "px";
-    ctx.scale(dpr, dpr);
-
-    const size = 14;
-    const cols = Math.ceil(w / size);
-    // Start each column at a random height so the rain is already falling when you
-    // arrive, rather than everything starting from the top in a neat row.
-    const drops = Array.from({ length: cols }, () => Math.random() * -40);
-
-    let raf;
-    const draw = () => {
-      // Translucent black over the last frame: this is what leaves the trailing
-      // comet tail behind each glyph. Clearing outright would give you rain with
-      // no wake, which reads as noise rather than falling.
-      ctx.fillStyle = "rgba(0, 8, 2, 0.10)";
-      ctx.fillRect(0, 0, w, h);
-
-      ctx.font = `600 ${size}px "SF Mono", ui-monospace, monospace`;
-
-      for (let i = 0; i < cols; i++) {
-        const ch = GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
-        const x = i * size;
-        const y = drops[i] * size;
-
-        // the leading glyph burns brighter than its tail
-        ctx.fillStyle = Math.random() > 0.975 ? "#D6FFE4" : "#22C55E";
-        ctx.fillText(ch, x, y);
-
-        if (y > h && Math.random() > 0.975) drops[i] = 0;
-        drops[i] += 1;
-      }
-      raf = requestAnimationFrame(draw);
-    };
-    draw();
-
-    const t1 = setTimeout(() => setPhase("logo"), DURATION);
-    const t2 = setTimeout(() => { setPhase("gone"); onDone && onDone(); }, DURATION + FADE + 700);
-
-    return () => {
-      cancelAnimationFrame(raf);
-      clearTimeout(t1);
-      clearTimeout(t2);
-    };
+    const t1 = setTimeout(() => setPhase("hold"), REVEAL);
+    const t2 = setTimeout(() => setPhase("out"), REVEAL + HOLD);
+    const t3 = setTimeout(() => { setPhase("gone"); onDone && onDone(); }, REVEAL + HOLD + FADE);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, [onDone]);
 
   if (phase === "gone") return null;
 
+  const fadingOut = phase === "out";
+
   return (
     <div
-      aria-hidden="true"
       style={{
-        position: "fixed", inset: 0, zIndex: 300,
-        background: "#000502",
-        display: "grid", placeItems: "center",
-        opacity: phase === "logo" ? 0 : 1,
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        background: "#000",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        opacity: fadingOut ? 0 : 1,
         transition: `opacity ${FADE}ms ease`,
-        pointerEvents: phase === "logo" ? "none" : "auto",
+        pointerEvents: "none",
       }}
     >
-      <canvas
-        ref={canvasRef}
-        style={{
-          position: "absolute", inset: 0,
-          opacity: phase === "logo" ? 0 : 0.85,
-          transition: "opacity 400ms ease",
-        }}
-      />
+      <style>{`
+        @keyframes mx-logo-in {
+          0%   { opacity: 0; transform: scale(0.82); filter: blur(6px); }
+          60%  { opacity: 1; filter: blur(0); }
+          100% { opacity: 1; transform: scale(1); filter: blur(0); }
+        }
+        @keyframes mx-sheen {
+          0%   { transform: translateX(-140%) skewX(-18deg); }
+          100% { transform: translateX(140%)  skewX(-18deg); }
+        }
+        @keyframes mx-word-in {
+          0%   { opacity: 0; transform: translateY(6px); }
+          100% { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
 
-      {/* The wordmark resolves out of the rain. */}
-      <div
-        style={{
-          position: "relative",
-          textAlign: "center",
-          opacity: phase === "logo" ? 1 : 0.92,
-          transform: phase === "logo" ? "scale(1.04)" : "scale(1)",
-          transition: "opacity 400ms ease, transform 700ms cubic-bezier(.2,.8,.2,1)",
-        }}
-      >
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+        {/* The mark, rendered in monochrome, with a sheen sweeping across once */}
         <div
-          className="disp"
           style={{
-            fontSize: 40, fontWeight: 800, letterSpacing: "-0.02em",
-            color: "#E9FFF1",
-            textShadow: "0 0 22px rgba(34,197,94,.65), 0 0 60px rgba(34,197,94,.35)",
+            position: "relative",
+            width: 96,
+            height: 96,
+            animation: "mx-logo-in 900ms cubic-bezier(.2,.7,.2,1) both",
+            overflow: "hidden",
+            borderRadius: 26,
           }}
         >
-          ✦ Matrix
+          <MLogoMono size={96} />
+          {/* one-pass white sheen */}
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "45%",
+              height: "100%",
+              background: "linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent)",
+              animation: "mx-sheen 900ms ease 550ms both",
+            }}
+          />
         </div>
-        <div
-          style={{
-            fontSize: 12.5, fontWeight: 700, letterSpacing: ".02em",
-            color: "#8AF0AE", marginTop: 12,
-          }}
-        >
-          Welcome to the World of Matrix
+
+        {/* Wordmark, monochrome, fades up just after the logo */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", lineHeight: 1, animation: "mx-word-in 500ms ease 500ms both" }}>
+          <span style={{ fontWeight: 800, fontSize: 26, letterSpacing: "0.01em", color: "#fff", fontFamily: "inherit" }}>Matrix</span>
+          <span style={{ fontWeight: 700, fontSize: 12, letterSpacing: "0.34em", color: "rgba(255,255,255,.55)", marginTop: 3 }}>ONE</span>
         </div>
       </div>
     </div>
+  );
+}
+
+/* A monochrome (black tile, white M) version of the mark for the black-and-white splash. */
+function MLogoMono({ size = 96 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="MatrixOne">
+      <rect x="2" y="2" width="96" height="96" rx="26" fill="#111" stroke="rgba(255,255,255,.14)" strokeWidth="1.5" />
+      <path d="M24 74 V30 L50 58 L76 30 V74" stroke="#fff" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </svg>
   );
 }

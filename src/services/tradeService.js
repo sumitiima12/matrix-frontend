@@ -109,3 +109,19 @@ export async function loadState(userId) {
     return (await r.json()).state || null;
   } catch { return null; }
 }
+
+/** Get the logged-in user's security question status. */
+export async function getMySecurityQuestion() {
+  if (!BACKEND_URL) return null;
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/security-question`, { headers: authHeaders() });
+    handle401(r.status);
+    if (!r.ok) return null;
+    return r.json().catch(() => null);
+  } catch { return null; }
+}
+
+/** Set/change the logged-in user's security question + answer. */
+export async function setMySecurityQuestion(question, answer) {
+  return post("/api/security-question", { question, answer });
+}

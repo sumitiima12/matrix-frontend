@@ -51,6 +51,8 @@ import BrokerSheet from "./components/common/BrokerSheet";
 import { brokerSymbol } from "./domain/brokerSymbols";
 import { brokerPlaceOrder } from "./services/brokerService";
 import MatrixRain from "./components/common/MatrixRain";
+import MLogo from "./components/common/MLogo";
+import { Footer, LegalOverlay } from "./components/common/LegalPages";
 import Toggle from "./components/common/Toggle";
 import { useBroker } from "./hooks/useBroker";
 import Block from "./components/common/Block";
@@ -480,6 +482,7 @@ function AppInner() {
   const [detail, setDetail] = useState(null);
   const [search, setSearch] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [legalPage, setLegalPage] = useState(null);   // "terms" | "privacy" | "disclaimer" | "faq" | null
   /* A 401 from any data call means the token is missing/expired — prompt a re-login. Also
      covers the one-time migration: users logged in before tokens existed have mx_auth but
      no token, so their first authed call 401s and this brings up the login modal once. */
@@ -617,8 +620,11 @@ function AppInner() {
         <div className="glass" style={{ position: "sticky", top: 0, zIndex: 30, background: "var(--header-bg)", borderBottom: "1px solid var(--line)" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px 8px", gap: 8 }}>
             <div onClick={() => { setTab("home"); setDetail(null); }} className="tap disp" style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-              <span style={{ color: "var(--primary)", fontSize: 19 }}>✦</span>
-              <span className="gradtext" style={{ fontWeight: 700, fontSize: 20 }}>Matrix</span>
+              <MLogo size={30} />
+              <div style={{ display: "flex", flexDirection: "column", lineHeight: 1 }}>
+                <span className="gradtext" style={{ fontWeight: 800, fontSize: 20 }}>Matrix</span>
+                <span style={{ fontWeight: 700, fontSize: 10, letterSpacing: "0.22em", color: "var(--muted)", marginTop: 1 }}>ONE</span>
+              </div>
               <div style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: 3 }}>
               </div>
             </div>
@@ -735,12 +741,15 @@ function AppInner() {
                   </div>
                 </div>
               )}
+              <Footer onOpen={(pg) => setLegalPage(pg)} />
             </>
           )}
           </Suspense>
           </ErrorBoundary>
         </div>
       </div>
+
+      {legalPage && <LegalOverlay page={legalPage} onClose={() => setLegalPage(null)} />}
 
       {/* BOTTOM NAV
           Deliberately a DIRECT CHILD OF THE ROOT, not of the page wrapper.
@@ -754,9 +763,9 @@ function AppInner() {
           is both visually wrong and a real hazard: the tap targets overlap the sheet's own
           controls, so a thumb reaching for "Buy" can land on "Watch". */}
       {!detail && !onboarding && !drawer && !confirmOrder && !walletOpen && !brokerOpen && !search && !showProfile && (
-        <div className="glass" style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--header-bg)", borderTop: "1px solid var(--line)", borderRadius: "22px 22px 0 0", boxShadow: "0 -10px 34px rgba(40,10,80,.3)", display: "flex", padding: "9px 4px 11px", zIndex: 100 }}>
+        <div className="glass" style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--header-bg)", borderTop: "1px solid var(--line)", borderRadius: "22px 22px 0 0", boxShadow: "0 -10px 34px rgba(40,10,80,.3)", display: "flex", padding: "11px 6px 16px", zIndex: 100 }}>
           {nav.map(([k, Icon, label]) => (
-            <button key={k} onClick={() => { setTab(k); setTradePreset(null); }} className="tap" style={{ flex: 1, border: "none", background: "transparent", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: tab === k ? "var(--primary)" : "var(--muted)" }}>
+            <button key={k} onClick={() => { setTab(k); setTradePreset(null); }} className="tap" style={{ flex: 1, border: "none", background: "transparent", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "6px 2px", minHeight: 52, color: tab === k ? "var(--primary)" : "var(--muted)" }}>
               <Icon size={20} fill={k === "watchlist" && tab === k ? "var(--primary)" : "none"} />
               <span style={{ fontSize: 9.5, fontWeight: 700 }}>{label}</span>
             </button>
