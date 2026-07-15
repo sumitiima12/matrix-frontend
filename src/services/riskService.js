@@ -27,7 +27,22 @@ export function isMarketOpen(market, now = new Date()) {
   if (day === 0 || day === 6) return false;
   const mins = now.getUTCHours() * 60 + now.getUTCMinutes();
   if (market === "IN") return mins >= 225 && mins <= 600;      // 09:15–16:00 IST
-  if (market === "US") return mins >= 810 && mins <= 1260;                          // 09:30–16:00 ET (approx, EDT)
+  // US observes DST, so a hardcoded UTC window is wrong half the year. Compute wall-clock
+  // time in the exchange timezone (Intl handles EST/EDT), then check 09:30-16:00 ET.
+  if (market === "US") {
+    try {
+      const et = new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/New_York", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false,
+      }).formatToParts(now);
+      const get = (t) => { const p = et.find((x) => x.type === t); return p ? p.value : ""; };
+      const wd = get("weekday");
+      if (wd === "Sat" || wd === "Sun") return false;
+      const etMins = parseInt(get("hour"), 10) * 60 + parseInt(get("minute"), 10);
+      return etMins >= 570 && etMins <= 960;   // 09:30-16:00 ET
+    } catch {
+      return mins >= 810 && mins <= 1260;      // fallback
+    }
+  }
   if (market === "Commodity") return mins >= 240 && mins <= 1410;
   return true;
 }
@@ -103,7 +118,10 @@ export function validateOrder(order, account) {
   const realisedToday = trades
     .filter((t) => (t.exitAt || 0) >= startOfDay() && (t.market || "IN") === market)
     .reduce((a, t) => a + (t.pnl || 0), 0);
-  const lossCap = -(wallet * limits.maxDailyLossPct) / 100;
+  // Base the cap on START-OF-DAY equity, not the current wallet — otherwise the cap shrinks
+  // as you lose (a moving target). Start-of-day wallet ≈ current wallet minus today's P&L.
+  const startOfDayWallet = wallet - realisedToday;
+  const lossCap = -(startOfDayWallet * limits.maxDailyLossPct) / 100;
   if (realisedToday < lossCap) {
     reasons.push(`Daily loss limit hit in ${market} (${realisedToday.toFixed(0)} vs cap ${lossCap.toFixed(0)}). Trading paused until tomorrow.`);
   }
