@@ -5,6 +5,7 @@ import { Check, ChevronLeft, Clock, LogIn, LogOut, Sparkles, User } from "lucide
 import { apiLogin, apiRegister, apiForgotQuestion, apiForgotReset, apiGetSecurityQuestion, apiSetSecurityQuestion } from "../../domain/api";
 import EquityCurve from "../common/EquityCurve";
 import headerLogo from "../../assets/brand/header-logo.png";
+import headerLogoDark from "../../assets/brand/header-logo-dark.png";
 import splashLockup from "../../assets/brand/splash-m.png";
 
 /**
@@ -73,7 +74,7 @@ export function LoginScreen({ onAuthed, onGuest }) {
   );
 }
 
-export function Onboarding({ onDone, onSkip, initial }) {
+export function Onboarding({ onDone, onSkip, initial, theme }) {
   const [step, setStep] = useState(0);
   const [p, setP] = useState(initial || { proficiency: "Beginner", risk: "Balanced", reward: "", style: "Technical", caps: [], sectors: [] });
   const steps = [
@@ -100,7 +101,7 @@ export function Onboarding({ onDone, onSkip, initial }) {
         <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 700 }}>Step {step + 1} of {steps.length}</span>
       </div>
       <div style={{ display: "flex", gap: 5 }}>{steps.map((_, i) => <div key={i} style={{ flex: 1, height: 4, borderRadius: 4, background: i <= step ? "var(--primary)" : "var(--line)" }} />)}</div>
-      <div style={{ marginTop: 30 }}><img src={headerLogo} alt="Matrix One" style={{ height: 34, width: "auto", display: "block" }} /></div>
+      <div style={{ marginTop: 30 }}><img src={theme === "dark" ? headerLogoDark : headerLogo} alt="Matrix One" style={{ height: 52, width: "auto", display: "block" }} /></div>
       <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>Let's personalise your edge.</div>
       <div className="disp" style={{ fontWeight: 700, fontSize: 19, marginTop: 30 }}>{cur.q}</div>
       <div style={{ marginTop: 16, flex: 1 }}>
