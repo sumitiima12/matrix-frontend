@@ -116,7 +116,7 @@ function MiniStat({ label, value, color }) {
   );
 }
 
-/* Shared "Analyze my portfolio" button + Oracle's read panel — used by both virtual and
+/* Shared "Analyze my portfolio" button + Neo's read panel — used by both virtual and
    real mode so the two behave identically. */
 function AnalyzeBlock({ onRun, loading, review }) {
   return (
@@ -127,12 +127,12 @@ function AnalyzeBlock({ onRun, loading, review }) {
         className="tap disp glow"
         style={{ width: "100%", padding: "13px", borderRadius: 12, border: "none", background: "var(--primary)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: loading ? "default" : "pointer", opacity: loading ? 0.7 : 1 }}
       >
-        {loading ? "Oracle is analyzing…" : "✨ Analyze my portfolio"}
+        {loading ? "Neo is analyzing…" : "✨ Analyze my portfolio"}
       </button>
       {review && (
         <div className="card fade" style={{ marginTop: 12, padding: 15 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
-            <span className="disp" style={{ fontWeight: 800, fontSize: 14 }}>Oracle's read</span>
+            <span className="disp" style={{ fontWeight: 800, fontSize: 14 }}>Neo's read</span>
             <span className="pill" style={{ fontSize: 8.5, fontWeight: 800, padding: "2px 7px", background: "var(--primary-soft)", color: "var(--primary)" }}>AI</span>
           </div>
           <div style={{ fontSize: 12.5, lineHeight: 1.6, color: "var(--ink)" }}>{review.overall}</div>
@@ -154,7 +154,7 @@ function AnalyzeBlock({ onRun, loading, review }) {
             </div>
           )}
           <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 12, lineHeight: 1.5 }}>
-            Oracle interprets your real holding numbers — it isn't financial advice. Always do your own check before acting.
+            Neo interprets your real holding numbers — it isn't financial advice. Always do your own check before acting.
           </div>
         </div>
       )}
@@ -170,7 +170,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
   const runAnalyze = async (payload) => {
     setAiLoading(true); setAiReview(null);
     try { setAiReview(await analyzePortfolio(payload)); }
-    catch { setAiReview({ overall: "Couldn't reach Oracle right now — try again in a moment.", holdings: [] }); }
+    catch { setAiReview({ overall: "Couldn't reach Neo right now — try again in a moment.", holdings: [] }); }
     finally { setAiLoading(false); }
   };
 
@@ -350,7 +350,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
             review={aiReview}
             onRun={() => runAnalyze(hold.map((h) => ({
               sym: h.sym, qty: h.qty, avg: h.avg, ltp: h.ltp,
-              trend: null, rsi: null,   // FYERS holdings carry no technicals; Oracle reads price/P&L only
+              trend: null, rsi: null,   // FYERS holdings carry no technicals; Neo reads price/P&L only
             })))}
           />
         )}

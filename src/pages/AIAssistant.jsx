@@ -3,11 +3,11 @@ import { useMatrixChat } from "../hooks/useMatrixChat";
 import { Bot, Send } from "lucide-react";
 
 /**
- * Oracle — the chat surface.
+ * Neo — the chat surface.
  *
- * Named for the Oracle in The Matrix: the one you go to for a reading, who tells
+ * Named for Neo in The Matrix: the one you go to for a reading, who tells
  * you what she sees rather than what you want to hear. Which is the whole point of
- * this app — Oracle never invents a number, and says so when the data is not there.
+ * this app — Neo never invents a number, and says so when the data is not there.
  */
 
 export default function ChatPanel({ context, suggestions, compactMode, stock }) {

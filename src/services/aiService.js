@@ -102,7 +102,7 @@ export async function analyzeStock(stock, signal, market = "IN") {
 }
 
 /**
- * analyzePortfolio — whole-book review through Oracle. Each holding's REAL, already-computed
+ * analyzePortfolio — whole-book review through Neo. Each holding's REAL, already-computed
  * numbers (price, avg, P&L%, trend, RSI when we have it) are handed to the model; the model
  * interprets, it does NOT invent figures. Returns { overall, holdings: [{sym, verdict, insight,
  * action}] }. Falls back to a grounded local read if the backend/JSON is unavailable.
@@ -124,7 +124,7 @@ export async function analyzePortfolio(holdings) {
   }));
 
   const system =
-    "You are Oracle, a markets analyst reviewing a real trading portfolio. " +
+    "You are Neo, a markets analyst reviewing a real trading portfolio. " +
     "You are given each holding's actual figures. Use ONLY these numbers — never invent prices, " +
     "targets, or statistics not present in the data. If a field is null, say the data isn't available " +
     "rather than guessing. Be concise and practical. " +
