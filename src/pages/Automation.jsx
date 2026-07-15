@@ -413,6 +413,66 @@ function SampleStrategyCard({ s, onActivate }) {
   );
 }
 
+/* Premium strategy card — locked. Shows only the name + a short description, with a
+   backtest and an activate toggle. No rules are revealed and it cannot be edited or
+   copied as a template. */
+function PremiumStrategyCard({ s, active, onToggle }) {
+  const { loading, stats } = useBacktestStats(s);
+  const [bt, setBt] = useState(false);
+
+  const Stat = ({ k, v, c }) => (
+    <div style={{ flex: 1, background: "var(--elev)", borderRadius: 11, padding: "9px 10px", minWidth: 0 }}>
+      <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 800, letterSpacing: ".03em" }}>{k}</div>
+      <div className="mono" style={{ fontWeight: 800, fontSize: 13.5, marginTop: 3, color: c || "var(--ink)" }}>{v}</div>
+    </div>
+  );
+
+  return (
+    <div className="card" style={{ marginTop: 12, padding: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+        <div style={{ minWidth: 0 }}>
+          <div className="disp" style={{ fontWeight: 700, fontSize: 14 }}>{s.name}</div>
+          {s.desc && <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 4, lineHeight: 1.5 }}>{s.desc}</div>}
+        </div>
+        <span className="pill gold-border" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 9px", color: "var(--gold)", flex: "0 0 auto", whiteSpace: "nowrap" }}>★ PREMIUM</span>
+      </div>
+
+      {loading ? (
+        <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 12 }}>Backtesting on real prices…</div>
+      ) : stats && stats.trades > 0 ? (
+        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+          <Stat k="WIN RATE" v={stats.winRate.toFixed(0) + "%"} />
+          <Stat k="TRADES" v={stats.trades} />
+          <Stat k="RETURN" v={pct(stats.retPct, 1)} c={chgColor(stats.retPct)} />
+        </div>
+      ) : null}
+
+      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+        <button
+          onClick={() => setBt((v) => !v)}
+          className="tap disp"
+          style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: bt ? "var(--elev)" : "transparent", color: "var(--ink)", borderRadius: 11, padding: "10px 14px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
+        >
+          <Activity size={14} /> Backtest
+        </button>
+        <button
+          onClick={onToggle}
+          className="tap disp"
+          style={{ flex: 1, border: "1px solid " + (active ? "var(--up)" : "var(--primary)"), background: active ? "var(--up-soft)" : "var(--primary)", color: active ? "var(--up)" : "#fff", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
+        >
+          {active ? "✓ Activated" : "Activate"}
+        </button>
+      </div>
+
+      {bt && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+          <BacktestResult cfg={s.cfg} defaultSym={(s.symbols && s.symbols[0]) || undefined} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Automation({ market = "IN", onRecord, trades = [], strats = [], setStrats, onExitAll }) {
   const [mode, setMode] = useState("plain");   // plain English is the default entry point
   const [defs, setDefs] = useState([
@@ -569,8 +629,11 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
   const [topTab, setTopTab] = useState("build");   // build | sample | mine  (top selector)
   const [activeTab, setActiveTab] = useState("active"); // active | inactive (inside My strategies)
   const stratsRef = useRef(null);
-  const sampleStrats = perf.filter(({ s }) => s.by === "Matrix");
-  const myStrats     = perf.filter(({ s }) => s.by !== "Matrix");
+  const sampleStrats = perf.filter(({ s }) => s.by === "Matrix" && !s.premium);
+  // Premium strategies are shown in EVERY market (not market-filtered) and are locked:
+  // name + description only, activate + backtest, no template/edit.
+  const premiumStrats = strats.filter((s) => s.premium);
+  const myStrats     = perf.filter(({ s }) => s.by !== "Matrix" && !s.premium);
   const myActive     = myStrats.filter(({ s }) => s.active);
   const myInactive   = myStrats.filter(({ s }) => !s.active);
   const byOptions = ["All", "Matrix", "You", "Community"];
@@ -675,13 +738,13 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
 
       {/* TOP SELECTOR — one place to switch between building, samples, and your own. */}
       <div style={{ display: "flex", gap: 7, marginTop: 18 }}>
-        {[["build", "Build"], ["sample", `Samples (${sampleStrats.length})`], ["mine", `My strategies (${myStrats.length})`]].map(([k, label]) => (
+        {[["build", "Build"], ["sample", `Samples (${sampleStrats.length})`], ["premium", `Premium (${premiumStrats.length})`], ["mine", `Mine (${myStrats.length})`]].map(([k, label]) => (
           <button
             key={k}
             onClick={() => setTopTab(k)}
             className="tap disp"
             style={{
-              flex: 1, borderRadius: 11, padding: "10px 6px", fontWeight: 800, fontSize: 12,
+              flex: 1, borderRadius: 11, padding: "10px 3px", fontWeight: 800, fontSize: 10.8,
               cursor: "pointer",
               border: "1px solid " + (topTab === k ? "var(--primary)" : "var(--line)"),
               background: topTab === k ? "var(--primary)" : "var(--surface)",
@@ -876,6 +939,15 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
         sampleStrats.length === 0
           ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No sample strategies for this market.</div>
           : sampleStrats.map(({ s }) => <SampleStrategyCard key={s.id} s={s} onActivate={useTemplateStrategy} />)
+      ) : topTab === "premium" ? (
+        <>
+          <div style={{ fontSize: 11.5, color: "var(--muted)", margin: "0 2px 4px", lineHeight: 1.5 }}>
+            Matrix's curated strategies — available in every market. Activate to run them live, or backtest first. Their rules are locked.
+          </div>
+          {premiumStrats.length === 0
+            ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No premium strategies available.</div>
+            : premiumStrats.map((s) => <PremiumStrategyCard key={s.id} s={s} active={s.active} onToggle={() => toggleActive(s.id)} />)}
+        </>
       ) : myStrats.length === 0 ? (
         <div className="card" style={{ marginTop: 12, padding: 20, textAlign: "center", color: "var(--muted)", fontSize: 12.5, lineHeight: 1.6 }}>
           You haven't created a strategy yet. Build one from the Build tab, or start from a sample.

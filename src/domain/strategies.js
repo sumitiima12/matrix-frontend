@@ -113,6 +113,37 @@ export const SEED_STRATS = [
       exit: [{ la: "CC.close", op: "<", bType: "ind", b: "PC.low" }], sl: "1", tp: "2" } },
 ];
 
+/**
+ * Premium strategies (s20–s38): Matrix's curated, locked strategies. They live in a
+ * separate "Premium" tab, appear in every market, and only expose a name + a short
+ * description — never the underlying rules. Users can activate and backtest them but
+ * cannot open, edit, or copy them as a template.
+ */
+const PREMIUM_DESC = {
+  s20: "Follows the prevailing trend and steps aside the moment it turns. Built for clean, momentum-driven moves.",
+  s21: "Catches decisive breakouts after a build-up of pressure, aiming to ride the expansion that follows.",
+  s22: "A disciplined trend-follower that stays with strength and exits when momentum fades.",
+  s23: "Enters when the trend is accelerating with momentum behind it, and leaves as it flattens out.",
+  s24: "Buys into pullbacks near fresh swing lows and books profit into swing strength.",
+  s25: "Targets high-energy breakouts backed by strong momentum, with a tight protective exit.",
+  s26: "A classic trend cross with a momentum filter, tuned to sidestep choppy, directionless phases.",
+  s27: "A multi-factor confluence model that only fires when several conditions agree — quality over quantity.",
+  s28: "An intraday trend system aligned with the session's fair value for cleaner entries.",
+  s29: "Fades stretched moves back toward the day's balance, aiming for the opposite extreme.",
+  s30: "Momentum turns confirmed by trend strength, designed to filter out weak signals.",
+  s31: "Trades continuation inside a strong trend once price reclaims a key zone.",
+  s32: "Rotates with the swing structure around a rolling fair-value line.",
+  s33: "Acts on decisive breaks of the prevailing range, aiming to capture the next leg.",
+  s34: "A layered trend-and-momentum filter that waits for strong, trending conditions.",
+  s35: "Reacts to price behaviour at dynamic support and resistance with tightly defined risk.",
+  s36: "Trades structure breaks in the direction of momentum while keeping risk defined.",
+  s37: "Aims to enter impulsive momentum legs and step out as they mature.",
+  s38: "Reads decisive intraday price action to time entries and exits.",
+};
+SEED_STRATS.forEach((s) => {
+  if (PREMIUM_DESC[s.id]) { s.premium = true; s.desc = PREMIUM_DESC[s.id]; }
+});
+
 export const ACTIVATE_SYMS = [...new Set(ALL.map((x) => x.sym))];
 
 /**
