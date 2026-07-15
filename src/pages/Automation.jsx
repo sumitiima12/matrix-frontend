@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { defOperands, chainCode, IND_CATALOG, TEMPLATES } from "../domain/strategyLang";
 import { backtest, parseRules } from "../domain/backtest";
 import { stratPerf } from "../domain/strategies";
-import { Activity, Bell, Bolt, Check, Pause, Play, Plus, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
+import { Activity, Bell, Bolt, Check, Copy, Pause, Play, Plus, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
 import { Area, AreaChart, Bar, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { BACKEND_URL } from "../config";
 import { chgColor, clamp, fmt, pct } from "../lib/format";
@@ -184,14 +184,20 @@ function BacktestResult({ cfg, defaultSym }) {
 const TFS = ["3m", "5m", "15m", "30m", "1h", "4h", "1D"];
 const OPSET = [[">", ">"], ["<", "<"], [">=", "≥"], ["<=", "≤"], ["==", "="], ["crosses_above", "⤴ crosses above"], ["crosses_below", "⤵ crosses below"], ["crossed_above_within", "⤴ crossed above (within N)"], ["crossed_below_within", "⤵ crossed below (within N)"]];
 
-function TemplateCard({ t, onActivate, onToggleBt, btActive, market = "IN" }) {
+function TemplateCard({ t, onActivate, onToggleBt, btActive, onLoad, market = "IN" }) {
   // Only symbols that belong to the market you are looking at.
   const symbolOptions = useMemo(() => {
     return (UNIVERSE[market] || []).map((s) => s.sym);
   }, [market]);
   const [syms, setSyms] = useState([]);
+  const stop = (e) => e.stopPropagation();
   return (
-    <div className="card" style={{ flex: "0 0 auto", width: 250, padding: 14 }}>
+    <div
+      className="card tap"
+      onClick={() => onLoad && onLoad(t)}
+      title="Tap to load into the builder below"
+      style={{ flex: "0 0 auto", width: 250, padding: 14, cursor: onLoad ? "pointer" : "default" }}
+    >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span className="disp" style={{ fontWeight: 700, fontSize: 13 }}>{t.name}</span>
         <span className="pill" style={{ fontSize: 10, background: "var(--primary-soft)", color: "var(--primary)", fontWeight: 700, padding: "2px 8px" }}>{t.tag}</span>
@@ -212,7 +218,8 @@ function TemplateCard({ t, onActivate, onToggleBt, btActive, market = "IN" }) {
           Indian equity — symbols the strategy could never sensibly trade. */}
       <select
         value={syms[0] || ""}
-        onChange={(e) => setSyms(e.target.value ? [e.target.value] : [])}
+        onClick={stop}
+        onChange={(e) => { e.stopPropagation(); setSyms(e.target.value ? [e.target.value] : []); }}
         aria-label="Symbol to activate this strategy on"
         style={{ ...selStyle, width: "100%" }}
       >
@@ -220,9 +227,10 @@ function TemplateCard({ t, onActivate, onToggleBt, btActive, market = "IN" }) {
         {symbolOptions.map((sym) => <option key={sym} value={sym}>{sym}</option>)}
       </select>
       <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-        <button disabled={!syms.length} onClick={() => syms.length && onActivate(t, syms)} className="tap pill" style={{ flex: 1, border: "none", background: syms.length ? "linear-gradient(120deg,var(--primary),var(--primary-2))" : "var(--elev)", color: syms.length ? "var(--on-primary)" : "var(--muted)", fontWeight: 700, fontSize: 11.5, padding: 9, cursor: syms.length ? "pointer" : "not-allowed", opacity: syms.length ? 1 : 0.7 }}>Activate</button>
-        <button onClick={() => onToggleBt(t.name)} className="tap pill" style={{ flex: "0 0 auto", border: "1px solid " + (btActive ? "var(--primary)" : "var(--line)"), background: btActive ? "var(--primary-soft)" : "var(--surface)", fontWeight: 700, fontSize: 11.5, padding: "9px 11px", color: btActive ? "var(--primary)" : "var(--ink)", display: "flex", gap: 4, alignItems: "center" }}><Activity size={13} /> Test</button>
+        <button disabled={!syms.length} onClick={(e) => { stop(e); syms.length && onActivate(t, syms); }} className="tap pill" style={{ flex: 1, border: "none", background: syms.length ? "linear-gradient(120deg,var(--primary),var(--primary-2))" : "var(--elev)", color: syms.length ? "var(--on-primary)" : "var(--muted)", fontWeight: 700, fontSize: 11.5, padding: 9, cursor: syms.length ? "pointer" : "not-allowed", opacity: syms.length ? 1 : 0.7 }}>Activate</button>
+        <button onClick={(e) => { stop(e); onToggleBt(t.name); }} className="tap pill" style={{ flex: "0 0 auto", border: "1px solid " + (btActive ? "var(--primary)" : "var(--line)"), background: btActive ? "var(--primary-soft)" : "var(--surface)", fontWeight: 700, fontSize: 11.5, padding: "9px 11px", color: btActive ? "var(--primary)" : "var(--ink)", display: "flex", gap: 4, alignItems: "center" }}><Activity size={13} /> Test</button>
       </div>
+      <div style={{ fontSize: 9.5, color: "var(--primary)", fontWeight: 700, marginTop: 9, display: "flex", alignItems: "center", gap: 4 }}><Copy size={11} /> Tap card to edit in builder</div>
     </div>
   );
 }
@@ -338,7 +346,7 @@ function NumF({ label, v, set }) {
  * candles and report exactly what came out — and we label it a backtest, because
  * that is what it is. Hindsight is not performance.
  */
-function SampleStrategyCard({ s, onActivate }) {
+function SampleStrategyCard({ s, onActivate, onClone }) {
   const { loading, stats } = useBacktestStats(s);
   const [bt, setBt] = useState(false);
 
@@ -392,14 +400,20 @@ function SampleStrategyCard({ s, onActivate }) {
         <button
           onClick={() => setBt((v) => !v)}
           className="tap disp"
-          style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: bt ? "var(--elev)" : "transparent", color: "var(--ink)", borderRadius: 11, padding: "10px 14px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
+          style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: bt ? "var(--elev)" : "transparent", color: "var(--ink)", borderRadius: 11, padding: "10px 13px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
         >
           <Activity size={14} /> Test
         </button>
+        {onClone && (
+          <button onClick={() => onClone(s)} className="tap disp"
+            style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 11, padding: "10px 13px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>
+            <Copy size={14} /> Clone
+          </button>
+        )}
         {onActivate && (
           <button onClick={() => onActivate(s)} className="tap disp"
             style={{ flex: 1, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>
-            Use this strategy
+            Use
           </button>
         )}
       </div>
@@ -594,6 +608,33 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
 
   /* "Use this strategy" on a sample: copy its rules and symbols into your own. */
   const useTemplateStrategy = (s) => activateTemplate({ name: s.name, cfg: s.cfg }, s.symbols);
+
+  /* Clone: drop an editable copy into "My strategies" (inactive), so you can tweak it
+     before deploying. Works from Samples and from your own strategies. */
+  const cloneStrategy = (s) => {
+    const id = "c" + Date.now();
+    setStrats((p) => [
+      { id, name: s.name + " (copy)", by: "You", active: false, alerts: false, cfg: s.cfg, cap: s.cap || 100000, symbols: (s.symbols || []).slice(), tf: s.tf, created: Date.now() },
+      ...p,
+    ]);
+    setToast(`Cloned "${s.name}" into My strategies — edit it there.`);
+    setStratTab("mine"); setTopTab("mine");
+    setTimeout(() => stratsRef.current && stratsRef.current.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+  };
+
+  /* Load a Strategy Idea (template) into the builder below: fills the indicators (Step 1)
+     and the entry/exit signals (Step 2), plus stop-loss / target, ready to tweak. */
+  const loadTemplate = (t) => {
+    const cfg = t.cfg || {};
+    setMode("builder");
+    setShowBuilder(true);
+    setDefs((cfg.defs || []).map((d, i) => ({ id: Date.now() + i, tf: d.tf || "1D", ...d })));
+    setEntryConds((cfg.entry || []).map((c) => ({ ...c })));
+    setExitConds((cfg.exit || []).map((c) => ({ ...c })));
+    if (cfg.sl != null) setSl(String(cfg.sl));
+    if (cfg.tp != null) setTp(String(cfg.tp));
+    setToast(`Loaded "${t.name}" — edit the indicators and signals below.`);
+  };
   // Record simulated trades produced by an activated automation (deduped by id).
   // Activating a strategy places REAL positions at the live price with the strategy's
   // target/stop. The exit engine then closes them at real market prices. Nothing is
@@ -682,6 +723,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
         <button onClick={() => setEditStrat(editStrat === s.id ? null : s.id)} className="tap" title="Edit symbols & timeframe" style={{ border: "1px solid " + (editStrat === s.id ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: editStrat === s.id ? "var(--primary-soft)" : "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: editStrat === s.id ? "var(--primary)" : "var(--ink)" }}><SlidersHorizontal size={14} /></button>
         <button onClick={() => toggleAlerts(s)} className="tap" title="Alert on entry/exit signal" style={{ border: "1px solid " + (s.alerts ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: s.alerts ? "var(--primary)" : "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: s.alerts ? "var(--on-primary)" : "var(--ink)" }}><Bell size={14} /></button>
         <button onClick={() => setBtOpen(btOpen === s.id ? null : s.id)} className="tap" style={{ border: "1px solid " + (btOpen === s.id ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: btOpen === s.id ? "var(--primary-soft)" : "var(--surface)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 700, color: btOpen === s.id ? "var(--primary)" : "var(--ink)" }}><Activity size={13} /> Test</button>
+        <button onClick={() => cloneStrategy(s)} className="tap" title="Clone into a new editable strategy" style={{ border: "1px solid var(--line)", borderRadius: 11, background: "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: "var(--ink)" }}><Copy size={14} /></button>
         <button onClick={() => toggleActive(s.id)} className="tap disp" style={{ flex: 1, borderRadius: 11, background: s.active ? "var(--surface)" : "linear-gradient(120deg,var(--up),#0EA968)", color: s.active ? "var(--ink)" : "#fff", boxShadow: s.active ? "none" : "0 6px 16px rgba(16,185,129,.3)", padding: "7px 10px", display: "flex", gap: 5, alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800, border: s.active ? "1px solid var(--line)" : "none" }}>
           {s.active ? <><Pause size={13} /> Deactivate</> : <><Play size={13} /> Activate</>}
         </button>
@@ -779,7 +821,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
               <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", margin: "18px 2px 10px", display: "flex", alignItems: "center", gap: 7 }}><Sparkles size={14} color="var(--primary)" /> Strategy Ideas — pick a symbol, then activate</div>
               <div className="hide-scroll" style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 2 }}>
                 {TEMPLATES.map((t) => (
-                  <TemplateCard key={t.name} t={t} market={market} onActivate={activateTemplate} onToggleBt={(n) => setBtTpl(btTpl === n ? null : n)} btActive={btTpl === t.name} />
+                  <TemplateCard key={t.name} t={t} market={market} onActivate={activateTemplate} onToggleBt={(n) => setBtTpl(btTpl === n ? null : n)} btActive={btTpl === t.name} onLoad={loadTemplate} />
                 ))}
               </div>
               {btTpl && (
@@ -938,7 +980,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
       {topTab === "sample" ? (
         sampleStrats.length === 0
           ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No sample strategies for this market.</div>
-          : sampleStrats.map(({ s }) => <SampleStrategyCard key={s.id} s={s} onActivate={useTemplateStrategy} />)
+          : sampleStrats.map(({ s }) => <SampleStrategyCard key={s.id} s={s} onActivate={useTemplateStrategy} onClone={cloneStrategy} />)
       ) : topTab === "premium" ? (
         <>
           <div style={{ fontSize: 11.5, color: "var(--muted)", margin: "0 2px 4px", lineHeight: 1.5 }}>
