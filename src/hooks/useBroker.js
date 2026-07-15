@@ -25,6 +25,11 @@ import {
  * app falls back to Yahoo, rather than flying a "LIVE" badge over stale numbers.
  */
 export function useBroker({ onTick, userId, intervalMs = 2000 } = {}) {
+  /* Consecutive quote failures per broker. A cold Render backend routinely 502s the first
+     poll or two right after connect — that must NOT be treated as a dead token. We only
+     drop a broker after several failures in a row, and only ever on a genuine auth status
+     (a clean 401/403), never on a transient 502 or a network blip. */
+  const failStreak = useRef({});
   /* A MAP of broker -> session. One broker per market, several at once. */
   const [sessions, setSessions] = useState(() => loadSessions());
   const [lastTick, setLastTick] = useState(null);
@@ -138,15 +143,28 @@ export function useBroker({ onTick, userId, intervalMs = 2000 } = {}) {
             s.liveSource = sess.broker;             // this price is live, not delayed
             n++;
           });
+          failStreak.current[sess.broker] = 0;    // healthy poll — reset the failure count
           return { n };
         } catch (e) {
           const msg = String(e.message || e);
-          /* A dead token is the normal end of a broker day. Drop THAT broker only — the
-             others keep streaming. Blanking every feed because one expired would be worse
-             than the outage itself. */
-          if (/session|token|auth|401|403/i.test(msg)) {
+          const status = e && e.status;
+
+          /* Only a CLEAN auth status means the token is actually dead. A 502/500/network
+             error is the cold backend or an upstream hiccup — keep the session, it will
+             recover on the next tick. This is the fix for "connects then immediately drops":
+             the first poll after connect often 502s while Render wakes, and the old code
+             cleared the session on any error string containing "401"/"token"/etc. */
+          const isAuthFailure = status === 401 || status === 403;
+
+          const streak = (failStreak.current[sess.broker] || 0) + 1;
+          failStreak.current[sess.broker] = streak;
+
+          /* Drop the broker only on a real auth failure AND only after it has actually
+             failed a couple of times in a row — never on the very first poll. */
+          if (isAuthFailure && streak >= 2) {
             clearSession(sess.broker);
             setSessions((p) => { const c = { ...p }; delete c[sess.broker]; return c; });
+            failStreak.current[sess.broker] = 0;
           }
           return { n: 0, err: `${sess.broker}: ${msg}` };
         }

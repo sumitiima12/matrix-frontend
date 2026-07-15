@@ -107,7 +107,11 @@ async function get(path, headers = {}) {
   if (!BACKEND_URL) throw new Error("no-backend");
   const r = await fetch(`${BACKEND_URL}${path}`, { headers });
   const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+  if (!r.ok) {
+    const err = new Error(d.error || `HTTP ${r.status}`);
+    err.status = r.status;      // so callers can tell a dead token (401/403) from a 502
+    throw err;
+  }
   return d;
 }
 
