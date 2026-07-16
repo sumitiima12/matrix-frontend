@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { currentIdeas, resolveIdea } from "../domain/ideas";
 import { BACKEND_URL } from "../config";
 import { fmt } from "../lib/format";
-import { ALL, marketOf } from "../domain/universe";
-import { fetchHistory } from "../domain/api";
+import { ALL, marketOf, UNIVERSE } from "../domain/universe";
+import { fetchHistory, apiListIdeas, apiPostIdea, apiDeleteIdea } from "../domain/api";
+import { ChevronDown, ChevronUp, Plus, Trash2, X } from "lucide-react";
 import MiniCandles from "../components/charts/MiniCandles";
 import { selStyle } from "../components/common/styles";
 import BuyButton from "../components/common/BuyButton";
@@ -82,7 +83,94 @@ function IdeasDashboard({ ideas }) {
   );
 }
 
-export default function Ideas({ onOpen, onBuy, market = "IN", onWhy }) {
+/* Community ideas — anyone can post; everyone sees them. Filters by symbol and poster. */
+function CommunityIdeas({ market, me, isAdmin, onOpen }) {
+  const [list, setList] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [fBy, setFBy] = useState("");
+  const [fSym, setFSym] = useState("");
+  const [sym, setSym] = useState("");
+  const [dir, setDir] = useState("Long");
+  const [note, setNote] = useState("");
+  const [tgt, setTgt] = useState("");
+  const [stp, setStp] = useState("");
+  const [busy, setBusy] = useState(false);
+  const symOptions = useMemo(() => (UNIVERSE[market] || []).map((s) => s.sym), [market]);
+  const refresh = () => { setLoading(true); apiListIdeas({ symbol: fSym, by: fBy }).then((l) => { setList(Array.isArray(l) ? l : []); setLoading(false); }); };
+  useEffect(() => { refresh(); /* eslint-disable-next-line */ }, [fSym, fBy]);
+  const marketList = list.filter((i) => marketOf(i.symbol) === market);
+  const byOptions = useMemo(() => Array.from(new Set(marketList.map((i) => i.owner_name).filter(Boolean))), [list, market]);
+  const symFilterOptions = useMemo(() => Array.from(new Set(marketList.map((i) => i.symbol))), [list, market]);
+  const submit = async () => {
+    if (!sym) return;
+    setBusy(true);
+    const r = await apiPostIdea({ symbol: sym, direction: dir, note, target: tgt, stop: stp });
+    setBusy(false);
+    if (r && r.ok) { setSym(""); setNote(""); setTgt(""); setStp(""); setShowForm(false); refresh(); }
+  };
+  const del = async (id) => { await apiDeleteIdea(id); refresh(); };
+  const sel = { ...selStyle, flex: "1 1 0", minWidth: 0, fontSize: 11.5 };
+  const dt = (t) => { try { return new Date(t).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }); } catch { return ""; } };
+  return (
+    <div style={{ marginTop: 22 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <div className="disp" style={{ fontWeight: 700, fontSize: 16 }}>Community ideas</div>
+        <button onClick={() => setShowForm((v) => !v)} className="tap disp" style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid var(--primary)", background: showForm ? "var(--primary-soft)" : "var(--primary)", color: showForm ? "var(--primary)" : "#fff", borderRadius: 11, padding: "8px 12px", fontWeight: 800, fontSize: 12 }}>{showForm ? <><X size={14} /> Close</> : <><Plus size={15} /> Post an idea</>}</button>
+      </div>
+
+      {showForm && (
+        <div className="card" style={{ padding: 14, marginBottom: 12 }}>
+          {!me && <div style={{ fontSize: 11.5, color: "var(--amber, #F59E0B)", fontWeight: 600, marginBottom: 8 }}>Sign in to post an idea.</div>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <select value={sym} onChange={(e) => setSym(e.target.value)} aria-label="Symbol" style={sel}><option value="">Symbol…</option>{symOptions.map((s) => <option key={s} value={s}>{s}</option>)}</select>
+            <select value={dir} onChange={(e) => setDir(e.target.value)} aria-label="Direction" style={sel}><option>Long</option><option>Short</option></select>
+          </div>
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Why this trade? (thesis, levels…)" className="no-ring" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 11, fontSize: 13, minHeight: 64, background: "var(--elev)", color: "var(--ink)", marginTop: 8, resize: "vertical" }} />
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <input value={tgt} onChange={(e) => setTgt(e.target.value)} placeholder="Target (optional)" className="no-ring mono" style={{ ...sel, textAlign: "center" }} />
+            <input value={stp} onChange={(e) => setStp(e.target.value)} placeholder="Stop (optional)" className="no-ring mono" style={{ ...sel, textAlign: "center" }} />
+          </div>
+          <button onClick={submit} disabled={busy || !sym || !me} className="tap disp glow" style={{ width: "100%", marginTop: 10, background: (sym && me) ? "linear-gradient(120deg,var(--primary),var(--primary-2))" : "var(--elev)", color: (sym && me) ? "#fff" : "var(--muted)", border: "none", borderRadius: 12, padding: 12, fontWeight: 800, fontSize: 13 }}>{busy ? "Posting…" : "Post idea"}</button>
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
+        <select value={fSym} onChange={(e) => setFSym(e.target.value)} aria-label="Symbol filter" style={sel}><option value="">Symbol: All</option>{symFilterOptions.map((s) => <option key={s} value={s}>{s}</option>)}</select>
+        <select value={fBy} onChange={(e) => setFBy(e.target.value)} aria-label="Posted by filter" style={sel}><option value="">Posted by: All</option>{byOptions.map((b) => <option key={b} value={b}>{b}</option>)}</select>
+      </div>
+
+      {loading ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 10 }}>Loading ideas…</div>
+        : marketList.length === 0 ? <div className="card" style={{ marginTop: 10, padding: 16, textAlign: "center", color: "var(--muted)", fontSize: 12.5 }}>No community ideas here yet — be the first to post one.</div>
+        : marketList.map((idea) => {
+          const s = ALL.find((a) => a.sym === idea.symbol);
+          const canDel = isAdmin || (me && idea.owner_name === me);
+          return (
+            <div key={idea.id} className="card" style={{ marginTop: 10, padding: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                  <span onClick={() => s && onOpen(s)} className="disp tap" style={{ fontWeight: 700, fontSize: 14 }}>{idea.symbol}</span>
+                  <span className="pill" style={{ fontSize: 10, fontWeight: 800, padding: "3px 8px", background: idea.direction === "Short" ? "var(--down-soft)" : "var(--up-soft)", color: idea.direction === "Short" ? "var(--down)" : "var(--up)" }}>{idea.direction}</span>
+                </div>
+                <span style={{ fontSize: 10.5, color: "var(--muted)", flex: "0 0 auto" }}>by {idea.owner_name || "user"} · {dt(idea.created_at)}</span>
+              </div>
+              {idea.note && <div style={{ fontSize: 12.5, lineHeight: 1.55, color: "var(--ink-soft, var(--ink))", marginTop: 8 }}>{idea.note}</div>}
+              {(idea.target || idea.stop) && (
+                <div style={{ display: "flex", gap: 14, marginTop: 8, fontSize: 11.5 }}>
+                  {idea.target && <span style={{ color: "var(--muted)" }}>Target <b className="mono" style={{ color: "var(--up)" }}>{idea.target}</b></span>}
+                  {idea.stop && <span style={{ color: "var(--muted)" }}>Stop <b className="mono" style={{ color: "var(--down)" }}>{idea.stop}</b></span>}
+                </div>
+              )}
+              {canDel && <button onClick={() => del(idea.id)} className="tap" title="Delete" style={{ marginTop: 8, border: "1px solid var(--line)", background: "transparent", color: "var(--down)", borderRadius: 9, padding: "5px 10px", fontSize: 11, fontWeight: 700, display: "inline-flex", gap: 5, alignItems: "center" }}><Trash2 size={12} /> Delete</button>}
+            </div>
+          );
+        })}
+    </div>
+  );
+}
+
+export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, isAdmin = false }) {
+  const [dashOpen, setDashOpen] = useState(false);
   // Recomputed from real data as it arrives, rather than frozen at import time.
   const [ideas, setIdeas] = useState(currentIdeas);
   useEffect(() => {
@@ -109,8 +197,17 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy }) {
         <div><div className="disp" style={{ fontWeight: 700, fontSize: 20 }}>Ideas</div><div style={{ fontSize: 11.5, color: "var(--muted)" }}>{{ IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", FNO: "⚡ F&O", Commodity: "🪙 Commodity" }[market]}</div></div>
       </div>
 
-      <IdeasDashboard ideas={shown} />
-      {shown.length === 0 && <div className="card" style={{ marginTop: 12, padding: 16, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No ideas for this market yet. Post one, or switch markets from the tabs above.</div>}
+      {!dashOpen ? (
+        <button onClick={() => setDashOpen(true)} className="tap disp card glow metal" style={{ width: "100%", marginTop: 14, border: "none", background: "var(--feature-grad)", color: "#fff", borderRadius: 24, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700, fontSize: 14 }}>
+          Ideas Dashboard <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, opacity: .9 }}>Expand <ChevronDown size={15} /></span>
+        </button>
+      ) : (
+        <div style={{ position: "relative" }}>
+          <IdeasDashboard ideas={shown} />
+          <button onClick={() => setDashOpen(false)} className="tap" style={{ position: "absolute", top: 14, right: 16, display: "flex", alignItems: "center", gap: 4, border: "1px solid rgba(255,255,255,.28)", background: "rgba(255,255,255,.1)", color: "#fff", borderRadius: 10, padding: "5px 9px", fontWeight: 800, fontSize: 10.5 }}>Collapse <ChevronUp size={12} /></button>
+        </div>
+      )}
+      {shown.length === 0 && <div className="card" style={{ marginTop: 12, padding: 16, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No Matrix ideas for this market yet. Post one below, or switch markets from the tabs above.</div>}
       {shown.map((idea, i) => {
         const s = ALL.find((a) => a.sym === idea.sym); const m = marketOf(idea.sym);
         return (
@@ -145,6 +242,8 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy }) {
           </div>
         );
       })}
+
+      <CommunityIdeas market={market} me={me} isAdmin={isAdmin} onOpen={onOpen} />
     </div>
   );
 }

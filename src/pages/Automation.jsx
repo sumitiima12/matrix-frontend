@@ -2,14 +2,14 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { defOperands, chainCode, IND_CATALOG, TEMPLATES } from "../domain/strategyLang";
 import { backtest, parseRules } from "../domain/backtest";
 import { stratPerf } from "../domain/strategies";
-import { Activity, Bell, Bolt, Check, Copy, Pause, Play, Plus, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
+import { Activity, Bell, Bolt, Check, ChevronDown, ChevronUp, Copy, Globe, Pause, Pencil, Play, Plus, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
 import { Area, AreaChart, Bar, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { BACKEND_URL } from "../config";
 import { chgColor, clamp, fmt, pct } from "../lib/format";
 import { useBacktestStats } from "../hooks/useBacktestStats";
 import { SMAarr, EMAarr, RSIarr, MACDarr, BBarr, CCIarr, ATRarr, VWAParr, ADXarr, CF } from "../lib/series";
 import { ALL, UNIVERSE, marketOf } from "../domain/universe";
-import { aiInterpretStrategy } from "../domain/api";
+import { aiInterpretStrategy, apiListPublicStrategies, apiPublishStrategy, apiUnpublishStrategy } from "../domain/api";
 import { humanizeStrategy } from "../domain/strategyLang";
 import { useCandles } from "../hooks/useCandles";
 import OptionLeg from "../components/common/OptionLeg";
@@ -184,7 +184,7 @@ function BacktestResult({ cfg, defaultSym }) {
 const TFS = ["3m", "5m", "15m", "30m", "1h", "4h", "1D"];
 const OPSET = [[">", ">"], ["<", "<"], [">=", "≥"], ["<=", "≤"], ["==", "="], ["crosses_above", "⤴ crosses above"], ["crosses_below", "⤵ crosses below"], ["crossed_above_within", "⤴ crossed above (within N)"], ["crossed_below_within", "⤵ crossed below (within N)"]];
 
-function TemplateCard({ t, onActivate, onToggleBt, btActive, onLoad, market = "IN" }) {
+function TemplateCard({ t, onActivate, onToggleBt, btActive, onLoad, selected = false, market = "IN" }) {
   // Only symbols that belong to the market you are looking at.
   const symbolOptions = useMemo(() => {
     return (UNIVERSE[market] || []).map((s) => s.sym);
@@ -195,8 +195,8 @@ function TemplateCard({ t, onActivate, onToggleBt, btActive, onLoad, market = "I
     <div
       className="card tap"
       onClick={() => onLoad && onLoad(t)}
-      title="Tap to load into the builder below"
-      style={{ flex: "0 0 auto", width: 250, padding: 14, cursor: onLoad ? "pointer" : "default" }}
+      title="Tap to load into the builder (tap again to clear)"
+      style={{ flex: "0 0 auto", width: 250, padding: 14, cursor: onLoad ? "pointer" : "default", border: selected ? "1.5px solid var(--primary)" : undefined, boxShadow: selected ? "0 0 0 3px var(--primary-soft)" : undefined }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span className="disp" style={{ fontWeight: 700, fontSize: 13 }}>{t.name}</span>
@@ -346,7 +346,7 @@ function NumF({ label, v, set }) {
  * candles and report exactly what came out — and we label it a backtest, because
  * that is what it is. Hindsight is not performance.
  */
-function SampleStrategyCard({ s, onActivate, onClone }) {
+function SampleStrategyCard({ s, onActivate, onClone, onEdit }) {
   const { loading, stats } = useBacktestStats(s);
   const [bt, setBt] = useState(false);
 
@@ -410,6 +410,12 @@ function SampleStrategyCard({ s, onActivate, onClone }) {
             <Copy size={14} /> Clone
           </button>
         )}
+        {onEdit && (
+          <button onClick={() => onEdit(s)} className="tap disp" title="Admin: edit this strategy"
+            style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 11, padding: "10px 13px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>
+            <Pencil size={14} /> Edit
+          </button>
+        )}
         {onActivate && (
           <button onClick={() => onActivate(s)} className="tap disp"
             style={{ flex: 1, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>
@@ -430,7 +436,7 @@ function SampleStrategyCard({ s, onActivate, onClone }) {
 /* Premium strategy card — locked. Shows only the name + a short description, with a
    backtest and an activate toggle. No rules are revealed and it cannot be edited or
    copied as a template. */
-function PremiumStrategyCard({ s, active, onToggle }) {
+function PremiumStrategyCard({ s, active, onToggle, onEdit }) {
   const { loading, stats } = useBacktestStats(s);
   const [bt, setBt] = useState(false);
 
@@ -469,6 +475,12 @@ function PremiumStrategyCard({ s, active, onToggle }) {
         >
           <Activity size={14} /> Backtest
         </button>
+        {onEdit && (
+          <button onClick={() => onEdit(s)} className="tap disp" title="Admin: edit this strategy"
+            style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 11, padding: "10px 13px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>
+            <Pencil size={14} /> Edit
+          </button>
+        )}
         <button
           onClick={onToggle}
           className="tap disp"
@@ -487,7 +499,8 @@ function PremiumStrategyCard({ s, active, onToggle }) {
   );
 }
 
-export default function Automation({ market = "IN", onRecord, trades = [], strats = [], setStrats, onExitAll }) {
+export default function Automation({ market = "IN", onRecord, trades = [], strats = [], setStrats, onExitAll, me = null, isAdmin = false }) {
+  const creator = me || "You";   // the "created by" tag for anything this user makes
   const [mode, setMode] = useState("plain");   // plain English is the default entry point
   const [defs, setDefs] = useState([
     { id: 1, type: "EMA", len: "50", tf: "1D", name: "EMA1" },
@@ -535,6 +548,8 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
   };
 
   const [stratName, setStratName] = useState("");
+  const [editingId, setEditingId] = useState(null);       // when set, Save updates this strategy in place
+  const [selectedTpl, setSelectedTpl] = useState(null);   // highlighted Strategy Idea (tap toggles)
   const [showBuilder, setShowBuilder] = useState(true);   // create-strategy panel open by default
   const [showBt, setShowBt] = useState(false);
   const [optLeg, setOptLeg] = useState({ enabled: false, expiry: "Current week", type: "CE", moneyness: "ATM", steps: 1, lots: 1 });
@@ -543,7 +558,23 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
   const [notifs, setNotifs] = useState([]);
   const [toast, setToast] = useState(null);
   const [dashBy, setDashBy] = useState("All");
-  const [dashRange, setDashRange] = useState(365);
+  const [dashOpen, setDashOpen] = useState(false);          // collapsed by default (P&L only)
+  const [dashPreset, setDashPreset] = useState("12m");
+  const [dashFrom, setDashFrom] = useState("");             // custom range (yyyy-mm-dd)
+  const [dashTo, setDashTo] = useState("");
+  const dashRange = useMemo(() => {
+    const DAY = 86400000, now = Date.now(), d = new Date();
+    switch (dashPreset) {
+      case "today": { const s = new Date(); s.setHours(0, 0, 0, 0); return Math.max(1 / 24, (now - s.getTime()) / DAY); }
+      case "7d": return 7;
+      case "month": { const s = new Date(d.getFullYear(), d.getMonth(), 1).getTime(); return Math.max(1, (now - s) / DAY); }
+      case "6m": return 180;
+      case "12m": return 365;
+      case "custom": { if (dashFrom) { const f = new Date(dashFrom + "T00:00:00").getTime(); return Math.max(1, (now - f) / DAY); } return 365; }
+      default: return 365;
+    }
+  }, [dashPreset, dashFrom]);
+  const DASH_PRESETS = [["today", "Today"], ["7d", "Last 7 days"], ["month", "This month"], ["6m", "Last 6 months"], ["12m", "Last 12 months"], ["custom", "Custom range"]];
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3400); return () => clearTimeout(t); }, [toast]);
   function fireAlert(a) {
     /* This used to run a backtest over SIMULATED NIFTY candles and report the result
@@ -583,24 +614,49 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
      the ATM call" is a property of the strategy. */
   const saveStrategy = (makeActive) => {
     const name = stratName.trim() || (mode === "builder" ? "Custom strategy" : "Plain-English strategy");
-    const id = "u" + Date.now();
     const symbols = deploySyms.length ? deploySyms : ["NIFTY50"];
-    const strat = { id, name, by: "You", active: makeActive, alerts: false, cfg, opt: optLeg, qty: Math.max(1, parseInt(capital) || 1), buyType, entryType, limitOffset: entryType === "Limit" ? (parseFloat(limitOffset) || 0) : null, maxTrades: Math.max(1, parseInt(maxTrades) || 5), maxReentries: Math.max(0, parseInt(maxReentries) || 5), cap: parseInt(capital) || 1, symbols, created: Date.now() };
-    setStrats((p) => [strat, ...p]);
+    const base = { name, by: creator, cfg, opt: optLeg, qty: Math.max(1, parseInt(capital) || 1), buyType, entryType, limitOffset: entryType === "Limit" ? (parseFloat(limitOffset) || 0) : null, maxTrades: Math.max(1, parseInt(maxTrades) || 5), maxReentries: Math.max(0, parseInt(maxReentries) || 5), cap: parseInt(capital) || 1, symbols };
+    if (editingId) {
+      // Preserve Matrix authorship + premium status when an admin edits a sample/premium.
+      setStrats((p) => p.map((x) => x.id === editingId ? { ...x, ...base, by: x.by === "Matrix" ? x.by : base.by, premium: x.premium, desc: x.desc, active: makeActive } : x));
+      setEditingId(null);
+      setToast(`${name} updated${makeActive ? " and live" : ""}.`);
+    } else {
+      const id = "u" + Date.now();
+      setStrats((p) => [{ id, ...base, active: makeActive, alerts: false, created: Date.now() }, ...p]);
+      setToast(makeActive
+        ? `${name} is live on ${symbols.join(", ")} — it will place orders when its rules trigger.`
+        : `${name} saved as a draft. Activate it to start trading.`);
+    }
     setStratName(""); setShowBuilder(false);
-    setToast(makeActive
-      ? `${name} is live on ${symbols.join(", ")} — it will place orders when its rules trigger.`
-      : `${name} saved as a draft. Activate it to start trading.`);
     setStratTab("mine"); setTopTab("mine");
     setTimeout(() => stratsRef.current && stratsRef.current.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+  };
+  /* Load an existing strategy into the builder to edit its rules IN PLACE (Save updates it). */
+  const loadForEdit = (s) => {
+    const cfg = s.cfg || {};
+    setMode(cfg.mode === "plain" ? "plain" : "builder");
+    setShowBuilder(true);
+    setDefs((cfg.defs || []).map((d, i) => ({ id: Date.now() + i, tf: d.tf || "1D", ...d })));
+    setEntryConds((cfg.entry || []).map((c) => ({ ...c })));
+    setExitConds((cfg.exit || []).map((c) => ({ ...c })));
+    if (cfg.sl != null) setSl(String(cfg.sl));
+    if (cfg.tp != null) setTp(String(cfg.tp));
+    setStratName(s.name || "");
+    setDeploySyms(s.symbols && s.symbols.length ? [s.symbols[0]] : []);
+    if (s.qty != null) setCapital(String(s.qty));
+    setEditingId(s.id);
+    setTopTab("build");
+    setToast(`Editing "${s.name}" — change it below, then Save.`);
+    setTimeout(() => { try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {} }, 40);
   };
   const activateTemplate = (t, syms) => {
     const symbols = syms && syms.length ? syms : ["NIFTY50"];
     const id = "t" + Date.now();
-    // by: "You" — the moment YOU activate it, it is YOUR strategy and belongs under
+    // by: creator — the moment YOU activate it, it is YOUR strategy and belongs under
     // "My strategies". It was previously tagged "Matrix", which filed the user's own
     // running strategies under the samples.
-    setStrats((p) => [{ id, name: t.name, by: "You", active: true, alerts: false, cfg: t.cfg, cap: 100000, symbols, created: Date.now() }, ...p]);
+    setStrats((p) => [{ id, name: t.name, by: creator, active: true, alerts: false, cfg: t.cfg, cap: 100000, symbols, created: Date.now() }, ...p]);
     setToast(`${t.name} is live on ${symbols.join(", ")} — it will place orders when its rules trigger.`);
     setStratTab("mine"); setTopTab("mine");
     setTimeout(() => stratsRef.current && stratsRef.current.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
@@ -614,7 +670,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
   const cloneStrategy = (s) => {
     const id = "c" + Date.now();
     setStrats((p) => [
-      { id, name: s.name + " (copy)", by: "You", active: false, alerts: false, cfg: s.cfg, cap: s.cap || 100000, symbols: (s.symbols || []).slice(), tf: s.tf, created: Date.now() },
+      { id, name: s.name + " (copy)", by: creator, active: false, alerts: false, cfg: s.cfg, cap: s.cap || 100000, symbols: (s.symbols || []).slice(), tf: s.tf, created: Date.now() },
       ...p,
     ]);
     setToast(`Cloned "${s.name}" into My strategies — edit it there.`);
@@ -625,6 +681,13 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
   /* Load a Strategy Idea (template) into the builder below: fills the indicators (Step 1)
      and the entry/exit signals (Step 2), plus stop-loss / target, ready to tweak. */
   const loadTemplate = (t) => {
+    // Tapping the selected idea again clears the selection and the builder.
+    if (selectedTpl === t.name) {
+      setSelectedTpl(null);
+      setDefs([]); setEntryConds([]); setExitConds([]); setStratName(""); setEditingId(null);
+      setToast("Cleared — pick a Strategy Idea or build from scratch.");
+      return;
+    }
     const cfg = t.cfg || {};
     setMode("builder");
     setShowBuilder(true);
@@ -633,6 +696,8 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
     setExitConds((cfg.exit || []).map((c) => ({ ...c })));
     if (cfg.sl != null) setSl(String(cfg.sl));
     if (cfg.tp != null) setTp(String(cfg.tp));
+    setStratName(t.name);
+    setSelectedTpl(t.name);
     setToast(`Loaded "${t.name}" — edit the indicators and signals below.`);
   };
   // Record simulated trades produced by an activated automation (deduped by id).
@@ -667,7 +732,39 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
        MINE    (created by the user): scored on their ACTUAL closed trades. A
                 strategy with no closed trades shows "—", not a made-up win rate. */
   const [stratTab, setStratTab] = useState("sample");
-  const [topTab, setTopTab] = useState("build");   // build | sample | mine  (top selector)
+  const [topTab, setTopTab] = useState("build");   // build | sample | premium | public | mine
+
+  // ---- Public strategies (shared across users) ----
+  const [publicList, setPublicList] = useState([]);
+  const [publicLoading, setPublicLoading] = useState(false);
+  const [pubSym, setPubSym] = useState("");   // symbol filter
+  const [pubBy, setPubBy] = useState("");      // posted-by filter
+  const refreshPublic = React.useCallback(() => {
+    setPublicLoading(true);
+    apiListPublicStrategies({ symbol: pubSym, by: pubBy }).then((l) => { setPublicList(Array.isArray(l) ? l : []); setPublicLoading(false); });
+  }, [pubSym, pubBy]);
+  useEffect(() => { if (topTab === "public") refreshPublic(); }, [topTab, refreshPublic]);
+  const publishOwn = async (s) => {
+    const r = await apiPublishStrategy({ id: "pub_" + s.id, name: s.name, symbols: s.symbols || [], cfg: s.cfg });
+    if (r && r.ok) { updateStrat(s.id, { publicId: (r.strategy && r.strategy.id) || ("pub_" + s.id) }); setToast(`"${s.name}" is now public.`); if (topTab === "public") refreshPublic(); }
+    else setToast((r && r.error) || "Couldn't publish — make sure you're signed in.");
+  };
+  const unpublishOwn = async (s) => {
+    if (s.publicId) await apiUnpublishStrategy(s.publicId);
+    updateStrat(s.id, { publicId: null });
+    setToast(`"${s.name}" removed from public.`);
+    if (topTab === "public") refreshPublic();
+  };
+  // Clone a public strategy into "My strategies" (editable, inactive).
+  const clonePublic = (ps) => {
+    const id = "c" + Date.now();
+    setStrats((p) => [{ id, name: (ps.name || "Strategy") + " (copy)", by: creator, active: false, alerts: false, cfg: ps.data || ps.cfg || { mode: "builder" }, cap: 100000, symbols: ps.symbols || [], created: Date.now() }, ...p]);
+    setToast(`Cloned "${ps.name}" into My strategies.`);
+    setStratTab("mine"); setTopTab("mine");
+    setTimeout(() => stratsRef.current && stratsRef.current.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+  };
+  const publicByOptions = useMemo(() => Array.from(new Set(publicList.map((s) => s.owner_name).filter(Boolean))), [publicList]);
+  const publicSymOptions = useMemo(() => Array.from(new Set(publicList.flatMap((s) => s.symbols || []))), [publicList]);
   const [activeTab, setActiveTab] = useState("active"); // active | inactive (inside My strategies)
   const stratsRef = useRef(null);
   const sampleStrats = perf.filter(({ s }) => s.by === "Matrix" && !s.premium);
@@ -719,12 +816,14 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
         <MetricMini k="P&L" v={p.pnl == null ? "—" : (p.pnl >= 0 ? "+" : "") + fmt(p.pnl, "IN")} c={chgColor(p.pnl)} />
         <MetricMini k="Returns" v={pct(p.retPct, 1)} c={chgColor(p.retPct)} />
       </div>
-      <div style={{ display: "flex", gap: 7, marginTop: 12 }}>
+      <div style={{ display: "flex", gap: 7, marginTop: 12, flexWrap: "wrap" }}>
         <button onClick={() => setEditStrat(editStrat === s.id ? null : s.id)} className="tap" title="Edit symbols & timeframe" style={{ border: "1px solid " + (editStrat === s.id ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: editStrat === s.id ? "var(--primary-soft)" : "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: editStrat === s.id ? "var(--primary)" : "var(--ink)" }}><SlidersHorizontal size={14} /></button>
+        <button onClick={() => loadForEdit(s)} className="tap" title="Edit this strategy's rules in the builder" style={{ border: "1px solid var(--line)", borderRadius: 11, background: "var(--surface)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 700, color: "var(--ink)" }}><Pencil size={13} /> Edit</button>
         <button onClick={() => toggleAlerts(s)} className="tap" title="Alert on entry/exit signal" style={{ border: "1px solid " + (s.alerts ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: s.alerts ? "var(--primary)" : "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: s.alerts ? "var(--on-primary)" : "var(--ink)" }}><Bell size={14} /></button>
         <button onClick={() => setBtOpen(btOpen === s.id ? null : s.id)} className="tap" style={{ border: "1px solid " + (btOpen === s.id ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: btOpen === s.id ? "var(--primary-soft)" : "var(--surface)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 700, color: btOpen === s.id ? "var(--primary)" : "var(--ink)" }}><Activity size={13} /> Test</button>
         <button onClick={() => cloneStrategy(s)} className="tap" title="Clone into a new editable strategy" style={{ border: "1px solid var(--line)", borderRadius: 11, background: "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: "var(--ink)" }}><Copy size={14} /></button>
-        <button onClick={() => toggleActive(s.id)} className="tap disp" style={{ flex: 1, borderRadius: 11, background: s.active ? "var(--surface)" : "linear-gradient(120deg,var(--up),#0EA968)", color: s.active ? "var(--ink)" : "#fff", boxShadow: s.active ? "none" : "0 6px 16px rgba(16,185,129,.3)", padding: "7px 10px", display: "flex", gap: 5, alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800, border: s.active ? "1px solid var(--line)" : "none" }}>
+        <button onClick={() => (s.publicId ? unpublishOwn(s) : publishOwn(s))} className="tap" title={s.publicId ? "Remove from public" : "Make public"} style={{ border: "1px solid " + (s.publicId ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: s.publicId ? "var(--primary-soft)" : "var(--surface)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 700, color: s.publicId ? "var(--primary)" : "var(--ink)" }}><Globe size={13} /> {s.publicId ? "Public" : "Publish"}</button>
+        <button onClick={() => toggleActive(s.id)} className="tap disp" style={{ flex: "1 1 100px", borderRadius: 11, background: s.active ? "var(--surface)" : "linear-gradient(120deg,var(--up),#0EA968)", color: s.active ? "var(--ink)" : "#fff", boxShadow: s.active ? "none" : "0 6px 16px rgba(16,185,129,.3)", padding: "7px 10px", display: "flex", gap: 5, alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800, border: s.active ? "1px solid var(--line)" : "none" }}>
           {s.active ? <><Pause size={13} /> Deactivate</> : <><Play size={13} /> Activate</>}
         </button>
       </div>
@@ -754,39 +853,54 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
       <div className="disp" style={{ fontWeight: 700, fontSize: 22, marginTop: 8 }}>Automate with Neo</div>
       <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 2 }}>{{ IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", FNO: "⚡ F&O", Commodity: "🪙 Commodity" }[market]} strategies · track performance and manage automations.</div>
 
-      {/* Automation dashboard */}
+      {/* Automation dashboard — collapsed by default (P&L + expand), expands to all details. */}
       <div className="card glow metal" style={{ marginTop: 18, padding: 18, border: "none", background: "var(--feature-grad)", color: "#fff" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div className="disp" style={{ fontWeight: 700, fontSize: 15 }}>Automation Dashboard</div>
-          <span style={{ fontSize: 10.5, opacity: .85 }}>last {dashRange >= 365 ? "12 months" : dashRange + "d"}</span>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div style={{ minWidth: 0 }}>
+            <div className="disp" style={{ fontWeight: 700, fontSize: 13, opacity: .9 }}>Automation P&amp;L</div>
+            <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 3, color: agg.pnl >= 0 ? "#9CFFD6" : "#FFB3BE" }}>{agg.pnl >= 0 ? "+" : ""}{fmt(agg.pnl, "IN")}</div>
+          </div>
+          <button onClick={() => setDashOpen((v) => !v)} className="tap disp" style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 5, border: "1px solid rgba(255,255,255,.28)", background: "rgba(255,255,255,.1)", color: "#fff", borderRadius: 11, padding: "8px 12px", fontWeight: 800, fontSize: 11.5 }}>
+            {dashOpen ? <>Collapse <ChevronUp size={14} /></> : <>Expand <ChevronDown size={14} /></>}
+          </button>
         </div>
-        <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 8 }}>{dRet >= 0 ? "+" : ""}{fmt(agg.pnl, "IN")}</div>
-        <div style={{ fontSize: 11, opacity: .85, marginTop: -2 }}>Total P&amp;L across {shown.length} strategies</div>
-        <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginTop: 14 }}>
-          <DStat k="Active strategies" v={activeCount} />
-          <DStat k="Trades executed" v={agg.trades} />
-          <DStat k="Win rate" v={agg.trades ? dWinRate.toFixed(0) + "%" : "—"} />
-          <DStat k="P&L total" v={(agg.pnl >= 0 ? "+" : "") + fmt(agg.pnl, "IN")} c={agg.pnl >= 0 ? "#9CFFD6" : "#FFB3BE"} />
-          <DStat k="Returns %" v={(dRet >= 0 ? "+" : "") + dRet.toFixed(2) + "%"} c={dRet >= 0 ? "#9CFFD6" : "#FFB3BE"} />
-        </div>
-        <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-          <select aria-label="Select option" value={dashBy} onChange={(e) => setDashBy(e.target.value)} style={dsel}>{byOptions.map((o) => <option key={o} value={o}>Created by: {o}</option>)}</select>
-          <select aria-label="Select option" value={dashRange} onChange={(e) => setDashRange(+e.target.value)} style={dsel}><option value={30}>30d</option><option value={90}>3m</option><option value={180}>6m</option><option value={365}>12m</option></select>
-        </div>
-        <div style={{ marginTop: 8 }}>
-          <MultiSelect label="Symbol" options={DEPLOY_OPTIONS} value={symFilter} onChange={setSymFilter} dark />
-        </div>
+
+        {dashOpen && (
+          <>
+            <div style={{ fontSize: 11, opacity: .85, marginTop: 10 }}>Across {shown.length} strategies</div>
+            <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginTop: 12 }}>
+              <DStat k="Active strategies" v={activeCount} />
+              <DStat k="Trades executed" v={agg.trades} />
+              <DStat k="Win rate" v={agg.trades ? dWinRate.toFixed(0) + "%" : "—"} />
+              <DStat k="Returns %" v={(dRet >= 0 ? "+" : "") + dRet.toFixed(2) + "%"} c={dRet >= 0 ? "#9CFFD6" : "#FFB3BE"} />
+            </div>
+            <div style={{ fontSize: 10, opacity: .7, fontWeight: 700, letterSpacing: ".04em", margin: "16px 0 7px" }}>FILTERS</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <select aria-label="Created by" value={dashBy} onChange={(e) => setDashBy(e.target.value)} style={dsel}>{byOptions.map((o) => <option key={o} value={o}>Created by: {o}</option>)}</select>
+              <select aria-label="Time period" value={dashPreset} onChange={(e) => setDashPreset(e.target.value)} style={dsel}>{DASH_PRESETS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+            </div>
+            {dashPreset === "custom" && (
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <input type="date" aria-label="From" value={dashFrom} onChange={(e) => setDashFrom(e.target.value)} className="no-ring mono" style={{ ...dsel, colorScheme: "dark" }} />
+                <input type="date" aria-label="To" value={dashTo} onChange={(e) => setDashTo(e.target.value)} className="no-ring mono" style={{ ...dsel, colorScheme: "dark" }} />
+              </div>
+            )}
+            <div style={{ marginTop: 8 }}>
+              <MultiSelect label="Symbol" options={DEPLOY_OPTIONS} value={symFilter} onChange={setSymFilter} dark />
+            </div>
+          </>
+        )}
       </div>
 
       {/* TOP SELECTOR — one place to switch between building, samples, and your own. */}
       <div style={{ display: "flex", gap: 7, marginTop: 18 }}>
-        {[["build", "Build"], ["sample", `Samples (${sampleStrats.length})`], ["premium", `Premium (${premiumStrats.length})`], ["mine", `Mine (${myStrats.length})`]].map(([k, label]) => (
+        {[["build", "Build"], ["sample", `Samples`], ["premium", `Premium`], ["public", "Public"], ["mine", `Mine`]].map(([k, label]) => (
           <button
             key={k}
             onClick={() => setTopTab(k)}
             className="tap disp"
             style={{
-              flex: 1, borderRadius: 11, padding: "10px 3px", fontWeight: 800, fontSize: 10.8,
+              flex: 1, borderRadius: 10, padding: "10px 2px", fontWeight: 800, fontSize: 10.5,
               cursor: "pointer",
               border: "1px solid " + (topTab === k ? "var(--primary)" : "var(--line)"),
               background: topTab === k ? "var(--primary)" : "var(--surface)",
@@ -815,13 +929,19 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
           </div>
           <div style={{ fontSize: 11, color: "var(--muted)", margin: "8px 2px 0", lineHeight: 1.5 }}>{mode === "plain" ? "Just describe your entry and exit rules in your own words — no indicators to pick. Matrix interprets them when you deploy." : "Pick indicators, then stack them into signals with AND / OR."}</div>
 
+          {/* Strategy name — first thing, before the steps. */}
+          <div className="card" style={{ marginTop: 16, padding: 16 }}>
+            <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Strategy name{editingId ? " · editing" : ""}</div>
+            <input value={stratName} onChange={(e) => setStratName(e.target.value)} placeholder="e.g. My Nifty swing setup" className="no-ring disp" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }} />
+          </div>
+
           {mode === "builder" && (
             <>
               {/* Strategy Ideas (templates) */}
               <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", margin: "18px 2px 10px", display: "flex", alignItems: "center", gap: 7 }}><Sparkles size={14} color="var(--primary)" /> Strategy Ideas — pick a symbol, then activate</div>
               <div className="hide-scroll" style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 2 }}>
                 {TEMPLATES.map((t) => (
-                  <TemplateCard key={t.name} t={t} market={market} onActivate={activateTemplate} onToggleBt={(n) => setBtTpl(btTpl === n ? null : n)} btActive={btTpl === t.name} onLoad={loadTemplate} />
+                  <TemplateCard key={t.name} t={t} market={market} onActivate={activateTemplate} onToggleBt={(n) => setBtTpl(btTpl === n ? null : n)} btActive={btTpl === t.name} onLoad={loadTemplate} selected={selectedTpl === t.name} />
                 ))}
               </div>
               {btTpl && (
@@ -879,7 +999,10 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
               </>
             )}
 
-            <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+            <div className="disp" style={{ display: "flex", alignItems: "center", gap: 7, margin: "20px 0 14px", paddingTop: 16, borderTop: "1px solid var(--line)" }}>
+              <span className="pill gold-text" style={{ fontWeight: 800, fontSize: 12 }}>STEP 3</span> <span style={{ fontWeight: 700, fontSize: 14 }}>Risk &amp; orders</span>
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
               <NumF label="Stop loss %" v={sl} set={setSl} />
               <NumF label="Take profit %" v={tp} set={setTp} />
             </div>
@@ -917,14 +1040,12 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
             </div>
 
             <div style={{ marginTop: 14 }}>
-              <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Deploy on — symbol(s)</div>
-              <MultiSelect label="Symbols" options={DEPLOY_OPTIONS} value={deploySyms} onChange={setDeploySyms} allLabel="Select…" />
-              {deploySyms.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-                {deploySyms.map((sy) => (
-                  <span key={sy} className="pill" style={{ fontSize: 11, fontWeight: 700, background: "var(--primary-soft)", color: "var(--primary)", padding: "5px 10px", display: "flex", alignItems: "center", gap: 6 }}>{sy}<X size={12} className="tap" onClick={() => setDeploySyms((p) => p.filter((x) => x !== sy))} /></span>
-                ))}
-              </div>}
-              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 6 }}>The strategy runs on these instruments. Default NIFTY50.</div>
+              <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Deploy on — symbol</div>
+              <select value={deploySyms[0] || ""} onChange={(e) => setDeploySyms(e.target.value ? [e.target.value] : [])} aria-label="Deploy symbol" style={{ ...selStyle, width: "100%" }}>
+                <option value="">Choose a symbol…</option>
+                {DEPLOY_OPTIONS.map((sy) => <option key={sy} value={sy}>{sy}</option>)}
+              </select>
+              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 6 }}>The strategy runs on this instrument.</div>
             </div>
             <pre className="mono" style={{ fontSize: 11, background: "#0E0E18", color: "#C9D2FF", border: "1px solid #2A2A3D", borderRadius: 12, padding: 13, marginTop: 14, whiteSpace: "pre-wrap", lineHeight: 1.55, overflowX: "auto" }}>{code}</pre>
 
@@ -940,11 +1061,9 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
 
             {/* Save */}
             <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
-              <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Strategy name</div>
-              <input value={stratName} onChange={(e) => setStratName(e.target.value)} placeholder="e.g. My Nifty swing setup" className="no-ring disp" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }} />
-              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                <button onClick={() => saveStrategy(false)} className="tap disp" style={{ flex: 1, background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 14, padding: 13, fontWeight: 700, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}><Check size={16} color="var(--primary)" /> Save strategy</button>
-                <button onClick={() => saveStrategy(true)} className="tap disp glow" style={{ flex: 1, background: "linear-gradient(120deg,var(--primary),var(--primary-2))", color: "#fff", border: "none", borderRadius: 14, padding: 13, fontWeight: 700, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}><Bolt size={16} /> Save &amp; deploy</button>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => saveStrategy(false)} className="tap disp" style={{ flex: 1, background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 14, padding: 13, fontWeight: 700, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}><Check size={16} color="var(--primary)" /> {editingId ? "Update" : "Save strategy"}</button>
+                <button onClick={() => saveStrategy(true)} className="tap disp glow" style={{ flex: 1, background: "linear-gradient(120deg,var(--primary),var(--primary-2))", color: "#fff", border: "none", borderRadius: 14, padding: 13, fontWeight: 700, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}><Bolt size={16} /> {editingId ? "Update & deploy" : "Save & deploy"}</button>
               </div>
             </div>
           </div>
@@ -980,7 +1099,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
       {topTab === "sample" ? (
         sampleStrats.length === 0
           ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No sample strategies for this market.</div>
-          : sampleStrats.map(({ s }) => <SampleStrategyCard key={s.id} s={s} onActivate={useTemplateStrategy} onClone={cloneStrategy} />)
+          : sampleStrats.map(({ s }) => <SampleStrategyCard key={s.id} s={s} onActivate={useTemplateStrategy} onClone={cloneStrategy} onEdit={isAdmin ? loadForEdit : undefined} />)
       ) : topTab === "premium" ? (
         <>
           <div style={{ fontSize: 11.5, color: "var(--muted)", margin: "0 2px 4px", lineHeight: 1.5 }}>
@@ -988,7 +1107,47 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
           </div>
           {premiumStrats.length === 0
             ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No premium strategies available.</div>
-            : premiumStrats.map((s) => <PremiumStrategyCard key={s.id} s={s} active={s.active} onToggle={() => toggleActive(s.id)} />)}
+            : premiumStrats.map((s) => <PremiumStrategyCard key={s.id} s={s} active={s.active} onToggle={() => toggleActive(s.id)} onEdit={isAdmin ? loadForEdit : undefined} />)}
+        </>
+      ) : topTab === "public" ? (
+        <>
+          <div style={{ fontSize: 11.5, color: "var(--muted)", margin: "0 2px 10px", lineHeight: 1.5 }}>
+            Strategies shared by the community. Clone one to make it yours.
+          </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
+            <select aria-label="Symbol filter" value={pubSym} onChange={(e) => setPubSym(e.target.value)} style={{ ...selStyle, flex: "1 1 0", minWidth: 0, fontSize: 11.5 }}>
+              <option value="">Symbol: All</option>
+              {publicSymOptions.map((sy) => <option key={sy} value={sy}>{sy}</option>)}
+            </select>
+            <select aria-label="Posted by filter" value={pubBy} onChange={(e) => setPubBy(e.target.value)} style={{ ...selStyle, flex: "1 1 0", minWidth: 0, fontSize: 11.5 }}>
+              <option value="">Posted by: All</option>
+              {publicByOptions.map((b) => <option key={b} value={b}>{b}</option>)}
+            </select>
+          </div>
+          {publicLoading
+            ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>Loading public strategies…</div>
+            : publicList.length === 0
+              ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No public strategies yet. Publish one of your own from the Mine tab.</div>
+              : publicList.map((ps) => (
+                <div key={ps.id} className="card" style={{ marginTop: 12, padding: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div className="disp" style={{ fontWeight: 700, fontSize: 14 }}>{ps.name}</div>
+                      <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>by {ps.owner_name || "user"}{(ps.symbols || []).length ? " · " + ps.symbols.join(" · ") : ""}</div>
+                    </div>
+                    <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--primary-soft)", color: "var(--primary)", flex: "0 0 auto", display: "inline-flex", alignItems: "center", gap: 4 }}><Globe size={11} /> PUBLIC</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                    <button onClick={() => setBtOpen(btOpen === ps.id ? null : ps.id)} className="tap disp" style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 11, padding: "10px 13px", fontWeight: 800, fontSize: 12.5 }}><Activity size={14} /> Backtest</button>
+                    <button onClick={() => clonePublic(ps)} className="tap disp" style={{ flex: 1, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5 }}><Copy size={14} style={{ verticalAlign: "-2px" }} /> Clone</button>
+                  </div>
+                  {btOpen === ps.id && (
+                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+                      <BacktestResult cfg={ps.data || ps.cfg} defaultSym={(ps.symbols && ps.symbols[0]) || undefined} />
+                    </div>
+                  )}
+                </div>
+              ))}
         </>
       ) : myStrats.length === 0 ? (
         <div className="card" style={{ marginTop: 12, padding: 20, textAlign: "center", color: "var(--muted)", fontSize: 12.5, lineHeight: 1.6 }}>

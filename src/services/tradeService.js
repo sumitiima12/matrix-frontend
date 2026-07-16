@@ -66,10 +66,72 @@ export async function listTrades(userId, from, to) {
   } catch { return null; }
 }
 
-export async function register(phone, pin, name, secQuestion, secAnswer) {
-  const d = await post("/api/register", { phone, pin, name, secQuestion, secAnswer }, false);
+export async function register(phone, pin, name, secQuestion, secAnswer, username, referralCode) {
+  const d = await post("/api/register", { phone, pin, name, secQuestion, secAnswer, username, referralCode }, false);
   if (d && d.token) setAuthToken(d.token);
   return d;
+}
+
+/** Is a desired user ID available? { valid, available } */
+export async function checkUsername(u) {
+  if (!BACKEND_URL) return { valid: true, available: true };
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/username/available?u=${encodeURIComponent(u)}`);
+    return r.json().catch(() => ({ valid: false, available: false }));
+  } catch { return { valid: false, available: false }; }
+}
+
+/** Set/change the signed-in user's handle (mandate flow for existing accounts). */
+export async function setUsername(username) {
+  return post("/api/username", { username });
+}
+
+/** Public strategies — shared across users. */
+export async function listPublicStrategies({ symbol = "", by = "" } = {}) {
+  if (!BACKEND_URL) return [];
+  try {
+    const q = new URLSearchParams();
+    if (symbol) q.set("symbol", symbol);
+    if (by) q.set("by", by);
+    const r = await fetch(`${BACKEND_URL}/api/public-strategies?${q.toString()}`);
+    if (!r.ok) return [];
+    return (await r.json()).strategies || [];
+  } catch { return []; }
+}
+export async function publishStrategy(strategy) {
+  return post("/api/public-strategies", { strategy });
+}
+export async function unpublishStrategy(id) {
+  if (!BACKEND_URL) return null;
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/public-strategies/${encodeURIComponent(id)}`, { method: "DELETE", headers: authHeaders() });
+    handle401(r.status);
+    return r.json().catch(() => ({ ok: false }));
+  } catch { return { ok: false }; }
+}
+
+/** Community ideas — anyone can post; everyone can browse. */
+export async function listIdeas({ symbol = "", by = "" } = {}) {
+  if (!BACKEND_URL) return [];
+  try {
+    const q = new URLSearchParams();
+    if (symbol) q.set("symbol", symbol);
+    if (by) q.set("by", by);
+    const r = await fetch(`${BACKEND_URL}/api/ideas?${q.toString()}`);
+    if (!r.ok) return [];
+    return (await r.json()).ideas || [];
+  } catch { return []; }
+}
+export async function postIdea(idea) {
+  return post("/api/ideas", idea);
+}
+export async function deleteIdea(id) {
+  if (!BACKEND_URL) return null;
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/ideas/${encodeURIComponent(id)}`, { method: "DELETE", headers: authHeaders() });
+    handle401(r.status);
+    return r.json().catch(() => ({ ok: false }));
+  } catch { return { ok: false }; }
 }
 
 /** Forgot-PIN step 1: fetch the user's security question. */

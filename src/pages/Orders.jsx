@@ -121,6 +121,8 @@ export default function TradeHistory({ userId, trades, onClose }) {
   const openN = rows.filter((t) => t.open).length;
   const typeColor = (tt) => tt === "Auto Buy" ? "var(--primary)" : tt === "Automate" ? "#8B5CF6" : "var(--muted)";
   const exitColor = (et) => (et === "Stop loss" || et === "Trailing stop") ? "var(--down)" : et === "Exit trigger" ? "var(--up)" : et === "Open" ? "var(--primary)" : "var(--muted)";
+  /* "Strategy by" — the strategy's creator for automated trades, else Manual / Auto Buy. */
+  const stratBy = (t) => t.strategyBy || (t.tradeType === "Auto Buy" ? "Auto Buy" : "Manual");
 
   // Export the trades CURRENTLY shown (all active filters applied), so what you
   // see is what you get. Open positions carry their live price and unrealised P&L.
@@ -259,6 +261,7 @@ export default function TradeHistory({ userId, trades, onClose }) {
             <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
               <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: typeColor(t.tradeType || "Manual") }}>{t.tradeType || "Manual"}</span>
               <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: t.open ? "var(--primary-soft)" : "var(--elev)", color: exitColor(exitOf(t)) }}>Exit: {exitOf(t)}</span>
+              <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: "var(--muted)" }}>Strategy by: {stratBy(t)}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 9, fontSize: 11 }}>
               <div><div style={{ color: "var(--muted)", fontSize: 9.5 }}>Entry</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.entry, t.market || "IN")}</div><div style={{ color: "var(--muted)", fontSize: 9.5 }}>{dt(t.entryAt)}</div></div>

@@ -501,7 +501,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const annPct = dash.inv ? (dash.annNum / dash.inv) * 100 : 0;
 
   // Auto-Buy Matrix's picks — for the market selected at the top; each market keeps its own on/off
-  const [dashView, setDashView] = useState("auto");
+  const [dashView, setDashView] = useState("total");
   const [autoOnMap, setAutoOnMap] = useState({ IN: false, US: false, Crypto: false, Commodity: false, FNO: false });
   const [deployCapital, setDeployCapital] = useState("100000");
   const [plPeriod, setPlPeriod] = useState("today");

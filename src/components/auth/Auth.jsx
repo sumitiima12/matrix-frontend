@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { } from "../../domain/universe";
 import { fmt, profileSummary } from "../../lib/format";
-import { Check, ChevronLeft, Clock, LogIn, LogOut, Sparkles, User } from "lucide-react";
-import { apiLogin, apiRegister, apiForgotQuestion, apiForgotReset, apiGetSecurityQuestion, apiSetSecurityQuestion } from "../../domain/api";
+import { Check, ChevronLeft, Clock, Copy, LogIn, LogOut, Sparkles, User } from "lucide-react";
+import { apiLogin, apiRegister, apiForgotQuestion, apiForgotReset, apiGetSecurityQuestion, apiSetSecurityQuestion, apiSetUsername } from "../../domain/api";
 import EquityCurve from "../common/EquityCurve";
 import headerLogo from "../../assets/brand/header-logo.png";
 import headerLogoDark from "../../assets/brand/header-logo-dark.png";
@@ -12,22 +12,58 @@ import splashLockup from "../../assets/brand/splash-m.png";
  * Auth & profile — login, onboarding and the profile sheet.
  */
 
+/**
+ * SetUsernameModal — blocking screen that mandates a unique user ID. Shown after login for
+ * any account that doesn't have one yet (accounts created before user IDs existed).
+ */
+export function SetUsernameModal({ onDone }) {
+  const [uid, setUid] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const valid = /^[A-Za-z][A-Za-z0-9_]{2,19}$/.test(uid);
+  const field = { width: "100%", background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.28)", borderRadius: 14, padding: "14px 16px", fontSize: 15, color: "#fff", outline: "none" };
+  const save = async () => {
+    if (!valid) { setErr("3–20 characters, starting with a letter (letters, numbers, underscore)."); return; }
+    setErr(null); setBusy(true);
+    const res = await apiSetUsername(uid);
+    setBusy(false);
+    if (res && res.ok) onDone(res.username || uid);
+    else setErr((res && res.error) || "Couldn't save that user ID.");
+  };
+  return (
+    <div className="mx" style={{ position: "fixed", inset: 0, zIndex: 120, background: "linear-gradient(165deg,#232327 0%,#161619 55%,#0C0C0E 100%)", display: "flex", flexDirection: "column", justifyContent: "center", padding: 30, overflow: "auto" }}>
+      <style>{`.lginput::placeholder{color:rgba(255,255,255,.55)}`}</style>
+      <div style={{ maxWidth: 420, margin: "0 auto", width: "100%" }}>
+        <div className="disp" style={{ fontWeight: 800, fontSize: 22, color: "#fff" }}>Choose your user ID</div>
+        <div style={{ color: "rgba(255,255,255,.7)", fontSize: 13, marginTop: 8, lineHeight: 1.5 }}>Pick a unique handle — it's how you appear on shared strategies and it's your referral code. You can't skip this.</div>
+        <input className="lginput mono" value={uid} onChange={(e) => setUid(e.target.value.replace(/[^A-Za-z0-9_]/g, "").slice(0, 20))} placeholder="e.g. sumit_trader" style={{ ...field, marginTop: 18, borderColor: uid ? (valid ? "rgba(52,224,125,.7)" : "rgba(255,120,120,.6)") : field.border }} />
+        {err && <div style={{ color: "#FFB3BE", fontSize: 12.5, fontWeight: 600, marginTop: 10 }}>{err}</div>}
+        <button onClick={save} disabled={busy || !valid} className="tap disp glow" style={{ width: "100%", marginTop: 16, padding: 15, borderRadius: 16, border: "none", background: valid ? "linear-gradient(120deg,#fff,#d8d8de)" : "rgba(255,255,255,.2)", color: valid ? "#141416" : "rgba(255,255,255,.6)", fontWeight: 800, fontSize: 15, cursor: valid ? "pointer" : "not-allowed" }}>{busy ? "Saving…" : "Save user ID"}</button>
+      </div>
+    </div>
+  );
+}
+
 export function LoginScreen({ onAuthed, onGuest }) {
   const [tab, setTab] = useState("login");
   const [mobile, setMobile] = useState("");
   const [pin, setPin] = useState("");
   const [name, setName] = useState("");
+  const [userId, setUserId] = useState("");
+  const [referral, setReferral] = useState(() => { try { return new URLSearchParams(window.location.search).get("ref") || ""; } catch { return ""; } });
   const [secQ, setSecQ] = useState(""); const [secA, setSecA] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  const validId = /^[A-Za-z][A-Za-z0-9_]{2,19}$/.test(userId);
   const field = { width: "100%", background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.28)", borderRadius: 14, padding: "14px 16px", fontSize: 15, color: "#fff", outline: "none" };
   const submit = async () => {
     if (mobile.length < 6 || pin.length < 4) { setErr("Enter your mobile number and a 4+ digit PIN."); return; }
+    if (tab === "signup" && !validId) { setErr("Choose a user ID: 3–20 characters, starting with a letter (letters, numbers, underscore)."); return; }
     if (tab === "signup" && (!secQ.trim() || !secA.trim())) { setErr("Set a security question and answer to recover your PIN later."); return; }
     setErr(null); setBusy(true);
-    const res = tab === "login" ? await apiLogin(mobile, pin) : await apiRegister(mobile, pin, name, secQ, secA);
+    const res = tab === "login" ? await apiLogin(mobile, pin) : await apiRegister(mobile, pin, name, secQ, secA, userId, referral);
     setBusy(false);
-    if (res && res.ok) onAuthed({ phone: res.userId, name: res.name || name || "" });
+    if (res && res.ok) onAuthed({ phone: res.userId, name: res.name || name || "", username: res.username || null });
     else setErr((res && res.error) || "Something went wrong.");
   };
   return (
@@ -50,8 +86,15 @@ export function LoginScreen({ onAuthed, onGuest }) {
 
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           {tab === "signup" && <input className="lginput" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (optional)" style={field} />}
+          {tab === "signup" && (
+            <div>
+              <input className="lginput mono" value={userId} onChange={(e) => setUserId(e.target.value.replace(/[^A-Za-z0-9_]/g, "").slice(0, 20))} placeholder="Choose a user ID (unique)" style={{ ...field, borderColor: userId ? (validId ? "rgba(52,224,125,.7)" : "rgba(255,120,120,.6)") : field.border }} />
+              <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.55)", marginTop: 5, paddingLeft: 4 }}>3–20 characters, starts with a letter. This is your public handle & referral code.</div>
+            </div>
+          )}
           <input className="lginput mono" value={mobile} onChange={(e) => setMobile(e.target.value.replace(/[^0-9]/g, "").slice(0, 10))} inputMode="numeric" placeholder="Mobile number" style={field} />
           <input className="lginput mono" value={pin} onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))} inputMode="numeric" type="password" placeholder="PIN (4+ digits)" style={field} />
+          {tab === "signup" && <input className="lginput mono" value={referral} onChange={(e) => setReferral(e.target.value.replace(/[^A-Za-z0-9_]/g, "").slice(0, 20))} placeholder="Referral code (optional)" style={field} />}
         </div>
         {err && <div style={{ color: "#FFB3BE", fontSize: 12.5, fontWeight: 600, marginTop: 12 }}>{err}</div>}
 
@@ -295,7 +338,7 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ width: 52, height: 52, borderRadius: 16, background: "linear-gradient(135deg,var(--primary),var(--primary-2))", display: "grid", placeItems: "center", color: "#fff", fontWeight: 700, fontSize: 20 }} className="disp">M</div>
           <div style={{ minWidth: 0 }}>
-            <div className="disp" style={{ fontWeight: 700, fontSize: 17 }}>{auth && auth.name ? auth.name : "My Profile"}</div>
+            <div className="disp" style={{ fontWeight: 700, fontSize: 17 }}>{auth && (auth.username || auth.name) ? (auth.username || auth.name) : "My Profile"}</div>
             <div style={{ fontSize: 12.5, color: "var(--muted)" }}>{auth ? `Logged in · ${auth.phone}` : "Guest session"}</div>
           </div>
         </div>
@@ -343,6 +386,20 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
         </div>
 
         <button onClick={() => { onClose && onClose(); onTradeHistory && onTradeHistory(); }} className="tap disp" style={{ width: "100%", marginTop: 14, background: "var(--primary)", color: "var(--on-primary)", border: "none", borderRadius: 14, padding: 13, fontWeight: 800, fontSize: 13.5, display: "flex", gap: 7, alignItems: "center", justifyContent: "center" }}><Clock size={16} /> Trade history</button>
+
+        {auth && auth.username && (() => {
+          const link = `${(typeof window !== "undefined" && window.location ? window.location.origin : "https://matrixone.app")}/?ref=${auth.username}`;
+          return (
+            <div className="card" style={{ marginTop: 14, padding: 14 }}>
+              <div className="disp" style={{ fontWeight: 800, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}><Sparkles size={14} color="var(--primary)" /> Your referral link</div>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4, lineHeight: 1.5 }}>Share this — anyone who signs up through it is credited to you.</div>
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <input readOnly value={link} onFocus={(e) => e.target.select()} className="no-ring mono" style={{ flex: 1, minWidth: 0, border: "1px solid var(--line)", borderRadius: 11, padding: "9px 11px", fontSize: 11.5, background: "var(--elev)", color: "var(--ink)" }} />
+                <button onClick={() => { try { navigator.clipboard.writeText(link); } catch {} }} className="tap disp" style={{ flex: "0 0 auto", border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 11, padding: "9px 12px", fontWeight: 800, fontSize: 12, display: "flex", gap: 5, alignItems: "center" }}><Copy size={13} /> Copy</button>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* personalisation summary */}
         <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, margin: "20px 2px 8px" }}>YOUR INVESTOR PROFILE</div>

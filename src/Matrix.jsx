@@ -79,7 +79,7 @@ import ChatPanel from "./pages/AIAssistant";
 const TradeView = React.lazy(() => import("./pages/Trade"));
 import AdminPanel from "./components/common/AdminPanel";
 import { adminCheck, adminIsAdminUser } from "./services/adminService";
-import ProfileSheet, { LoginScreen, Onboarding, LoginModal } from "./components/auth/Auth";
+import ProfileSheet, { LoginScreen, Onboarding, LoginModal, SetUsernameModal } from "./components/auth/Auth";
 import SearchOverlay from "./components/common/SearchOverlay";
 import MiniCandles from "./components/charts/MiniCandles";
 import ProChart from "./components/charts/ProChart";
@@ -639,6 +639,9 @@ function AppInner() {
       {/* fixed gradient backdrop so it stays behind scroll */}
       <div style={{ position: "fixed", inset: 0, background: "var(--app-bg, var(--bg))", zIndex: 0, pointerEvents: "none" }} />
       {!authed && <LoginScreen onGuest={() => { setGuest(true); setAuthed(true); }} onAuthed={(a) => { onAuthed(a); setGuest(false); setAuthed(true); }} />}
+      {authed && !guest && auth && !auth.username && getAuthToken() && (
+        <SetUsernameModal onDone={(username) => onAuthed({ ...auth, username })} />
+      )}
       {authed && hydratedUser === userId && (repersonalise || (!profile && !onboardSkipped)) && (
         <Onboarding
           theme={theme}
@@ -654,10 +657,8 @@ function AppInner() {
         {/* HEADER */}
         <div className="glass" style={{ position: "sticky", top: 0, zIndex: 30, background: "var(--header-bg)", borderBottom: "1px solid var(--line)" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px 8px", gap: 8 }}>
-            <div onClick={() => { setTab("home"); setDetail(null); }} className="tap disp" style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+            <div onClick={() => { setTab("home"); setDetail(null); }} className="tap disp" style={{ display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minWidth: 0, marginRight: "auto" }}>
               <img src={theme === "dark" ? headerLogoDark : headerLogo} alt="Matrix One" style={{ height: 46, width: "auto", display: "block", flexShrink: 0 }} />
-              <div style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: 3 }}>
-              </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
               {/* The wallet icon opens the WALLET, not the profile sheet. */}
@@ -759,8 +760,8 @@ function AppInner() {
             <>
               {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} onAutoBuy={autoBuyNow} mode={mode} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} trades={trades} liveTick={liveTick} onWhy={openWhy} />}
               {tab === "trade" && <TradeView walletMap={walletMap} adjustWallet={adjustWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} recordTrade={recordTrade} />}
-              {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} market={market} onWhy={openWhy} />}
-              {tab === "automation" && <Automation market={market} onRecord={recordTrade} trades={trades} strats={strats} setStrats={setStrats} onExitAll={exitAllStrategies} />}
+              {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} market={market} onWhy={openWhy} me={auth ? (auth.username || null) : null} isAdmin={isAdminUser} />}
+              {tab === "automation" && <Automation market={market} onRecord={recordTrade} trades={trades} strats={strats} setStrats={setStrats} onExitAll={exitAllStrategies} me={auth ? (auth.username || null) : null} isAdmin={isAdminUser} />}
               {tab === "portfolio" && <Portfolio mode={mode} realPortfolio={realPortfolio} realErr={realErr} realLoading={realLoading} onRefreshReal={refreshPortfolio} brokerName={liveBroker ? liveBroker.name : null} portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} onBuy={buyStock} onSell={sellStock} onUpdate={updateHolding} priceSnap={priceSnap} onWhy={openWhy} onOpen={openStock} onRemove={(sym) => { setPortfolio((prev) => prev.filter((h) => h.sym !== sym)); setBuyToast({ t: `${sym} removed` }); }} />}
               {tab === "watchlist" && <WatchlistView watchlists={watchlists} activeWl={activeWl} setActiveWl={setActiveWl} createWatchlist={createWatchlist} deleteWatchlist={deleteWatchlist} toggleWatch={toggleWatch} onOpen={openStock} />}
               {tab === "ask" && (
