@@ -744,12 +744,6 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                       {t.label}
                     </span>
                   ))}
-                  {onWhy && (
-                    <button onClick={(e) => { e.stopPropagation(); onWhy(s, "Matrix's Pick for today"); }} className="tap"
-                      style={{ border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 7, padding: "3px 9px", fontSize: 10, fontWeight: 800, cursor: "pointer" }}>
-                      Why?
-                    </button>
-                  )}
                 </div>
                 <div style={{ marginTop: 10, paddingTop: 12, borderTop: "1px solid var(--line)", fontSize: 12, color: "var(--ink-soft, var(--ink))", lineHeight: 1.55, display: "flex", gap: 6 }}>
                   <Sparkles size={14} color="var(--primary)" style={{ flex: "0 0 auto", marginTop: 2 }} /><span>{s.pickReason || ""}</span>
@@ -771,8 +765,16 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     </div>}
                   </div>
                 )}
+                {onWhy && (
+                  <div style={{ marginTop: 13, display: "flex" }}>
+                    <button onClick={(e) => { e.stopPropagation(); onWhy(s, "Matrix's Pick for today"); }} className="tap disp"
+                      style={{ display: "inline-flex", alignItems: "center", gap: 5, border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 10, padding: "8px 14px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
+                      <Sparkles size={13} /> Why this pick?
+                    </button>
+                  </div>
+                )}
                 {/* Buy with explicit quantity; the pick's REAL stop & target are armed with it. */}
-                <div style={{ marginTop: 13 }} onClick={(e) => e.stopPropagation()}>
+                <div style={{ marginTop: 11 }} onClick={(e) => e.stopPropagation()}>
                   <BuyButton
                     s={s}
                     market={market}
