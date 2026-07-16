@@ -765,16 +765,8 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     </div>}
                   </div>
                 )}
-                {onWhy && (
-                  <div style={{ marginTop: 13, display: "flex" }}>
-                    <button onClick={(e) => { e.stopPropagation(); onWhy(s, "Matrix's Pick for today"); }} className="tap disp"
-                      style={{ display: "inline-flex", alignItems: "center", gap: 5, border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 10, padding: "8px 14px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
-                      <Sparkles size={13} /> Why this pick?
-                    </button>
-                  </div>
-                )}
                 {/* Buy with explicit quantity; the pick's REAL stop & target are armed with it. */}
-                <div style={{ marginTop: 11 }} onClick={(e) => e.stopPropagation()}>
+                <div style={{ marginTop: 13 }} onClick={(e) => e.stopPropagation()}>
                   <BuyButton
                     s={s}
                     market={market}
@@ -784,6 +776,14 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     fullWidth
                   />
                 </div>
+                {onWhy && (
+                  <div style={{ marginTop: 10, display: "flex" }}>
+                    <button onClick={(e) => { e.stopPropagation(); onWhy(s, "Matrix's Pick for today"); }} className="tap disp"
+                      style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 999, padding: "8px 15px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
+                      <Sparkles size={13} color="var(--primary)" /> Why this pick?
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
