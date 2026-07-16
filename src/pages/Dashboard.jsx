@@ -721,7 +721,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
               : "Waiting on real indicators — picks are ranked on RSI and the 50-DMA, so they appear once the data lands."}
           </div>
         )}
-        <div className="hide-scroll" style={{ display: "flex", gap: 13, overflowX: "auto", paddingBottom: 8, paddingTop: 2 }}>
+        <div className="hide-scroll" style={{ display: "flex", alignItems: "flex-start", gap: 13, overflowX: "auto", paddingBottom: 8, paddingTop: 2 }}>
           {picks.map((s) => (
             /* Clean deep-black card (no dirty grey), with the homepage metallic edges. */
             <div key={s.sym} onClick={() => onOpen(s)} className="card tap glow pickcard" style={{ flex: "0 0 auto", width: 272, padding: 0, position: "relative", overflow: "hidden" }}>
@@ -777,10 +777,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   />
                 </div>
                 {onWhy && (
-                  <div style={{ marginTop: 10, display: "flex" }}>
+                  <div style={{ marginTop: 14, display: "flex" }}>
                     <button onClick={(e) => { e.stopPropagation(); onWhy(s, "Matrix's Pick for today"); }} className="tap disp"
-                      style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 999, padding: "8px 15px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
-                      <Sparkles size={13} color="var(--primary)" /> Why this pick?
+                      style={{ display: "inline-flex", alignItems: "center", gap: 5, border: "none", background: "var(--elev)", color: "var(--muted)", borderRadius: 999, padding: "6px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                      <Sparkles size={12} color="var(--primary)" /> Why this pick?
                     </button>
                   </div>
                 )}
