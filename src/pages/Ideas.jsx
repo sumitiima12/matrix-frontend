@@ -4,7 +4,7 @@ import { BACKEND_URL } from "../config";
 import { fmt } from "../lib/format";
 import { ALL, marketOf, UNIVERSE } from "../domain/universe";
 import { fetchHistory, apiListIdeas, apiPostIdea, apiDeleteIdea } from "../domain/api";
-import { ChevronDown, ChevronUp, Plus, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, Sparkles, Trash2, X } from "lucide-react";
 import MiniCandles from "../components/charts/MiniCandles";
 import { selStyle } from "../components/common/styles";
 import BuyButton from "../components/common/BuyButton";
@@ -14,12 +14,12 @@ import TagRow from "../components/common/TagRow";
  * Ideas — trade ideas published by Matrix, scored against real candles.
  */
 
-function IdeasDashboard({ ideas }) {
-  const [type, setType] = useState("All");
-  const [mkt, setMkt] = useState("All");
+function IdeasDashboard({ ideas, collapsed = false, onExpand }) {
+  const [postedBy, setPostedBy] = useState("Neo");
   const [range, setRange] = useState(365);
   const [cap, setCap] = useState(100000);
   const [symF, setSymF] = useState("All");
+  const postedByOptions = useMemo(() => ["All", ...Array.from(new Set(ideas.map((i) => i.by).filter(Boolean)))], [ideas]);
   // Outcomes are resolved against REAL candles (async). Until the history lands we
   // show nothing rather than a guess.
   const [outcomes, setOutcomes] = useState({});
@@ -38,8 +38,7 @@ function IdeasDashboard({ ideas }) {
   const all = ideas
     .map((id) => ({ id, o: outcomes[id.sym] }))
     .filter(({ id, o }) => o &&
-      (type === "All" || o.type === type) &&
-      (mkt === "All" || o.mkt === mkt) &&
+      (postedBy === "All" || id.by === postedBy) &&
       (symF === "All" || id.sym === symF) &&
       o.daysAgo <= range);
   const closed = all.filter((r) => r.o.status === "closed"); // realized only
@@ -58,11 +57,27 @@ function IdeasDashboard({ ideas }) {
       <div className="mono" style={{ fontWeight: 800, fontSize: 14.5, marginTop: 2, color: c || "#fff" }}>{v}</div>
     </div>
   );
+  // Collapsed: just Win/Loss + P&L and an expand arrow.
+  if (collapsed) {
+    return (
+      <button onClick={onExpand} className="tap disp card glow metal" style={{ width: "100%", marginTop: 14, border: "none", background: "var(--feature-grad)", color: "#fff", borderRadius: 24, padding: "13px 16px", display: "flex", alignItems: "center", gap: 14 }}>
+        <div style={{ textAlign: "left" }}>
+          <div style={{ fontSize: 10, opacity: .8, fontWeight: 700 }}>WIN / LOSS</div>
+          <div className="mono" style={{ fontWeight: 800, fontSize: 15 }}>{wins} : {losses}</div>
+        </div>
+        <div style={{ textAlign: "left" }}>
+          <div style={{ fontSize: 10, opacity: .8, fontWeight: 700 }}>P&amp;L</div>
+          <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: netPnl >= 0 ? "#9CFFD6" : "#FFB3BE" }}>{netPnl >= 0 ? "+" : ""}{fmt(netPnl, "IN")}</div>
+        </div>
+        <span style={{ marginLeft: "auto", display: "grid", placeItems: "center" }}><ChevronDown size={16} /></span>
+      </button>
+    );
+  }
   return (
     <div className="card glow metal" style={{ marginTop: 14, padding: 16, border: "none", background: "var(--feature-grad)", color: "#fff" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div className="disp" style={{ fontWeight: 700, fontSize: 15 }}>Ideas Dashboard</div>
-        <span style={{ fontSize: 10.5, opacity: .85 }}>realized · last {range >= 365 ? "12 months" : range + "d"}</span>
+        <span style={{ fontSize: 10.5, opacity: .85, marginRight: 34 }}>realized · last {range >= 365 ? "12 months" : range + "d"}</span>
       </div>
       <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 6 }}>{netPnl >= 0 ? "+" : ""}{fmt(netPnl, "IN")}</div>
       <div style={{ fontSize: 11, opacity: .85, marginTop: -2 }}>Net realized P&amp;L on {fmt(cap, "IN")} deployed · {openN} still open</div>
@@ -73,11 +88,10 @@ function IdeasDashboard({ ideas }) {
         <Stat k="Trades" v={n} />
       </div>
       <div style={{ display: "flex", gap: 7, marginTop: 12, flexWrap: "wrap" }}>
-        <select aria-label="Select option" value={type} onChange={(e) => setType(e.target.value)} style={sel}><option value="All">Type: All</option><option value="Stock">Stock</option><option value="F&O">F&amp;O</option></select>
-        <select aria-label="Select option" value={mkt} onChange={(e) => setMkt(e.target.value)} style={sel}><option value="All">Market: All</option><option value="IN">Indian</option><option value="US">US</option><option value="Crypto">Crypto</option></select>
-        <select aria-label="Select option" value={range} onChange={(e) => setRange(+e.target.value)} style={sel}><option value={30}>30d</option><option value={90}>3m</option><option value={180}>6m</option><option value={365}>12m</option></select>
-        <select aria-label="Select option" value={cap} onChange={(e) => setCap(+e.target.value)} style={sel}><option value={50000}>Capital: ₹50k</option><option value={100000}>Capital: ₹1L</option><option value={500000}>Capital: ₹5L</option><option value={1000000}>Capital: ₹10L</option></select>
-        <select aria-label="Select option" value={symF} onChange={(e) => setSymF(e.target.value)} style={sel}><option value="All">Symbol: All</option>{ALL.map((a) => <option key={a.sym} value={a.sym}>{a.sym}</option>)}</select>
+        <select aria-label="Posted by" value={postedBy} onChange={(e) => setPostedBy(e.target.value)} style={sel}>{postedByOptions.map((b) => <option key={b} value={b}>Posted by: {b}</option>)}</select>
+        <select aria-label="Range" value={range} onChange={(e) => setRange(+e.target.value)} style={sel}><option value={30}>30d</option><option value={90}>3m</option><option value={180}>6m</option><option value={365}>12m</option></select>
+        <select aria-label="Capital" value={cap} onChange={(e) => setCap(+e.target.value)} style={sel}><option value={50000}>Capital: ₹50k</option><option value={100000}>Capital: ₹1L</option><option value={500000}>Capital: ₹5L</option><option value={1000000}>Capital: ₹10L</option></select>
+        <select aria-label="Symbol" value={symF} onChange={(e) => setSymF(e.target.value)} style={sel}><option value="All">Symbol: All</option>{ALL.map((a) => <option key={a.sym} value={a.sym}>{a.sym}</option>)}</select>
       </div>
     </div>
   );
@@ -198,13 +212,11 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
       </div>
 
       {!dashOpen ? (
-        <button onClick={() => setDashOpen(true)} className="tap disp card glow metal" style={{ width: "100%", marginTop: 14, border: "none", background: "var(--feature-grad)", color: "#fff", borderRadius: 24, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700, fontSize: 14 }}>
-          Ideas Dashboard <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, opacity: .9 }}>Expand <ChevronDown size={15} /></span>
-        </button>
+        <IdeasDashboard ideas={shown} collapsed onExpand={() => setDashOpen(true)} />
       ) : (
         <div style={{ position: "relative" }}>
           <IdeasDashboard ideas={shown} />
-          <button onClick={() => setDashOpen(false)} className="tap" style={{ position: "absolute", top: 14, right: 16, display: "flex", alignItems: "center", gap: 4, border: "1px solid rgba(255,255,255,.28)", background: "rgba(255,255,255,.1)", color: "#fff", borderRadius: 10, padding: "5px 9px", fontWeight: 800, fontSize: 10.5 }}>Collapse <ChevronUp size={12} /></button>
+          <button onClick={() => setDashOpen(false)} className="tap" title="Collapse" style={{ position: "absolute", top: 14, right: 16, display: "grid", placeItems: "center", border: "1px solid rgba(255,255,255,.28)", background: "rgba(255,255,255,.1)", color: "#fff", borderRadius: 10, padding: "6px", fontWeight: 800 }}><ChevronUp size={14} /></button>
         </div>
       )}
       {shown.length === 0 && <div className="card" style={{ marginTop: 12, padding: 16, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No Matrix ideas for this market yet. Post one below, or switch markets from the tabs above.</div>}
@@ -214,23 +226,21 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
           <div key={i} className="card" style={{ marginTop: 12, padding: 15 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span className="pill" style={{ background: "var(--primary-soft)", color: "var(--primary)", fontSize: 11, fontWeight: 700, padding: "3px 9px" }}>✦ Matrix</span>
+                <span className="pill" style={{ background: "var(--primary-soft)", color: "var(--primary)", fontSize: 11, fontWeight: 700, padding: "3px 9px" }}>Neo</span>
                 <span onClick={() => s && onOpen(s)} className="disp tap" style={{ fontWeight: 700, fontSize: 14 }}>{idea.sym}</span>
               </div>
               <span className="pill disp" style={{ background: "var(--up-soft)", color: "var(--up)", fontWeight: 700, fontSize: 12.5, padding: "4px 11px" }}>+{idea.gain}% potential</span>
             </div>
-            {/* REAL technical tags + the evidence behind them. */}
             {s && (
               <div style={{ marginTop: 10 }}>
-                <TagRow s={s} max={3} onWhy={onWhy ? (x) => onWhy(x, "Matrix Idea — published today") : null} />
+                <TagRow s={s} max={3} onWhy={null} />
               </div>
             )}
             <div style={{ marginTop: 10 }}><MiniCandles sym={idea.sym} price={s ? s.price : idea.entry} chg={s ? s.chg : 0} height={120} staticChart defaultTf={m === "Crypto" ? "1h" : "1d"} pattern={idea.pattern} /></div>
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, gap: 8 }}>
               <div><div style={{ fontSize: 10, color: "var(--muted)" }}>Entry</div><div className="mono" style={{ fontWeight: 700, fontSize: 13 }}>{fmt(idea.entry, m)}</div></div>
               <div><div style={{ fontSize: 10, color: "var(--muted)" }}>Current</div><div className="mono" style={{ fontWeight: 800, fontSize: 13 }}>{fmt(s ? s.price : idea.entry, m)}</div></div>
-              <div><div style={{ fontSize: 10, color: "var(--muted)" }}>Target</div><div className="mono" style={{ fontWeight: 700, fontSize: 13 }}>{fmt(idea.exit, m)}</div></div>
-              <div style={{ textAlign: "right" }}><div style={{ fontSize: 10, color: "var(--muted)" }}>Potential left</div>{(() => { const cur = s ? s.price : idea.entry; const pl = (idea.exit - cur) / cur * 100; return <div className="mono" style={{ fontWeight: 800, fontSize: 13, color: pl >= 0 ? "var(--up)" : "var(--muted)" }}>{pl >= 0 ? "+" + pl.toFixed(1) + "%" : "target hit"}</div>; })()}</div>
+              <div style={{ textAlign: "right" }}><div style={{ fontSize: 10, color: "var(--muted)" }}>Target</div><div className="mono" style={{ fontWeight: 700, fontSize: 13 }}>{fmt(idea.exit, m)}</div></div>
             </div>
             <div style={{ fontSize: 12.5, color: "var(--ink-soft)", marginTop: 10, lineHeight: 1.55 }}>{idea.logic}</div>
             {s && onBuy && (
@@ -239,6 +249,15 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
                   opts={{ tp: idea.gain, sl: idea.stop, tradeType: "Manual" }} />
               </div>
             )}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, gap: 8 }}>
+              {onWhy ? (
+                <button onClick={(e) => { e.stopPropagation(); onWhy(s, "Neo Idea — published today"); }} className="tap disp" style={{ display: "inline-flex", alignItems: "center", gap: 5, border: "none", background: "var(--elev)", color: "var(--muted)", borderRadius: 999, padding: "6px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}><Sparkles size={12} color="var(--primary)" /> Why this idea?</button>
+              ) : <span />}
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 10, color: "var(--muted)" }}>Potential left</div>
+                {(() => { const cur = s ? s.price : idea.entry; const pl = (idea.exit - cur) / cur * 100; return <div className="mono" style={{ fontWeight: 800, fontSize: 13, color: pl >= 0 ? "var(--up)" : "var(--muted)" }}>{pl >= 0 ? "+" + pl.toFixed(1) + "%" : "target hit"}</div>; })()}
+              </div>
+            </div>
           </div>
         );
       })}

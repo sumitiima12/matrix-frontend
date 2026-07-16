@@ -6,28 +6,43 @@ import { techSignal } from "../domain/signals";
  */
 
 export function buildDailyIdeas() {
-  return ALL
+  const today = new Date(new Date().setHours(0, 0, 0, 0)).getTime();
+  const scored = ALL
     .filter((s) => s.sector !== "Volatility" && s.sector !== "Index" && s.hasData)
     .map((s) => ({ s, t: techSignal(s) }))
     // techSignal() already returns null without real data, but be explicit:
     // an idea with no entry price is not an idea.
-    .filter((x) => x.t && x.s.price != null && x.t.score > 0 && x.t.target && x.t.stop)
-    .sort((a, b) => b.t.score - a.t.score)
-    .slice(0, 9)
-    .map(({ s, t }) => ({
-      by: "Matrix",
-      publishedAt: new Date(new Date().setHours(0, 0, 0, 0)).getTime(),
-      sym: s.sym,
-      entry: +s.price.toFixed(2),
-      exit: t.target,               // real: 60-session resistance or ATR projection
-      stop: t.stop,                 // real: swing support cushioned by ATR
-      gain: t.tpPct,
-      rr: t.rr,
-      pattern: t.pattern,
-      tradeType: marketOf(s.sym) === "IN" ? "Stock" : "Stock",
-      signal: t.signal,
-      logic: t.why,
-    }));
+    .filter((x) => x.t && x.s.price != null && x.t.score > 0 && x.t.target && x.t.stop);
+
+  // Group by market and take the strongest signals in EACH — so every market
+  // (Indian, US, Crypto, Commodity, F&O) gets fresh daily ideas, not just whichever
+  // market happens to top a single global ranking.
+  const byMarket = {};
+  for (const x of scored) {
+    const m = marketOf(x.s.sym);
+    (byMarket[m] = byMarket[m] || []).push(x);
+  }
+  const out = [];
+  for (const m of Object.keys(byMarket)) {
+    byMarket[m].sort((a, b) => b.t.score - a.t.score);
+    for (const { s, t } of byMarket[m].slice(0, 6)) {
+      out.push({
+        by: "Neo",
+        publishedAt: today,
+        sym: s.sym,
+        entry: +s.price.toFixed(2),
+        exit: t.target,               // real: 60-session resistance or ATR projection
+        stop: t.stop,                 // real: swing support cushioned by ATR
+        gain: t.tpPct,
+        rr: t.rr,
+        pattern: t.pattern,
+        tradeType: "Stock",
+        signal: t.signal,
+        logic: t.why,
+      });
+    }
+  }
+  return out;
 }
 /**
  * Today's ideas.

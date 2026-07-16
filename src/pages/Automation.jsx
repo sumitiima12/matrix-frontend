@@ -452,6 +452,7 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
         <div style={{ minWidth: 0 }}>
           <div className="disp" style={{ fontWeight: 700, fontSize: 14 }}>{s.name}</div>
+          {(s.symbols || []).length > 0 && <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{s.symbols.join(" · ")}</div>}
           {s.desc && <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 4, lineHeight: 1.5 }}>{s.desc}</div>}
         </div>
         <span className="pill gold-border" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 9px", color: "var(--gold)", flex: "0 0 auto", whiteSpace: "nowrap" }}>★ PREMIUM</span>
@@ -860,8 +861,8 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
             <div className="disp" style={{ fontWeight: 700, fontSize: 13, opacity: .9 }}>Automation P&amp;L</div>
             <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 3, color: agg.pnl >= 0 ? "#9CFFD6" : "#FFB3BE" }}>{agg.pnl >= 0 ? "+" : ""}{fmt(agg.pnl, "IN")}</div>
           </div>
-          <button onClick={() => setDashOpen((v) => !v)} className="tap disp" style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 5, border: "1px solid rgba(255,255,255,.28)", background: "rgba(255,255,255,.1)", color: "#fff", borderRadius: 11, padding: "8px 12px", fontWeight: 800, fontSize: 11.5 }}>
-            {dashOpen ? <>Collapse <ChevronUp size={14} /></> : <>Expand <ChevronDown size={14} /></>}
+          <button onClick={() => setDashOpen((v) => !v)} className="tap" title={dashOpen ? "Collapse" : "Expand"} style={{ flex: "0 0 auto", display: "grid", placeItems: "center", border: "1px solid rgba(255,255,255,.28)", background: "rgba(255,255,255,.1)", color: "#fff", borderRadius: 10, padding: "7px" }}>
+            {dashOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </button>
         </div>
 

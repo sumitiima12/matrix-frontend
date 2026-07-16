@@ -114,7 +114,7 @@ const CSS = `
   --card-grad:linear-gradient(160deg,#17171A,#111113);
   --feature-grad:linear-gradient(150deg,#33333a 0%,#232329 42%,#141417 78%,#0d0d10 100%);
   --app-bg:radial-gradient(120% 60% at 50% -10%, #1A1A1D 0%, #0E0E10 50%, #08080A 100%);
-  --header-bg:rgba(11,11,13,.72);
+  --header-bg:#0B0B0D;
   --on-primary:#141416;
 }
 .theme-light{
@@ -132,7 +132,7 @@ const CSS = `
   --app-bg:linear-gradient(180deg,#FAFAFB 0%,#F5F5F7 100%);
   --header-bg:rgba(247,247,248,.8);
   --on-primary:#FFFFFF;
-  --header-bg:rgba(255,255,255,.78);
+  --header-bg:#FFFFFF;
 }
 *{box-sizing:border-box}
 .mx{font-family:'Nunito',system-ui,sans-serif;color:var(--ink)}
@@ -162,7 +162,8 @@ const CSS = `
 @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .fade{animation:fadeUp .3s ease both}
 @keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
-.sheet{animation:sheetUp .28s cubic-bezier(.22,1,.36,1) both}
+/* Bottom-sheet drawers never cover the top 20% of the screen. */
+.sheet{animation:sheetUp .28s cubic-bezier(.22,1,.36,1) both;max-height:80vh !important;overflow-y:auto}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
 .shine{background:linear-gradient(90deg,rgba(255,255,255,0) 0%,rgba(160,160,170,.55) 50%,rgba(255,255,255,0) 100%);background-size:200% 100%;animation:shimmer 2.6s infinite}
 .gradtext{background:linear-gradient(120deg,var(--ink),var(--muted));-webkit-background-clip:text;background-clip:text;color:transparent}
@@ -657,9 +658,9 @@ function AppInner() {
         <div style={{ position: "absolute", top: -80, left: "50%", transform: "translateX(-50%)", width: 420, height: 320, background: "radial-gradient(circle, rgba(150,150,160,.12), transparent 70%)", pointerEvents: "none", zIndex: 0 }} />
         {/* HEADER */}
         <div className="glass" style={{ position: "sticky", top: 0, zIndex: 30, background: "var(--header-bg)", borderBottom: "1px solid var(--line)" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px 8px", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px 8px", gap: 8 }}>
             <div onClick={() => { setTab("home"); setDetail(null); }} className="tap disp" style={{ display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minWidth: 0, marginRight: "auto" }}>
-              <img src={theme === "dark" ? headerLogoDark : headerLogo} alt="Matrix One" style={{ height: 46, width: "auto", display: "block", flexShrink: 0 }} />
+              <img src={theme === "dark" ? headerLogoDark : headerLogo} alt="Matrix One" style={{ height: 34, width: "auto", display: "block", flexShrink: 0 }} />
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
               {/* The wallet icon opens the WALLET, not the profile sheet. */}
@@ -920,7 +921,7 @@ function AppInner() {
           <SearchOverlay onClose={() => setSearch(false)} onOpen={openStock} />
         </ErrorBoundary>
       )}
-      {showProfile && <ProfileSheet onAdmin={isAdminUser ? openAdmin : undefined} onBroker={() => { setShowProfile(false); setBrokerOpen(true); }} brokerName={liveBroker ? liveBroker.name : null} profile={profile} walletMap={walletMap} portfolio={portfolio} trades={trades} deposits={deposits} market={market} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={doLogout} onPersonalise={() => setRepersonalise(true)} />}
+      {showProfile && <ProfileSheet onAdmin={isAdminUser ? openAdmin : undefined} onBroker={() => { setShowProfile(false); setBrokerOpen(true); }} brokerName={liveBroker ? liveBroker.name : null} profile={profile} walletMap={walletMap} portfolio={portfolio} trades={trades} deposits={deposits} market={market} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={doLogout} onPersonalise={() => setRepersonalise(true)} onUsernameChanged={(u) => onAuthed({ ...auth, username: u })} />}
       {adminOpen && <AdminPanel userId={userId} adminKey={adminKey} onClose={() => { setAdminOpen(false); setAdminKey(""); }} />}
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} onAuthed={onAuthed} />}
       {histOpen && <TradeHistory userId={userId} trades={trades} onClose={() => setHistOpen(false)} />}

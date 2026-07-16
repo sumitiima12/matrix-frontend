@@ -50,8 +50,6 @@ export default function MiniCandles({
             ◫ {patLabel}
           </span>
         )}
-        <span className="pill" style={{ position: "absolute", top: 6, right: 6, zIndex: 2, fontSize: 8, fontWeight: 800, background: "var(--up-soft)", color: "var(--up)", padding: "2px 6px" }}>● REAL</span>
-
         <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none">
           {ctype === "line" ? (
             <>

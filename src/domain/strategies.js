@@ -14,19 +14,19 @@ import { TEMPLATES } from "./strategyLang";
  */
 export const SEED_STRATS = [
   // ── Indian equity ──────────────────────────────────────────────────────────
-  { id: "s1", name: "Golden Cross + RSI", market: "IN", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[0].cfg, cap: 200000, symbols: ["RELIANCE", "TCS", "HDFCBANK"], created: Date.now() - 128 * 864e5 },
-  { id: "s2", name: "MACD crossover", market: "IN", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[2].cfg, cap: 100000, symbols: ["INFY", "ITC"], created: Date.now() - 46 * 864e5 },
-  { id: "s3", name: "Bollinger squeeze", market: "IN", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[1].cfg, cap: 150000, symbols: ["SBIN", "AXISBANK"], created: Date.now() - 84 * 864e5 },
+  { id: "s1", name: "Golden Cross + RSI", market: "IN", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[0].cfg, cap: 200000, symbols: ["RELIANCE"], created: Date.now() - 128 * 864e5 },
+  { id: "s2", name: "MACD crossover", market: "IN", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[2].cfg, cap: 100000, symbols: ["INFY"], created: Date.now() - 46 * 864e5 },
+  { id: "s3", name: "Bollinger squeeze", market: "IN", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[1].cfg, cap: 150000, symbols: ["SBIN"], created: Date.now() - 84 * 864e5 },
 
   // ── F&O ────────────────────────────────────────────────────────────────────
 
   // ── US equity ──────────────────────────────────────────────────────────────
-  { id: "s6", name: "Big tech momentum", market: "US", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[2].cfg, cap: 10000, symbols: ["AAPL", "MSFT", "NVDA"], created: Date.now() - 74 * 864e5 },
-  { id: "s7", name: "BB breakout + RSI", market: "US", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[4].cfg, cap: 10000, symbols: ["TSLA", "AMZN"], created: Date.now() - 51 * 864e5 },
+  { id: "s6", name: "Big tech momentum", market: "US", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[2].cfg, cap: 10000, symbols: ["AAPL"], created: Date.now() - 74 * 864e5 },
+  { id: "s7", name: "BB breakout + RSI", market: "US", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[4].cfg, cap: 10000, symbols: ["TSLA"], created: Date.now() - 51 * 864e5 },
 
   // ── Crypto ─────────────────────────────────────────────────────────────────
-  { id: "s8", name: "Crypto trend follow", market: "Crypto", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[0].cfg, cap: 5000, symbols: ["BTC", "ETH"], created: Date.now() - 63 * 864e5 },
-  { id: "s9", name: "Crypto mean reversion", market: "Crypto", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[1].cfg, cap: 5000, symbols: ["SOL", "ETH"], created: Date.now() - 38 * 864e5 },
+  { id: "s8", name: "Crypto trend follow", market: "Crypto", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[0].cfg, cap: 5000, symbols: ["BTC"], created: Date.now() - 63 * 864e5 },
+  { id: "s9", name: "Crypto mean reversion", market: "Crypto", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[1].cfg, cap: 5000, symbols: ["SOL"], created: Date.now() - 38 * 864e5 },
 
   // ── Commodity ──────────────────────────────────────────────────────────────
   { id: "s10", name: "Gold trend", market: "Commodity", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[0].cfg, cap: 10000, symbols: ["GOLD"], created: Date.now() - 120 * 864e5 },

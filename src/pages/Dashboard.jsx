@@ -721,11 +721,11 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
               : "Waiting on real indicators — picks are ranked on RSI and the 50-DMA, so they appear once the data lands."}
           </div>
         )}
-        <div className="hide-scroll" style={{ display: "flex", alignItems: "flex-start", gap: 13, overflowX: "auto", paddingBottom: 8, paddingTop: 2 }}>
+        <div className="hide-scroll" style={{ display: "flex", alignItems: "stretch", gap: 13, overflowX: "auto", paddingBottom: 8, paddingTop: 2 }}>
           {picks.map((s) => (
-            /* Clean deep-black card (no dirty grey), with the homepage metallic edges. */
-            <div key={s.sym} onClick={() => onOpen(s)} className="card tap glow pickcard" style={{ flex: "0 0 auto", width: 272, padding: 0, position: "relative", overflow: "hidden" }}>
-              <div style={{ padding: 17, position: "relative", color: "var(--ink)" }}>
+            /* Uniform light-grey cards with the homepage metallic edges. */
+            <div key={s.sym} onClick={() => onOpen(s)} className="card tap glow pickcard" style={{ flex: "0 0 auto", width: 272, padding: 0, position: "relative", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+              <div style={{ padding: 17, position: "relative", color: "var(--ink)", display: "flex", flexDirection: "column", flex: 1 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 16 }}>💎</span>
                   <div style={{ minWidth: 0 }}><div className="disp" style={{ fontWeight: 700, fontSize: 15.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.sym}</div><div style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</div></div>
@@ -737,16 +737,16 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 {/* REAL technical tags from the tag engine — Golden Cross, Bull Flag,
                     Breakout, Volume Spike and so on, each true and each backed by a
                     number. "Why?" opens the full evidence + verdict. */}
-                <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "nowrap", alignItems: "center", overflow: "hidden" }}>
                   {computeTags(s.under ? { ...s, sym: s.under } : s).slice(0, 3).map((t) => (
                     <span key={t.id} className="pill" title={t.evidence}
-                      style={{ fontSize: 10, fontWeight: 800, background: "var(--primary-soft)", color: "var(--primary)", padding: "3px 9px" }}>
+                      style={{ fontSize: 10, fontWeight: 800, background: "var(--primary-soft)", color: "var(--primary)", padding: "3px 9px", whiteSpace: "nowrap", flex: "0 0 auto" }}>
                       {t.label}
                     </span>
                   ))}
                 </div>
-                <div style={{ marginTop: 10, paddingTop: 12, borderTop: "1px solid var(--line)", fontSize: 12, color: "var(--ink-soft, var(--ink))", lineHeight: 1.55, display: "flex", gap: 6 }}>
-                  <Sparkles size={14} color="var(--primary)" style={{ flex: "0 0 auto", marginTop: 2 }} /><span>{s.pickReason || ""}</span>
+                <div style={{ marginTop: 10, paddingTop: 12, borderTop: "1px solid var(--line)", fontSize: 12, color: "var(--ink-soft, var(--ink))", lineHeight: 1.5, display: "flex", gap: 6 }}>
+                  <Sparkles size={14} color="var(--primary)" style={{ flex: "0 0 auto", marginTop: 2 }} /><span style={{ display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{s.pickReason || ""}</span>
                 </div>
                 {/* REAL stop / target from support-resistance + ATR */}
                 {s.pickTarget != null && (
@@ -766,7 +766,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   </div>
                 )}
                 {/* Buy with explicit quantity; the pick's REAL stop & target are armed with it. */}
-                <div style={{ marginTop: 13 }} onClick={(e) => e.stopPropagation()}>
+                <div style={{ marginTop: "auto", paddingTop: 13 }} onClick={(e) => e.stopPropagation()}>
                   <BuyButton
                     s={s}
                     market={market}

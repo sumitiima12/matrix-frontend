@@ -324,7 +324,22 @@ function SecurityQuestionCard() {
   );
 }
 
-export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, onAdmin, portfolio = [], trades = [], deposits = [], market = "IN", onBroker, brokerName }) {
+export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, onAdmin, portfolio = [], trades = [], deposits = [], market = "IN", onBroker, brokerName, onUsernameChanged }) {
+  const [uidEdit, setUidEdit] = useState(false);
+  const [uidVal, setUidVal] = useState("");
+  const [uidBusy, setUidBusy] = useState(false);
+  const [uidErr, setUidErr] = useState(null);
+  const uidValid = /^[A-Za-z][A-Za-z0-9_]{2,19}$/.test(uidVal);
+  const saveUid = async () => {
+    if (!uidValid) { setUidErr("3–20 chars, starts with a letter."); return; }
+    setUidErr(null); setUidBusy(true);
+    try {
+      const r = await apiSetUsername(uidVal);
+      if (r && r.ok) { onUsernameChanged && onUsernameChanged(r.username || uidVal); setUidEdit(false); }
+      else setUidErr((r && r.error) || "Couldn't update.");
+    } catch { setUidErr("Network error."); }
+    setUidBusy(false);
+  };
   const WMKTS = [["IN", "🇮🇳 Indian stocks"], ["US", "🇺🇸 US stocks"], ["Crypto", "₿ Crypto"], ["FNO", "⚡ F&O"], ["Commodity", "🪙 Commodity"]];
   const summary = profileSummary(profile);
 
@@ -388,6 +403,28 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
         </div>
 
         <button onClick={() => { onClose && onClose(); onTradeHistory && onTradeHistory(); }} className="tap disp" style={{ width: "100%", marginTop: 14, background: "var(--primary)", color: "var(--on-primary)", border: "none", borderRadius: 14, padding: 13, fontWeight: 800, fontSize: 13.5, display: "flex", gap: 7, alignItems: "center", justifyContent: "center" }}><Clock size={16} /> Trade history</button>
+
+        {auth && (
+          <div className="card" style={{ marginTop: 14, padding: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 700 }}>USER ID</div>
+                <div className="disp mono" style={{ fontWeight: 800, fontSize: 14, marginTop: 2 }}>{auth.username || "—"}</div>
+              </div>
+              {!uidEdit && <button onClick={() => { setUidVal(auth.username || ""); setUidEdit(true); setUidErr(null); }} className="tap disp" style={{ flex: "0 0 auto", border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: "7px 12px", fontWeight: 800, fontSize: 12 }}>Change</button>}
+            </div>
+            {uidEdit && (
+              <div style={{ marginTop: 10 }}>
+                <input value={uidVal} onChange={(e) => setUidVal(e.target.value.replace(/[^A-Za-z0-9_]/g, "").slice(0, 20))} placeholder="new user ID" className="no-ring mono" style={{ width: "100%", border: "1px solid " + (uidVal ? (uidValid ? "var(--up)" : "var(--down)") : "var(--line)"), borderRadius: 10, padding: "10px 12px", fontSize: 14, background: "var(--elev)", color: "var(--ink)" }} />
+                {uidErr && <div style={{ color: "var(--down)", fontSize: 11.5, fontWeight: 600, marginTop: 6 }}>{uidErr}</div>}
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  <button onClick={() => setUidEdit(false)} className="tap disp" style={{ flex: 1, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: 10, fontWeight: 800, fontSize: 12.5 }}>Cancel</button>
+                  <button onClick={saveUid} disabled={uidBusy || !uidValid} className="tap disp" style={{ flex: 1, border: "none", background: uidValid ? "var(--primary)" : "var(--elev)", color: uidValid ? "var(--on-primary)" : "var(--muted)", borderRadius: 10, padding: 10, fontWeight: 800, fontSize: 12.5 }}>{uidBusy ? "Saving…" : "Save"}</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {auth && auth.username && (() => {
           const link = `${(typeof window !== "undefined" && window.location ? window.location.origin : "https://matrixone.app")}/?ref=${auth.username}`;
