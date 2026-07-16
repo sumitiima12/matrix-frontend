@@ -25,10 +25,12 @@ export function SetUsernameModal({ onDone }) {
   const save = async () => {
     if (!valid) { setErr("3–20 characters, starting with a letter (letters, numbers, underscore)."); return; }
     setErr(null); setBusy(true);
-    const res = await apiSetUsername(uid);
+    try {
+      const res = await apiSetUsername(uid);
+      if (res && res.ok) { onDone(res.username || uid); return; }
+      setErr((res && res.error) || "Couldn't save that user ID — please try again.");
+    } catch { setErr("Network error — please try again."); }
     setBusy(false);
-    if (res && res.ok) onDone(res.username || uid);
-    else setErr((res && res.error) || "Couldn't save that user ID.");
   };
   return (
     <div className="mx" style={{ position: "fixed", inset: 0, zIndex: 120, background: "linear-gradient(165deg,#232327 0%,#161619 55%,#0C0C0E 100%)", display: "flex", flexDirection: "column", justifyContent: "center", padding: 30, overflow: "auto" }}>

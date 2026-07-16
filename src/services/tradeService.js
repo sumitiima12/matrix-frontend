@@ -83,7 +83,9 @@ export async function checkUsername(u) {
 
 /** Set/change the signed-in user's handle (mandate flow for existing accounts). */
 export async function setUsername(username) {
-  return post("/api/username", { username });
+  if (!BACKEND_URL) return { ok: false, error: "No backend connected." };
+  try { return await post("/api/username", { username }); }
+  catch { return { ok: false, error: "Network error — please try again." }; }
 }
 
 /** Public strategies — shared across users. */
