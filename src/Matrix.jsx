@@ -154,8 +154,9 @@ const CSS = `
 /* Homepage cards — premium metallic treatment: edge highlight + rim light + edge reflection (box-shadow), specular highlight (::before). */
 .home-metal .card{position:relative;border:1px solid rgba(255,255,255,.12);box-shadow:inset 0 1.4px 0 rgba(255,255,255,.22), inset 0 0 0 1px rgba(255,255,255,.05), inset 0 -1px 0 rgba(255,255,255,.05), inset 24px 0 42px -34px rgba(255,255,255,.14), inset -24px 0 42px -34px rgba(255,255,255,.14), 0 24px 56px -22px rgba(0,0,0,.85), 0 8px 20px rgba(0,0,0,.4)}
 .home-metal .card::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(130% 80% at 18% -12%, rgba(255,255,255,.13), rgba(255,255,255,0) 46%)}
-/* Matrix's Picks — clean deep-black (no dirty grey). */
-.pickcard{background:linear-gradient(162deg,#151519 0%,#0c0c0f 58%,#070709 100%)}
+/* Matrix's Picks — soft light-grey cards (dark text), theme-aware. */
+.pickcard{background:#F1F1F3 !important;box-shadow:0 1px 2px rgba(20,20,30,.05), 0 10px 24px -16px rgba(20,20,30,.18) !important;border:1px solid #E7E7EA !important}
+.theme-dark .pickcard{background:#202024 !important;border:1px solid #2c2c30 !important}
 .theme-light .home-metal .card{border-color:rgba(20,20,30,.10);box-shadow:inset 0 1.2px 0 rgba(255,255,255,.9), inset 0 0 0 1px rgba(255,255,255,.5), inset 0 -1px 0 rgba(20,20,30,.05), inset 24px 0 42px -34px rgba(255,255,255,.6), inset -24px 0 42px -34px rgba(255,255,255,.6), 0 18px 44px -22px rgba(20,20,30,.16), 0 6px 16px rgba(20,20,30,.05)}
 .theme-light .home-metal .card::before{background:radial-gradient(130% 80% at 18% -12%, rgba(255,255,255,.7), rgba(255,255,255,0) 46%)}
 @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}

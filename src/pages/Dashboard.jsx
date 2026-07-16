@@ -725,14 +725,14 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           {picks.map((s) => (
             /* Clean deep-black card (no dirty grey), with the homepage metallic edges. */
             <div key={s.sym} onClick={() => onOpen(s)} className="card tap glow pickcard" style={{ flex: "0 0 auto", width: 272, padding: 0, position: "relative", overflow: "hidden" }}>
-              <div style={{ padding: 17, position: "relative", color: "#fff" }}>
+              <div style={{ padding: 17, position: "relative", color: "var(--ink)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 16 }}>💎</span>
-                  <div style={{ minWidth: 0 }}><div className="disp" style={{ fontWeight: 700, fontSize: 15.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.sym}</div><div style={{ fontSize: 11, color: "rgba(255,255,255,.75)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</div></div>
+                  <div style={{ minWidth: 0 }}><div className="disp" style={{ fontWeight: 700, fontSize: 15.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.sym}</div><div style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</div></div>
                 </div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 12 }}>
                   <span className="mono" style={{ fontWeight: 800, fontSize: 19 }}>{fmt(s.price, market)}</span>
-                  <span style={{ fontSize: 10.5, color: "rgba(255,255,255,.75)", fontWeight: 700 }}>{s.chg == null ? "—" : (s.chg >= 0 ? "▲ " : "▼ ") + pct(s.chg, 2, false)}{s.isFut ? ` · lot ${s.lot}` : ""}</span>
+                  <span style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 700 }}>{s.chg == null ? "—" : (s.chg >= 0 ? "▲ " : "▼ ") + pct(s.chg, 2, false)}{s.isFut ? ` · lot ${s.lot}` : ""}</span>
                 </div>
                 {/* REAL technical tags from the tag engine — Golden Cross, Bull Flag,
                     Breakout, Volume Spike and so on, each true and each backed by a
@@ -740,32 +740,32 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                   {computeTags(s.under ? { ...s, sym: s.under } : s).slice(0, 3).map((t) => (
                     <span key={t.id} className="pill" title={t.evidence}
-                      style={{ fontSize: 10, fontWeight: 800, background: "rgba(255,255,255,.18)", color: "#fff", padding: "3px 9px" }}>
+                      style={{ fontSize: 10, fontWeight: 800, background: "var(--primary-soft)", color: "var(--primary)", padding: "3px 9px" }}>
                       {t.label}
                     </span>
                   ))}
                   {onWhy && (
                     <button onClick={(e) => { e.stopPropagation(); onWhy(s, "Matrix's Pick for today"); }} className="tap"
-                      style={{ border: "1px solid rgba(255,255,255,.35)", background: "transparent", color: "#fff", borderRadius: 7, padding: "3px 9px", fontSize: 10, fontWeight: 800, cursor: "pointer" }}>
+                      style={{ border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 7, padding: "3px 9px", fontSize: 10, fontWeight: 800, cursor: "pointer" }}>
                       Why?
                     </button>
                   )}
                 </div>
-                <div style={{ marginTop: 10, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,.18)", fontSize: 12, color: "rgba(255,255,255,.92)", lineHeight: 1.55, display: "flex", gap: 6 }}>
-                  <Sparkles size={14} color="#fff" style={{ flex: "0 0 auto", marginTop: 2 }} /><span>{s.pickReason || ""}</span>
+                <div style={{ marginTop: 10, paddingTop: 12, borderTop: "1px solid var(--line)", fontSize: 12, color: "var(--ink-soft, var(--ink))", lineHeight: 1.55, display: "flex", gap: 6 }}>
+                  <Sparkles size={14} color="var(--primary)" style={{ flex: "0 0 auto", marginTop: 2 }} /><span>{s.pickReason || ""}</span>
                 </div>
                 {/* REAL stop / target from support-resistance + ATR */}
                 {s.pickTarget != null && (
                   <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                    <div style={{ flex: 1, background: "rgba(0,0,0,.24)", borderRadius: 10, padding: "7px 9px" }}>
+                    <div style={{ flex: 1, background: "var(--elev)", borderRadius: 10, padding: "7px 9px" }}>
                       <div style={{ fontSize: 8.5, opacity: .8, fontWeight: 700 }}>TARGET</div>
-                      <div className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: "#9CFFD6" }}>{fmt(s.pickTarget, market)} <span style={{ fontSize: 9, opacity: .85 }}>+{s.pickTpPct}%</span></div>
+                      <div className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: "var(--up)" }}>{fmt(s.pickTarget, market)} <span style={{ fontSize: 9, opacity: .85 }}>+{s.pickTpPct}%</span></div>
                     </div>
-                    <div style={{ flex: 1, background: "rgba(0,0,0,.24)", borderRadius: 10, padding: "7px 9px" }}>
+                    <div style={{ flex: 1, background: "var(--elev)", borderRadius: 10, padding: "7px 9px" }}>
                       <div style={{ fontSize: 8.5, opacity: .8, fontWeight: 700 }}>STOP</div>
-                      <div className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: "#FFB3BE" }}>{fmt(s.pickStop, market)} <span style={{ fontSize: 9, opacity: .85 }}>−{s.pickSlPct}%</span></div>
+                      <div className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: "var(--down)" }}>{fmt(s.pickStop, market)} <span style={{ fontSize: 9, opacity: .85 }}>−{s.pickSlPct}%</span></div>
                     </div>
-                    {s.pickRR != null && <div style={{ flex: "0 0 auto", background: "rgba(0,0,0,.24)", borderRadius: 10, padding: "7px 9px", display: "grid", placeItems: "center" }}>
+                    {s.pickRR != null && <div style={{ flex: "0 0 auto", background: "var(--elev)", borderRadius: 10, padding: "7px 9px", display: "grid", placeItems: "center" }}>
                       <div style={{ fontSize: 8.5, opacity: .8, fontWeight: 700 }}>R:R</div>
                       <div className="mono" style={{ fontWeight: 800, fontSize: 12.5 }}>{s.pickRR}</div>
                     </div>}
@@ -778,7 +778,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     market={market}
                     onBuy={onBuy}
                     opts={{ tp: s.pickTpPct, sl: s.pickSlPct, tradeType: "Manual" }}
-                    variant="light"
+                    variant="solid"
                     fullWidth
                   />
                 </div>
