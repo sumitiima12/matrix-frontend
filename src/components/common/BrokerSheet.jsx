@@ -67,7 +67,7 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
     setErr(null);
     setBusy(b.id);
     try {
-      await onConnect(b.id, null, creds);   // bring-your-own credentials
+      await onConnect(b.id, null, creds, marketFilter);   // bring-your-own credentials, for this market
       setBusy(null); setCredFor(null); setCreds({});
       onClose && onClose();
     } catch (e) {

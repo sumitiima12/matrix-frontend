@@ -979,10 +979,11 @@ function AppInner() {
             marketFilter={brokerMktFilter}
             onDisconnect={(bid) => { disconnectBroker(bid); setBuyToast({ t: "Broker disconnected — that market falls back to delayed prices" }); }}
             onClose={() => { setBrokerOpen(false); setBrokerMktFilter(null); }}
-            onConnect={async (id, token, extra) => {
+            onConnect={async (id, token, extra, mkt) => {
               // Delta connects with no OAuth token; the server signs with its own keys.
               // `extra` carries bring-your-own credentials for Dhan / IND Money / Angel One.
-              await connectBroker(id, token, extra);
+              // `mkt` (when connecting for a specific market) makes this the preferred driver.
+              await connectBroker(id, token, extra, mkt);
               setBuyToast({ t: "Broker connected" });
             }}
           />

@@ -5,6 +5,7 @@ import { brokerById } from "../domain/brokers";
 import {
   loadSessions, saveSession, clearSession, BROKER_MARKETS,
   brokerSession, brokerQuotes, brokerLogout, brokerPortfolio,
+  loadBrokerPref, setBrokerPref,
 } from "../services/brokerService";
 
 /**
@@ -45,10 +46,19 @@ export function useBroker({ onTick, userId, intervalMs = 2000 } = {}) {
   const connectedBrokers = Object.keys(sessions);
   const connected = connectedBrokers.length > 0;
 
+  /* Resolve which connected broker drives a market: the user's PREFERENCE for that market
+     wins (if that broker is still connected and covers it); otherwise the first connected
+     broker that covers it. This is what makes "use Groww for Indian, IND Money for US" work
+     even though IND Money also covers Indian. */
+  const resolveFor = (market) => {
+    const pref = loadBrokerPref()[market];
+    if (pref && sessions[pref] && (BROKER_MARKETS[pref] || []).includes(market)) return pref;
+    return connectedBrokers.find((b) => (BROKER_MARKETS[b] || []).includes(market)) || null;
+  };
+
   /* The "primary" broker, for the header pill and anything still expecting one. Prefer the
      Indian one — it's the home market and the one options require. */
-  const primaryId =
-    connectedBrokers.find((b) => (BROKER_MARKETS[b] || []).includes("IN")) || connectedBrokers[0] || null;
+  const primaryId = resolveFor("IN") || connectedBrokers[0] || null;
   const session = primaryId ? sessions[primaryId] : null;
   const broker = primaryId ? brokerById(primaryId) : null;
 
@@ -56,25 +66,25 @@ export function useBroker({ onTick, userId, intervalMs = 2000 } = {}) {
      routes an order: an Indian buy must go to the Indian broker even while Schwab and
      Delta are also live. */
   const brokerFor = useCallback((market) => {
-    const id = connectedBrokers.find((b) => (BROKER_MARKETS[b] || []).includes(market));
+    const id = resolveFor(market);
     return id ? { id, session: sessions[id], meta: brokerById(id) } : null;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessions]);
 
   /** market -> broker id, for the UI to show what covers what. */
-  const marketMap = { IN: null, US: null, Crypto: null };
-  Object.keys(marketMap).forEach((m) => {
-    marketMap[m] = connectedBrokers.find((b) => (BROKER_MARKETS[b] || []).includes(m)) || null;
-  });
+  const marketMap = { IN: null, US: null, Crypto: null, Commodity: null };
+  Object.keys(marketMap).forEach((m) => { marketMap[m] = resolveFor(m); });
 
   /** Finish the OAuth handshake. Returns a promise — the caller awaits it. */
-  const connect = useCallback(async (brokerId, requestToken, extra) => {
+  const connect = useCallback(async (brokerId, requestToken, extra, market) => {
     setError(null);
     try {
       // The SERVER exchanges the token and keeps it; we get an opaque session id.
       // `extra` carries bring-your-own credentials (Dhan/IND Money token, Angel One login).
       const s = await brokerSession(brokerId, requestToken, userId, extra);
       saveSession(s);                               // ADDS to the map; does not evict others
+      // Connected FOR a specific market -> make it the preferred driver for that market.
+      if (market) setBrokerPref(market, s.broker);
       setSessions((p) => ({ ...p, [s.broker]: s }));
       return s;
     } catch (e) {

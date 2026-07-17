@@ -50,6 +50,21 @@ export function loadSessions() {
   return loadAll();
 }
 
+/* Per-market broker PREFERENCE — which broker the user wants driving a given market when
+   more than one connected broker covers it (e.g. IND Money + Groww both cover Indian).
+   { IN: "groww", US: "indmoney", ... }. */
+const PREF_KEY = "mx_broker_pref";
+export function loadBrokerPref() {
+  try { const m = JSON.parse(sessionStorage.getItem(PREF_KEY) || "{}"); return (m && typeof m === "object") ? m : {}; }
+  catch { return {}; }
+}
+export function setBrokerPref(market, brokerId) {
+  if (!market) return;
+  const m = loadBrokerPref();
+  if (brokerId) m[market] = brokerId; else delete m[market];
+  try { sessionStorage.setItem(PREF_KEY, JSON.stringify(m)); } catch { /* private mode */ }
+}
+
 /** The session for ONE broker. */
 export function loadSessionFor(broker) {
   return loadAll()[broker] || null;
