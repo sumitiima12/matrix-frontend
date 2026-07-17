@@ -225,3 +225,33 @@ export async function cancelAutoExit(userId, id) {
     });
   } catch { /* best-effort */ }
 }
+
+/* ── Real-money AUTO-BUY (opt-in per strategy). Arms the server engine to place a real
+   entry when the strategy fires, then hand the exit to the auto-exit engine. ── */
+export async function registerAutoBuy(session, userId, payload) {
+  if (!BACKEND_URL) throw new Error("no-backend");
+  const r = await fetch(`${BACKEND_URL}/api/autobuy/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders(session, userId) },
+    body: JSON.stringify(payload),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+  return d;
+}
+export async function loadAutoBuys(userId) {
+  if (!BACKEND_URL) return { strategies: [], engineLive: false };
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/autobuy`, { headers: { "X-User-Id": String(userId || "") } });
+    const d = await r.json().catch(() => ({}));
+    return { strategies: Array.isArray(d.strategies) ? d.strategies : [], engineLive: !!d.engineLive, last: d.last || null };
+  } catch { return { strategies: [], engineLive: false }; }
+}
+export async function pauseAutoBuy(userId, id, paused) {
+  if (!BACKEND_URL) return;
+  try { await fetch(`${BACKEND_URL}/api/autobuy/pause`, { method: "POST", headers: { "Content-Type": "application/json", "X-User-Id": String(userId || "") }, body: JSON.stringify({ id, paused }) }); } catch { /* ignore */ }
+}
+export async function cancelAutoBuy(userId, id) {
+  if (!BACKEND_URL) return;
+  try { await fetch(`${BACKEND_URL}/api/autobuy/cancel`, { method: "POST", headers: { "Content-Type": "application/json", "X-User-Id": String(userId || "") }, body: JSON.stringify({ id }) }); } catch { /* ignore */ }
+}

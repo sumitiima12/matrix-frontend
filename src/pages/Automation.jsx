@@ -15,6 +15,8 @@ import { useCandles } from "../hooks/useCandles";
 import OptionLeg from "../components/common/OptionLeg";
 import MultiSelect from "../components/common/MultiSelect";
 import { selStyle } from "../components/common/styles";
+import { brokerSymbol } from "../domain/brokerSymbols";
+import { registerAutoBuy } from "../services/brokerService";
 
 /**
  * Automation — visual strategy builder, plain-English rules, and backtesting on REAL candles.
@@ -506,7 +508,40 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit }) {
   );
 }
 
-export default function Automation({ market = "IN", onRecord, trades = [], strats = [], setStrats, onExitAll, me = null, isAdmin = false }) {
+export default function Automation({ market = "IN", onRecord, trades = [], strats = [], setStrats, onExitAll, me = null, isAdmin = false, userId = null, brokerFor = null }) {
+  // Which strategy is being armed for real-money auto-buy, and the form for it.
+  const [liveStrat, setLiveStrat] = useState(null);
+  const [liveAmt, setLiveAmt] = useState("");
+  const [liveProduct, setLiveProduct] = useState("Intraday");
+  const [liveBusy, setLiveBusy] = useState(false);
+  const [liveMsg, setLiveMsg] = useState(null);
+  const AUTOBUY_BROKERS = ["delta", "coindcx", "zerodha", "fyers"];
+  async function armLive(s) {
+    setLiveMsg(null);
+    const sym = (s.symbols && s.symbols[0]) || null;
+    if (!sym) { setLiveMsg({ e: true, t: "Add a symbol to this strategy first (edit ⚙)." }); return; }
+    const mkt = marketOf(sym) || market;
+    const route = brokerFor ? brokerFor(mkt) : null;
+    if (!route || !route.session) { setLiveMsg({ e: true, t: `Connect a broker for ${mkt} first.` }); return; }
+    if (!AUTOBUY_BROKERS.includes(route.id)) { setLiveMsg({ e: true, t: `Auto-buy isn't supported on ${route.meta ? route.meta.name : route.id} yet.` }); return; }
+    const bsym = brokerSymbol(sym, route.id);
+    if (!bsym) { setLiveMsg({ e: true, t: `${route.id} can't trade ${sym} (no symbol mapping).` }); return; }
+    const amt = Number(liveAmt);
+    if (!(amt > 0)) { setLiveMsg({ e: true, t: "Enter an amount per trade." }); return; }
+    setLiveBusy(true);
+    try {
+      const cfg = s.cfg && s.cfg.entry ? { defs: s.cfg.defs || [], entry: s.cfg.entry, exit: s.cfg.exit || [] } : null;
+      if (!cfg) { setLiveMsg({ e: true, t: "This strategy has no builder entry rule to run on the server." }); setLiveBusy(false); return; }
+      const r = await registerAutoBuy(route.session, userId, {
+        symbol: sym, brokerSym: bsym, market: mkt, cfg,
+        notional: amt, interval: s.tf || "5m", product: liveProduct,
+        sl: s.cfg.sl || null, tp: s.cfg.tp || null, tsl: s.cfg.tsl || null,
+      });
+      setLiveMsg({ t: r.live ? "Armed — the engine will trade this live." : "Armed (engine in dry-run until AUTO_BUY_LIVE is on)." });
+      setLiveStrat(null); setLiveAmt("");
+    } catch (e) { setLiveMsg({ e: true, t: String(e.message || e) }); }
+    finally { setLiveBusy(false); }
+  }
   const creator = me || "You";   // the "created by" tag for anything this user makes
   const [mode, setMode] = useState("plain");   // plain English is the default entry point
   const [defs, setDefs] = useState([
@@ -849,7 +884,26 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
         <button onClick={() => toggleActive(s.id)} className="tap disp" style={{ flex: "1 1 100px", borderRadius: 11, background: s.active ? "var(--surface)" : "linear-gradient(120deg,var(--up),#0EA968)", color: s.active ? "var(--ink)" : "#fff", boxShadow: s.active ? "none" : "0 6px 16px rgba(16,185,129,.3)", padding: "7px 10px", display: "flex", gap: 5, alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800, border: s.active ? "1px solid var(--line)" : "none" }}>
           {s.active ? <><Pause size={13} /> Deactivate</> : <><Play size={13} /> Activate</>}
         </button>
+        {/* Real-money auto-buy: only offered for the user's OWN strategies. */}
+        <button onClick={() => { setLiveStrat(liveStrat === s.id ? null : s.id); setLiveMsg(null); }} className="tap disp" title="Trade this strategy with real money" style={{ border: "1px solid var(--down)", borderRadius: 11, background: liveStrat === s.id ? "var(--down-soft)" : "var(--surface)", color: "var(--down)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 800 }}><Bolt size={13} /> Go Live</button>
       </div>
+      {liveStrat === s.id && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+          <div style={{ fontSize: 11.5, color: "var(--down)", fontWeight: 800, marginBottom: 6 }}>⚠ Real-money auto-buy</div>
+          <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.5, marginBottom: 10 }}>
+            The server will place a REAL buy on your connected broker when this strategy's entry fires, and auto-exit it on your SL/TP/signal — even with the app closed. One position at a time.
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <input value={liveAmt} onChange={(e) => setLiveAmt(e.target.value.replace(/[^\d.]/g, ""))} placeholder="Amount per trade" inputMode="decimal" className="no-ring mono" style={{ ...selStyle, flex: "1 1 120px", textAlign: "center" }} />
+            <select value={liveProduct} onChange={(e) => setLiveProduct(e.target.value)} aria-label="Product" style={{ ...selStyle, flex: "1 1 110px" }}>
+              <option value="Intraday">Intraday (MIS)</option>
+              <option value="Delivery">NRML / Delivery</option>
+            </select>
+          </div>
+          {liveMsg && <div style={{ fontSize: 11.5, marginTop: 8, fontWeight: 600, color: liveMsg.e ? "var(--down)" : "var(--up)" }}>{liveMsg.t}</div>}
+          <button onClick={() => armLive(s)} disabled={liveBusy} className="tap disp glow" style={{ width: "100%", marginTop: 10, background: "linear-gradient(120deg,var(--down),#E0455E)", color: "#fff", border: "none", borderRadius: 11, padding: 11, fontWeight: 800, fontSize: 12.5 }}>{liveBusy ? "Arming…" : "Arm real-money auto-buy"}</button>
+        </div>
+      )}
       {editStrat === s.id && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
           <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Symbols</div>
