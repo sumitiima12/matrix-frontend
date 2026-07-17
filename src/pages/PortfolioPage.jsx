@@ -162,7 +162,10 @@ function AnalyzeBlock({ onRun, loading, review }) {
   );
 }
 
-export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, onUpdate, onRemove, priceSnap = {}, onWhy, onOpen, mode = "virtual", realPortfolio = null, realErr = null, realLoading = false, onRefreshReal, brokerName }) {
+export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, onUpdate, onRemove, priceSnap = {}, onWhy, onOpen, mode = "virtual", realPortfolio = null, realErr = null, realLoading = false, onRefreshReal, brokerName, realAvailable = false }) {
+  // Crypto and US settle in USD; Indian/Commodity in INR. Used to format the real book.
+  const ccy = (market === "Crypto" || market === "US") ? "$" : "₹";
+  const loc = ccy === "$" ? "en-US" : "en-IN";
   /* Whole-book AI review state — shared by BOTH virtual and real mode. Declared up here so
      the real-mode early-return below can use it too. */
   const [aiReview, setAiReview] = useState(null);
@@ -179,13 +182,15 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
      position leaks into the paper P&L. Mixing them would produce a portfolio that is
      true of no account that exists. */
   if (mode === "real") {
-    /* FYERS holds Indian (NSE) stock only. On any other market tab, real trading isn't
-       wired up — say so plainly rather than showing Indian holdings under US/Crypto. */
-    if (market !== "IN") {
+    /* Real holdings need a broker that covers THIS market (Delta/CoinDCX for crypto, FYERS
+       for Indian, Schwab for US…). If none is connected for the current tab, say so plainly
+       rather than showing another market's holdings here. */
+    if (!realAvailable) {
+      const mktLabel = { IN: "Indian", US: "US", Crypto: "Crypto", Commodity: "Commodity" }[market] || market;
       return (
         <div style={{ padding: "48px 20px", textAlign: "center", color: "var(--muted)", fontSize: 13, lineHeight: 1.7 }}>
-          Real trading isn't available for this market yet.<br />
-          Switch to <b style={{ color: "var(--ink)" }}>Indian</b> to see your FYERS holdings, or switch to Virtual for paper trading here.
+          No broker connected for <b style={{ color: "var(--ink)" }}>{mktLabel}</b> yet.<br />
+          Connect one from your profile to see your real holdings here, or switch to Virtual for paper trading.
         </div>
       );
     }
@@ -242,22 +247,22 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
         <div className="card" style={{ padding: 15 }}>
           <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>Holdings value</div>
           <div className="mono" style={{ fontSize: 26, fontWeight: 800, marginTop: 3 }}>
-            {value ? "₹" + value.toLocaleString("en-IN", { maximumFractionDigits: 2 }) : "—"}
+            {value ? ccy + value.toLocaleString(loc, { maximumFractionDigits: 2 }) : "—"}
           </div>
           <div style={{ display: "flex", gap: 18, marginTop: 12, flexWrap: "wrap" }}>
             <div>
               <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>Invested</div>
-              <div className="mono" style={{ fontSize: 13, fontWeight: 800 }}>{invested ? "₹" + invested.toLocaleString("en-IN", { maximumFractionDigits: 0 }) : "—"}</div>
+              <div className="mono" style={{ fontSize: 13, fontWeight: 800 }}>{invested ? ccy + invested.toLocaleString(loc, { maximumFractionDigits: 0 }) : "—"}</div>
             </div>
             <div>
               <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>P&L</div>
               <div className="mono" style={{ fontSize: 13, fontWeight: 800, color: pnl > 0 ? "var(--up)" : pnl < 0 ? "var(--down)" : "var(--ink)" }}>
-                {hold.length ? (pnl >= 0 ? "+" : "") + "₹" + pnl.toLocaleString("en-IN", { maximumFractionDigits: 0 }) : "—"}
+                {hold.length ? (pnl >= 0 ? "+" : "") + ccy + pnl.toLocaleString(loc, { maximumFractionDigits: 0 }) : "—"}
               </div>
             </div>
             <div>
               <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>Available cash</div>
-              <div className="mono" style={{ fontSize: 13, fontWeight: 800 }}>{cash != null ? "₹" + cash.toLocaleString("en-IN", { maximumFractionDigits: 0 }) : "—"}</div>
+              <div className="mono" style={{ fontSize: 13, fontWeight: 800 }}>{cash != null ? ccy + cash.toLocaleString(loc, { maximumFractionDigits: 0 }) : "—"}</div>
             </div>
           </div>
         </div>
@@ -314,13 +319,13 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
                     )}
                   </div>
                   <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>
-                    {h.qty} @ {h.avg != null ? "₹" + h.avg.toFixed(2) : "—"}
+                    {h.qty} @ {h.avg != null ? ccy + h.avg.toFixed(2) : "—"}
                   </div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div className="mono" style={{ fontSize: 13.5, fontWeight: 800 }}>{h.ltp != null ? "₹" + h.ltp.toFixed(2) : "—"}</div>
+                  <div className="mono" style={{ fontSize: 13.5, fontWeight: 800 }}>{h.ltp != null ? ccy + h.ltp.toFixed(2) : "—"}</div>
                   <div className="mono" style={{ fontSize: 10.5, fontWeight: 800, marginTop: 2, color: h.pnl == null ? "var(--muted)" : h.pnl >= 0 ? "var(--up)" : "var(--down)" }}>
-                    {h.pnl == null ? "—" : (h.pnl >= 0 ? "+" : "") + "₹" + h.pnl.toFixed(0)}
+                    {h.pnl == null ? "—" : (h.pnl >= 0 ? "+" : "") + ccy + h.pnl.toFixed(0)}
                     {pnlPct != null && <span style={{ opacity: .8 }}> ({pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(1)}%)</span>}
                   </div>
                 </div>

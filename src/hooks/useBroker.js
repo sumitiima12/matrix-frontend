@@ -198,12 +198,18 @@ export function useBroker({ onTick, userId, intervalMs = 2000 } = {}) {
     return () => { stop = true; clearInterval(id); };
   }, [connected, sessions, userId, intervalMs]);
 
-  /** The REAL portfolio. Only pulled when the user is actually in Real mode. */
-  const refreshPortfolio = useCallback(async () => {
+  /** The REAL portfolio. Only pulled when the user is actually in Real mode.
+      Market-aware: on the Crypto tab it pulls the Delta/CoinDCX holdings, on Indian the
+      FYERS/Zerodha ones, etc. — each from the broker that actually covers that market, so
+      the user sees the account that matches the tab instead of always the Indian one. */
+  const refreshPortfolio = useCallback(async (market) => {
     if (!connected) { setReal(null); return; }
+    const route = market ? brokerFor(market) : null;
+    const sess = (route && route.session) || session;
+    if (!sess) { setReal(null); setRealErr(null); return; }
     setRealLoading(true);
     try {
-      const d = await brokerPortfolio(session, userId);
+      const d = await brokerPortfolio(sess, userId);
       setReal(d);
       setRealErr(null);
     } catch (e) {
@@ -212,7 +218,7 @@ export function useBroker({ onTick, userId, intervalMs = 2000 } = {}) {
     } finally {
       setRealLoading(false);
     }
-  }, [connected, session, userId]);
+  }, [connected, session, userId, brokerFor]);
 
   return {
     session, connected, broker, error, lastTick,
