@@ -887,7 +887,17 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
       <div className="mono" style={{ fontWeight: 800, fontSize: 13, color: c || "var(--ink)" }}>{v}</div>
     </div>
   );
-  const StrategyCard = ({ s, p }) => (
+  const StrategyCard = ({ s, p }) => {
+    /* Open positions this strategy opened but hasn't exited yet -> "Entry triggered" + live P&L. */
+    const openTrades = (trades || []).filter((t) => (t.strategyId === s.id || t.strategy === s.name) && t.entryAt != null && t.exitAt == null);
+    const entryTriggered = openTrades.length > 0;
+    const livePnl = openTrades.reduce((a, t) => {
+      const st = ALL.find((x) => x.sym === t.sym);
+      const cur = st && st.price != null ? st.price : t.entry;
+      return a + (cur - t.entry) * (t.qty || 1);
+    }, 0);
+    const liveMkt = openTrades[0] ? (marketOf(openTrades[0].sym) || "IN") : "IN";
+    return (
     <div className="card" style={{ padding: 15, marginBottom: 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
@@ -904,6 +914,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
           </div>
         </div>
         <div style={{ display: "flex", gap: 6, flex: "0 0 auto", alignItems: "center" }}>
+          {entryTriggered && <span className="pill" style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".03em", padding: "3px 8px", background: "var(--amber-soft, rgba(245,158,11,.15))", color: "var(--amber, #F59E0B)", border: "1px solid var(--amber, #F59E0B)", display: "inline-flex", alignItems: "center", gap: 3 }}>● ENTRY TRIGGERED</span>}
           <span className="pill" style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".03em", padding: "3px 8px", background: s.active ? "var(--up-soft)" : "var(--elev)", color: s.active ? "var(--up)" : "var(--muted)", border: "1px solid var(--line)" }}>{s.active ? "ACTIVE" : "INACTIVE"}</span>
           {(() => {
             const t = s.premium ? "Premium" : s.by === "Matrix" ? "Sample" : s.publicId ? "Public" : "Mine";
@@ -921,6 +932,12 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
         <MetricMini k="P&L" v={p.pnl == null ? "—" : (p.pnl >= 0 ? "+" : "") + fmt(p.pnl, "IN")} c={chgColor(p.pnl)} />
         <MetricMini k="Returns" v={pct(p.retPct, 1)} c={chgColor(p.retPct)} />
       </div>
+      {entryTriggered && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10, padding: "9px 12px", borderRadius: 12, background: "var(--elev)", border: "1px solid var(--line)" }}>
+          <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>Live P&amp;L · {openTrades.length} open</div>
+          <div className="mono" style={{ fontWeight: 800, fontSize: 14, color: chgColor(livePnl) }}>{livePnl >= 0 ? "+" : ""}{fmt(livePnl, liveMkt)}</div>
+        </div>
+      )}
       <div style={{ display: "flex", gap: 7, marginTop: 12, flexWrap: "wrap" }}>
         <button onClick={() => setEditStrat(editStrat === s.id ? null : s.id)} className="tap" title="Edit symbols & timeframe" style={{ border: "1px solid " + (editStrat === s.id ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: editStrat === s.id ? "var(--primary-soft)" : "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: editStrat === s.id ? "var(--primary)" : "var(--ink)" }}><SlidersHorizontal size={14} /></button>
         <button onClick={() => loadForEdit(s)} className="tap" title="Edit this strategy's rules in the builder" style={{ border: "1px solid var(--line)", borderRadius: 11, background: "var(--surface)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 700, color: "var(--ink)" }}><Pencil size={13} /> Edit</button>
@@ -978,7 +995,8 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
         </div>
       )}
     </div>
-  );
+    );
+  };
 
   return (
     <div className="mx fade">
