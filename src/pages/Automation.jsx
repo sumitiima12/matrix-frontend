@@ -444,9 +444,15 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit }) {
 /* Premium strategy card — locked. Shows only the name + a short description, with a
    backtest and an activate toggle. No rules are revealed and it cannot be edited or
    copied as a template. */
-function PremiumStrategyCard({ s, active, onToggle, onEdit }) {
+function PremiumStrategyCard({ s, active, onToggle, onEdit, market = "IN" }) {
   const { loading, stats } = useBacktestStats(s);
   const [bt, setBt] = useState(false);
+  /* Show a symbol relevant to the CURRENT market. Premium strategies are shared across
+     markets, so under Crypto we surface a crypto symbol, not the Indian one they were saved
+     with. Fall back to the first symbol of this market's universe. */
+  const relSyms = (s.symbols || []).filter((x) => marketOf(x) === market);
+  const relSym = relSyms[0] || ((UNIVERSE[market] || [])[0] || {}).sym || (s.symbols && s.symbols[0]) || null;
+  const shownSyms = relSyms.length ? relSyms : (relSym ? [relSym] : []);
 
   const Stat = ({ k, v, c }) => (
     <div style={{ flex: 1, background: "var(--elev)", borderRadius: 11, padding: "9px 10px", minWidth: 0 }}>
@@ -460,7 +466,7 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
         <div style={{ minWidth: 0 }}>
           <div className="disp" style={{ fontWeight: 700, fontSize: 14 }}>{s.name}</div>
-          {(s.symbols || []).length > 0 && <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{s.symbols.join(" · ")}</div>}
+          {shownSyms.length > 0 && <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{shownSyms.join(" · ")}</div>}
           {s.desc && <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 4, lineHeight: 1.5 }}>{s.desc}</div>}
         </div>
         <span className="pill gold-border" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 9px", color: "var(--gold)", flex: "0 0 auto", whiteSpace: "nowrap" }}>★ PREMIUM</span>
@@ -491,7 +497,7 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit }) {
           </button>
         )}
         <button
-          onClick={onToggle}
+          onClick={() => onToggle(relSym)}
           className="tap disp"
           style={{ flex: 1, border: "1px solid " + (active ? "var(--up)" : "var(--primary)"), background: active ? "var(--up-soft)" : "var(--primary)", color: active ? "var(--up)" : "#fff", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
         >
@@ -501,7 +507,7 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit }) {
 
       {bt && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-          <BacktestResult cfg={s.cfg} defaultSym={(s.symbols && s.symbols[0]) || undefined} />
+          <BacktestResult cfg={s.cfg} defaultSym={relSym || undefined} />
         </div>
       )}
     </div>
@@ -531,7 +537,8 @@ function LiveAutoBuys({ userId }) {
       {live.map((s) => (
         <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: "1px solid var(--line)" }}>
           <div style={{ minWidth: 0 }}>
-            <div className="disp" style={{ fontWeight: 700, fontSize: 12.5 }}>{s.symbol} <span style={{ color: "var(--muted)", fontWeight: 600 }}>· {s.broker}</span> {s.status === "paused" && <span style={{ color: "var(--muted)", fontWeight: 700 }}>· paused</span>}</div>
+            <div className="disp" style={{ fontWeight: 700, fontSize: 12.5 }}>{s.name || s.symbol} {s.status === "paused" && <span style={{ color: "var(--muted)", fontWeight: 700 }}>· paused</span>}</div>
+            <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600, marginTop: 1 }}>{s.symbol} · {s.broker}</div>
             <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>{s.notional} / trade · {s.tp ? `TP ${s.tp}% ` : ""}{s.sl ? `SL ${s.sl}%` : ""}{s.openPositionId ? " · in position" : ""}</div>
           </div>
           <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
@@ -569,7 +576,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
       const cfg = s.cfg && s.cfg.entry ? { defs: s.cfg.defs || [], entry: s.cfg.entry, exit: s.cfg.exit || [] } : null;
       if (!cfg) { setLiveMsg({ e: true, t: "This strategy has no builder entry rule to run on the server." }); setLiveBusy(false); return; }
       const r = await registerAutoBuy(route.session, userId, {
-        symbol: sym, brokerSym: bsym, market: mkt, cfg,
+        name: s.name || null, symbol: sym, brokerSym: bsym, market: mkt, cfg,
         notional: amt, interval: s.tf || "5m", product: liveProduct,
         sl: s.cfg.sl || null, tp: s.cfg.tp || null, tsl: s.cfg.tsl || null,
       });
@@ -790,7 +797,11 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
      now evaluates the real rules against real candles once a minute and places
      both buys and sells. */
 
-  const toggleActive = (id) => setStrats((p) => p.map((s) => s.id === id ? { ...s, active: !s.active } : s));
+  const toggleActive = (id, relSym) => setStrats((p) => p.map((s) => s.id === id
+    // When ACTIVATING, snap the strategy to a symbol relevant to the market you're on, so a
+    // shared premium strategy deploys on (say) BTC under Crypto instead of an Indian stock.
+    ? { ...s, active: !s.active, ...(relSym && !s.active ? { symbols: [relSym] } : {}) }
+    : s));
   const toggleAlerts = (s) => { const willOn = !s.alerts; setStrats((p) => p.map((x) => x.id === s.id ? { ...x, alerts: willOn } : x)); if (willOn) fireAlert(s); };
   const updateStrat = (id, patch) => setStrats((p) => p.map((s) => s.id === id ? { ...s, ...patch } : s));
   const [editStrat, setEditStrat] = useState(null);
@@ -944,7 +955,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
           <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Symbols</div>
           <MultiSelect label="Symbols" options={DEPLOY_OPTIONS} value={s.symbols || []} onChange={(v) => updateStrat(s.id, { symbols: v })} allLabel="Select…" />
-          <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, margin: "12px 0 6px" }}>Capital deployed (quantity per trade)</div>
+          <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, margin: "12px 0 6px" }}>{market === "Crypto" ? "Amount to be deployed (per trade)" : "Capital deployed (quantity per trade)"}</div>
           <input
             value={String(s.qty ?? s.cap ?? 1)}
             onChange={(e) => { const n = Math.max(1, parseInt(e.target.value.replace(/[^0-9]/g, ""), 10) || 1); updateStrat(s.id, { qty: n, cap: n }); }}
@@ -1125,9 +1136,9 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
               <NumF label="Take profit %" v={tp} set={setTp} />
             </div>
             <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Quantity</div>
-              <input value={capital} onChange={(e) => setCapital(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" placeholder="100000" className="no-ring mono" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 14, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }} />
-              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 5 }}>Number of shares (or lots, for options) placed on each entry.</div>
+              <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>{market === "Crypto" ? "Amount to be deployed" : "Quantity"}</div>
+              <input value={capital} onChange={(e) => setCapital(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder={market === "Crypto" ? "100" : "100000"} className="no-ring mono" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 14, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }} />
+              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 5 }}>{market === "Crypto" ? "Amount (in your wallet currency) spent on each entry." : "Number of shares (or lots, for options) placed on each entry."}</div>
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
               <SegF label="Buy Type" options={["Intraday", "NRML"]} value={buyType} set={setBuyType} />
@@ -1230,7 +1241,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
           </div>
           {premiumStrats.length === 0
             ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No premium strategies available.</div>
-            : premiumStrats.map((s) => <PremiumStrategyCard key={s.id} s={s} active={s.active} onToggle={() => toggleActive(s.id)} onEdit={isAdmin ? loadForEdit : undefined} />)}
+            : premiumStrats.map((s) => <PremiumStrategyCard key={s.id} s={s} active={s.active} market={market} onToggle={(rs) => toggleActive(s.id, rs)} onEdit={isAdmin ? loadForEdit : undefined} />)}
         </>
       ) : topTab === "public" ? (
         <>

@@ -5,7 +5,7 @@ import { brokerById } from "../domain/brokers";
 import {
   loadSessions, saveSession, clearSession, BROKER_MARKETS,
   brokerSession, brokerQuotes, brokerLogout, brokerPortfolio,
-  loadBrokerPref, setBrokerPref,
+  loadBrokerPref, setBrokerPref, resumeBroker,
 } from "../services/brokerService";
 
 /**
@@ -170,8 +170,20 @@ export function useBroker({ onTick, userId, intervalMs = 2000 } = {}) {
           const streak = (failStreak.current[sess.broker] || 0) + 1;
           failStreak.current[sess.broker] = streak;
 
-          /* Drop the broker only on a real auth failure AND only after it has actually
-             failed a couple of times in a row — never on the very first poll. */
+          /* Before dropping a session on auth failure, try to RESUME it from the server's
+             stored creds — this is what silently reconnects after the mobile browser reopens
+             or the free-tier server restarts, instead of forcing the user to reconnect. */
+          if (isAuthFailure) {
+            const resumed = await resumeBroker(sess.broker, userId);
+            if (resumed && !stop) {
+              setSessions((p) => ({ ...p, [sess.broker]: resumed }));
+              failStreak.current[sess.broker] = 0;
+              return { n: 0, resumed: true };
+            }
+          }
+
+          /* Resume failed (no stored creds / expired token): drop only after a couple of
+             consecutive real auth failures — never on the very first poll. */
           if (isAuthFailure && streak >= 2) {
             clearSession(sess.broker);
             setSessions((p) => { const c = { ...p }; delete c[sess.broker]; return c; });

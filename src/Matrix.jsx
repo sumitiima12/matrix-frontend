@@ -621,9 +621,11 @@ function AppInner() {
   useEffect(() => { setOnUnauthorized(() => { if (auth) setLoginOpen(true); }); }, [auth, setLoginOpen]);
   useEffect(() => { if (auth && !getAuthToken()) setLoginOpen(true); }, [auth, setLoginOpen]);
   const [isAdminUser, setIsAdminUser] = useState(false);   // is this account an admin at all
-  /* Admin vs user experience. Admins DEFAULT to the normal user experience — no console,
-     no edit/delete controls — and flip a toggle in their profile to enter admin mode. */
-  const [adminMode, setAdminMode] = useState(false);
+  /* Admin vs user experience. An admin's LAST choice sticks: once they switch to admin mode
+     it stays on across logins until they manually switch back to user mode (persisted locally,
+     re-gated by the server's isAdminUser check so a non-admin can never flip it on). */
+  const [adminMode, setAdminMode] = useState(() => { try { return localStorage.getItem("mx_admin_mode") === "1"; } catch { return false; } });
+  useEffect(() => { try { localStorage.setItem("mx_admin_mode", adminMode ? "1" : "0"); } catch { /* private mode */ } }, [adminMode]);
   const effAdmin = isAdminUser && adminMode;               // gates every admin-only affordance
   const [adminOpen, setAdminOpen] = useState(false);
   const [adminKey, setAdminKey] = useState("");

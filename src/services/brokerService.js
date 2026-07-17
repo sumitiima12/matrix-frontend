@@ -30,7 +30,7 @@ const KEY = "mx_broker_sessions";
  */
 function loadAll() {
   try {
-    const m = JSON.parse(sessionStorage.getItem(KEY) || "{}");
+    const m = JSON.parse(localStorage.getItem(KEY) || "{}");
     if (!m || typeof m !== "object") return {};
     const out = {};
     for (const [broker, s] of Object.entries(m)) {
@@ -42,7 +42,7 @@ function loadAll() {
 }
 
 function saveAll(map) {
-  try { sessionStorage.setItem(KEY, JSON.stringify(map)); } catch { /* private mode */ }
+  try { localStorage.setItem(KEY, JSON.stringify(map)); } catch { /* private mode */ }
 }
 
 /** Every connected broker, keyed by broker id. */
@@ -55,14 +55,14 @@ export function loadSessions() {
    { IN: "groww", US: "indmoney", ... }. */
 const PREF_KEY = "mx_broker_pref";
 export function loadBrokerPref() {
-  try { const m = JSON.parse(sessionStorage.getItem(PREF_KEY) || "{}"); return (m && typeof m === "object") ? m : {}; }
+  try { const m = JSON.parse(localStorage.getItem(PREF_KEY) || "{}"); return (m && typeof m === "object") ? m : {}; }
   catch { return {}; }
 }
 export function setBrokerPref(market, brokerId) {
   if (!market) return;
   const m = loadBrokerPref();
   if (brokerId) m[market] = brokerId; else delete m[market];
-  try { sessionStorage.setItem(PREF_KEY, JSON.stringify(m)); } catch { /* private mode */ }
+  try { localStorage.setItem(PREF_KEY, JSON.stringify(m)); } catch { /* private mode */ }
 }
 
 /** The session for ONE broker. */
@@ -92,7 +92,7 @@ export function saveSession(s) {
 
 /** Disconnect ONE broker (or all, if no broker given). */
 export function clearSession(broker) {
-  if (!broker) { try { sessionStorage.removeItem(KEY); } catch { /* ignore */ } return; }
+  if (!broker) { try { localStorage.removeItem(KEY); } catch { /* ignore */ } return; }
   const all = loadAll();
   delete all[broker];
   saveAll(all);
@@ -154,6 +154,24 @@ export async function brokerSession(broker, requestToken, userId, extra) {
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
   return { broker, sessionId: d.sessionId, user: d.user || null, at: Date.now() };
+}
+
+/** Re-establish a session from the server's stored creds (no user reconnect needed).
+    Used when a session id is dead (server restarted, or the mobile browser reopened). */
+export async function resumeBroker(broker, userId) {
+  if (!BACKEND_URL || !broker) return null;
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/broker/resume`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-User-Id": String(userId || "") },
+      body: JSON.stringify({ broker }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.sessionId) return null;
+    const s = { broker, sessionId: d.sessionId, at: Date.now() };
+    saveSession(s);
+    return s;
+  } catch { return null; }
 }
 
 /** REAL-TIME quotes. Symbols must already be in the broker's own format. */
