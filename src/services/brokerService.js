@@ -85,7 +85,7 @@ export function clearSession(broker) {
 
 /** Which markets each broker can actually serve. */
 export const BROKER_MARKETS = {
-  fyers: ["IN"], zerodha: ["IN"], dhan: ["IN"], angelone: ["IN"], groww: ["IN"],
+  fyers: ["IN"], zerodha: ["IN"], dhan: ["IN"], angelone: ["IN"], groww: ["IN"], indmoney: ["IN"],
   delta: ["Crypto"],
   schwab: ["US"],
 };
@@ -126,13 +126,14 @@ export async function brokerLoginUrl(broker, redirect) {
   return d.url;
 }
 
-/** Step 2: the SERVER exchanges the request token and keeps the access token. */
-export async function brokerSession(broker, requestToken, userId) {
+/** Step 2: the SERVER exchanges the request token and keeps the access token.
+    `extra` carries bring-your-own credentials (Dhan/IND Money token, Angel One login). */
+export async function brokerSession(broker, requestToken, userId, extra) {
   if (!BACKEND_URL) throw new Error("no-backend");
   const r = await fetch(`${BACKEND_URL}/api/broker/session`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ broker, requestToken, userId }),
+    body: JSON.stringify({ broker, requestToken, userId, extra: extra || undefined }),
   });
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);

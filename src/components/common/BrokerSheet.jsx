@@ -42,6 +42,8 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
   const [statusErr, setStatusErr] = useState(null);
   const [busy, setBusy] = useState(null);
   const [err, setErr] = useState(null);
+  const [credFor, setCredFor] = useState(null);   // broker id whose credential form is open
+  const [creds, setCreds] = useState({});
 
   useEffect(() => {
     brokerStatus(userId)
@@ -56,8 +58,25 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
     return [...list].sort((a, b) => rank[a.status] - rank[b.status]);
   }, [q]);
 
+  const submitCreds = async (b) => {
+    const missing = (b.fields || []).filter((f) => !String(creds[f.key] || "").trim());
+    if (missing.length) { setErr(`Enter: ${missing.map((f) => f.label).join(", ")}.`); return; }
+    setErr(null);
+    setBusy(b.id);
+    try {
+      await onConnect(b.id, null, creds);   // bring-your-own credentials
+      setBusy(null); setCredFor(null); setCreds({});
+      onClose && onClose();
+    } catch (e) {
+      setErr(String(e.message || e));
+      setBusy(null);
+    }
+  };
+
   const start = async (b) => {
     setErr(null);
+    // Bring-your-own-credential brokers open an inline form instead of redirecting.
+    if (b.userCreds) { setCredFor((cur) => (cur === b.id ? null : b.id)); setCreds({}); return; }
     setBusy(b.id);
     try {
       /* Delta has no login page. It authenticates with API keys held on the SERVER and
@@ -207,6 +226,31 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
               </div>
 
               <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>{b.note}</div>
+
+              {/* Credential entry for bring-your-own-token brokers (Dhan, IND Money, Angel One, Groww). */}
+              {credFor === b.id && !isConnected && (
+                <div style={{ marginTop: 12, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+                  {(b.fields || []).map((f) => (
+                    <div key={f.key} style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>{f.label.toUpperCase()}</div>
+                      <input
+                        value={creds[f.key] || ""}
+                        onChange={(e) => setCreds((c) => ({ ...c, [f.key]: e.target.value }))}
+                        type={f.type === "password" ? "password" : "text"}
+                        placeholder={f.hint || ""}
+                        className="no-ring"
+                        autoComplete="off"
+                        style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 10, padding: "9px 11px", fontSize: 12.5, background: "var(--elev)", color: "var(--ink)" }}
+                      />
+                      {f.hint && <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 3, lineHeight: 1.4 }}>{f.hint}</div>}
+                    </div>
+                  ))}
+                  <button onClick={() => submitCreds(b)} disabled={busy === b.id} className="tap disp"
+                    style={{ width: "100%", marginTop: 4, border: "none", background: "var(--ink)", color: "var(--surface)", borderRadius: 10, padding: 11, fontWeight: 800, fontSize: 12.5, cursor: "pointer", opacity: busy === b.id ? 0.5 : 1 }}>
+                    {busy === b.id ? "Connecting…" : `Connect ${b.name}`}
+                  </button>
+                </div>
+              )}
 
               {b.status === "ready" && server && !configured && (
                 <div style={{ fontSize: 10.5, color: "var(--amber)", marginTop: 6, fontWeight: 600, lineHeight: 1.45 }}>

@@ -918,10 +918,11 @@ function AppInner() {
             marketMap={brokerMarketMap}
             onDisconnect={(bid) => { disconnectBroker(bid); setBuyToast({ t: "Broker disconnected — that market falls back to delayed prices" }); }}
             onClose={() => setBrokerOpen(false)}
-            onConnect={async (id, token) => {
+            onConnect={async (id, token, extra) => {
               // Delta connects with no OAuth token; the server signs with its own keys.
-              await connectBroker(id, token);
-              setBuyToast({ t: "Broker connected — prices are live" });
+              // `extra` carries bring-your-own credentials for Dhan / IND Money / Angel One.
+              await connectBroker(id, token, extra);
+              setBuyToast({ t: "Broker connected" });
             }}
           />
         </ErrorBoundary>

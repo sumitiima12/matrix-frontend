@@ -68,11 +68,12 @@ export function useBroker({ onTick, userId, intervalMs = 2000 } = {}) {
   });
 
   /** Finish the OAuth handshake. Returns a promise — the caller awaits it. */
-  const connect = useCallback(async (brokerId, requestToken) => {
+  const connect = useCallback(async (brokerId, requestToken, extra) => {
     setError(null);
     try {
       // The SERVER exchanges the token and keeps it; we get an opaque session id.
-      const s = await brokerSession(brokerId, requestToken, userId);
+      // `extra` carries bring-your-own credentials (Dhan/IND Money token, Angel One login).
+      const s = await brokerSession(brokerId, requestToken, userId, extra);
       saveSession(s);                               // ADDS to the map; does not evict others
       setSessions((p) => ({ ...p, [s.broker]: s }));
       return s;
