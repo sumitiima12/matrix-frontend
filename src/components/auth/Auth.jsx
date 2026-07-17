@@ -433,7 +433,7 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
           <div className="card" style={{ marginTop: 14, padding: 14 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>Broker connections</div>
-              <button onClick={onBroker} className="tap disp" style={{ border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 10, padding: "6px 11px", fontWeight: 800, fontSize: 11.5 }}>Manage</button>
+              <button onClick={() => onBroker()} className="tap disp" style={{ border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 10, padding: "6px 11px", fontWeight: 800, fontSize: 11.5 }}>Manage</button>
             </div>
             <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 3, lineHeight: 1.45 }}>A different broker per market. Prices are live via the built-in feed where shown.</div>
             {[["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["Commodity", "🪙 Commodity"]].map(([m, label]) => {
@@ -449,7 +449,7 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
                       <span style={{ width: 6, height: 6, borderRadius: 6, background: "var(--up)" }} /> {name}
                     </span>
                   ) : (
-                    <button onClick={onBroker} className="tap disp" style={{ border: "none", background: "var(--ink)", color: "var(--surface)", borderRadius: 9, padding: "6px 14px", fontWeight: 800, fontSize: 11.5, cursor: "pointer" }}>Connect Broker</button>
+                    <button onClick={() => onBroker(m)} className="tap disp" style={{ border: "none", background: "var(--ink)", color: "var(--surface)", borderRadius: 9, padding: "6px 14px", fontWeight: 800, fontSize: 11.5, cursor: "pointer" }}>Connect Broker</button>
                   )}
                 </div>
               );

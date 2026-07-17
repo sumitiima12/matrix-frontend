@@ -306,6 +306,8 @@ function AppInner() {
   const [deposits, setDeposits] = useState([]);
 
   const [brokerOpen, setBrokerOpen] = useState(false);
+  const [brokerMktFilter, setBrokerMktFilter] = useState(null);   // limit the broker sheet to one market
+  const openBrokers = (mkt) => { setShowProfile(false); setBrokerMktFilter(mkt || null); setBrokerOpen(true); };
   const [brokerPrompt, setBrokerPrompt] = useState(false);   // shown once, after onboarding
 
   /* A connected broker overwrites the delayed Yahoo prices with live ones, in place.
@@ -974,8 +976,9 @@ function AppInner() {
             userId={userId}
             connectedIds={connectedBrokers}
             marketMap={brokerMarketMap}
+            marketFilter={brokerMktFilter}
             onDisconnect={(bid) => { disconnectBroker(bid); setBuyToast({ t: "Broker disconnected — that market falls back to delayed prices" }); }}
-            onClose={() => setBrokerOpen(false)}
+            onClose={() => { setBrokerOpen(false); setBrokerMktFilter(null); }}
             onConnect={async (id, token, extra) => {
               // Delta connects with no OAuth token; the server signs with its own keys.
               // `extra` carries bring-your-own credentials for Dhan / IND Money / Angel One.
@@ -1016,7 +1019,7 @@ function AppInner() {
           <SearchOverlay onClose={() => setSearch(false)} onOpen={openStock} />
         </ErrorBoundary>
       )}
-      {showProfile && <ProfileSheet onAdmin={effAdmin ? openAdmin : undefined} isAdminUser={isAdminUser} adminMode={adminMode} onToggleAdminMode={() => setAdminMode((v) => !v)} onBroker={() => { setShowProfile(false); setBrokerOpen(true); }} brokerName={liveBroker ? liveBroker.name : null} profile={profile} walletMap={walletMap} portfolio={portfolio} trades={trades} deposits={deposits} market={market} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={() => { doLogout(); setGuest(false); setProfile(null); setOnboardSkipped(false); setAuthed(false); setLoginOpen(false); }} onPersonalise={() => setRepersonalise(true)} onUsernameChanged={(u) => onAuthed({ ...auth, username: u })} onEmailChanged={(em) => onAuthed({ ...auth, email: em })} marketBrokers={brokerMarketMap} houseFeeds={houseFeeds} />}
+      {showProfile && <ProfileSheet onAdmin={effAdmin ? openAdmin : undefined} isAdminUser={isAdminUser} adminMode={adminMode} onToggleAdminMode={() => setAdminMode((v) => !v)} onBroker={openBrokers} brokerName={liveBroker ? liveBroker.name : null} profile={profile} walletMap={walletMap} portfolio={portfolio} trades={trades} deposits={deposits} market={market} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={() => { doLogout(); setGuest(false); setProfile(null); setOnboardSkipped(false); setAuthed(false); setLoginOpen(false); }} onPersonalise={() => setRepersonalise(true)} onUsernameChanged={(u) => onAuthed({ ...auth, username: u })} onEmailChanged={(em) => onAuthed({ ...auth, email: em })} marketBrokers={brokerMarketMap} houseFeeds={houseFeeds} />}
       {adminOpen && <AdminPanel userId={userId} adminKey={adminKey} onClose={() => { setAdminOpen(false); setAdminKey(""); }} />}
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} onAuthed={onAuthed} />}
       {histOpen && <TradeHistory userId={userId} trades={trades} onClose={() => setHistOpen(false)} />}

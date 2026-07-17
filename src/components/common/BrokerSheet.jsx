@@ -35,7 +35,7 @@ const TONE = {
  * crypto. No single broker covers all three, so a one-at-a-time model could never give you
  * a fully live portfolio. Connecting a second broker no longer evicts the first.
  */
-export default function BrokerSheet({ userId, connectedIds = [], marketMap = {}, onDisconnect, onClose, onConnect }) {
+export default function BrokerSheet({ userId, connectedIds = [], marketMap = {}, onDisconnect, onClose, onConnect, marketFilter = null }) {
   const connectedId = connectedIds[0] || null;   // back-compat for the copy below
   const [q, setQ] = useState("");
   const [server, setServer] = useState(null);
@@ -53,10 +53,13 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
 
   const shown = useMemo(() => {
     const t = q.trim().toLowerCase();
-    const list = t ? BROKERS.filter((b) => b.name.toLowerCase().includes(t)) : BROKERS;
+    let list = BROKERS;
+    // Only show brokers that actually serve the market we're connecting for.
+    if (marketFilter) list = list.filter((b) => (b.markets || []).includes(marketFilter));
+    if (t) list = list.filter((b) => b.name.toLowerCase().includes(t));
     const rank = { ready: 0, gateway: 1, none: 2 };
     return [...list].sort((a, b) => rank[a.status] - rank[b.status]);
-  }, [q]);
+  }, [q, marketFilter]);
 
   const submitCreds = async (b) => {
     const missing = (b.fields || []).filter((f) => !String(creds[f.key] || "").trim());

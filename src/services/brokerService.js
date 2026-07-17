@@ -85,7 +85,8 @@ export function clearSession(broker) {
 
 /** Which markets each broker can actually serve. */
 export const BROKER_MARKETS = {
-  fyers: ["IN"], zerodha: ["IN"], dhan: ["IN"], angelone: ["IN"], groww: ["IN"], indmoney: ["IN"],
+  fyers: ["IN", "Commodity"], zerodha: ["IN", "Commodity"], dhan: ["IN", "Commodity"], angelone: ["IN", "Commodity"], groww: ["IN", "Commodity"],
+  indmoney: ["IN", "US", "Commodity"],   // INDstocks covers Indian AND US
   delta: ["Crypto"],
   schwab: ["US"],
 };

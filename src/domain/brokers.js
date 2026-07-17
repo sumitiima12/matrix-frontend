@@ -17,7 +17,7 @@ export const BROKERS = [
   {
     id: "zerodha",
     name: "Zerodha",
-    markets: ["IN", "FNO"],
+    markets: ["IN", "FNO", "Commodity"],
     status: "ready",
     realtime: true,
     oi: true,
@@ -28,7 +28,7 @@ export const BROKERS = [
   {
     id: "fyers",
     name: "FYERS",
-    markets: ["IN", "FNO"],
+    markets: ["IN", "FNO", "Commodity"],
     status: "ready",
     realtime: true,
     oi: true,
@@ -53,20 +53,9 @@ export const BROKERS = [
     docs: "https://docs.delta.exchange/",
   },
   {
-    id: "schwab",
-    name: "Charles Schwab",
-    markets: ["US"],
-    status: "ready",
-    realtime: true,
-    oi: false,
-    depth: true,
-    note: "OAuth2. The access token lasts ~30 minutes and is refreshed automatically; the refresh token lasts ~7 days. Set SCHWAB_APP_KEY and SCHWAB_APP_SECRET on Render.",
-    docs: "https://developer.schwab.com/",
-  },
-  {
     id: "dhan",
     name: "Dhan",
-    markets: ["IN", "FNO"],
+    markets: ["IN", "FNO", "Commodity"],
     status: "ready",
     realtime: false,   // prices come from the FYERS house feed; Dhan gives portfolio + orders
     oi: false,
@@ -82,7 +71,7 @@ export const BROKERS = [
   {
     id: "indmoney",
     name: "IND Money",
-    markets: ["IN", "FNO"],
+    markets: ["IN", "FNO", "Commodity", "US"],
     status: "ready",
     realtime: false,
     oi: false,
@@ -97,7 +86,7 @@ export const BROKERS = [
   {
     id: "angelone",
     name: "Angel One",
-    markets: ["IN", "FNO"],
+    markets: ["IN", "FNO", "Commodity"],
     status: "ready",
     realtime: false,
     oi: false,
@@ -115,7 +104,7 @@ export const BROKERS = [
   {
     id: "groww",
     name: "Groww",
-    markets: ["IN", "FNO"],
+    markets: ["IN", "FNO", "Commodity"],
     status: "ready",
     realtime: false,
     oi: false,
@@ -127,16 +116,17 @@ export const BROKERS = [
     note: "Paste your Groww trading-API access token. Shows your real Groww holdings. Live prices come from the FYERS feed.",
     docs: "https://groww.in/trade-api/docs",
   },
+  /* Charles Schwab — kept LAST in the list. */
   {
-    id: "ibkr",
-    name: "Interactive Brokers",
-    markets: ["US", "IN"],
-    status: "gateway",
+    id: "schwab",
+    name: "Charles Schwab",
+    markets: ["US"],
+    status: "ready",
     realtime: true,
     oi: false,
     depth: true,
-    note: "IBKR's retail API runs through the Client Portal Gateway — a Java process that must run on YOUR machine and that you log into each day. A cloud backend like ours cannot reach it (it listens on your localhost). Connecting IBKR therefore needs Matrix running locally, not on Vercel. The adapter is written; the deployment model is the blocker, and pretending otherwise would waste your time.",
-    docs: "https://www.interactivebrokers.com/campus/ibkr-api-page/cpapi-v1/",
+    note: "OAuth2. The access token lasts ~30 minutes and is refreshed automatically; the refresh token lasts ~7 days. Set SCHWAB_APP_KEY and SCHWAB_APP_SECRET on Render.",
+    docs: "https://developer.schwab.com/",
   },
 ];
 
