@@ -19,7 +19,7 @@ import { CUR, MKT_LABEL, fmt, compact, clamp, hash, lcg, DAY, timeAgo, lsGet, ls
 import { smaSeries, emaSeries as emaSeriesC, bollingerSeries, macdSeries, rsiSeries, OVERLAYS, CHART_TFS } from "./lib/indicators";
 import { getQuotes, getHistory, getNews, getIndicators } from "./services/marketService";
 import { ask as aiAsk, interpretScreen, interpretStrategy, marketBrief } from "./services/aiService";
-import { saveTrade as apiSaveTrade, listTrades, register as apiRegisterSvc, login as apiLoginSvc, setOnUnauthorized, getAuthToken } from "./services/tradeService";
+import { saveTrade as apiSaveTrade, listTrades, register as apiRegisterSvc, login as apiLoginSvc, setOnUnauthorized, getAuthToken, saveState as apiSaveState, loadState as apiLoadState } from "./services/tradeService";
 import { validateOrder, isMarketOpen, DEFAULT_LIMITS } from "./services/riskService";
 import { analyzeStock } from "./services/aiService";
 import { recTone } from "./services/researchService";
@@ -241,6 +241,20 @@ function AppInner() {
   const [guest, setGuest] = useState(false);
   const [onboardSkipped, setOnboardSkipped] = useState(false);
   const [profile, setProfile] = useState(null);
+  /* Auto-Buy on/off PER MARKET. Lifted here (was local to the dashboard, so it reset on
+     every reload) and persisted with the rest of the app state — server-side for logged-in
+     users, so it survives closing the app. */
+  const [autoOnMap, setAutoOnMap] = useState({ IN: false, US: false, Crypto: false, Commodity: false, FNO: false });
+  const [remoteHydrated, setRemoteHydrated] = useState(false);   // has the server copy loaded?
+  const stateSaveTimer = useRef(null);
+  /* Server-side house price feeds (FYERS for Indian equities, Delta for crypto) — reported by
+     /api/health. Used to show, per market, whether prices are already live even without the
+     user personally connecting a broker. */
+  const [houseFeeds, setHouseFeeds] = useState({ fyers: false, delta: true });
+  useEffect(() => {
+    if (!BACKEND_URL) return;
+    fetch(`${BACKEND_URL}/api/health`).then((r) => r.json()).then((d) => setHouseFeeds({ fyers: !!d.fyersHouseFeed, delta: true })).catch(() => {});
+  }, []);
   const [repersonalise, setRepersonalise] = useState(false);
   const [tab, setTab] = useState("home");
   const [market, setMarket] = useState("IN");
@@ -519,23 +533,53 @@ function AppInner() {
   const [activeWl, setActiveWl] = useState("w1");
   // Load this user's saved data whenever the user changes (login / logout).
   useEffect(() => {
-    const st = lsGet("mx_state_" + userId, null);
-    setPortfolio((st && st.portfolio) || []);
-    setWalletMap((st && st.walletMap) || { IN: 1000000, US: 1000000, Crypto: 1000000, Commodity: 1000000 });
-    setDeposits((st && st.deposits) || []);
-    setStrats(seededStrats(st && st.strats));
-    const wl = (st && st.watchlists) || [{ id: "w1", name: "My Watchlist", syms: ["RELIANCE", "TCS"] }];
-    setWatchlists(wl); setActiveWl(wl[wl.length - 1] ? wl[wl.length - 1].id : "w1");
-    setProfile((st && st.profile) || null);
-    // Fresh sign-ups skip onboarding and go straight home; everyone else uses their saved flag.
-    setOnboardSkipped(freshSignupRef.current ? true : !!(st && st.onboardSkipped));
+    const freshSignup = freshSignupRef.current;
+    const apply = (s) => {
+      setPortfolio((s && s.portfolio) || []);
+      setWalletMap((s && s.walletMap) || { IN: 1000000, US: 1000000, Crypto: 1000000, Commodity: 1000000 });
+      setDeposits((s && s.deposits) || []);
+      setStrats(seededStrats(s && s.strats));
+      const wl = (s && s.watchlists) || [{ id: "w1", name: "My Watchlist", syms: ["RELIANCE", "TCS"] }];
+      setWatchlists(wl); setActiveWl(wl[wl.length - 1] ? wl[wl.length - 1].id : "w1");
+      setProfile((s && s.profile) || null);
+      // Fresh sign-ups skip onboarding; everyone else uses their saved flag.
+      setOnboardSkipped(freshSignup ? true : !!(s && s.onboardSkipped));
+      setAutoOnMap((s && s.autoOnMap) || { IN: false, US: false, Crypto: false, Commodity: false, FNO: false });
+    };
+    const local = lsGet("mx_state_" + userId, null);
+    apply(local);
     freshSignupRef.current = false;
     setTrades(lsGet("mx_trades_" + userId, []));
     setHydratedUser(userId);
+    setRemoteHydrated(false);
+    /* SERVER-SIDE state for logged-in users: the source of truth across devices/sessions.
+       Onboarding answers, strategy active flags and Auto-Buy on/off all live here, so they
+       survive closing the app or signing in on another browser. Guests stay local-only. */
+    if (BACKEND_URL && auth && getAuthToken()) {
+      apiLoadState().then((remote) => {
+        if (remote && typeof remote === "object" && Object.keys(remote).length) {
+          const merged = { ...(local || {}), ...remote };
+          if (!freshSignup) apply(merged);          // don't override a brand-new signup's skip
+          try { lsSet("mx_state_" + userId, merged); } catch { /* ignore */ }
+        }
+        setRemoteHydrated(true);
+      }).catch(() => setRemoteHydrated(true));
+    } else {
+      setRemoteHydrated(true);
+    }
     if (BACKEND_URL) fetchTrades(userId, 0, Date.now()).then((t) => { if (t && t.length) setTrades(t); }).catch(() => {});
   }, [userId]);
-  // Persist per-user (only after this user's data has been hydrated, to avoid clobbering).
-  useEffect(() => { if (hydratedUser === userId) lsSet("mx_state_" + userId, { portfolio, walletMap, watchlists, profile, onboardSkipped, deposits, strats }); }, [portfolio, walletMap, watchlists, profile, onboardSkipped, deposits, strats, hydratedUser, userId]);
+  // Persist per-user: localStorage always; the server too (debounced) once the remote copy
+  // has loaded, so we never overwrite the server with empty local state on first paint.
+  useEffect(() => {
+    if (hydratedUser !== userId) return;
+    const snap = { portfolio, walletMap, watchlists, profile, onboardSkipped, deposits, strats, autoOnMap };
+    lsSet("mx_state_" + userId, snap);
+    if (BACKEND_URL && auth && getAuthToken() && remoteHydrated) {
+      clearTimeout(stateSaveTimer.current);
+      stateSaveTimer.current = setTimeout(() => { apiSaveState(userId, snap).catch(() => {}); }, 1200);
+    }
+  }, [portfolio, walletMap, watchlists, profile, onboardSkipped, deposits, strats, autoOnMap, hydratedUser, userId, remoteHydrated, auth]);
   useEffect(() => { if (hydratedUser === userId) lsSet("mx_trades_" + userId, trades); }, [trades, hydratedUser, userId]);
   const [drawer, setDrawer] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -624,7 +668,9 @@ function AppInner() {
   /* True while the onboarding flow owns the screen. The bottom tab bar is fixed and
      was covering onboarding's own CTA — it has no business sitting on top of a
      full-screen flow the user cannot navigate away from anyway. */
-  const onboarding = authed && hydratedUser === userId && (repersonalise || (!profile && !onboardSkipped));
+  // Wait for the server copy before deciding to show onboarding — otherwise a returning
+  // user briefly has no profile locally and gets re-asked questions they already answered.
+  const onboarding = authed && hydratedUser === userId && remoteHydrated && (repersonalise || (!profile && !onboardSkipped));
 
   /* Once onboarding is done, offer the broker — once, ever. This is the moment the
      user first looks at a price, and the moment it matters that it is 15 minutes
@@ -673,7 +719,7 @@ function AppInner() {
       {authed && !guest && auth && !auth.username && getAuthToken() && (
         <SetUsernameModal onDone={(username) => onAuthed({ ...auth, username })} />
       )}
-      {authed && hydratedUser === userId && (repersonalise || (!profile && !onboardSkipped)) && (
+      {onboarding && (
         <Onboarding
           theme={theme}
           initial={repersonalise ? profile : null}
@@ -808,7 +854,7 @@ function AppInner() {
             <DetailPage s={detail} onBack={() => setDetail(null)} watched={watch.includes(detail.sym)} toggleWatch={toggleWatch} onTrade={goTrade} onBuy={buyStock} />
           ) : (
             <>
-              {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} onAutoBuy={autoBuyNow} mode={mode} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} trades={trades} liveTick={liveTick} onWhy={openWhy} />}
+              {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} onAutoBuy={autoBuyNow} mode={mode} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} trades={trades} liveTick={liveTick} onWhy={openWhy} autoOnMap={autoOnMap} setAutoOnMap={setAutoOnMap} />}
               {tab === "trade" && <TradeView walletMap={walletMap} adjustWallet={adjustWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} recordTrade={recordTrade} />}
               {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} market={market} onWhy={openWhy} me={auth ? (auth.username || null) : null} isAdmin={effAdmin} signupAt={auth ? (auth.createdAt || null) : null} />}
               {tab === "automation" && <Automation market={market} onRecord={recordTrade} trades={trades} strats={strats} setStrats={setStrats} onExitAll={exitAllStrategies} me={auth ? (auth.username || null) : null} isAdmin={effAdmin} />}
@@ -970,7 +1016,7 @@ function AppInner() {
           <SearchOverlay onClose={() => setSearch(false)} onOpen={openStock} />
         </ErrorBoundary>
       )}
-      {showProfile && <ProfileSheet onAdmin={effAdmin ? openAdmin : undefined} isAdminUser={isAdminUser} adminMode={adminMode} onToggleAdminMode={() => setAdminMode((v) => !v)} onBroker={() => { setShowProfile(false); setBrokerOpen(true); }} brokerName={liveBroker ? liveBroker.name : null} profile={profile} walletMap={walletMap} portfolio={portfolio} trades={trades} deposits={deposits} market={market} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={() => { doLogout(); setGuest(false); setProfile(null); setOnboardSkipped(false); setAuthed(false); setLoginOpen(false); }} onPersonalise={() => setRepersonalise(true)} onUsernameChanged={(u) => onAuthed({ ...auth, username: u })} onEmailChanged={(em) => onAuthed({ ...auth, email: em })} />}
+      {showProfile && <ProfileSheet onAdmin={effAdmin ? openAdmin : undefined} isAdminUser={isAdminUser} adminMode={adminMode} onToggleAdminMode={() => setAdminMode((v) => !v)} onBroker={() => { setShowProfile(false); setBrokerOpen(true); }} brokerName={liveBroker ? liveBroker.name : null} profile={profile} walletMap={walletMap} portfolio={portfolio} trades={trades} deposits={deposits} market={market} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={() => { doLogout(); setGuest(false); setProfile(null); setOnboardSkipped(false); setAuthed(false); setLoginOpen(false); }} onPersonalise={() => setRepersonalise(true)} onUsernameChanged={(u) => onAuthed({ ...auth, username: u })} onEmailChanged={(em) => onAuthed({ ...auth, email: em })} marketBrokers={brokerMarketMap} houseFeeds={houseFeeds} />}
       {adminOpen && <AdminPanel userId={userId} adminKey={adminKey} onClose={() => { setAdminOpen(false); setAdminKey(""); }} />}
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} onAuthed={onAuthed} />}
       {histOpen && <TradeHistory userId={userId} trades={trades} onClose={() => setHistOpen(false)} />}

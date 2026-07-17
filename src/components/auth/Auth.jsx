@@ -8,6 +8,7 @@ import headerLogo from "../../assets/brand/header-logo.png";
 import headerLogoDark from "../../assets/brand/header-logo-dark.png";
 import splashLockup from "../../assets/brand/splash-m.png";
 import Wordmark from "../common/Wordmark";
+import { brokerById } from "../../domain/brokers";
 
 /**
  * Auth & profile — login, onboarding and the profile sheet.
@@ -375,7 +376,7 @@ function SecurityQuestionCard() {
   );
 }
 
-export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, onAdmin, isAdminUser = false, adminMode = false, onToggleAdminMode, portfolio = [], trades = [], deposits = [], market = "IN", onBroker, brokerName, onUsernameChanged, onEmailChanged }) {
+export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, onAdmin, isAdminUser = false, adminMode = false, onToggleAdminMode, portfolio = [], trades = [], deposits = [], market = "IN", onBroker, brokerName, onUsernameChanged, onEmailChanged, marketBrokers = {}, houseFeeds = {} }) {
   const [uidEdit, setUidEdit] = useState(false);
   const [uidVal, setUidVal] = useState("");
   const [uidBusy, setUidBusy] = useState(false);
@@ -429,19 +430,31 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
 
         {/* BROKER — where the prices come from */}
         {onBroker && (
-          <button onClick={onBroker} className="tap card" style={{ width: "100%", marginTop: 14, padding: 13, display: "flex", justifyContent: "space-between", alignItems: "center", border: brokerName ? "1px solid var(--up)" : "1px solid var(--line)", background: "var(--surface)", cursor: "pointer", textAlign: "left" }}>
-            <div style={{ minWidth: 0 }}>
-              <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>
-                {brokerName ? `Connected · ${brokerName}` : "Connect a broker"}
-              </div>
-              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2, lineHeight: 1.45 }}>
-                Connect or change brokers — a different one per market (e.g. Delta for crypto, Schwab for US).
-              </div>
+          <div className="card" style={{ marginTop: 14, padding: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>Broker connections</div>
+              <button onClick={onBroker} className="tap disp" style={{ border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 10, padding: "6px 11px", fontWeight: 800, fontSize: 11.5 }}>Manage</button>
             </div>
-            <span style={{ fontSize: 11, fontWeight: 800, color: brokerName ? "var(--up)" : "var(--primary)", flex: "0 0 auto", marginLeft: 8 }}>
-              {brokerName ? "Manage" : "Connect"}
-            </span>
-          </button>
+            <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 3, lineHeight: 1.45 }}>A different broker per market. Prices are live via the built-in feed where shown.</div>
+            {[["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["Commodity", "🪙 Commodity"]].map(([m, label]) => {
+              const personal = brokerById(marketBrokers && marketBrokers[m]);
+              const feedName = m === "IN" && houseFeeds.fyers ? "FYERS" : m === "Crypto" && houseFeeds.delta ? "Delta" : null;
+              const name = personal ? personal.name : feedName;
+              const isFeed = !personal && !!feedName;
+              return (
+                <div key={m} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderTop: "1px solid var(--line)" }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 700 }}>{label}</span>
+                  {name ? (
+                    <span style={{ fontSize: 11.5, fontWeight: 800, color: "var(--up)", display: "flex", alignItems: "center", gap: 5 }}>
+                      <span style={{ width: 6, height: 6, borderRadius: 6, background: "var(--up)" }} /> {name}{isFeed ? " · feed" : ""}
+                    </span>
+                  ) : (
+                    <button onClick={onBroker} className="tap disp" style={{ border: "none", background: "var(--ink)", color: "var(--surface)", borderRadius: 9, padding: "6px 16px", fontWeight: 800, fontSize: 11.5, cursor: "pointer" }}>Connect</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
 
         {/* TOTAL VALUE OVER TIME — cash + holdings, rebuilt from real closing prices */}

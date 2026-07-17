@@ -541,7 +541,7 @@ function TrendingRow({ s, market, onOpen, onBuy, onWhy }) {
   );
 }
 
-export default function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, onAutoBuy, mode, watch, toggleWatch, profile, portfolio = [], wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [], liveTick = 0, onWhy }) {
+export default function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, onAutoBuy, mode, watch, toggleWatch, profile, portfolio = [], wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [], liveTick = 0, onWhy, autoOnMap: autoOnMapProp, setAutoOnMap: setAutoOnMapProp }) {
   const [glMode, setGlMode] = useState("Gainers");
   // Picks refresh ONCE AN HOUR (not on every tick) so they don't churn.
   const [pickHour, setPickHour] = useState(() => Math.floor(Date.now() / 3600000));
@@ -617,13 +617,21 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     a.annNum += (Math.pow(cur / h.buy, 365 / days) - 1) * (h.buy * h.qty);
     return a;
   }, { val: 0, inv: 0, annNum: 0 });
-  const net = dash.val - dash.inv;
+  // Unrealised P&L on open holdings...
+  const unrealised = dash.val - dash.inv;
+  // ...PLUS realised P&L from every CLOSED trade — manual, automate AND Auto Buy — so the
+  // homepage Total reflects auto-buy activity, not just what's still open.
+  const realisedPnl = (trades || []).filter((t) => t.exitAt != null && t.pnl != null).reduce((a, t) => a + (t.pnl || 0), 0);
+  const net = unrealised + realisedPnl;
   const retPct = dash.inv ? (net / dash.inv) * 100 : 0;
   const annPct = dash.inv ? (dash.annNum / dash.inv) * 100 : 0;
 
-  // Auto-Buy Matrix's picks — for the market selected at the top; each market keeps its own on/off
+  // Auto-Buy Matrix's picks — for the market selected at the top; each market keeps its own on/off.
+  // The on/off map is LIFTED to the app (persisted server-side) when provided, so it survives reloads.
   const [dashView, setDashView] = useState("total");
-  const [autoOnMap, setAutoOnMap] = useState({ IN: false, US: false, Crypto: false, Commodity: false, FNO: false });
+  const [autoOnMapLocal, setAutoOnMapLocal] = useState({ IN: false, US: false, Crypto: false, Commodity: false, FNO: false });
+  const autoOnMap = autoOnMapProp || autoOnMapLocal;
+  const setAutoOnMap = setAutoOnMapProp || setAutoOnMapLocal;
   const [deployCapital, setDeployCapital] = useState("100000");
   const [plPeriod, setPlPeriod] = useState("today");
   const [autoOverrides, setAutoOverrides] = useState({});   // sym -> {tp, sl}
