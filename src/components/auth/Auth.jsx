@@ -446,10 +446,10 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
                   <span style={{ fontSize: 12.5, fontWeight: 700 }}>{label}</span>
                   {name ? (
                     <span style={{ fontSize: 11.5, fontWeight: 800, color: "var(--up)", display: "flex", alignItems: "center", gap: 5 }}>
-                      <span style={{ width: 6, height: 6, borderRadius: 6, background: "var(--up)" }} /> {name}{isFeed ? " · feed" : ""}
+                      <span style={{ width: 6, height: 6, borderRadius: 6, background: "var(--up)" }} /> {name}
                     </span>
                   ) : (
-                    <button onClick={onBroker} className="tap disp" style={{ border: "none", background: "var(--ink)", color: "var(--surface)", borderRadius: 9, padding: "6px 16px", fontWeight: 800, fontSize: 11.5, cursor: "pointer" }}>Connect</button>
+                    <button onClick={onBroker} className="tap disp" style={{ border: "none", background: "var(--ink)", color: "var(--surface)", borderRadius: 9, padding: "6px 14px", fontWeight: 800, fontSize: 11.5, cursor: "pointer" }}>Connect Broker</button>
                   )}
                 </div>
               );

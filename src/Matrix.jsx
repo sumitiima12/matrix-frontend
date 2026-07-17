@@ -783,7 +783,7 @@ function AppInner() {
                 style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".04em", padding: "3px 7px", display: "flex", alignItems: "center", gap: 4, background: "var(--up-soft)", color: "var(--up)", cursor: "pointer" }}
               >
                 <span style={{ width: 4, height: 4, borderRadius: 4, background: "var(--up)" }} />
-                LIVE · {liveSrc === "fyers" ? "FYERS" : liveSrc === "delta" ? "DELTA" : liveSrc.toUpperCase()}
+                Live
               </span>
             ) : live ? (
               <span
