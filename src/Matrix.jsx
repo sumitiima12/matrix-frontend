@@ -55,6 +55,7 @@ import MLogo from "./components/common/MLogo";
 import NeoIcon from "./components/common/NeoIcon";
 import headerLogo from "./assets/brand/header-logo.png";
 import headerLogoDark from "./assets/brand/header-logo-dark.png";
+import Wordmark from "./components/common/Wordmark";
 import { Footer, LegalOverlay } from "./components/common/LegalPages";
 import Toggle from "./components/common/Toggle";
 import { useBroker } from "./hooks/useBroker";
@@ -244,6 +245,11 @@ function AppInner() {
   const [tab, setTab] = useState("home");
   const [market, setMarket] = useState("IN");
   const [segment, setSegment] = useState("Stocks");
+  /* Land at the TOP of every page. Switching tabs used to inherit the previous page's
+     scroll position — so tapping Auto could drop you into the middle of the builder.
+     (Detail pages get the same treatment via a second effect below, once `detail` is
+     declared.) */
+  useEffect(() => { try { window.scrollTo(0, 0); } catch { /* noop */ } }, [tab]);
   /* ---- Composed state (all logic lives in hooks / services) ---- */
   const broker = useMemo(() => getBroker("paper"), []);          // swap for a real adapter later
   const { toast: buyToast, setToast: setBuyToast, notify } = useNotifications();
@@ -331,14 +337,23 @@ function AppInner() {
      from ever firing. So automation calls placeOrder directly, via *Now below. */
   const [confirmOrder, setConfirmOrder] = useState(null);
 
-  const buyStock  = (stock, qty = 1, opts = {}) => { setConfirmOrder({ s: stock, qty, side: "BUY",  opts, market: marketOf(stock.sym) || market, lot: opts.lot || 1 }); return true; };
+  /* Buying — even a VIRTUAL/paper buy — requires a signed-in account. A guest who taps
+     Buy is sent to the login screen instead of placing an order, so paper trades always
+     belong to a real user id (and carry over across devices once they sign in). */
+  const requireLogin = () => {
+    if (auth) return true;
+    setBuyToast({ t: "Log in to trade — buying needs an account." });
+    setLoginOpen(true);
+    return false;
+  };
+  const buyStock  = (stock, qty = 1, opts = {}) => { if (!requireLogin()) return false; setConfirmOrder({ s: stock, qty, side: "BUY",  opts, market: marketOf(stock.sym) || market, lot: opts.lot || 1 }); return true; };
   const sellStock = (stock, qty = 1, opts = {}) => { setConfirmOrder({ s: stock, qty, side: "SELL", opts, market: opts.market || marketOf(stock.sym) || market, lot: opts.lot || 1 }); return true; };
 
   /* AUTO-BUY places orders WITHOUT the per-trade confirm drawer. In Real mode the first
      time it's about to fire we show a single heads-up (see Dashboard), then never again.
      Auto-sell on SL/TP is already handled by the exit monitor in useOrders. */
   const autoBuyNow = (stock, qty = 1, opts = {}) => buyStockNow(stock, qty, { ...opts, tradeType: "Auto Buy" });
-  const buyStockNow  = (stock, qty = 1, opts = {}) => { placeOrder({ stock, side: "BUY",  qty, opts }); return true; };
+  const buyStockNow  = (stock, qty = 1, opts = {}) => { if (!auth) { setBuyToast({ t: "Log in to trade — buying needs an account." }); setLoginOpen(true); return false; } placeOrder({ stock, side: "BUY",  qty, opts }); return true; };
   const sellStockNow = (stock, qty = 1, opts = {}) => { placeOrder({ stock, side: "SELL", qty, opts }); return true; };
 
   /* THE AUTOMATION LOOP. Evaluates every active strategy's entry/exit rules
@@ -516,6 +531,8 @@ function AppInner() {
   useEffect(() => { if (hydratedUser === userId) lsSet("mx_trades_" + userId, trades); }, [trades, hydratedUser, userId]);
   const [drawer, setDrawer] = useState(null);
   const [detail, setDetail] = useState(null);
+  /* Opening or closing a stock detail page also lands at the top. */
+  useEffect(() => { try { window.scrollTo(0, 0); } catch { /* noop */ } }, [detail]);
   const [search, setSearch] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [legalPage, setLegalPage] = useState(null);   // "terms" | "privacy" | "disclaimer" | "faq" | null
@@ -660,7 +677,7 @@ function AppInner() {
         <div className="glass" style={{ position: "sticky", top: 0, zIndex: 30, background: "var(--header-bg)", borderBottom: "1px solid var(--line)" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px 8px", gap: 8 }}>
             <div onClick={() => { setTab("home"); setDetail(null); }} className="tap disp" style={{ display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minWidth: 0, marginRight: "auto" }}>
-              <img src={theme === "dark" ? headerLogoDark : headerLogo} alt="Matrix One" style={{ height: 34, width: "auto", display: "block", flexShrink: 0 }} />
+              <Wordmark height={28} />
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
               {/* The wallet icon opens the WALLET, not the profile sheet. */}
@@ -668,7 +685,14 @@ function AppInner() {
                 <Wallet size={15} color="var(--gold)" />
                 <span className="mono" style={{ fontSize: 11.5, fontWeight: 800, color: "var(--ink)" }}>{compact(wallet)}</span>
               </button>
-              <div onClick={() => setShowProfile(true)} className="tap glow" style={{ width: 34, height: 34, borderRadius: 11, background: "var(--feature-grad)", display: "grid", placeItems: "center", color: "#fff", flexShrink: 0 }}><User size={17} /></div>
+              {/* Profile: the icon, with a label below — "Login" for a guest, the username
+                  (or name) once signed in. Tapping opens the profile sheet either way. */}
+              <div onClick={() => setShowProfile(true)} className="tap" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, flexShrink: 0, cursor: "pointer" }}>
+                <div className="glow" style={{ width: 34, height: 34, borderRadius: 11, background: "var(--feature-grad)", display: "grid", placeItems: "center", color: "#fff" }}><User size={17} /></div>
+                <span style={{ fontSize: 8.5, fontWeight: 800, color: "var(--muted)", maxWidth: 58, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {auth ? (auth.username ? "@" + auth.username : (auth.name || "Account")) : "Login"}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -921,7 +945,7 @@ function AppInner() {
           <SearchOverlay onClose={() => setSearch(false)} onOpen={openStock} />
         </ErrorBoundary>
       )}
-      {showProfile && <ProfileSheet onAdmin={isAdminUser ? openAdmin : undefined} onBroker={() => { setShowProfile(false); setBrokerOpen(true); }} brokerName={liveBroker ? liveBroker.name : null} profile={profile} walletMap={walletMap} portfolio={portfolio} trades={trades} deposits={deposits} market={market} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={doLogout} onPersonalise={() => setRepersonalise(true)} onUsernameChanged={(u) => onAuthed({ ...auth, username: u })} />}
+      {showProfile && <ProfileSheet onAdmin={isAdminUser ? openAdmin : undefined} onBroker={() => { setShowProfile(false); setBrokerOpen(true); }} brokerName={liveBroker ? liveBroker.name : null} profile={profile} walletMap={walletMap} portfolio={portfolio} trades={trades} deposits={deposits} market={market} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={() => { doLogout(); setGuest(false); setProfile(null); setOnboardSkipped(false); setAuthed(false); setLoginOpen(false); }} onPersonalise={() => setRepersonalise(true)} onUsernameChanged={(u) => onAuthed({ ...auth, username: u })} onEmailChanged={(em) => onAuthed({ ...auth, email: em })} />}
       {adminOpen && <AdminPanel userId={userId} adminKey={adminKey} onClose={() => { setAdminOpen(false); setAdminKey(""); }} />}
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} onAuthed={onAuthed} />}
       {histOpen && <TradeHistory userId={userId} trades={trades} onClose={() => setHistOpen(false)} />}

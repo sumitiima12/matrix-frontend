@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { adminListUsers, adminGetUser, adminSetBlocked, adminResetPin } from "../../services/adminService";
+import { tradesToCSV, downloadCSV, tradeFilename } from "../../lib/csv";
 
 /**
  * AdminPanel — a full-screen admin console. Gated: it only mounts once the caller has
@@ -71,10 +72,15 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
                 <div className="disp" style={{ fontWeight: 800, fontSize: 16 }}>{selected.user.name || "(no name)"}</div>
-                <div className="mono" style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{selected.phone}</div>
+                <div className="mono" style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                  {selected.user.username ? "@" + selected.user.username + " · " : ""}{selected.phone}
+                </div>
+                {selected.user.email && <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 3 }}>{selected.user.email}</div>}
+                {selected.user.referredBy && <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 3 }}>Referred by @{selected.user.referredBy}</div>}
                 {selected.user.createdAt && (
                   <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 3 }}>
                     Joined {new Date(selected.user.createdAt).toLocaleDateString()}
+                    {selected.user.lastLogin ? ` · Last login ${new Date(selected.user.lastLogin).toLocaleString()}` : ""}
                   </div>
                 )}
               </div>
@@ -129,30 +135,8 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
               : <div style={{ fontSize: 12, color: "var(--muted)" }}>No strategies.</div>}
           </div>
 
-          {/* Trades */}
-          <div style={card}>
-            <div className="disp" style={{ fontWeight: 800, fontSize: 13, marginBottom: 8 }}>
-              Trades ({selected.trades ? selected.trades.length : 0})
-            </div>
-            {selected.trades && selected.trades.length
-              ? selected.trades.slice(0, 100).map((t, i) => (
-                  <div key={t.id || i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: i ? "1px solid var(--line)" : "none", paddingTop: i ? 7 : 0, marginTop: i ? 7 : 0 }}>
-                    <div>
-                      <span style={{ fontWeight: 700, fontSize: 12 }}>{t.sym}</span>
-                      <span className="mono" style={{ fontSize: 10, color: t.side === "SELL" ? "var(--down)" : "var(--up)", marginLeft: 6, fontWeight: 800 }}>{t.side}</span>
-                      <span className="mono" style={{ fontSize: 10, color: "var(--muted)", marginLeft: 6 }}>×{t.qty}</span>
-                    </div>
-                    <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)" }}>
-                      {t.at || t.entryAt ? new Date(t.at || t.entryAt).toLocaleDateString() : ""}
-                      {t.pnl != null && <span style={{ color: t.pnl >= 0 ? "var(--up)" : "var(--down)", fontWeight: 800, marginLeft: 6 }}>{t.pnl >= 0 ? "+" : ""}{Math.round(t.pnl)}</span>}
-                    </div>
-                  </div>
-                ))
-              : <div style={{ fontSize: 12, color: "var(--muted)" }}>No trades.</div>}
-            {selected.trades && selected.trades.length > 100 && (
-              <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 8 }}>Showing first 100 of {selected.trades.length}.</div>
-            )}
-          </div>
+          {/* Trades — last 10 by default, filters + CSV export */}
+          <TradesSection trades={selected.trades || []} cardStyle={card} />
         </div>
       ) : (
         /* USER LIST */
@@ -174,6 +158,101 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
           ))}
           {loadingDetail && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 10 }}>Loading user…</div>}
         </div>
+      )}
+    </div>
+  );
+}
+
+/* Trades for ONE user in the admin console.
+   - Filters: trade type, market, and a date range (From / To).
+   - Shows the last 10 by default; "Show more" expands to the full history.
+   - "CSV" downloads exactly what's currently filtered. */
+function TradesSection({ trades = [], cardStyle }) {
+  const [fType, setFType] = useState("All");
+  const [fMkt, setFMkt] = useState("All");
+  const [dFrom, setDFrom] = useState("");
+  const [dTo, setDTo] = useState("");
+  const [expanded, setExpanded] = useState(false);
+
+  const stamp = (t) => t.exitAt || t.entryAt || t.at || t.ts || 0;
+  const TYPES = ["All", "Manual", "Automate", "Auto Buy"];
+  const MKTS = ["All", "IN", "US", "Crypto", "Commodity"];
+
+  const from = dFrom ? new Date(dFrom + "T00:00:00").getTime() : 0;
+  const to = dTo ? new Date(dTo + "T23:59:59.999").getTime() : Date.now();
+
+  const rows = useMemo(() => (trades || [])
+    .filter((t) => (fType === "All" ? true : (t.tradeType || "Manual") === fType))
+    .filter((t) => (fMkt === "All" ? true : (t.market || "IN") === fMkt))
+    .filter((t) => { const ts = stamp(t); return ts >= from && ts <= to; })
+    .sort((a, b) => stamp(b) - stamp(a)),
+    [trades, fType, fMkt, from, to]);
+
+  const shown = expanded ? rows : rows.slice(0, 10);
+  const exportCSV = () => downloadCSV(tradeFilename("matrix-user-trades"), tradesToCSV(rows, () => null));
+
+  const chip = (on) => ({
+    flex: "0 0 auto", padding: "5px 10px", fontSize: 10.5, fontWeight: 800, borderRadius: 9, cursor: "pointer",
+    border: "1px solid " + (on ? "var(--primary)" : "var(--line)"),
+    background: on ? "var(--primary)" : "var(--surface)", color: on ? "#fff" : "var(--ink)",
+  });
+  const dateInput = { border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 9, padding: "7px 8px", fontSize: 11.5, fontWeight: 700, width: "100%" };
+
+  return (
+    <div style={cardStyle}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>Trades ({rows.length})</div>
+        <button onClick={exportCSV} disabled={!rows.length} className="tap disp"
+          style={{ border: "1px solid var(--line)", background: "var(--elev)", color: rows.length ? "var(--ink)" : "var(--muted)", borderRadius: 9, padding: "6px 11px", fontWeight: 800, fontSize: 11, cursor: rows.length ? "pointer" : "not-allowed", opacity: rows.length ? 1 : 0.5 }}>
+          ⬇ CSV
+        </button>
+      </div>
+
+      {/* Trade-type chips */}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+        {TYPES.map((t) => <button key={t} onClick={() => setFType(t)} style={chip(fType === t)}>{t}</button>)}
+      </div>
+      {/* Market chips */}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+        {MKTS.map((m) => <button key={m} onClick={() => setFMkt(m)} style={chip(fMkt === m)}>{m}</button>)}
+      </div>
+      {/* Date range */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+        <label style={{ flex: 1 }}>
+          <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 800, marginBottom: 3 }}>FROM</div>
+          <input type="date" value={dFrom} max={dTo || undefined} onChange={(e) => setDFrom(e.target.value)} className="no-ring mono" style={dateInput} />
+        </label>
+        <label style={{ flex: 1 }}>
+          <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 800, marginBottom: 3 }}>TO</div>
+          <input type="date" value={dTo} min={dFrom || undefined} onChange={(e) => setDTo(e.target.value)} className="no-ring mono" style={dateInput} />
+        </label>
+        {(dFrom || dTo) && (
+          <button onClick={() => { setDFrom(""); setDTo(""); }} className="tap disp" style={{ alignSelf: "flex-end", border: "1px solid var(--line)", background: "var(--elev)", color: "var(--muted)", borderRadius: 9, padding: "7px 10px", fontSize: 10.5, fontWeight: 700 }}>Clear</button>
+        )}
+      </div>
+
+      {rows.length === 0
+        ? <div style={{ fontSize: 12, color: "var(--muted)" }}>No trades match.</div>
+        : shown.map((t, i) => (
+            <div key={t.id || i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: i ? "1px solid var(--line)" : "none", paddingTop: i ? 7 : 0, marginTop: i ? 7 : 0 }}>
+              <div>
+                <span style={{ fontWeight: 700, fontSize: 12 }}>{t.sym}</span>
+                <span className="mono" style={{ fontSize: 10, color: t.side === "SELL" ? "var(--down)" : "var(--up)", marginLeft: 6, fontWeight: 800 }}>{t.side || "BUY"}</span>
+                <span className="mono" style={{ fontSize: 10, color: "var(--muted)", marginLeft: 6 }}>×{t.qty}</span>
+                <span className="pill" style={{ fontSize: 8, fontWeight: 800, padding: "1px 6px", marginLeft: 6, background: "var(--elev)", color: "var(--muted)" }}>{t.tradeType || "Manual"}</span>
+              </div>
+              <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)" }}>
+                {stamp(t) ? new Date(stamp(t)).toLocaleDateString() : ""}
+                {t.pnl != null && <span style={{ color: t.pnl >= 0 ? "var(--up)" : "var(--down)", fontWeight: 800, marginLeft: 6 }}>{t.pnl >= 0 ? "+" : ""}{Math.round(t.pnl)}</span>}
+              </div>
+            </div>
+          ))}
+
+      {rows.length > 10 && (
+        <button onClick={() => setExpanded((v) => !v)} className="tap disp"
+          style={{ width: "100%", marginTop: 10, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--primary)", borderRadius: 10, padding: "8px 0", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>
+          {expanded ? "Show less" : `Show more (${rows.length - 10} more)`}
+        </button>
       )}
     </div>
   );

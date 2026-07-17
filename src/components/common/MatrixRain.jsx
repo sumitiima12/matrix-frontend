@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import splashIcon from "../../assets/brand/splash-icon.png";
-import splashWord from "../../assets/brand/header-logo-dark.png";
+import Wordmark from "./Wordmark";
 
 /**
  * Splash — the cold-open. Black-and-white digital rain (the classic Matrix cascade,
@@ -130,39 +129,16 @@ export default function MatrixRain({ onDone }) {
         }
       `}</style>
 
-      <div style={{ position: "relative", zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center", gap: 26 }}>
-        {/* The favicon M — soft glow + scale/fade-in, with a moving shimmer masked to its shape */}
-        <div style={{ position: "relative", width: 128, height: 128, display: "grid", placeItems: "center", animation: "mx-logo-in 900ms cubic-bezier(.2,.7,.2,1) both" }}>
-          {/* soft pulsing halo behind the mark */}
-          <div style={{ position: "absolute", width: 150, height: 150, borderRadius: "50%", background: "radial-gradient(circle, rgba(255,255,255,.22), transparent 68%)", animation: "mx-glow 2600ms ease-in-out infinite", pointerEvents: "none" }} />
-          <div style={{ position: "relative", width: 118, height: 118 }}>
-            <img src={splashIcon} alt="Matrix One" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
-            <div style={{
-              position: "absolute", inset: 0, pointerEvents: "none",
-              background: "linear-gradient(105deg, transparent 42%, rgba(255,255,255,.95) 50%, transparent 58%)",
-              backgroundSize: "300% 100%",
-              animation: "mx-shimmer 2000ms linear 0.5s infinite",
-              WebkitMaskImage: `url(${splashIcon})`, maskImage: `url(${splashIcon})`,
-              WebkitMaskSize: "contain", maskSize: "contain",
-              WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat",
-              WebkitMaskPosition: "center", maskPosition: "center",
-              mixBlendMode: "screen",
-            }} />
-          </div>
-        </div>
-
-        {/* The wordmark below — fades up just after the icon, with its own trailing shimmer */}
-        <div style={{ position: "relative", width: 208, maxWidth: "64vw", animation: "mx-word-in 620ms cubic-bezier(.2,.7,.2,1) 420ms both" }}>
-          <img src={splashWord} alt="Matrix One" style={{ width: "100%", height: "auto", display: "block" }} />
+      {/* The centred wordmark — no M mark. Scales/fades in with a moving shimmer sweeping
+          across the letters. */}
+      <div style={{ position: "relative", zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", animation: "mx-logo-in 900ms cubic-bezier(.2,.7,.2,1) both" }}>
+        <div style={{ position: "relative", display: "inline-flex" }}>
+          <Wordmark height={56} color="#fff" />
           <div style={{
             position: "absolute", inset: 0, pointerEvents: "none",
-            background: "linear-gradient(105deg, transparent 42%, rgba(255,255,255,.9) 50%, transparent 58%)",
+            background: "linear-gradient(105deg, transparent 42%, rgba(255,255,255,.95) 50%, transparent 58%)",
             backgroundSize: "300% 100%",
-            animation: "mx-shimmer 2000ms linear 0.9s infinite",
-            WebkitMaskImage: `url(${splashWord})`, maskImage: `url(${splashWord})`,
-            WebkitMaskSize: "contain", maskSize: "contain",
-            WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat",
-            WebkitMaskPosition: "center", maskPosition: "center",
+            animation: "mx-shimmer 2000ms linear 0.5s infinite",
             mixBlendMode: "screen",
           }} />
         </div>

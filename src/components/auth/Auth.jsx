@@ -2,11 +2,12 @@ import React, { useState } from "react";
 import { } from "../../domain/universe";
 import { fmt, profileSummary } from "../../lib/format";
 import { Check, ChevronLeft, Clock, Copy, LogIn, LogOut, Sparkles, User } from "lucide-react";
-import { apiLogin, apiRegister, apiForgotQuestion, apiForgotReset, apiGetSecurityQuestion, apiSetSecurityQuestion, apiSetUsername } from "../../domain/api";
+import { apiLogin, apiRegister, apiForgotQuestion, apiForgotReset, apiGetSecurityQuestion, apiSetSecurityQuestion, apiSetUsername, apiSetEmail } from "../../domain/api";
 import EquityCurve from "../common/EquityCurve";
 import headerLogo from "../../assets/brand/header-logo.png";
 import headerLogoDark from "../../assets/brand/header-logo-dark.png";
 import splashLockup from "../../assets/brand/splash-m.png";
+import Wordmark from "../common/Wordmark";
 
 /**
  * Auth & profile — login, onboarding and the profile sheet.
@@ -65,7 +66,7 @@ export function LoginScreen({ onAuthed, onGuest }) {
     setErr(null); setBusy(true);
     const res = tab === "login" ? await apiLogin(mobile, pin) : await apiRegister(mobile, pin, name, secQ, secA, userId, referral);
     setBusy(false);
-    if (res && res.ok) onAuthed({ phone: res.userId, name: res.name || name || "", username: res.username || null });
+    if (res && res.ok) onAuthed({ phone: res.userId, name: res.name || name || "", username: res.username || null, email: res.email || null });
     else setErr((res && res.error) || "Something went wrong.");
   };
   return (
@@ -76,7 +77,7 @@ export function LoginScreen({ onAuthed, onGuest }) {
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "30px", position: "relative", maxWidth: 460, margin: "0 auto", width: "100%" }}>
         <div style={{ textAlign: "center", marginBottom: 34 }}>
-          <img src={splashLockup} alt="Matrix One" style={{ width: 210, maxWidth: "62%", height: "auto", display: "inline-block" }} />
+          <Wordmark height={52} color="#fff" />
           <div style={{ color: "rgba(255,255,255,.7)", fontSize: 12.5, fontWeight: 600, letterSpacing: ".22em", marginTop: 10 }}>SMART TRADING</div>
         </div>
 
@@ -146,12 +147,26 @@ export function Onboarding({ onDone, onSkip, initial, theme }) {
         <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 700 }}>Step {step + 1} of {steps.length}</span>
       </div>
       <div style={{ display: "flex", gap: 5 }}>{steps.map((_, i) => <div key={i} style={{ flex: 1, height: 4, borderRadius: 4, background: i <= step ? "var(--primary)" : "var(--line)" }} />)}</div>
-      <div style={{ marginTop: 30 }}><img src={theme === "dark" ? headerLogoDark : headerLogo} alt="Matrix One" style={{ height: 52, width: "auto", display: "block" }} /></div>
+      <div style={{ marginTop: 30 }}><Wordmark height={44} /></div>
       <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>Let's personalise your edge.</div>
       <div className="disp" style={{ fontWeight: 700, fontSize: 19, marginTop: 30 }}>{cur.q}</div>
+      {cur.multi && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Select all that apply.</div>}
       <div style={{ marginTop: 16, flex: 1 }}>
         {cur.opts.map((o) => {
           const sel = cur.multi ? val.includes(o) : val === o;
+          /* Multi-select questions get real CHECKBOXES on the left (a square that fills
+             with a tick), so it's clear more than one answer is allowed. Single-select
+             questions keep the tick-on-the-right radio style. */
+          if (cur.multi) {
+            return (
+              <button key={o} onClick={() => toggle(o)} className="tap" style={{ width: "100%", textAlign: "left", marginBottom: 10, padding: "15px 16px", borderRadius: 16, border: "1.5px solid " + (sel ? "var(--primary)" : "var(--line)"), background: sel ? "var(--primary-soft)" : "var(--surface)", fontWeight: 600, fontSize: 14.5, display: "flex", gap: 12, alignItems: "center", color: "var(--ink)" }}>
+                <span style={{ flex: "0 0 auto", width: 22, height: 22, borderRadius: 6, border: "2px solid " + (sel ? "var(--primary)" : "var(--line)"), background: sel ? "var(--primary)" : "transparent", display: "grid", placeItems: "center" }}>
+                  {sel && <Check size={15} color="#fff" strokeWidth={3} />}
+                </span>
+                {o}
+              </button>
+            );
+          }
           return <button key={o} onClick={() => toggle(o)} className="tap" style={{ width: "100%", textAlign: "left", marginBottom: 10, padding: "15px 16px", borderRadius: 16, border: "1.5px solid " + (sel ? "var(--primary)" : "var(--line)"), background: sel ? "var(--primary-soft)" : "var(--surface)", fontWeight: 600, fontSize: 14.5, display: "flex", justifyContent: "space-between", alignItems: "center", color: "var(--ink)" }}>{o}{sel && <Check size={18} color="var(--primary)" />}</button>;
         })}
       </div>
@@ -324,11 +339,27 @@ function SecurityQuestionCard() {
   );
 }
 
-export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, onAdmin, portfolio = [], trades = [], deposits = [], market = "IN", onBroker, brokerName, onUsernameChanged }) {
+export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, onAdmin, portfolio = [], trades = [], deposits = [], market = "IN", onBroker, brokerName, onUsernameChanged, onEmailChanged }) {
   const [uidEdit, setUidEdit] = useState(false);
   const [uidVal, setUidVal] = useState("");
   const [uidBusy, setUidBusy] = useState(false);
   const [uidErr, setUidErr] = useState(null);
+  // Optional contact email.
+  const [emailEdit, setEmailEdit] = useState(false);
+  const [emailVal, setEmailVal] = useState("");
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailErr, setEmailErr] = useState(null);
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal);
+  const saveEmail = async () => {
+    if (!emailValid) { setEmailErr("Enter a valid email address."); return; }
+    setEmailErr(null); setEmailBusy(true);
+    try {
+      const r = await apiSetEmail(emailVal.trim());
+      if (r && r.ok) { onEmailChanged && onEmailChanged(r.email || emailVal.trim()); setEmailEdit(false); }
+      else setEmailErr((r && r.error) || "Couldn't save email.");
+    } catch { setEmailErr("Network error."); }
+    setEmailBusy(false);
+  };
   const uidValid = /^[A-Za-z][A-Za-z0-9_]{2,19}$/.test(uidVal);
   const saveUid = async () => {
     if (!uidValid) { setUidErr("3–20 chars, starts with a letter."); return; }
@@ -349,7 +380,7 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
   const [curveMkt, setCurveMkt] = useState(market || "IN");
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(10,10,20,.4)", zIndex: 60, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
-      <div onClick={(e) => e.stopPropagation()} className="sheet card" style={{ width: "100%", maxWidth: 460, borderRadius: "24px 24px 0 0", padding: 20, height: "92vh", overflowY: "auto" }}>
+      <div onClick={(e) => e.stopPropagation()} className="sheet card" style={{ width: "100%", maxWidth: 460, borderRadius: "24px 24px 0 0", padding: 20, height: "80vh", maxHeight: "80vh", overflowY: "auto" }}>
         <div style={{ width: 40, height: 4, background: "var(--line)", borderRadius: 9, margin: "0 auto 16px" }} />
 
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -420,6 +451,25 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
                 <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                   <button onClick={() => setUidEdit(false)} className="tap disp" style={{ flex: 1, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: 10, fontWeight: 800, fontSize: 12.5 }}>Cancel</button>
                   <button onClick={saveUid} disabled={uidBusy || !uidValid} className="tap disp" style={{ flex: 1, border: "none", background: uidValid ? "var(--primary)" : "var(--elev)", color: uidValid ? "var(--on-primary)" : "var(--muted)", borderRadius: 10, padding: 10, fontWeight: 800, fontSize: 12.5 }}>{uidBusy ? "Saving…" : "Save"}</button>
+                </div>
+              </div>
+            )}
+
+            {/* EMAIL — optional contact address the user can add or change. */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 700 }}>EMAIL</div>
+                <div className="disp" style={{ fontWeight: 700, fontSize: 13.5, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{auth.email || <span style={{ color: "var(--muted)", fontWeight: 600 }}>Not added</span>}</div>
+              </div>
+              {!emailEdit && <button onClick={() => { setEmailVal(auth.email || ""); setEmailEdit(true); setEmailErr(null); }} className="tap disp" style={{ flex: "0 0 auto", border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: "7px 12px", fontWeight: 800, fontSize: 12 }}>{auth.email ? "Change" : "Add email"}</button>}
+            </div>
+            {emailEdit && (
+              <div style={{ marginTop: 10 }}>
+                <input value={emailVal} onChange={(e) => setEmailVal(e.target.value.trim())} placeholder="you@example.com" type="email" inputMode="email" className="no-ring" style={{ width: "100%", border: "1px solid " + (emailVal ? (emailValid ? "var(--up)" : "var(--down)") : "var(--line)"), borderRadius: 10, padding: "10px 12px", fontSize: 14, background: "var(--elev)", color: "var(--ink)" }} />
+                {emailErr && <div style={{ color: "var(--down)", fontSize: 11.5, fontWeight: 600, marginTop: 6 }}>{emailErr}</div>}
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  <button onClick={() => setEmailEdit(false)} className="tap disp" style={{ flex: 1, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: 10, fontWeight: 800, fontSize: 12.5 }}>Cancel</button>
+                  <button onClick={saveEmail} disabled={emailBusy || !emailValid} className="tap disp" style={{ flex: 1, border: "none", background: emailValid ? "var(--primary)" : "var(--elev)", color: emailValid ? "var(--on-primary)" : "var(--muted)", borderRadius: 10, padding: 10, fontWeight: 800, fontSize: 12.5 }}>{emailBusy ? "Saving…" : "Save"}</button>
                 </div>
               </div>
             )}

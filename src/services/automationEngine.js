@@ -217,7 +217,12 @@ export function runOnce({ strats, getCandles, getStock, getChain, positions, cap
            stored at config time, when the price was something else entirely. For a buy the
            limit sits BELOW the trigger by the offset, so we buy a small pullback rather
            than chasing the breakout. A MARKET order carries no price. */
-        const isLimit = strat.entryType === "Limit";
+        /* Indian options are LIMIT-only — a market order on an illiquid option
+           can fill far from the quote, so the exchange/broker won't accept one.
+           Any strategy that trades an option leg is forced to Limit regardless of
+           what was saved. */
+        const isOptStrat = !!(strat.opt && strat.opt.enabled);
+        const isLimit = isOptStrat || strat.entryType === "Limit";
         const off = isLimit ? (Number(strat.limitOffset) || 0) / 100 : 0;
         const limitPrice = isLimit ? +(stock.price * (1 - off)).toFixed(2) : null;
 

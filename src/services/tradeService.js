@@ -88,6 +88,13 @@ export async function setUsername(username) {
   catch { return { ok: false, error: "Network error — please try again." }; }
 }
 
+/** Set (or clear) the user's contact email. */
+export async function setEmail(email) {
+  if (!BACKEND_URL) return { ok: false, error: "No backend connected." };
+  try { return await post("/api/email", { email }); }
+  catch { return { ok: false, error: "Network error — please try again." }; }
+}
+
 /** Public strategies — shared across users. */
 export async function listPublicStrategies({ symbol = "", by = "" } = {}) {
   if (!BACKEND_URL) return [];

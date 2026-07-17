@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { currentIdeas } from "../domain/ideas";
 import { dailyPicks, techSignal } from "../domain/signals";
-import { Building2, ChevronRight, Lightbulb, Newspaper, Pencil, Sparkles, TrendingUp, Zap } from "lucide-react";
+import { Building2, ChevronRight, Lightbulb, Newspaper, Pencil, Sparkles, TrendingUp, X, Zap } from "lucide-react";
 import { BACKEND_URL } from "../config";
 import { CUR, DAY, chgColor, clamp, compact, fmt, lsGet, lsSet, pct, timeAgo } from "../lib/format";
 import { ALL, GLOBAL_MKTS, UNIVERSE, marketOf } from "../domain/universe";
@@ -177,10 +177,11 @@ function StockIdeasStrip({ onOpen, onBuy, market, liveTick = 0 }) {
   );
 }
 
-function LiveNewsStrip({ symbols = [], onOpen, list = [], market = "IN" }) {
+function LiveNewsStrip({ symbols = [], onOpen, onBuy, list = [], market = "IN" }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tag, setTag] = useState(null);          // Earnings / Dividend / Split / Bulk deal…
+  const [readSym, setReadSym] = useState(null);  // symbol whose 7-day news drawer is open
   const key = symbols.join(",");
 
   /* Was: ONE headline from ONE symbol, six times — and any symbol Yahoo had nothing
@@ -256,41 +257,161 @@ function LiveNewsStrip({ symbols = [], onOpen, list = [], market = "IN" }) {
           {shown.slice(0, 14).map((n, i) => {
             const s = list.find((a) => a.sym === n.sym);
             return (
-              /* Tapping opens the SYMBOL, like every other card in the app. No Buy button:
-                 a headline is a reason to look, not a reason to trade on the spot. */
+              /* Tapping the headline opens the SYMBOL. The card now also carries a Buy
+                 control (with quantity) and a "Read more" that opens the 7-day feed. */
               <div
                 key={n.sym + i}
-                onClick={() => s && onOpen(s)}
-                className="card tap"
-                style={{ flex: "0 0 auto", width: 250, padding: 14, cursor: s ? "pointer" : "default" }}
+                className="card"
+                style={{ flex: "0 0 auto", width: 250, padding: 14, display: "flex", flexDirection: "column" }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
-                  <span className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>{n.sym}</span>
-                  {s && <span className="mono" style={{ fontWeight: 800, fontSize: 13 }}>{fmt(s.price, market)}</span>}
-                </div>
-                {s && <div style={{ marginTop: 2 }}><Change v={s.chg} /></div>}
+                <div
+                  onClick={() => s && onOpen(s)}
+                  style={{ cursor: s ? "pointer" : "default" }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
+                    <span className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>{n.sym}</span>
+                    {s && <span className="mono" style={{ fontWeight: 800, fontSize: 13 }}>{fmt(s.price, market)}</span>}
+                  </div>
+                  {s && <div style={{ marginTop: 2 }}><Change v={s.chg} /></div>}
 
-                {n.tag && (
-                  <span
-                    className="pill"
-                    style={{ display: "inline-block", marginTop: 8, fontSize: 9, fontWeight: 800, padding: "3px 7px", background: "var(--elev)", color: TAG_COLOR[n.tag] || "var(--primary)" }}
-                  >
-                    {n.tag.toUpperCase()}
-                  </span>
+                  {n.tag && (
+                    <span
+                      className="pill"
+                      style={{ display: "inline-block", marginTop: 8, fontSize: 9, fontWeight: 800, padding: "3px 7px", background: "var(--elev)", color: TAG_COLOR[n.tag] || "var(--primary)" }}
+                    >
+                      {n.tag.toUpperCase()}
+                    </span>
+                  )}
+
+                  <div style={{ marginTop: 7, fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                    {n.t}
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 7 }}>
+                    {n.src ? n.src + " · " : ""}{n.d ? timeAgo(n.d) : ""}
+                  </div>
+                </div>
+
+                <button
+                  onClick={(e) => { e.stopPropagation(); setReadSym(n.sym); }}
+                  className="tap disp"
+                  style={{ alignSelf: "flex-start", marginTop: 9, background: "none", border: "none", padding: 0, color: "var(--primary)", fontWeight: 800, fontSize: 11.5, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 3 }}
+                >
+                  Read more <ChevronRight size={13} />
+                </button>
+
+                {s && onBuy && (
+                  <div style={{ marginTop: 10 }}>
+                    <BuyButton s={s} market={market} onBuy={onBuy} lot={s.lot || 1} fullWidth />
+                  </div>
                 )}
-
-                <div style={{ marginTop: 7, fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-                  {n.t}
-                </div>
-                <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 7 }}>
-                  {n.src ? n.src + " · " : ""}{n.d ? timeAgo(n.d) : ""}
-                </div>
               </div>
             );
           })}
         </div>
       )}
+
+      {readSym && (
+        <NewsReadMore
+          sym={readSym}
+          stock={list.find((a) => a.sym === readSym)}
+          feed={items}
+          market={market}
+          onOpen={onOpen}
+          onBuy={onBuy}
+          onClose={() => setReadSym(null)}
+        />
+      )}
     </Section>
+  );
+}
+
+/**
+ * NewsReadMore — a bottom-sheet drawer that shows every headline for ONE symbol from
+ * the last 7 days, newest first, as a swipeable carousel. Sourced from the same real
+ * feed the strip already loaded (no invented articles); if the feed has fewer than a
+ * week of items for this symbol, it shows exactly what exists.
+ */
+function NewsReadMore({ sym, stock, feed = [], market = "IN", onOpen, onBuy, onClose }) {
+  const [idx, setIdx] = useState(0);
+  const cutoff = Date.now() - 7 * 24 * 3600 * 1000;
+  const articles = feed
+    .filter((n) => n.sym === sym && (!n.d || +new Date(n.d) >= cutoff))
+    .sort((a, b) => (+new Date(b.d || 0)) - (+new Date(a.d || 0)));
+  const cur = articles[idx] || articles[0];
+  const many = articles.length > 1;
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(10,10,20,.42)", zIndex: 120, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="card"
+        style={{ width: "100%", maxWidth: 460, maxHeight: "80vh", overflowY: "auto", borderRadius: "22px 22px 0 0", padding: "16px 18px 24px" }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <span className="disp" style={{ fontWeight: 800, fontSize: 18 }}>{sym}</span>
+            {stock && <span className="mono" style={{ fontWeight: 800, fontSize: 14 }}>{fmt(stock.price, market)}</span>}
+            {stock && <Change v={stock.chg} />}
+          </div>
+          <button onClick={onClose} aria-label="Close" className="tap" style={{ border: "none", background: "var(--elev)", borderRadius: 10, width: 32, height: 32, display: "grid", placeItems: "center", cursor: "pointer" }}>
+            <X size={16} />
+          </button>
+        </div>
+        <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginTop: 4 }}>
+          {articles.length ? `${articles.length} ${articles.length === 1 ? "story" : "stories"} · last 7 days` : "No stories in the last 7 days"}
+        </div>
+
+        {cur && (
+          <div style={{ marginTop: 14 }}>
+            {cur.tag && (
+              <span className="pill" style={{ display: "inline-block", fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: "var(--primary)" }}>
+                {cur.tag.toUpperCase()}
+              </span>
+            )}
+            <div className="disp" style={{ fontSize: 15.5, fontWeight: 800, lineHeight: 1.4, marginTop: cur.tag ? 8 : 0 }}>{cur.t}</div>
+            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 8 }}>
+              {cur.src ? cur.src + " · " : ""}{cur.d ? timeAgo(cur.d) : ""}
+            </div>
+            {cur.url && (
+              <a href={cur.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+                style={{ display: "inline-flex", alignItems: "center", gap: 3, marginTop: 10, color: "var(--primary)", fontWeight: 800, fontSize: 12, textDecoration: "none" }}>
+                Open full article <ChevronRight size={13} />
+              </a>
+            )}
+          </div>
+        )}
+
+        {many && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 16 }}>
+            <button onClick={() => setIdx((i) => Math.max(0, i - 1))} disabled={idx === 0} className="tap disp"
+              style={{ border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: 12, cursor: idx === 0 ? "not-allowed" : "pointer", opacity: idx === 0 ? 0.4 : 1 }}>
+              ‹ Prev
+            </button>
+            <div style={{ display: "flex", gap: 5 }}>
+              {articles.map((_, i) => (
+                <span key={i} onClick={() => setIdx(i)} style={{ width: 7, height: 7, borderRadius: 99, cursor: "pointer", background: i === idx ? "var(--primary)" : "var(--line)" }} />
+              ))}
+            </div>
+            <button onClick={() => setIdx((i) => Math.min(articles.length - 1, i + 1))} disabled={idx >= articles.length - 1} className="tap disp"
+              style={{ border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: 12, cursor: idx >= articles.length - 1 ? "not-allowed" : "pointer", opacity: idx >= articles.length - 1 ? 0.4 : 1 }}>
+              Next ›
+            </button>
+          </div>
+        )}
+
+        {stock && onBuy && (
+          <div style={{ marginTop: 18, borderTop: "1px solid var(--line)", paddingTop: 14 }}>
+            <BuyButton s={stock} market={market} onBuy={onBuy} lot={stock.lot || 1} fullWidth />
+          </div>
+        )}
+        {stock && onOpen && (
+          <button onClick={() => { onClose(); onOpen(stock); }} className="tap disp"
+            style={{ width: "100%", marginTop: 10, border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 12, padding: 11, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>
+            View {sym} details
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -848,7 +969,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
 
 
       {/* In the news — REAL headlines fetched live (not for F&O) */}
-      {<LiveNewsStrip symbols={inNews.map((s) => s.sym)} onOpen={onOpen} list={list} market={market} />}
+      {<LiveNewsStrip symbols={inNews.map((s) => s.sym)} onOpen={onOpen} onBuy={onBuy} list={list} market={market} />}
 
       {/* Smart money — REAL institutional holders from Yahoo (quoteSummary).
           Hidden entirely when no holder data is available: no invented names. */}

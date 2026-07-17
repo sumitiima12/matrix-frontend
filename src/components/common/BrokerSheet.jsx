@@ -87,7 +87,7 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
         style={{
           position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto",
           background: "var(--surface)", borderRadius: "22px 22px 0 0", zIndex: 151,
-          maxHeight: "88vh", overflowY: "auto", padding: "16px 18px 26px",
+          maxHeight: "80vh", overflowY: "auto", padding: "16px 18px 26px",
           boxShadow: "0 -16px 44px rgba(0,0,0,.3)",
         }}
       >

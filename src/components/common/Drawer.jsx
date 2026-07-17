@@ -51,7 +51,7 @@ export default function Drawer({ s, onClose, onDetails, onBuy }) {
         style={{
           width: "100%", maxWidth: 460,
           borderRadius: "24px 24px 0 0",
-          maxHeight: "88vh", overflowY: "auto", padding: 18,
+          maxHeight: "80vh", overflowY: "auto", padding: 18,
           transform: dy > 0 ? `translateY(${dy}px)` : "none",
           transition: dy === 0 ? "transform .22s ease" : "none",
           // the sheet scrolls; it does not navigate

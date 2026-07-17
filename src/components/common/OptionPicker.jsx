@@ -137,6 +137,29 @@ export default function OptionPicker({ underlying, spot, userId, onPick }) {
         </span>
       </div>
 
+      {/* ORDER TYPE — options are LIMIT-only on the Indian exchanges. A market order on
+          an illiquid option can fill far from the quote, so it isn't permitted; the order
+          fills as a Limit at the premium shown. Displayed, locked, so the rule is visible. */}
+      <div style={{ fontSize: 11, fontWeight: 800, color: "var(--muted)", margin: "12px 0 6px" }}>ORDER TYPE</div>
+      <div style={{ display: "flex", gap: 7 }}>
+        {[["Market", false], ["Limit", true]].map(([k, on]) => (
+          <div key={k}
+            title={on ? "" : "Market orders aren't permitted on options"}
+            style={{
+              flex: 1, textAlign: "center", padding: "7px 0", borderRadius: 10, fontSize: 12, fontWeight: 800,
+              cursor: on ? "default" : "not-allowed", opacity: on ? 1 : 0.4,
+              border: "1px solid " + (on ? "var(--primary)" : "var(--line)"),
+              background: on ? "var(--primary)" : "var(--surface)",
+              color: on ? "#fff" : "var(--ink)",
+            }}>
+            {k}
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 5, lineHeight: 1.45 }}>
+        Options are limit-only — filled at the premium shown, not a market order.
+      </div>
+
       {/* THE RESOLVED CONTRACT, in full. You should never confirm an order without seeing
           the exact instrument it will hit. */}
       <div className="card" style={{ marginTop: 14, padding: 13, background: "var(--elev)" }}>

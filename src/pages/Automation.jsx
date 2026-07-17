@@ -308,26 +308,32 @@ function CondBuilder2({ label, conds, setConds, operands }) {
 }
 
 /* Segmented two/three-option toggle — used for Buy Type and Order Type. */
-function SegF({ label, options, value, set }) {
+function SegF({ label, options, value, set, disabled = [] }) {
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
       <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>{label}</div>
       <div style={{ display: "flex", gap: 6 }}>
-        {options.map((o) => (
-          <button
-            key={o}
-            onClick={() => set(o)}
-            className="tap disp"
-            style={{
-              flex: 1, padding: "8px 6px", borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: "pointer",
-              border: "1px solid " + (value === o ? "var(--primary)" : "var(--line)"),
-              background: value === o ? "var(--primary)" : "var(--surface)",
-              color: value === o ? "#fff" : "var(--ink)",
-            }}
-          >
-            {o}
-          </button>
-        ))}
+        {options.map((o) => {
+          const off = disabled.includes(o);
+          return (
+            <button
+              key={o}
+              onClick={() => !off && set(o)}
+              disabled={off}
+              className="tap disp"
+              title={off ? "Not available for options" : ""}
+              style={{
+                flex: 1, padding: "8px 6px", borderRadius: 9, fontSize: 12, fontWeight: 700,
+                cursor: off ? "not-allowed" : "pointer", opacity: off ? 0.4 : 1,
+                border: "1px solid " + (value === o && !off ? "var(--primary)" : "var(--line)"),
+                background: value === o && !off ? "var(--primary)" : "var(--surface)",
+                color: value === o && !off ? "#fff" : "var(--ink)",
+              }}
+            >
+              {o}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -616,7 +622,9 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
   const saveStrategy = (makeActive) => {
     const name = stratName.trim() || (mode === "builder" ? "Custom strategy" : "Plain-English strategy");
     const symbols = deploySyms.length ? deploySyms : ["NIFTY50"];
-    const base = { name, by: creator, cfg, opt: optLeg, qty: Math.max(1, parseInt(capital) || 1), buyType, entryType, limitOffset: entryType === "Limit" ? (parseFloat(limitOffset) || 0) : null, maxTrades: Math.max(1, parseInt(maxTrades) || 5), maxReentries: Math.max(0, parseInt(maxReentries) || 5), cap: parseInt(capital) || 1, symbols };
+    // Indian options are limit-only — never save a market order on an option strategy.
+    const effEntryType = optLeg.enabled ? "Limit" : entryType;
+    const base = { name, by: creator, cfg, opt: optLeg, qty: Math.max(1, parseInt(capital) || 1), buyType, entryType: effEntryType, limitOffset: effEntryType === "Limit" ? (parseFloat(limitOffset) || 0) : null, maxTrades: Math.max(1, parseInt(maxTrades) || 5), maxReentries: Math.max(0, parseInt(maxReentries) || 5), cap: parseInt(capital) || 1, symbols };
     if (editingId) {
       // Preserve Matrix authorship + premium status when an admin edits a sample/premium.
       setStrats((p) => p.map((x) => x.id === editingId ? { ...x, ...base, by: x.by === "Matrix" ? x.by : base.by, premium: x.premium, desc: x.desc, active: makeActive } : x));
@@ -773,8 +781,10 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
   // name + description only, activate + backtest, no template/edit.
   const premiumStrats = strats.filter((s) => s.premium);
   const myStrats     = perf.filter(({ s }) => s.by !== "Matrix" && !s.premium);
-  const myActive     = myStrats.filter(({ s }) => s.active);
-  const myInactive   = myStrats.filter(({ s }) => !s.active);
+  // The Active / Inactive lists span EVERY type (Mine, Premium, Sample, Public), each
+  // shown with a type tag. Active = anything running now; Inactive = your own drafts.
+  const myActive     = strats.filter((s) => s.active).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
+  const myInactive   = strats.filter((s) => !s.active && s.by !== "Matrix" && !s.premium).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
   const byOptions = ["All", "Matrix", "You", "Community"];
   const dsel = { ...selStyle, flex: "1 1 0", minWidth: 0, padding: "8px 8px", fontSize: 11.5 };
   const fmtDate = (t) => new Date(t).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" });
@@ -807,7 +817,14 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
             )}
           </div>
         </div>
-        {s.alerts && <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, background: "var(--primary-soft)", color: "var(--primary)", padding: "3px 8px", display: "flex", alignItems: "center", gap: 3, flex: "0 0 auto" }}><Bell size={10} /> Alerts</span>}
+        <div style={{ display: "flex", gap: 6, flex: "0 0 auto", alignItems: "center" }}>
+          {(() => {
+            const t = s.premium ? "Premium" : s.by === "Matrix" ? "Sample" : s.publicId ? "Public" : "Mine";
+            const c = { Premium: "var(--gold)", Sample: "var(--primary)", Public: "var(--up)", Mine: "var(--primary)" }[t];
+            return <span className="pill" style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".03em", padding: "3px 8px", background: "var(--elev)", color: c, border: "1px solid var(--line)" }}>{t.toUpperCase()}</span>;
+          })()}
+          {s.alerts && <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, background: "var(--primary-soft)", color: "var(--primary)", padding: "3px 8px", display: "flex", alignItems: "center", gap: 3 }}><Bell size={10} /> Alerts</span>}
+        </div>
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
         {/* A strategy with no closed trades has NO win rate. stratPerf returns null
@@ -1014,8 +1031,13 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
               <SegF label="Buy Type" options={["Intraday", "NRML"]} value={buyType} set={setBuyType} />
-              <SegF label="Order Type" options={["Market", "Limit"]} value={entryType} set={setEntryType} />
+              <SegF label="Order Type" options={["Market", "Limit"]} value={optLeg.enabled ? "Limit" : entryType} set={setEntryType} disabled={optLeg.enabled ? ["Market"] : []} />
             </div>
+            {optLeg.enabled && (
+              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>
+                Indian options are limit-only — market orders aren't permitted, so this strategy places a Limit order at the premium.
+              </div>
+            )}
 
             {entryType === "Limit" && (
               <div style={{ marginTop: 12 }}>
