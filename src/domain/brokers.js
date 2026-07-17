@@ -121,16 +121,17 @@ export const BROKERS = [
   {
     id: "indmoney",
     name: "IND Money",
-    markets: ["IN", "FNO", "Commodity", "US"],
+    markets: ["US"],
     status: "ready",
-    realtime: false,
+    realtime: true,
     oi: false,
     depth: false,
     userCreds: true,
+    adminOnly: true,   // US house account (like Delta for crypto / FYERS for Indian) — only the admin connects it and trades US; every user sees the US prices it (or the feed) provides.
     fields: [
       { key: "accessToken", label: "Access token", type: "password", hint: "From web.indstocks.com → API section → Get Started with INDstocks APIs" },
     ],
-    note: "Paste your INDstocks access token. Shows your real IND Money holdings. Free API, ₹5/order. Live prices come from the FYERS feed.",
+    note: "Powers US stocks for Matrix. Only the admin connects IND Money and places US orders; all users see US prices. Paste your INDstocks access token.",
     docs: "https://api-docs.indstocks.com/",
   },
   {
