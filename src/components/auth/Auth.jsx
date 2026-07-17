@@ -48,27 +48,49 @@ export function SetUsernameModal({ onDone }) {
 }
 
 export function LoginScreen({ onAuthed, onGuest }) {
-  const [tab, setTab] = useState("login");
+  /* ONE screen for Login and Sign-up. The user enters their number + PIN and taps
+     "Login / Sign up":
+       - existing account, correct PIN  -> logged straight in
+       - existing account, wrong PIN    -> inline error
+       - no account for that number     -> switches to the "looks like you're new" step,
+                                           which asks for a user ID and an optional email,
+                                           then signs them up and drops them on the homepage. */
+  const [stage, setStage] = useState("auth");   // "auth" | "newuser"
   const [mobile, setMobile] = useState("");
   const [pin, setPin] = useState("");
-  const [name, setName] = useState("");
   const [userId, setUserId] = useState("");
+  const [email, setEmail] = useState("");
   const [referral, setReferral] = useState(() => { try { return new URLSearchParams(window.location.search).get("ref") || ""; } catch { return ""; } });
-  const [secQ, setSecQ] = useState(""); const [secA, setSecA] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const validId = /^[A-Za-z][A-Za-z0-9_]{2,19}$/.test(userId);
+  const emailOk = email === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const field = { width: "100%", background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.28)", borderRadius: 14, padding: "14px 16px", fontSize: 15, color: "#fff", outline: "none" };
-  const submit = async () => {
+
+  const finish = (res, fresh = false) => onAuthed({ phone: res.userId, name: res.name || "", username: res.username || null, email: res.email || null, createdAt: res.createdAt || null }, { fresh });
+
+  // Step 1 — number + PIN. Decide login vs sign-up from the server's answer.
+  const submitAuth = async () => {
     if (mobile.length < 6 || pin.length < 4) { setErr("Enter your mobile number and a 4+ digit PIN."); return; }
-    if (tab === "signup" && !validId) { setErr("Choose a user ID: 3–20 characters, starting with a letter (letters, numbers, underscore)."); return; }
-    if (tab === "signup" && (!secQ.trim() || !secA.trim())) { setErr("Set a security question and answer to recover your PIN later."); return; }
     setErr(null); setBusy(true);
-    const res = tab === "login" ? await apiLogin(mobile, pin) : await apiRegister(mobile, pin, name, secQ, secA, userId, referral);
+    const res = await apiLogin(mobile, pin);
     setBusy(false);
-    if (res && res.ok) onAuthed({ phone: res.userId, name: res.name || name || "", username: res.username || null, email: res.email || null });
-    else setErr((res && res.error) || "Something went wrong.");
+    if (res && res.ok) { finish(res); return; }               // existing user -> straight in
+    if (res && res.newAccount) { setErr(null); setStage("newuser"); return; }  // new -> sign-up step
+    setErr((res && res.error) || "Wrong PIN for this number.");
   };
+
+  // Step 2 — a brand-new user picks a handle (+ optional email), then we register them.
+  const submitSignup = async () => {
+    if (!validId) { setErr("Choose a user ID: 3–20 characters, starting with a letter."); return; }
+    if (!emailOk) { setErr("Enter a valid email, or leave it blank."); return; }
+    setErr(null); setBusy(true);
+    const res = await apiRegister(mobile, pin, "", "", "", userId, referral, email);
+    setBusy(false);
+    if (res && res.ok) { finish(res, true); return; }          // signed up -> homepage (skip onboarding)
+    setErr((res && res.error) || "Couldn't create your account.");
+  };
+
   return (
     <div className="mx" style={{ position: "fixed", inset: 0, zIndex: 100, background: "linear-gradient(165deg,#232327 0%,#161619 55%,#0C0C0E 100%)", display: "flex", flexDirection: "column", overflow: "auto" }}>
       <style>{`.lginput::placeholder{color:rgba(255,255,255,.55)}`}</style>
@@ -76,43 +98,57 @@ export function LoginScreen({ onAuthed, onGuest }) {
       <div style={{ position: "absolute", bottom: -100, left: -80, width: 320, height: 320, borderRadius: "50%", background: "radial-gradient(circle,rgba(200,200,210,.12),transparent 70%)", pointerEvents: "none" }} />
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "30px", position: "relative", maxWidth: 460, margin: "0 auto", width: "100%" }}>
-        <div style={{ textAlign: "center", marginBottom: 34 }}>
+        <div style={{ textAlign: "center", marginBottom: 30 }}>
           <Wordmark height={52} color="#fff" />
           <div style={{ color: "rgba(255,255,255,.7)", fontSize: 12.5, fontWeight: 600, letterSpacing: ".22em", marginTop: 10 }}>SMART TRADING</div>
         </div>
 
-        <div style={{ display: "flex", background: "rgba(255,255,255,.1)", borderRadius: 14, padding: 4, marginBottom: 16 }}>
-          {[["login", "Log in"], ["signup", "Sign up"]].map(([k, l]) => (
-            <button key={k} onClick={() => { setTab(k); setErr(null); }} className="tap disp" style={{ flex: 1, padding: 11, border: "none", borderRadius: 11, fontWeight: 800, fontSize: 13.5, background: tab === k ? "#fff" : "transparent", color: tab === k ? "#141416" : "rgba(255,255,255,.75)" }}>{l}</button>
-          ))}
-        </div>
+        {stage === "auth" ? (
+          <>
+            <div className="disp" style={{ color: "#fff", fontSize: 18, fontWeight: 800, textAlign: "center", marginBottom: 4 }}>Login / Sign up</div>
+            <div style={{ color: "rgba(255,255,255,.6)", fontSize: 12, textAlign: "center", marginBottom: 20 }}>Enter your number and PIN — we'll log you in, or set you up if you're new.</div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {tab === "signup" && <input className="lginput" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (optional)" style={field} />}
-          {tab === "signup" && (
-            <div>
-              <input className="lginput mono" value={userId} onChange={(e) => setUserId(e.target.value.replace(/[^A-Za-z0-9_]/g, "").slice(0, 20))} placeholder="Choose a user ID (unique)" style={{ ...field, borderColor: userId ? (validId ? "rgba(52,224,125,.7)" : "rgba(255,120,120,.6)") : field.border }} />
-              <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.55)", marginTop: 5, paddingLeft: 4 }}>3–20 characters, starts with a letter. This is your public handle & referral code.</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <input className="lginput mono" value={mobile} onChange={(e) => setMobile(e.target.value.replace(/[^0-9]/g, "").slice(0, 10))} inputMode="numeric" placeholder="Mobile number" style={field} />
+              <input className="lginput mono" value={pin} onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))} onKeyDown={(e) => e.key === "Enter" && submitAuth()} inputMode="numeric" type="password" placeholder="PIN (4+ digits)" style={field} />
             </div>
-          )}
-          <input className="lginput mono" value={mobile} onChange={(e) => setMobile(e.target.value.replace(/[^0-9]/g, "").slice(0, 10))} inputMode="numeric" placeholder="Mobile number" style={field} />
-          <input className="lginput mono" value={pin} onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))} inputMode="numeric" type="password" placeholder="PIN (4+ digits)" style={field} />
-          {tab === "signup" && <input className="lginput mono" value={referral} onChange={(e) => setReferral(e.target.value.replace(/[^A-Za-z0-9_]/g, "").slice(0, 20))} placeholder="Referral code (optional)" style={field} />}
-        </div>
-        {err && <div style={{ color: "#FFB3BE", fontSize: 12.5, fontWeight: 600, marginTop: 12 }}>{err}</div>}
+            {err && <div style={{ color: "#FFB3BE", fontSize: 12.5, fontWeight: 600, marginTop: 12 }}>{err}</div>}
 
-        <button onClick={submit} disabled={busy} className="tap disp" style={{ width: "100%", marginTop: 22, background: "#fff", color: "#141416", border: "none", borderRadius: 999, padding: 16, fontWeight: 800, fontSize: 15, letterSpacing: ".02em", opacity: busy ? 0.6 : 1 }}>{busy ? "PLEASE WAIT…" : tab === "login" ? "LOG IN" : "CREATE ACCOUNT"}</button>
+            <button onClick={submitAuth} disabled={busy} className="tap disp" style={{ width: "100%", marginTop: 22, background: "#fff", color: "#141416", border: "none", borderRadius: 999, padding: 16, fontWeight: 800, fontSize: 15, letterSpacing: ".02em", opacity: busy ? 0.6 : 1 }}>{busy ? "PLEASE WAIT…" : "LOGIN / SIGN UP"}</button>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "20px 0" }}>
-          <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.25)" }} />
-          <span style={{ color: "rgba(255,255,255,.65)", fontSize: 11, fontWeight: 700 }}>OR</span>
-          <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.25)" }} />
-        </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "22px 0 16px" }}>
+              <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.25)" }} />
+              <span style={{ color: "rgba(255,255,255,.65)", fontSize: 11, fontWeight: 700 }}>OR</span>
+              <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.25)" }} />
+            </div>
 
-        <button onClick={onGuest} className="tap disp glow" style={{ width: "100%", background: "rgba(255,255,255,.14)", color: "#fff", border: "1.5px solid rgba(255,255,255,.5)", borderRadius: 999, padding: 15, fontWeight: 800, fontSize: 14.5, display: "flex", gap: 8, alignItems: "center", justifyContent: "center" }}>
-          <User size={17} /> Continue as guest
-        </button>
-        <div style={{ textAlign: "center", color: "rgba(255,255,255,.6)", fontSize: 11.5, marginTop: 14 }}>Log in to save your trades, portfolio and automations across visits.</div>
+            {/* Guest is a quiet text link, not a button. */}
+            <div style={{ textAlign: "center" }}>
+              <span onClick={onGuest} className="tap" style={{ color: "rgba(255,255,255,.85)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>Continue as guest</span>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="disp" style={{ color: "#fff", fontSize: 19, fontWeight: 800, textAlign: "center" }}>Looks like you're new! 👋</div>
+            <div style={{ color: "rgba(255,255,255,.7)", fontSize: 12.5, textAlign: "center", marginTop: 6, marginBottom: 20, lineHeight: 1.5 }}>Pick a user ID to finish setting up your account. Your number <b style={{ color: "#fff" }}>{mobile}</b> and PIN are ready.</div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <input className="lginput mono" value={userId} onChange={(e) => setUserId(e.target.value.replace(/[^A-Za-z0-9_]/g, "").slice(0, 20))} placeholder="Choose a user ID (unique)" style={{ ...field, borderColor: userId ? (validId ? "rgba(52,224,125,.7)" : "rgba(255,120,120,.6)") : field.border }} />
+                <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.55)", marginTop: 5, paddingLeft: 4 }}>3–20 characters, starts with a letter. This is your public handle & referral code.</div>
+              </div>
+              <input className="lginput" value={email} onChange={(e) => setEmail(e.target.value.trim())} type="email" inputMode="email" placeholder="Email (optional)" style={{ ...field, borderColor: email ? (emailOk ? "rgba(52,224,125,.7)" : "rgba(255,120,120,.6)") : field.border }} />
+              <input className="lginput mono" value={referral} onChange={(e) => setReferral(e.target.value.replace(/[^A-Za-z0-9_]/g, "").slice(0, 20))} placeholder="Referral code (optional)" style={field} />
+            </div>
+            {err && <div style={{ color: "#FFB3BE", fontSize: 12.5, fontWeight: 600, marginTop: 12 }}>{err}</div>}
+
+            <button onClick={submitSignup} disabled={busy || !validId} className="tap disp" style={{ width: "100%", marginTop: 22, background: validId ? "#fff" : "rgba(255,255,255,.3)", color: "#141416", border: "none", borderRadius: 999, padding: 16, fontWeight: 800, fontSize: 15, letterSpacing: ".02em", opacity: busy ? 0.6 : 1 }}>{busy ? "PLEASE WAIT…" : "SIGN UP"}</button>
+
+            <div style={{ textAlign: "center", marginTop: 16 }}>
+              <span onClick={() => { setStage("auth"); setErr(null); }} className="tap" style={{ color: "rgba(255,255,255,.7)", fontSize: 12.5, fontWeight: 700, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>← Use a different number</span>
+            </div>
+          </>
+        )}
       </div>
 
       <div style={{ textAlign: "center", color: "rgba(255,255,255,.55)", fontSize: 10.5, padding: "0 30px 26px", position: "relative" }}>Educational research, not investment advice.</div>
@@ -384,9 +420,9 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
         <div style={{ width: 40, height: 4, background: "var(--line)", borderRadius: 9, margin: "0 auto 16px" }} />
 
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 52, height: 52, borderRadius: 16, background: "linear-gradient(135deg,var(--primary),var(--primary-2))", display: "grid", placeItems: "center", color: "#fff", fontWeight: 700, fontSize: 20 }} className="disp">M</div>
+          <div style={{ width: 52, height: 52, borderRadius: 16, background: "linear-gradient(135deg,var(--primary),var(--primary-2))", display: "grid", placeItems: "center", color: "#fff", fontWeight: 700, fontSize: 20 }} className="disp">{((auth && (auth.name || auth.username)) || "?").charAt(0).toUpperCase()}</div>
           <div style={{ minWidth: 0 }}>
-            <div className="disp" style={{ fontWeight: 700, fontSize: 17 }}>{auth && (auth.username || auth.name) ? (auth.username || auth.name) : "My Profile"}</div>
+            <div className="disp" style={{ fontWeight: 700, fontSize: 17 }}>{auth && (auth.name || auth.username) ? (auth.name || auth.username) : "My Profile"}</div>
             <div style={{ fontSize: 12.5, color: "var(--muted)" }}>{auth ? `Logged in · ${auth.phone}` : "Guest session"}</div>
           </div>
         </div>

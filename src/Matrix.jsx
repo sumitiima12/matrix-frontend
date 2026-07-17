@@ -256,7 +256,11 @@ function AppInner() {
   const { auth, userId, isAuthed: signedIn, loginOpen, setLoginOpen, login: doLogin, logout: doLogout } = useAuth();
   // `authed` = has entered the app at all (guest OR signed in) — gates the login screen.
   const [authed, setAuthed] = useState(() => Boolean(lsGet("mx_auth", null)));
-  const onAuthed = (a) => { doLogin(a); setAuthed(true); };
+  /* A brand-new sign-up skips the personalisation questionnaire and lands straight on the
+     homepage. We flag it here; the per-user hydration effect reads the flag and marks
+     onboarding as skipped for this account. */
+  const freshSignupRef = useRef(false);
+  const onAuthed = (a, opts) => { doLogin(a); setAuthed(true); if (opts && opts.fresh) freshSignupRef.current = true; };
   const { portfolio, setPortfolio, walletMap, setWalletMap, adjustWallet, updateHolding, intel, health, sectors } = usePortfolio();
 
   /* Every wallet top-up, timestamped. Without this the equity curve cannot know
@@ -521,7 +525,9 @@ function AppInner() {
     const wl = (st && st.watchlists) || [{ id: "w1", name: "My Watchlist", syms: ["RELIANCE", "TCS"] }];
     setWatchlists(wl); setActiveWl(wl[wl.length - 1] ? wl[wl.length - 1].id : "w1");
     setProfile((st && st.profile) || null);
-    setOnboardSkipped(!!(st && st.onboardSkipped));
+    // Fresh sign-ups skip onboarding and go straight home; everyone else uses their saved flag.
+    setOnboardSkipped(freshSignupRef.current ? true : !!(st && st.onboardSkipped));
+    freshSignupRef.current = false;
     setTrades(lsGet("mx_trades_" + userId, []));
     setHydratedUser(userId);
     if (BACKEND_URL) fetchTrades(userId, 0, Date.now()).then((t) => { if (t && t.length) setTrades(t); }).catch(() => {});
@@ -657,7 +663,7 @@ function AppInner() {
       <style>{CSS}</style>
       {/* fixed gradient backdrop so it stays behind scroll */}
       <div style={{ position: "fixed", inset: 0, background: "var(--app-bg, var(--bg))", zIndex: 0, pointerEvents: "none" }} />
-      {!authed && <LoginScreen onGuest={() => { setGuest(true); setAuthed(true); }} onAuthed={(a) => { onAuthed(a); setGuest(false); setAuthed(true); }} />}
+      {!authed && <LoginScreen onGuest={() => { setGuest(true); setAuthed(true); }} onAuthed={(a, opts) => { onAuthed(a, opts); setGuest(false); setAuthed(true); }} />}
       {authed && !guest && auth && !auth.username && getAuthToken() && (
         <SetUsernameModal onDone={(username) => onAuthed({ ...auth, username })} />
       )}
@@ -690,7 +696,7 @@ function AppInner() {
               <div onClick={() => setShowProfile(true)} className="tap" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, flexShrink: 0, cursor: "pointer" }}>
                 <div className="glow" style={{ width: 34, height: 34, borderRadius: 11, background: "var(--feature-grad)", display: "grid", placeItems: "center", color: "#fff" }}><User size={17} /></div>
                 <span style={{ fontSize: 8.5, fontWeight: 800, color: "var(--muted)", maxWidth: 58, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {auth ? (auth.username ? "@" + auth.username : (auth.name || "Account")) : "Login"}
+                  {auth ? (auth.username || auth.name || "Account") : "Login"}
                 </span>
               </div>
             </div>
@@ -786,7 +792,7 @@ function AppInner() {
             <>
               {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} onAutoBuy={autoBuyNow} mode={mode} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} trades={trades} liveTick={liveTick} onWhy={openWhy} />}
               {tab === "trade" && <TradeView walletMap={walletMap} adjustWallet={adjustWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} recordTrade={recordTrade} />}
-              {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} market={market} onWhy={openWhy} me={auth ? (auth.username || null) : null} isAdmin={isAdminUser} />}
+              {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} market={market} onWhy={openWhy} me={auth ? (auth.username || null) : null} isAdmin={isAdminUser} signupAt={auth ? (auth.createdAt || null) : null} />}
               {tab === "automation" && <Automation market={market} onRecord={recordTrade} trades={trades} strats={strats} setStrats={setStrats} onExitAll={exitAllStrategies} me={auth ? (auth.username || null) : null} isAdmin={isAdminUser} />}
               {tab === "portfolio" && <Portfolio mode={mode} realPortfolio={realPortfolio} realErr={realErr} realLoading={realLoading} onRefreshReal={refreshPortfolio} brokerName={liveBroker ? liveBroker.name : null} portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} onBuy={buyStock} onSell={sellStock} onUpdate={updateHolding} priceSnap={priceSnap} onWhy={openWhy} onOpen={openStock} onRemove={(sym) => { setPortfolio((prev) => prev.filter((h) => h.sym !== sym)); setBuyToast({ t: `${sym} removed` }); }} />}
               {tab === "watchlist" && <WatchlistView watchlists={watchlists} activeWl={activeWl} setActiveWl={setActiveWl} createWatchlist={createWatchlist} deleteWatchlist={deleteWatchlist} toggleWatch={toggleWatch} onOpen={openStock} />}

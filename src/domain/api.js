@@ -40,7 +40,7 @@ export async function fetchLiveQuotes(appSyms) {
 /* ------------------------ Trades & auth ------------------------ */
 export const postTrade = (userId, trade) => saveTrade(userId, trade);
 export const fetchTrades = (userId, from, to) => listTrades(userId, from, to);
-export const apiRegister = (phone, pin, name, secQuestion, secAnswer, username, referralCode) => register(phone, pin, name, secQuestion, secAnswer, username, referralCode);
+export const apiRegister = (phone, pin, name, secQuestion, secAnswer, username, referralCode, email) => register(phone, pin, name, secQuestion, secAnswer, username, referralCode, email);
 export const apiCheckUsername = (u) => _cu(u);
 export const apiSetUsername = (username) => _su(username);
 export const apiSetEmail = (email) => _se(email);

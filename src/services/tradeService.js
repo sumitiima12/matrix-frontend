@@ -66,8 +66,8 @@ export async function listTrades(userId, from, to) {
   } catch { return null; }
 }
 
-export async function register(phone, pin, name, secQuestion, secAnswer, username, referralCode) {
-  const d = await post("/api/register", { phone, pin, name, secQuestion, secAnswer, username, referralCode }, false);
+export async function register(phone, pin, name, secQuestion, secAnswer, username, referralCode, email) {
+  const d = await post("/api/register", { phone, pin, name, secQuestion, secAnswer, username, referralCode, email }, false);
   if (d && d.token) setAuthToken(d.token);
   return d;
 }

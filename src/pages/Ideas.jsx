@@ -14,7 +14,7 @@ import TagRow from "../components/common/TagRow";
  * Ideas — trade ideas published by Matrix, scored against real candles.
  */
 
-function IdeasDashboard({ ideas, collapsed = false, onExpand }) {
+function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null }) {
   const [postedBy, setPostedBy] = useState("Neo");
   const [range, setRange] = useState(365);
   const [cap, setCap] = useState(100000);
@@ -35,21 +35,34 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand }) {
     return () => { stop = true; };
   }, [symsKey]);
 
+  /* VIRTUAL performance: we assume EVERY idea published on/after the user's sign-up date
+     was executed at its entry, and mark it to its outcome — a realized win/loss if the
+     target or stop was hit, otherwise the live mark-to-market. So open positions count as
+     trades too (their unrealised return is real, just not yet closed). */
+  const signupCutoff = signupAt || 0;
   const all = ideas
     .map((id) => ({ id, o: outcomes[id.sym] }))
     .filter(({ id, o }) => o &&
       (postedBy === "All" || id.by === postedBy) &&
       (symF === "All" || id.sym === symF) &&
+      ((id.publishedAt || 0) >= signupCutoff) &&
       o.daysAgo <= range);
-  const closed = all.filter((r) => r.o.status === "closed"); // realized only
-  const openN = all.length - closed.length;
-  const n = closed.length;
-  const wins = closed.filter((r) => r.o.win).length;
+  const n = all.length;                                   // every idea is an assumed trade
+  const isWin = (r) => (r.o.status === "closed" ? r.o.win : r.o.ret >= 0);
+  const wins = all.filter(isWin).length;
   const losses = n - wins;
-  const avg = n ? closed.reduce((a, r) => a + r.o.ret, 0) / n : 0;
-  const total = (closed.reduce((a, r) => a * (1 + r.o.ret / 100), 1) - 1) * 100;
+  const openN = all.filter((r) => r.o.status !== "closed").length;
+  const avg = n ? all.reduce((a, r) => a + r.o.ret, 0) / n : 0;
+  const total = (all.reduce((a, r) => a * (1 + r.o.ret / 100), 1) - 1) * 100;
   const netPnl = cap * (total / 100);
   const winRate = n ? (wins / n) * 100 : 0;
+
+  /* Period label: for an account younger than 3 months we show "Since Jul'26"; once it's
+     older, we show the selected range window ("last 3 months", etc.). */
+  const monthTag = (ts) => new Date(ts).toLocaleDateString("en-GB", { month: "short", year: "2-digit" }).replace(" ", "'");
+  const ageMonths = signupAt ? (Date.now() - signupAt) / (30 * 864e5) : Infinity;
+  const rangeText = ({ 30: "last 30 days", 90: "last 3 months", 180: "last 6 months", 365: "last 12 months" })[range] || `last ${range}d`;
+  const periodLabel = (signupAt && ageMonths < 3) ? `Since ${monthTag(signupAt)}` : rangeText;
   const sel = { ...selStyle, flex: "1 1 0", minWidth: 0, padding: "8px 6px", fontSize: 11.5 };
   const Stat = ({ k, v, c }) => (
     <div style={{ flex: "1 1 30%", minWidth: 88, background: "rgba(255,255,255,.1)", borderRadius: 12, padding: "9px 11px" }}>
@@ -77,10 +90,10 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand }) {
     <div className="card glow metal" style={{ marginTop: 14, padding: 16, border: "none", background: "var(--feature-grad)", color: "#fff" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div className="disp" style={{ fontWeight: 700, fontSize: 15 }}>Ideas Dashboard</div>
-        <span style={{ fontSize: 10.5, opacity: .85, marginRight: 34 }}>realized · last {range >= 365 ? "12 months" : range + "d"}</span>
+        <span style={{ fontSize: 10.5, opacity: .85, marginRight: 34 }}>{periodLabel}</span>
       </div>
       <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 6 }}>{netPnl >= 0 ? "+" : ""}{fmt(netPnl, "IN")}</div>
-      <div style={{ fontSize: 11, opacity: .85, marginTop: -2 }}>Net realized P&amp;L on {fmt(cap, "IN")} deployed · {openN} still open</div>
+      <div style={{ fontSize: 11, opacity: .85, marginTop: -2 }}>If every idea was traded with {fmt(cap, "IN")} · {openN} still open</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
         <Stat k="Returns %" v={(avg >= 0 ? "+" : "") + avg.toFixed(2) + "%"} c={avg >= 0 ? "#9CFFD6" : "#FFB3BE"} />
         <Stat k="Win rate" v={n ? winRate.toFixed(0) + "%" : "—"} />
@@ -183,7 +196,7 @@ function CommunityIdeas({ market, me, isAdmin, onOpen }) {
   );
 }
 
-export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, isAdmin = false }) {
+export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, isAdmin = false, signupAt = null }) {
   const [dashOpen, setDashOpen] = useState(false);
   // Recomputed from real data as it arrives, rather than frozen at import time.
   const [ideas, setIdeas] = useState(currentIdeas);
@@ -212,10 +225,10 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
       </div>
 
       {!dashOpen ? (
-        <IdeasDashboard ideas={shown} collapsed onExpand={() => setDashOpen(true)} />
+        <IdeasDashboard ideas={shown} collapsed onExpand={() => setDashOpen(true)} signupAt={signupAt} />
       ) : (
         <div style={{ position: "relative" }}>
-          <IdeasDashboard ideas={shown} />
+          <IdeasDashboard ideas={shown} signupAt={signupAt} />
           <button onClick={() => setDashOpen(false)} className="tap" title="Collapse" style={{ position: "absolute", top: 14, right: 16, display: "grid", placeItems: "center", border: "1px solid rgba(255,255,255,.28)", background: "rgba(255,255,255,.1)", color: "#fff", borderRadius: 10, padding: "6px", fontWeight: 800 }}><ChevronUp size={14} /></button>
         </div>
       )}

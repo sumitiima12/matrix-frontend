@@ -129,19 +129,9 @@ export default function MatrixRain({ onDone }) {
         }
       `}</style>
 
-      {/* The centred wordmark — no M mark. Scales/fades in with a moving shimmer sweeping
-          across the letters. */}
+      {/* The centred wordmark — no M mark, no shimmer. Just a clean scale/fade-in. */}
       <div style={{ position: "relative", zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", animation: "mx-logo-in 900ms cubic-bezier(.2,.7,.2,1) both" }}>
-        <div style={{ position: "relative", display: "inline-flex" }}>
-          <Wordmark height={56} color="#fff" />
-          <div style={{
-            position: "absolute", inset: 0, pointerEvents: "none",
-            background: "linear-gradient(105deg, transparent 42%, rgba(255,255,255,.95) 50%, transparent 58%)",
-            backgroundSize: "300% 100%",
-            animation: "mx-shimmer 2000ms linear 0.5s infinite",
-            mixBlendMode: "screen",
-          }} />
-        </div>
+        <Wordmark height={56} color="#fff" />
       </div>
     </div>
   );

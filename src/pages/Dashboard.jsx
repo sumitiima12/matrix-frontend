@@ -832,7 +832,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       </div>
 
       {/* Matrix picks */}
-      <Section title="Matrix's Picks" icon={<Sparkles size={17} color="var(--primary-2)" />}>
+      <Section title="Top Picks" icon={<Sparkles size={17} color="var(--primary-2)" />}>
         {/* An empty carousel is a void the user has to interpret. Say what's happening:
             picks need real indicators (RSI, 50-DMA), and those arrive after the prices. */}
         {picks.length === 0 && (
