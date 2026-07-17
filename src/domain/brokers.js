@@ -33,7 +33,8 @@ export const BROKERS = [
     realtime: true,
     oi: true,
     depth: true,
-    note: "FYERS API v3. Real-time quotes and depth, free with an account. Access token expires daily.",
+    adminOnly: true,   // FYERS is the server-side house price feed (admin's app) — not a per-user connect
+    note: "FYERS API v3. Powers the built-in Indian price feed for all users (configured on the server).",
     docs: "https://myapi.fyers.in/docsv3",
   },
   {
@@ -49,8 +50,57 @@ export const BROKERS = [
     oi: true,
     depth: true,
     apiKeyOnly: true,   // no OAuth redirect — the server's API keys ARE the credential
-    note: "Indian crypto derivatives. Signed with API keys held on the server, so it trades the SERVER's Delta account — there is no per-user login. Set DELTA_API_KEY and DELTA_API_SECRET on Render.",
+    adminOnly: true,    // server-side account (like FYERS) — not a per-user connect
+    note: "Powers the built-in crypto price feed for all users. Signed with API keys held on the server (the server's Delta account) — configured on the server.",
     docs: "https://docs.delta.exchange/",
+  },
+  {
+    id: "coindcx",
+    name: "CoinDCX",
+    markets: ["Crypto"],
+    status: "ready",
+    realtime: false,
+    oi: false,
+    depth: false,
+    userCreds: true,
+    fields: [
+      { key: "apiKey", label: "API key", type: "password", hint: "From CoinDCX → Account → API Dashboard → Create API key" },
+      { key: "apiSecret", label: "API secret", type: "password", hint: "Shown once when you create the key" },
+    ],
+    note: "Connect your own CoinDCX account to trade crypto. Signed with your API key + secret (kept on the server, never in the browser).",
+    docs: "https://docs.coindcx.com/",
+  },
+  {
+    id: "coinswitch",
+    name: "CoinSwitch",
+    markets: ["Crypto"],
+    status: "ready",
+    realtime: false,
+    oi: false,
+    depth: false,
+    userCreds: true,
+    fields: [
+      { key: "apiKey", label: "API key", type: "password", hint: "From CoinSwitch PRO → API Trading" },
+      { key: "apiSecret", label: "API secret (Ed25519)", type: "password", hint: "The secret/private key shown when you create the key" },
+    ],
+    note: "Connect your own CoinSwitch PRO account. Signed with your API key + secret (kept on the server).",
+    docs: "https://api-trading.coinswitch.co/",
+  },
+  {
+    id: "binance",
+    name: "Binance",
+    markets: ["Crypto"],
+    status: "ready",
+    realtime: false,
+    oi: false,
+    depth: false,
+    userCreds: true,
+    fields: [
+      { key: "apiKey", label: "API key", type: "password", hint: "From Binance → API Management → Create API" },
+      { key: "apiSecret", label: "API secret", type: "password", hint: "Shown once when you create the key" },
+    ],
+    note: "Connect your own Binance account. Signed with your API key + secret. Note: Binance may be geo-restricted depending on the server region.",
+    docs: "https://developers.binance.com/docs/binance-spot-api-docs",
   },
   {
     id: "dhan",

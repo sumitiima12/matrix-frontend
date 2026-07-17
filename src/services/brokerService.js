@@ -102,7 +102,7 @@ export function clearSession(broker) {
 export const BROKER_MARKETS = {
   fyers: ["IN", "Commodity"], zerodha: ["IN", "Commodity"], dhan: ["IN", "Commodity"], angelone: ["IN", "Commodity"], groww: ["IN", "Commodity"],
   indmoney: ["IN", "US", "Commodity"],   // INDstocks covers Indian AND US
-  delta: ["Crypto"],
+  delta: ["Crypto"], coindcx: ["Crypto"], coinswitch: ["Crypto"], binance: ["Crypto"],
   schwab: ["US"],
 };
 

@@ -8,7 +8,7 @@ import headerLogo from "../../assets/brand/header-logo.png";
 import headerLogoDark from "../../assets/brand/header-logo-dark.png";
 import splashLockup from "../../assets/brand/splash-m.png";
 import Wordmark from "../common/Wordmark";
-import { brokerById } from "../../domain/brokers";
+import { brokerById, BROKERS } from "../../domain/brokers";
 
 /**
  * Auth & profile — login, onboarding and the profile sheet.
@@ -439,6 +439,9 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
             {[["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["Commodity", "🪙 Commodity"]].map(([m, label]) => {
               const personal = brokerById(marketBrokers && marketBrokers[m]);   // a broker YOU connected
               const feedName = m === "IN" && houseFeeds.fyers ? "FYERS" : m === "Crypto" && houseFeeds.delta ? "Delta" : null;   // built-in price feed
+              // Is there any broker THIS user can actually connect for this market? (house feeds are admin-only)
+              const profEffAdmin = isAdminUser && adminMode;
+              const canConnect = BROKERS.some((b) => b.status === "ready" && !(b.adminOnly && !profEffAdmin) && (b.markets || []).includes(m));
               return (
                 <div key={m} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "9px 0", borderTop: "1px solid var(--line)" }}>
                   <div style={{ minWidth: 0 }}>
@@ -455,8 +458,10 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
                       <button onClick={() => onBroker(m)} className="tap disp" style={{ border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 9, padding: "5px 9px", fontWeight: 800, fontSize: 10.5, cursor: "pointer" }}>Change</button>
                       <button onClick={() => onDisconnectBroker && onDisconnectBroker(personal.id)} className="tap disp" style={{ border: "1px solid var(--line)", background: "transparent", color: "var(--down)", borderRadius: 9, padding: "5px 9px", fontWeight: 800, fontSize: 10.5, cursor: "pointer" }}>Disconnect</button>
                     </div>
-                  ) : (
+                  ) : canConnect ? (
                     <button onClick={() => onBroker(m)} className="tap disp" style={{ border: "none", background: "var(--ink)", color: "var(--surface)", borderRadius: 9, padding: "6px 14px", fontWeight: 800, fontSize: 11.5, cursor: "pointer", flex: "0 0 auto" }}>Connect Broker</button>
+                  ) : (
+                    <span style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 700, flex: "0 0 auto" }}>{feedName ? "Live" : "—"}</span>
                   )}
                 </div>
               );

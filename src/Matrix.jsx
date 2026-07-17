@@ -977,6 +977,7 @@ function AppInner() {
             connectedIds={connectedBrokers}
             marketMap={brokerMarketMap}
             marketFilter={brokerMktFilter}
+            isAdmin={effAdmin}
             onDisconnect={(bid) => { disconnectBroker(bid); setBuyToast({ t: "Broker disconnected — that market falls back to delayed prices" }); }}
             onClose={() => { setBrokerOpen(false); setBrokerMktFilter(null); }}
             onConnect={async (id, token, extra, mkt) => {
