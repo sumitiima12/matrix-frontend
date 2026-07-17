@@ -62,6 +62,13 @@ export function brokerSymbol(sym, broker) {
     case "delta":
       return mkt === "Crypto" ? (DELTA_MAP[sym] || null) : null;
 
+    /* Per-user crypto exchanges. We pass the bare coin (e.g. "BTC"); the server formats the
+       trading pair per exchange (CoinDCX -> BTCINR, Binance -> BTCUSDT). */
+    case "coindcx":
+    case "binance":
+    case "coinswitch":
+      return mkt === "Crypto" ? sym : null;
+
     case "schwab":
     case "robinhood":
       if (mkt !== "US" || s.isIndex) return null;       // US index quoting differs
