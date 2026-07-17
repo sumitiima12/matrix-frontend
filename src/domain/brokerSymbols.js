@@ -60,7 +60,12 @@ export function brokerSymbol(sym, broker) {
     }
 
     case "delta":
-      return mkt === "Crypto" ? (DELTA_MAP[sym] || null) : null;
+      /* Delta names every perpetual the same way: <COIN>USD (BTCUSD, XRPUSD, DOGEUSD…),
+         confirmed against the live contract list. So we derive it rather than maintaining a
+         hand-list — and the server double-checks the product exists before placing an order,
+         so an unlisted coin fails honestly ("Delta does not list …") instead of silently
+         hitting the wrong instrument. INDEX_MAP-style exceptions can be added if any surface. */
+      return mkt === "Crypto" ? (DELTA_MAP[sym] || `${sym}USD`) : null;
 
     /* Per-user crypto exchanges. We pass the bare coin (e.g. "BTC"); the server formats the
        trading pair per exchange (CoinDCX -> BTCINR, Binance -> BTCUSDT). */

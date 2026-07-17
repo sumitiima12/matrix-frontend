@@ -192,22 +192,37 @@ const US_STOCKS = [
 ];
 
 /* ---- Crypto ----
-   NOTE ON PERPETUALS: the requested symbols carried a ".P" suffix (perpetual
-   futures). Our data source publishes SPOT only, so these are spot prices.
-   Funding rates and futures basis are NOT modelled — a perpetual can trade away
-   from spot, and we do not pretend to know by how much.
+   These are the Delta Exchange perpetual contracts (BTCUSD, XRPUSD, DOGEUSD…). Our
+   symbol is the contract minus the "USD" quote, so the always-on Delta price feed
+   resolves each one as `${sym}USD` exactly. Prices are the perpetual mark price from
+   Delta; funding/basis are not separately modelled.
 
-   LAB and RAVE are deliberately absent. LAB is a real, liquid token but our data
-   source does not carry it. RAVE resolves to Ravendex, a dormant 2021 Cardano
-   token with no trading volume — serving its stale "last known price" would be
-   worse than serving nothing. Both return when a real feed for them exists. */
+   The symbol list mirrors the user's Delta watchlist (added on request). A few are
+   tokenised equities/commodities that Delta lists as perpetuals (XAUT, PAXG, SOXLB,
+   SNDKB) — they price fine through the same feed. */
 const CRYPTO = [
   stock("BTC", "Bitcoin", "Crypto"),
   stock("ETH", "Ethereum", "Crypto"),
   stock("SOL", "Solana", "Crypto"),
   stock("BNB", "BNB", "Crypto"),
   stock("XRP", "XRP", "Crypto"),
+  stock("DOGE", "Dogecoin", "Crypto"),
   stock("LINK", "Chainlink", "Crypto"),
+  stock("ONDO", "Ondo", "Crypto"),
+  stock("KAITO", "Kaito", "Crypto"),
+  stock("XAUT", "Tether Gold", "Crypto"),
+  stock("PAXG", "PAX Gold", "Crypto"),
+  stock("TAC", "TAC", "Crypto"),
+  stock("BEAT", "BEAT", "Crypto"),
+  stock("BILL", "BILL", "Crypto"),
+  stock("RAVE", "RAVE", "Crypto"),
+  stock("RIVER", "River", "Crypto"),
+  stock("LAB", "LAB", "Crypto"),
+  stock("EVAA", "EVAA", "Crypto"),
+  stock("SLVON", "SLVON", "Crypto"),
+  stock("SNDKB", "SanDisk (tokenised)", "Crypto"),
+  stock("SOXLB", "SOXL (tokenised)", "Crypto"),
+  stock("H", "Humanity", "Crypto"),
   stock("PIPPIN", "pippin", "Crypto"),
 ];
 

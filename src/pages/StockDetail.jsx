@@ -89,7 +89,11 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
   /* Netflix-style close: keep scrolling past the end of the page and it shrinks
      back into the carousel card it came from. `collapse` (0..1) drives the live
      transform, so the page visibly recedes as you pull rather than snapping. */
-  const { progress: collapse } = useScrollTransition({ threshold: 130, onTrigger: onBack });
+  /* Scroll-to-close gesture DISABLED: reaching the end of the page was minimising it
+     back to the carousel, which read as the page "vanishing". The header back button
+     is the deliberate way out now. Kept the hook wired (enabled:false) so `collapse`
+     stays 0 and the layout is otherwise untouched. */
+  const { progress: collapse } = useScrollTransition({ threshold: 130, onTrigger: onBack, enabled: false });
   const hStart = useRef(null);
   const [dDrag, setDDrag] = useState(0);
   const onHTS = (e) => { if ((window.scrollY || document.documentElement.scrollTop || 0) <= 2) hStart.current = e.touches[0].clientY; };
@@ -360,20 +364,7 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
         </Pop>
       </div>
 
-      {/* The gesture is invisible unless we say so — one quiet line, no chrome. */}
-      <div
-        style={{
-          textAlign: "center",
-          padding: "24px 0 10px",
-          fontSize: 11,
-          fontWeight: 700,
-          color: "var(--muted)",
-          opacity: 0.45 + collapse * 0.55,
-          letterSpacing: ".02em",
-        }}
-      >
-        {collapse > 0.15 ? "Release to close" : "Keep scrolling to close"}
-      </div>
+      <div style={{ height: 24 }} />
     </div>
   );
 }
