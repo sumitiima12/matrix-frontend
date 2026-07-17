@@ -1,14 +1,50 @@
-import React, { useMemo, useState } from "react";
-import { Briefcase, ChevronRight, Home, SlidersHorizontal } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Briefcase, ChevronRight, Home, ShieldCheck, SlidersHorizontal, X } from "lucide-react";
 import { fmt } from "../lib/format";
 import { ALL, marketOf } from "../domain/universe";
 import { techSignal } from "../domain/signals";
 import { analyzeHolding, portfolioHealth, sectorExposure } from "../services/portfolioService";
 import { analyzePortfolio } from "../services/aiService";
+import { loadAutoExits, cancelAutoExit } from "../services/brokerService";
 
 /**
  * Portfolio — holdings with AI intelligence, health score and sector exposure.
  */
+
+/* Server-side auto-exits the engine is watching for this user. Read-only + cancel. Shows
+   whether the engine is actually armed (AUTO_EXIT_LIVE) so the user is never misled into
+   thinking a stop is live when the server is only in dry-run. */
+function AutoExitsCard({ userId }) {
+  const [data, setData] = useState({ positions: [], engineLive: false });
+  const refresh = () => { if (userId) loadAutoExits(userId).then(setData); };
+  useEffect(() => { refresh(); const id = setInterval(refresh, 20000); return () => clearInterval(id); /* eslint-disable-next-line */ }, [userId]);
+  const active = (data.positions || []).filter((p) => p.status === "open" || p.status === "closing");
+  if (!userId || !active.length) return null;
+  const doCancel = async (id) => { await cancelAutoExit(userId, id); refresh(); };
+  return (
+    <div className="card" style={{ padding: 14, marginTop: 10, border: "1px solid var(--line)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <ShieldCheck size={16} color={data.engineLive ? "var(--up)" : "var(--muted)"} />
+        <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>Auto-exits</div>
+        <span className="pill" style={{ marginLeft: "auto", fontSize: 9, fontWeight: 800, padding: "3px 8px", background: data.engineLive ? "var(--up-soft)" : "var(--elev)", color: data.engineLive ? "var(--up)" : "var(--muted)" }}>
+          {data.engineLive ? "ARMED" : "DRY-RUN"}
+        </span>
+      </div>
+      {!data.engineLive && <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 8, lineHeight: 1.5 }}>Engine is in dry-run — it logs but won't place real exits until AUTO_EXIT_LIVE is enabled on the server.</div>}
+      {active.map((p) => (
+        <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: "1px solid var(--line)" }}>
+          <div style={{ minWidth: 0 }}>
+            <div className="disp" style={{ fontWeight: 700, fontSize: 12.5 }}>{p.symbol} <span style={{ color: "var(--muted)", fontWeight: 600 }}>· {p.broker}</span></div>
+            <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>
+              {p.tp ? `TP ${p.tp}% ` : ""}{p.sl ? `SL ${p.sl}% ` : ""}{p.tsl ? `Trail ${p.tsl}% ` : ""}{p.cfg ? "· strategy signal" : ""}
+            </div>
+          </div>
+          <button onClick={() => doCancel(p.id)} className="tap" title="Stop watching" style={{ marginLeft: "auto", border: "1px solid var(--line)", background: "transparent", color: "var(--muted)", borderRadius: 8, padding: "4px 8px", fontSize: 10.5, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}><X size={11} /> Cancel</button>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function HoldingIntel({ a, market = "IN", stock, onWhy }) {
   const [open, setOpen] = useState(false);
@@ -162,7 +198,7 @@ function AnalyzeBlock({ onRun, loading, review }) {
   );
 }
 
-export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, onUpdate, onRemove, priceSnap = {}, onWhy, onOpen, mode = "virtual", realPortfolio = null, realErr = null, realLoading = false, onRefreshReal, brokerName, realAvailable = false }) {
+export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, onUpdate, onRemove, priceSnap = {}, onWhy, onOpen, mode = "virtual", realPortfolio = null, realErr = null, realLoading = false, onRefreshReal, brokerName, realAvailable = false, userId = null }) {
   // Crypto and US settle in USD; Indian/Commodity in INR. Used to format the real book.
   const ccy = (market === "Crypto" || market === "US") ? "$" : "₹";
   const loc = ccy === "$" ? "en-US" : "en-IN";
@@ -266,6 +302,8 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
             </div>
           </div>
         </div>
+
+        <AutoExitsCard userId={userId} />
 
         {realHealth && (
           <div className="card" style={{ padding: 15, marginTop: 10 }}>

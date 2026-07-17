@@ -513,32 +513,34 @@ function AppInner() {
       }
       setConfirmOrder(null);
       try {
+        const isDelta = route.id === "delta";
+        const wantExit = side === "BUY" && (opts.sl > 0 || opts.tp > 0 || opts.tsl > 0 || !!opts.strategy);
+        /* Delta's native exchange bracket already covers plain SL/TP; only lean on the
+           server engine for what the bracket can't do (trailing, or a strategy signal).
+           Every other broker has no native bracket, so the engine handles all exits. */
+        const useEngine = wantExit && (!isDelta || opts.tsl > 0 || !!opts.strategy);
         const r = await brokerPlaceOrder(
           route.session, userId,
           {
             symbol: bsym, side, qty: q, orderType: "MARKET", product: prod,
-            // Native exchange-side SL/TP so exits fire even with the app closed.
             entryPrice: s.price ?? undefined,
             slPct: (side === "BUY" && opts.sl > 0) ? opts.sl : undefined,
             tpPct: (side === "BUY" && opts.tp > 0) ? opts.tp : undefined,
+            tslPct: (side === "BUY" && opts.tsl > 0) ? opts.tsl : undefined,
+            autoExit: useEngine || undefined,
+            strategy: opts.strategy || undefined,   // { defs, exit } for indicator-based exits
           },
           true,                                 // explicit live confirmation
         );
         let t = `Real ${side.toLowerCase()} sent to ${liveBroker.name} — order ${r.orderId}`;
         const bk = r.bracket;
         const wantsProtection = side === "BUY" && (opts.sl > 0 || opts.tp > 0);
-        if (wantsProtection) {
-          if (bk && bk.placed) {
-            t += " · SL/TP set on exchange";
-          } else if (bk && !bk.placed) {
-            // Broker supports brackets but this one didn't attach — say so plainly.
-            setBuyToast({ t: `Order filled, but SL/TP was NOT set — add it in ${liveBroker.name} (${bk.message})`, e: true }); refreshPortfolio(); return;
-          } else {
-            // Broker has no auto-bracket yet (FYERS, Zerodha, Dhan, …). Never let the user
-            // believe a stop exists when it doesn't.
-            setBuyToast({ t: `Order filled. ${liveBroker.name} doesn't auto-set SL/TP yet — please add it manually in ${liveBroker.name}.`, e: true }); refreshPortfolio(); return;
-          }
+        if (wantsProtection && isDelta) {
+          if (bk && bk.placed) t += " · SL/TP set on exchange";
+          else if (bk && !bk.placed) { setBuyToast({ t: `Order filled, but SL/TP was NOT set — add it in ${liveBroker.name} (${bk.message})`, e: true }); refreshPortfolio(); return; }
         }
+        if (r.autoExitId) t += " · auto-exit armed on server";
+        else if (wantsProtection && !isDelta) { setBuyToast({ t: `Order filled — auto-exit couldn't be armed. Add SL/TP manually in ${liveBroker.name}.`, e: true }); refreshPortfolio(); return; }
         setBuyToast({ t });
         refreshPortfolio();
       } catch (e) {
@@ -883,7 +885,7 @@ function AppInner() {
               {tab === "trade" && <TradeView walletMap={walletMap} adjustWallet={adjustWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} recordTrade={recordTrade} />}
               {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} market={market} onWhy={openWhy} me={auth ? (auth.username || null) : null} isAdmin={effAdmin} signupAt={auth ? (auth.createdAt || null) : null} />}
               {tab === "automation" && <Automation market={market} onRecord={recordTrade} trades={trades} strats={strats} setStrats={setStrats} onExitAll={exitAllStrategies} me={auth ? (auth.username || null) : null} isAdmin={effAdmin} />}
-              {tab === "portfolio" && <Portfolio mode={mode} realPortfolio={realPortfolio} realErr={realErr} realLoading={realLoading} onRefreshReal={() => refreshPortfolio(market)} realAvailable={!!brokerFor(market)} brokerName={(brokerFor(market) && brokerFor(market).meta ? brokerFor(market).meta.name : (liveBroker ? liveBroker.name : null))} portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} onBuy={buyStock} onSell={sellStock} onUpdate={updateHolding} priceSnap={priceSnap} onWhy={openWhy} onOpen={openStock} onRemove={(sym) => { setPortfolio((prev) => prev.filter((h) => h.sym !== sym)); setBuyToast({ t: `${sym} removed` }); }} />}
+              {tab === "portfolio" && <Portfolio mode={mode} realPortfolio={realPortfolio} realErr={realErr} realLoading={realLoading} onRefreshReal={() => refreshPortfolio(market)} realAvailable={!!brokerFor(market)} userId={userId} brokerName={(brokerFor(market) && brokerFor(market).meta ? brokerFor(market).meta.name : (liveBroker ? liveBroker.name : null))} portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} onBuy={buyStock} onSell={sellStock} onUpdate={updateHolding} priceSnap={priceSnap} onWhy={openWhy} onOpen={openStock} onRemove={(sym) => { setPortfolio((prev) => prev.filter((h) => h.sym !== sym)); setBuyToast({ t: `${sym} removed` }); }} />}
               {tab === "watchlist" && <WatchlistView watchlists={watchlists} activeWl={activeWl} setActiveWl={setActiveWl} createWatchlist={createWatchlist} deleteWatchlist={deleteWatchlist} toggleWatch={toggleWatch} onOpen={openStock} />}
               {tab === "ask" && (
                 <div className="fade">

@@ -203,3 +203,25 @@ export async function brokerPlaceOrder(session, userId, order, confirmLive) {
 export async function brokerPortfolio(session, userId) {
   return get("/api/broker/portfolio", authHeaders(session, userId));
 }
+
+/** Positions the server-side auto-exit engine is watching for this user. */
+export async function loadAutoExits(userId) {
+  if (!BACKEND_URL) return { positions: [], engineLive: false };
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/autoexit`, { headers: { "X-User-Id": String(userId || "") } });
+    const d = await r.json().catch(() => ({}));
+    return { positions: Array.isArray(d.positions) ? d.positions : [], engineLive: !!d.engineLive, last: d.last || null };
+  } catch { return { positions: [], engineLive: false }; }
+}
+
+/** Stop the engine watching a position (does NOT touch the position at the broker). */
+export async function cancelAutoExit(userId, id) {
+  if (!BACKEND_URL) return;
+  try {
+    await fetch(`${BACKEND_URL}/api/autoexit/cancel`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-User-Id": String(userId || "") },
+      body: JSON.stringify({ id }),
+    });
+  } catch { /* best-effort */ }
+}
