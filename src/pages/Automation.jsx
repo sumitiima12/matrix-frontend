@@ -944,6 +944,14 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
           <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Symbols</div>
           <MultiSelect label="Symbols" options={DEPLOY_OPTIONS} value={s.symbols || []} onChange={(v) => updateStrat(s.id, { symbols: v })} allLabel="Select…" />
+          <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, margin: "12px 0 6px" }}>Capital deployed (quantity per trade)</div>
+          <input
+            value={String(s.qty ?? s.cap ?? 1)}
+            onChange={(e) => { const n = Math.max(1, parseInt(e.target.value.replace(/[^0-9]/g, ""), 10) || 1); updateStrat(s.id, { qty: n, cap: n }); }}
+            inputMode="numeric" placeholder="100"
+            className="no-ring mono"
+            style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 11, fontSize: 14, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }}
+          />
           <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, margin: "12px 0 6px" }}>Timeframe</div>
           <div className="hide-scroll" style={{ display: "flex", gap: 6, overflowX: "auto" }}>
             {TF_OPTS.map((x) => (
