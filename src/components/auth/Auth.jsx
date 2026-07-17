@@ -375,7 +375,7 @@ function SecurityQuestionCard() {
   );
 }
 
-export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, onAdmin, portfolio = [], trades = [], deposits = [], market = "IN", onBroker, brokerName, onUsernameChanged, onEmailChanged }) {
+export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, onAdmin, isAdminUser = false, adminMode = false, onToggleAdminMode, portfolio = [], trades = [], deposits = [], market = "IN", onBroker, brokerName, onUsernameChanged, onEmailChanged }) {
   const [uidEdit, setUidEdit] = useState(false);
   const [uidVal, setUidVal] = useState("");
   const [uidBusy, setUidBusy] = useState(false);
@@ -551,6 +551,27 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
         </div>
 
         {auth && <SecurityQuestionCard />}
+
+        {/* ADMIN — only for admin accounts. Default is USER mode (normal experience);
+            the toggle flips into admin mode, which reveals the console + edit/delete controls. */}
+        {auth && isAdminUser && (
+          <div className="card" style={{ padding: 14, marginBottom: 9, border: "1px solid " + (adminMode ? "var(--primary)" : "var(--line)") }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+              <div style={{ minWidth: 0 }}>
+                <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>{adminMode ? "Admin mode" : "User mode"}</div>
+                <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2, lineHeight: 1.45 }}>{adminMode ? "You see the console and edit/delete controls." : "You're using the normal member experience."}</div>
+              </div>
+              <button
+                onClick={() => onToggleAdminMode && onToggleAdminMode()}
+                aria-label="Toggle admin mode"
+                className="tap"
+                style={{ flex: "0 0 auto", width: 52, height: 30, borderRadius: 999, border: "none", cursor: "pointer", position: "relative", background: adminMode ? "var(--primary)" : "var(--line)", transition: "background .15s" }}
+              >
+                <span style={{ position: "absolute", top: 3, left: adminMode ? 25 : 3, width: 24, height: 24, borderRadius: "50%", background: "#fff", transition: "left .15s", boxShadow: "0 1px 3px rgba(0,0,0,.3)" }} />
+              </button>
+            </div>
+          </div>
+        )}
         {auth && onAdmin && (
           <button onClick={() => { onAdmin(); }} className="tap card" style={{ width: "100%", textAlign: "left", padding: "13px 15px", marginBottom: 9, border: "1px solid var(--line)", background: "transparent", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>
             Admin console

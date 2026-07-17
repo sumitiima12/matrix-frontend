@@ -51,4 +51,4 @@ export function strengthFromCandles(candles) {
 }
 
 /** The timeframes offered on the strength gauge. Every one is backed by real candles. */
-export const STRENGTH_TFS = ["5m", "30m", "1h", "4h", "1d", "1w", "1mo"];
+export const STRENGTH_TFS = ["5m", "15m", "30m", "1h", "4h", "1d", "1w", "1mo"];

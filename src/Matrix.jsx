@@ -431,9 +431,11 @@ function AppInner() {
      and moves actual money. These must never cross: a real fill that also debits the
      paper wallet would corrupt the paper P&L, and a paper fill that reached the broker
      would be a trade the user never agreed to. One branch each, no shared path. */
-  const runConfirmedOrder = async (finalQty, product) => {
+  const runConfirmedOrder = async (finalQty, product, risk) => {
     if (!confirmOrder) return;
-    const { s, qty, side, opts } = confirmOrder;
+    const { s, qty, side, opts: baseOpts } = confirmOrder;
+    // The confirm sheet can override the pre-filled stop-loss / take-profit (%).
+    const opts = risk ? { ...baseOpts, ...risk } : baseOpts;
 
     /* The confirm sheet calls back in one of two shapes:
          stock  -> (finalQty, product)
@@ -547,7 +549,11 @@ function AppInner() {
      no token, so their first authed call 401s and this brings up the login modal once. */
   useEffect(() => { setOnUnauthorized(() => { if (auth) setLoginOpen(true); }); }, [auth, setLoginOpen]);
   useEffect(() => { if (auth && !getAuthToken()) setLoginOpen(true); }, [auth, setLoginOpen]);
-  const [isAdminUser, setIsAdminUser] = useState(false);   // controls whether the button shows
+  const [isAdminUser, setIsAdminUser] = useState(false);   // is this account an admin at all
+  /* Admin vs user experience. Admins DEFAULT to the normal user experience — no console,
+     no edit/delete controls — and flip a toggle in their profile to enter admin mode. */
+  const [adminMode, setAdminMode] = useState(false);
+  const effAdmin = isAdminUser && adminMode;               // gates every admin-only affordance
   const [adminOpen, setAdminOpen] = useState(false);
   const [adminKey, setAdminKey] = useState("");
   /* Open the admin console: prompt for the key, verify with the backend (which checks the
@@ -792,8 +798,8 @@ function AppInner() {
             <>
               {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} onAutoBuy={autoBuyNow} mode={mode} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} trades={trades} liveTick={liveTick} onWhy={openWhy} />}
               {tab === "trade" && <TradeView walletMap={walletMap} adjustWallet={adjustWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} recordTrade={recordTrade} />}
-              {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} market={market} onWhy={openWhy} me={auth ? (auth.username || null) : null} isAdmin={isAdminUser} signupAt={auth ? (auth.createdAt || null) : null} />}
-              {tab === "automation" && <Automation market={market} onRecord={recordTrade} trades={trades} strats={strats} setStrats={setStrats} onExitAll={exitAllStrategies} me={auth ? (auth.username || null) : null} isAdmin={isAdminUser} />}
+              {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} market={market} onWhy={openWhy} me={auth ? (auth.username || null) : null} isAdmin={effAdmin} signupAt={auth ? (auth.createdAt || null) : null} />}
+              {tab === "automation" && <Automation market={market} onRecord={recordTrade} trades={trades} strats={strats} setStrats={setStrats} onExitAll={exitAllStrategies} me={auth ? (auth.username || null) : null} isAdmin={effAdmin} />}
               {tab === "portfolio" && <Portfolio mode={mode} realPortfolio={realPortfolio} realErr={realErr} realLoading={realLoading} onRefreshReal={refreshPortfolio} brokerName={liveBroker ? liveBroker.name : null} portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} onBuy={buyStock} onSell={sellStock} onUpdate={updateHolding} priceSnap={priceSnap} onWhy={openWhy} onOpen={openStock} onRemove={(sym) => { setPortfolio((prev) => prev.filter((h) => h.sym !== sym)); setBuyToast({ t: `${sym} removed` }); }} />}
               {tab === "watchlist" && <WatchlistView watchlists={watchlists} activeWl={activeWl} setActiveWl={setActiveWl} createWatchlist={createWatchlist} deleteWatchlist={deleteWatchlist} toggleWatch={toggleWatch} onOpen={openStock} />}
               {tab === "ask" && (
@@ -951,7 +957,7 @@ function AppInner() {
           <SearchOverlay onClose={() => setSearch(false)} onOpen={openStock} />
         </ErrorBoundary>
       )}
-      {showProfile && <ProfileSheet onAdmin={isAdminUser ? openAdmin : undefined} onBroker={() => { setShowProfile(false); setBrokerOpen(true); }} brokerName={liveBroker ? liveBroker.name : null} profile={profile} walletMap={walletMap} portfolio={portfolio} trades={trades} deposits={deposits} market={market} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={() => { doLogout(); setGuest(false); setProfile(null); setOnboardSkipped(false); setAuthed(false); setLoginOpen(false); }} onPersonalise={() => setRepersonalise(true)} onUsernameChanged={(u) => onAuthed({ ...auth, username: u })} onEmailChanged={(em) => onAuthed({ ...auth, email: em })} />}
+      {showProfile && <ProfileSheet onAdmin={effAdmin ? openAdmin : undefined} isAdminUser={isAdminUser} adminMode={adminMode} onToggleAdminMode={() => setAdminMode((v) => !v)} onBroker={() => { setShowProfile(false); setBrokerOpen(true); }} brokerName={liveBroker ? liveBroker.name : null} profile={profile} walletMap={walletMap} portfolio={portfolio} trades={trades} deposits={deposits} market={market} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={() => { doLogout(); setGuest(false); setProfile(null); setOnboardSkipped(false); setAuthed(false); setLoginOpen(false); }} onPersonalise={() => setRepersonalise(true)} onUsernameChanged={(u) => onAuthed({ ...auth, username: u })} onEmailChanged={(em) => onAuthed({ ...auth, email: em })} />}
       {adminOpen && <AdminPanel userId={userId} adminKey={adminKey} onClose={() => { setAdminOpen(false); setAdminKey(""); }} />}
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} onAuthed={onAuthed} />}
       {histOpen && <TradeHistory userId={userId} trades={trades} onClose={() => setHistOpen(false)} />}

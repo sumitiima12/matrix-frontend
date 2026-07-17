@@ -166,7 +166,7 @@ function StockIdeasStrip({ onOpen, onBuy, market, liveTick = 0 }) {
               {s && onBuy && (
                 <div style={{ marginTop: 10 }} onClick={(e) => e.stopPropagation()}>
                   <BuyButton s={s} market={m} onBuy={onBuy} lot={s.lot || 1} fullWidth
-                    opts={{ tp: idea.gain, sl: idea.stop, tradeType: "Manual" }} />
+                    opts={{ tp: idea.gain, sl: (idea.entry && idea.stop) ? +(((idea.entry - idea.stop) / idea.entry) * 100).toFixed(2) : undefined, tradeType: "Manual" }} />
                 </div>
               )}
             </div>
@@ -995,7 +995,6 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           </div>
         </Section>
       )}
-      <div style={{ textAlign: "center", fontSize: 10.5, color: "var(--muted)", margin: "26px 0 6px" }}>Live market data · Virtual money · Educational research, not financial advice</div>
     </div>
   );
 }

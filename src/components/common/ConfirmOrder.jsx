@@ -24,6 +24,16 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
   const [qty, setQty] = useState(initialQty || 1);
   useEffect(() => { setQty(initialQty || 1); }, [initialQty, order && order.s && order.s.sym]);
 
+  /* Stop-loss / take-profit (%), PRE-FILLED from the pick's or idea's suggestion when the
+     buy was launched from one of those cards. Editable, and applied to the position on
+     confirm. Blank = no automatic exit for that leg. */
+  const sugSl = order && order.opts && order.opts.sl != null ? String(order.opts.sl) : "";
+  const sugTp = order && order.opts && order.opts.tp != null ? String(order.opts.tp) : "";
+  const [sl, setSl] = useState(sugSl);
+  const [tp, setTp] = useState(sugTp);
+  useEffect(() => { setSl(sugSl); setTp(sugTp); }, [order && order.s && order.s.sym, sugSl, sugTp]);
+  const prefilled = (sugSl !== "" || sugTp !== "");
+
   /* Delivery by default. Intraday is the one that can be closed out from under you,
      so it should be a choice you make, not one you inherit from a default. */
   const [product, setProduct] = useState("CNC");
@@ -212,13 +222,39 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
           </div>
         )}
 
+        {/* Stop-loss / take-profit — pre-filled from the pick/idea suggestion when present. */}
+        {side === "BUY" && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginBottom: 7, display: "flex", alignItems: "center", gap: 6 }}>
+              Stop loss &amp; take profit (%)
+              {prefilled && <span className="pill" style={{ fontSize: 8.5, fontWeight: 800, padding: "2px 7px", background: "var(--primary-soft)", color: "var(--primary)" }}>AUTO-FILLED</span>}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ flex: 1, border: "1px solid var(--line)", borderRadius: 10, padding: "7px 10px", background: "var(--elev)" }}>
+                <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 700 }}>Stop loss %</div>
+                <input value={sl} onChange={(e) => setSl(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="—" className="no-ring mono" style={{ width: "100%", background: "transparent", border: "none", color: "var(--down)", fontWeight: 800, fontSize: 15, marginTop: 2 }} />
+              </div>
+              <div style={{ flex: 1, border: "1px solid var(--line)", borderRadius: 10, padding: "7px 10px", background: "var(--elev)" }}>
+                <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 700 }}>Take profit %</div>
+                <input value={tp} onChange={(e) => setTp(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="—" className="no-ring mono" style={{ width: "100%", background: "transparent", border: "none", color: "var(--up)", fontWeight: 800, fontSize: 15, marginTop: 2 }} />
+              </div>
+            </div>
+            {(sl !== "" || tp !== "") && price != null && (
+              <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 5, lineHeight: 1.45 }}>
+                {sl !== "" ? `Auto-sell if it falls to ${fmt(price * (1 - (parseFloat(sl) || 0) / 100), market)}. ` : ""}
+                {tp !== "" ? `Auto-sell if it rises to ${fmt(price * (1 + (parseFloat(tp) || 0) / 100), market)}.` : ""}
+              </div>
+            )}
+          </div>
+        )}
+
         <div style={{ display: "flex", gap: 9, marginTop: 16 }}>
           <button onClick={onCancel} className="tap disp"
             style={{ flex: 1, border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 12, padding: 13, fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>
             Cancel
           </button>
           <button
-            onClick={() => onConfirm(qty, product)}
+            onClick={() => onConfirm(qty, product, { sl: sl !== "" ? +sl : undefined, tp: tp !== "" ? +tp : undefined })}
             disabled={price == null || short}
             className="tap disp"
             style={{

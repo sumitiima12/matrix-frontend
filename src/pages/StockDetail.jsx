@@ -25,63 +25,60 @@ import ChatPanel from "./AIAssistant";
  * Stock detail — the research terminal for a single instrument.
  */
 
-function CandleChart({ data, market, sup0, res0 }) {
-  const [sup, setSup] = useState(sup0);
-  const [res, setRes] = useState(res0);
-  const drag = useRef(null);
-  const box = useRef(null);
+function CandleChart({ data, market }) {
   const W = data.length * 11, H = 260, padT = 8, padB = 8;
+  const RIGHT = 52;   // px gutter for the price axis
   const lows = data.map((d) => d.l), highs = data.map((d) => d.h);
-  const min = Math.min(...lows, sup, res) * 0.996;
-  const max = Math.max(...highs, sup, res) * 1.004;
-  const yOf = (p) => padT + (max - p) / (max - min) * (H - padT - padB);
-  const priceAt = (clientY) => {
-    const r = box.current.getBoundingClientRect();
-    const frac = clamp((clientY - r.top) / r.height, 0, 1);
-    return max - (frac * H - padT) / (H - padT - padB) * (max - min);
-  };
-  const down = (e) => {
-    const p = priceAt(e.clientY);
-    drag.current = Math.abs(p - sup) < Math.abs(p - res) ? "sup" : "res";
-    box.current.setPointerCapture(e.pointerId);
-  };
-  const move = (e) => {
-    if (!drag.current) return;
-    const p = +priceAt(e.clientY).toFixed(2);
-    drag.current === "sup" ? setSup(p) : setRes(p);
-  };
-  const up = () => { drag.current = null; };
+  const min = Math.min(...lows) * 0.998;
+  const max = Math.max(...highs) * 1.002;
+  const span = (max - min) || 1;
+  const yOf = (p) => padT + (max - p) / span * (H - padT - padB);
+  if (!data.length) return null;
+
+  // 5 evenly-spaced price gridlines / axis labels, top (max) to bottom (min).
+  const TICKS = 5;
+  const priceTicks = Array.from({ length: TICKS }, (_, i) => max - (span * i) / (TICKS - 1));
+  const fmtD = (t) => { try { return new Date(t).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }); } catch { return ""; } };
+  const hasT = data[0] && data[0].t;
+  const midI = Math.floor(data.length / 2);
+
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <span style={{ fontSize: 11, color: "var(--muted)" }}>Drag the gold & silver lines to set your levels</span>
-        <span style={{ fontSize: 11, display: "flex", gap: 10 }}>
-          <span className="gold-text" style={{ fontWeight: 800 }}>R {fmt(res, market)}</span>
-          <span style={{ color: "#B7B7C2", fontWeight: 800 }}>S {fmt(sup, market)}</span>
-        </span>
+      <div style={{ display: "flex", alignItems: "stretch" }}>
+        {/* price chart */}
+        <div style={{ flex: 1, position: "relative", height: H, minWidth: 0 }}>
+          <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none">
+            {priceTicks.map((p, i) => (
+              <line key={"g" + i} x1="0" x2={W} y1={yOf(p)} y2={yOf(p)} stroke="var(--line)" strokeWidth="0.5" strokeDasharray="2 5" />
+            ))}
+            {data.map((d, k) => {
+              const x = (k + 0.5) * 11, isUp = d.c >= d.o;
+              const col = isUp ? "var(--up)" : "var(--down)";
+              const yO = yOf(d.o), yC = yOf(d.c);
+              return (
+                <g key={d.i}>
+                  <line x1={x} x2={x} y1={yOf(d.h)} y2={yOf(d.l)} stroke={col} strokeWidth="1.2" />
+                  <rect x={x - 3} y={Math.min(yO, yC)} width="6" height={Math.max(2, Math.abs(yC - yO))} fill={col} rx="1" />
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+        {/* right price axis — real price scale */}
+        <div style={{ position: "relative", width: RIGHT, height: H, flex: "0 0 auto" }}>
+          {priceTicks.map((p, i) => (
+            <div key={"p" + i} className="mono" style={{ position: "absolute", right: 2, top: yOf(p), transform: "translateY(-50%)", fontSize: 9, fontWeight: 700, color: "var(--muted)", whiteSpace: "nowrap" }}>{fmt(p, market)}</div>
+          ))}
+        </div>
       </div>
-      <div ref={box} style={{ width: "100%", touchAction: "none", cursor: "ns-resize" }}>
-        <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none"
-          onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerLeave={up}>
-          {data.map((d, k) => {
-            const x = (k + 0.5) * 11, isUp = d.c >= d.o;
-            const col = isUp ? "var(--up)" : "var(--down)";
-            const yO = yOf(d.o), yC = yOf(d.c);
-            return (
-              <g key={d.i}>
-                <line x1={x} x2={x} y1={yOf(d.h)} y2={yOf(d.l)} stroke={col} strokeWidth="1.2" />
-                <rect x={x - 3} y={Math.min(yO, yC)} width="6" height={Math.max(2, Math.abs(yC - yO))} fill={col} rx="1" />
-              </g>
-            );
-          })}
-          {/* resistance */}
-          <line x1="0" x2={W} y1={yOf(res)} y2={yOf(res)} stroke="var(--amber)" strokeWidth="1.4" strokeDasharray="6 4" />
-          <rect x={W - 26} y={yOf(res) - 7} width="26" height="14" rx="3" fill="var(--amber)" />
-          {/* support */}
-          <line x1="0" x2={W} y1={yOf(sup)} y2={yOf(sup)} stroke="var(--primary-2)" strokeWidth="1.4" strokeDasharray="6 4" />
-          <rect x={W - 26} y={yOf(sup) - 7} width="26" height="14" rx="3" fill="var(--primary-2)" />
-        </svg>
-      </div>
+      {/* bottom date axis — aligned under the chart, not the price gutter */}
+      {hasT && (
+        <div style={{ display: "flex", justifyContent: "space-between", marginRight: RIGHT, marginTop: 5, fontSize: 9, fontWeight: 700, color: "var(--muted)" }}>
+          <span>{fmtD(data[0].t)}</span>
+          <span>{fmtD(data[midI].t)}</span>
+          <span>{fmtD(data[data.length - 1].t)}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -103,7 +100,7 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
   const [chartType, setChartType] = useState("candles");
   const [deepBusy, setDeepBusy] = useState(false);
   const [analysis, setAnalysis] = useState(null);   // structured research verdict
-  const [strengthTf, setStrengthTf] = useState("1d");
+  const [strengthTf, setStrengthTf] = useState("5m");
   const [tfStrength, setTfStrength] = useState(null);
   const [tfLoading, setTfLoading] = useState(false);
   const [liveNews, setLiveNews] = useState(null);
@@ -238,7 +235,7 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
             </div>
           </div>
           {chartType === "candles" ? (
-            <CandleChart key={s.sym + tf} data={cdata} market={market} sup0={s.support} res0={s.resistance} />
+            <CandleChart key={s.sym + tf} data={cdata} market={market} />
           ) : (
             <div style={{ height: 244 }}>
               <ResponsiveContainer width="100%" height="100%">
@@ -256,7 +253,7 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
           )}
         </div>
         <div className="card" style={{ marginTop: 12, padding: 16, background: "linear-gradient(160deg,var(--primary-soft),var(--surface))" }}>
-          <div className="disp" style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Sparkles size={16} color="var(--primary)" /> Matrix's analysis</div>
+          <div className="disp" style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Sparkles size={16} color="var(--primary)" /> Analysis</div>
           <p style={{ fontSize: 13.5, lineHeight: 1.6, marginTop: 8, marginBottom: 0 }}>
             {s.rsi == null ? "Live technicals are still loading for this symbol." : <>Technically, RSI is <b>{s.rsi}</b> with price {s.sma50 != null ? (s.price > s.sma50 ? "above" : "below") : "—"} the 50-DMA{s.sma50 != null && s.sma200 != null ? (s.sma50 > s.sma200 ? " and a bullish 50/200 structure" : " and a bearish 50/200 structure") : ""}.</>}
           </p>

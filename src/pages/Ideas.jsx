@@ -198,6 +198,7 @@ function CommunityIdeas({ market, me, isAdmin, onOpen }) {
 
 export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, isAdmin = false, signupAt = null }) {
   const [dashOpen, setDashOpen] = useState(false);
+  const [view, setView] = useState("all");   // "all" | "neo" | "community"
   // Recomputed from real data as it arrives, rather than frozen at import time.
   const [ideas, setIdeas] = useState(currentIdeas);
   useEffect(() => {
@@ -224,16 +225,23 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
         <div><div className="disp" style={{ fontWeight: 700, fontSize: 20 }}>Ideas</div><div style={{ fontSize: 11.5, color: "var(--muted)" }}>{{ IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", FNO: "⚡ F&O", Commodity: "🪙 Commodity" }[market]}</div></div>
       </div>
 
-      {!dashOpen ? (
+      {/* Source tabs — All (Neo + community), Neo only, or community only. */}
+      <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3, marginTop: 12 }}>
+        {[["all", "All"], ["neo", "Neo"], ["community", "Community"]].map(([k, l]) => (
+          <button key={k} onClick={() => setView(k)} className="pill tap disp" style={{ padding: "6px 16px", fontSize: 12, fontWeight: 800, border: "none", background: view === k ? "var(--primary)" : "transparent", color: view === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
+        ))}
+      </div>
+
+      {view !== "community" && (!dashOpen ? (
         <IdeasDashboard ideas={shown} collapsed onExpand={() => setDashOpen(true)} signupAt={signupAt} />
       ) : (
         <div style={{ position: "relative" }}>
           <IdeasDashboard ideas={shown} signupAt={signupAt} />
           <button onClick={() => setDashOpen(false)} className="tap" title="Collapse" style={{ position: "absolute", top: 14, right: 16, display: "grid", placeItems: "center", border: "1px solid rgba(255,255,255,.28)", background: "rgba(255,255,255,.1)", color: "#fff", borderRadius: 10, padding: "6px", fontWeight: 800 }}><ChevronUp size={14} /></button>
         </div>
-      )}
-      {shown.length === 0 && <div className="card" style={{ marginTop: 12, padding: 16, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No Matrix ideas for this market yet. Post one below, or switch markets from the tabs above.</div>}
-      {shown.map((idea, i) => {
+      ))}
+      {view !== "community" && shown.length === 0 && <div className="card" style={{ marginTop: 12, padding: 16, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No Neo ideas for this market yet. Switch markets from the tabs above, or check the Community tab.</div>}
+      {view !== "community" && shown.map((idea, i) => {
         const s = ALL.find((a) => a.sym === idea.sym); const m = marketOf(idea.sym);
         return (
           <div key={i} className="card" style={{ marginTop: 12, padding: 15 }}>
@@ -259,7 +267,7 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
             {s && onBuy && (
               <div style={{ marginTop: 12 }}>
                 <BuyButton s={s} market={market} onBuy={onBuy} lot={s.lot || 1} fullWidth
-                  opts={{ tp: idea.gain, sl: idea.stop, tradeType: "Manual" }} />
+                  opts={{ tp: idea.gain, sl: (idea.entry && idea.stop) ? +(((idea.entry - idea.stop) / idea.entry) * 100).toFixed(2) : undefined, tradeType: "Manual" }} />
               </div>
             )}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, gap: 8 }}>
@@ -275,7 +283,7 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
         );
       })}
 
-      <CommunityIdeas market={market} me={me} isAdmin={isAdmin} onOpen={onOpen} />
+      {view !== "neo" && <CommunityIdeas market={market} me={me} isAdmin={isAdmin} onOpen={onOpen} />}
     </div>
   );
 }
