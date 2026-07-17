@@ -430,16 +430,16 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
         {/* BROKER — where the prices come from */}
         {onBroker && (
           <button onClick={onBroker} className="tap card" style={{ width: "100%", marginTop: 14, padding: 13, display: "flex", justifyContent: "space-between", alignItems: "center", border: brokerName ? "1px solid var(--up)" : "1px solid var(--line)", background: "var(--surface)", cursor: "pointer", textAlign: "left" }}>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>
-                {brokerName ? `Connected to ${brokerName}` : "Connect your broker"}
+                {brokerName ? `Connected · ${brokerName}` : "Connect a broker"}
               </div>
-              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>
-                {brokerName ? "Prices are real-time" : "Prices are delayed ~15 min — connect for a live feed"}
+              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2, lineHeight: 1.45 }}>
+                Connect or change brokers — a different one per market (e.g. Delta for crypto, Schwab for US).
               </div>
             </div>
-            <span style={{ fontSize: 11, fontWeight: 800, color: brokerName ? "var(--up)" : "var(--primary)", flex: "0 0 auto" }}>
-              {brokerName ? "● LIVE" : "Connect"}
+            <span style={{ fontSize: 11, fontWeight: 800, color: brokerName ? "var(--up)" : "var(--primary)", flex: "0 0 auto", marginLeft: 8 }}>
+              {brokerName ? "Manage" : "Connect"}
             </span>
           </button>
         )}

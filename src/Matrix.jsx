@@ -576,7 +576,7 @@ function AppInner() {
     setShowProfile(false);
   };
   const [tradePreset, setTradePreset] = useState(null);
-  const { live, liveAt, tick: marketTick } = useMarketData(market);
+  const { live, liveAt, tick: marketTick, src: liveSrc } = useMarketData(market);
 
   /* One tick for the whole app, advancing on EITHER feed. Downstream memos key on
      this; if they keyed only on the Yahoo tick they would sit frozen while a live
@@ -726,6 +726,18 @@ function AppInner() {
               >
                 <span style={{ width: 4, height: 4, borderRadius: 4, background: "var(--up)" }} />
                 LIVE · {liveBroker.name.toUpperCase()}
+              </span>
+            ) : live && liveSrc ? (
+              /* Server-side house feed (FYERS for Indian equities, Delta for crypto) — a REAL
+                 real-time feed for every user, no personal broker connection needed. */
+              <span
+                className="pill tap"
+                onClick={() => setBrokerOpen(true)}
+                title={liveSrc === "fyers" ? "Real-time NSE prices via FYERS (server feed) — no delay." : "Real-time crypto prices via Delta Exchange (server feed)."}
+                style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".04em", padding: "3px 7px", display: "flex", alignItems: "center", gap: 4, background: "var(--up-soft)", color: "var(--up)", cursor: "pointer" }}
+              >
+                <span style={{ width: 4, height: 4, borderRadius: 4, background: "var(--up)" }} />
+                LIVE · {liveSrc === "fyers" ? "FYERS" : liveSrc === "delta" ? "DELTA" : liveSrc.toUpperCase()}
               </span>
             ) : live ? (
               <span

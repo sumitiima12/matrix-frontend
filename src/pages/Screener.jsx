@@ -148,7 +148,7 @@ export default function Screener({ onOpen, market, list, watchlists, addToWatch,
         </span>
         <button onClick={() => setFilters((p) => [...p, { m: "ema20", o: ">", rhsType: "indicator", rhs: "ema50", v: "" }])} className="tap" style={{ border: "1px dashed var(--line)", background: "transparent", borderRadius: 12, padding: "8px 12px", fontSize: 12.5, fontWeight: 600, color: "var(--primary)", display: "flex", gap: 5, alignItems: "center" }}><Plus size={15} /> Add condition</button>
 
-        <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>Or describe it in plain text</div>
+        <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>Or write a prompt</div>
         <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. large-cap IT stocks with RSI under 40 and rising revenue" className="no-ring"
           style={{ width: "100%", marginTop: 6, border: "1px solid var(--line)", borderRadius: 12, padding: 11, fontSize: 13, minHeight: 60, resize: "vertical" }} />
 

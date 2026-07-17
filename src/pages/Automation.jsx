@@ -780,11 +780,15 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
   // Premium strategies are shown in EVERY market (not market-filtered) and are locked:
   // name + description only, activate + backtest, no template/edit.
   const premiumStrats = strats.filter((s) => s.premium);
-  const myStrats     = perf.filter(({ s }) => s.by !== "Matrix" && !s.premium);
-  // The Active / Inactive lists span EVERY type (Mine, Premium, Sample, Public), each
-  // shown with a type tag. Active = anything running now; Inactive = your own drafts.
-  const myActive     = strats.filter((s) => s.active).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
-  const myInactive   = strats.filter((s) => !s.active && s.by !== "Matrix" && !s.premium).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
+  // "Mine" = ONLY strategies this user created (not samples, premium, or others' public).
+  const mineOwn      = perf.filter(({ s }) => s.by === creator);
+  const myStrats     = mineOwn;
+  /* "Deployed" spans EVERY type (Mine, Premium, Sample, Public), split into Active
+     (running now) and Inactive, each shown with its type + state tag. */
+  const deployedActive   = strats.filter((s) => s.active).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
+  const deployedInactive = strats.filter((s) => !s.active).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
+  const myActive     = deployedActive;
+  const myInactive   = deployedInactive;
   const byOptions = ["All", "Matrix", "You", "Community"];
   const dsel = { ...selStyle, flex: "1 1 0", minWidth: 0, padding: "8px 8px", fontSize: 11.5 };
   const fmtDate = (t) => new Date(t).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" });
@@ -818,6 +822,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
           </div>
         </div>
         <div style={{ display: "flex", gap: 6, flex: "0 0 auto", alignItems: "center" }}>
+          <span className="pill" style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".03em", padding: "3px 8px", background: s.active ? "var(--up-soft)" : "var(--elev)", color: s.active ? "var(--up)" : "var(--muted)", border: "1px solid var(--line)" }}>{s.active ? "ACTIVE" : "INACTIVE"}</span>
           {(() => {
             const t = s.premium ? "Premium" : s.by === "Matrix" ? "Sample" : s.publicId ? "Public" : "Mine";
             const c = { Premium: "var(--gold)", Sample: "var(--primary)", Public: "var(--up)", Mine: "var(--primary)" }[t];
@@ -912,7 +917,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
 
       {/* TOP SELECTOR — one place to switch between building, samples, and your own. */}
       <div style={{ display: "flex", gap: 7, marginTop: 18 }}>
-        {[["build", "Build"], ["sample", `Samples`], ["premium", `Premium`], ["public", "Public"], ["mine", `Mine`]].map(([k, label]) => (
+        {[["build", "Build"], ["deployed", "Deployed"], ["sample", `Samples`], ["premium", `Premium`], ["public", "Public"], ["mine", `Mine`]].map(([k, label]) => (
           <button
             key={k}
             onClick={() => setTopTab(k)}
@@ -930,18 +935,13 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
         ))}
       </div>
 
-      {/* BUILD ZONE */}
+      {/* BUILD ZONE — the builder is always expanded (no create/close toggle). */}
       {topTab === "build" && (<>
-      {/* Create a new automated strategy */}
-      <button onClick={() => setShowBuilder((v) => !v)} className="tap disp glow" style={{ width: "100%", marginTop: 16, background: showBuilder ? "var(--surface)" : "linear-gradient(120deg,var(--primary),var(--primary-2))", color: showBuilder ? "var(--ink)" : "#fff", border: showBuilder ? "1px solid var(--line)" : "none", borderRadius: 16, padding: 15, fontWeight: 700, fontSize: 14.5, display: "flex", gap: 8, alignItems: "center", justifyContent: "center" }}>
-        {showBuilder ? <><X size={17} /> Close builder</> : <><Plus size={18} /> Create a New Automated Strategy</>}
-      </button>
-
-      {showBuilder && (
+      {(
         <div className="fade">
           {/* how do you want to build it? */}
           <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
-            {[["builder", "🧩 Visual builder"], ["plain", "✍️ Plain English"]].map(([k, l]) => (
+            {[["builder", "🧩 Visual builder"], ["plain", "✍️ Write a Prompt"]].map(([k, l]) => (
               <button key={k} onClick={() => setMode(k)} className="tap disp" style={{ flex: 1, padding: "12px 10px", borderRadius: 14, fontWeight: 700, fontSize: 12.5, border: "1px solid " + (mode === k ? "var(--primary)" : "var(--line)"), background: mode === k ? "var(--primary-soft)" : "var(--surface)", color: mode === k ? "var(--primary)" : "var(--ink)" }}>{l}</button>
             ))}
           </div>
@@ -1172,15 +1172,11 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
                 </div>
               ))}
         </>
-      ) : myStrats.length === 0 ? (
-        <div className="card" style={{ marginTop: 12, padding: 20, textAlign: "center", color: "var(--muted)", fontSize: 12.5, lineHeight: 1.6 }}>
-          You haven't created a strategy yet. Build one from the Build tab, or start from a sample.
-        </div>
-      ) : (
+      ) : topTab === "deployed" ? (
         <>
-          {/* ACTIVE / INACTIVE — side-by-side tabs. */}
+          {/* DEPLOYED — every strategy (any type), split Active / Inactive. */}
           <div style={{ display: "flex", gap: 7, marginBottom: 12 }}>
-            {[["active", `Active (${myActive.length})`], ["inactive", `Inactive (${myInactive.length})`]].map(([k, label]) => (
+            {[["active", `Active (${deployedActive.length})`], ["inactive", `Inactive (${deployedInactive.length})`]].map(([k, label]) => (
               <button
                 key={k}
                 onClick={() => setActiveTab(k)}
@@ -1198,7 +1194,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
           </div>
 
           {activeTab === "active" ? (
-            myActive.length === 0
+            deployedActive.length === 0
               ? <div style={{ fontSize: 12.5, color: "var(--muted)" }}>None active.</div>
               : <>
                   {/* EXIT ALL — flattens every active strategy's open position at once. */}
@@ -1209,13 +1205,22 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
                   >
                     Exit all active strategies
                   </button>
-                  {myActive.map(({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>)}
+                  {deployedActive.map(({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>)}
                 </>
           ) : (
-            myInactive.length === 0
+            deployedInactive.length === 0
               ? <div style={{ fontSize: 12.5, color: "var(--muted)" }}>None inactive.</div>
-              : myInactive.map(({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>)
+              : deployedInactive.map(({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>)
           )}
+        </>
+      ) : mineOwn.length === 0 ? (
+        <div className="card" style={{ marginTop: 12, padding: 20, textAlign: "center", color: "var(--muted)", fontSize: 12.5, lineHeight: 1.6 }}>
+          You haven't created a strategy yet. Build one from the Build tab, or start from a sample.
+        </div>
+      ) : (
+        /* MINE — only strategies this user created; each card carries its Active/Inactive tag. */
+        <>
+          {mineOwn.map(({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>)}
         </>
       )}
       </>)}

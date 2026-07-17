@@ -19,6 +19,7 @@ import { fetchLiveQuotes, fetchIndicators, fetchIntraday, marketOpen } from "../
 export function useMarketData(market, intervalMs = 20000) {
   const [live, setLive] = useState(false);
   const [liveAt, setLiveAt] = useState(null);
+  const [src, setSrc] = useState(null);   // "fyers" | "delta" | null(Yahoo) — the feed serving THIS market
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -56,11 +57,15 @@ export function useMarketData(market, intervalMs = 20000) {
         const rows = await fetchLiveQuotes(syms);
         if (stop || !rows || !rows.length) { setLive(false); return; }
         let n = 0;
+        const srcCount = {};
         rows.forEach((r) => {
           const s = ALL.find((a) => a.sym === r.sym);
-          if (s) { s.price = r.price; s.chg = r.chg; n++; }
+          if (s) { s.price = r.price; s.chg = r.chg; if (r.src) s.liveSrc = r.src; n++; }
+          if (r.src) srcCount[r.src] = (srcCount[r.src] || 0) + 1;
         });
-        if (n) { setLive(true); setLiveAt(Date.now()); bump(); } else setLive(false);
+        // The feed that served most of this market's names (fyers/delta = real-time; none = Yahoo).
+        const dominant = Object.keys(srcCount).sort((a, b) => srcCount[b] - srcCount[a])[0] || null;
+        if (n) { setLive(true); setLiveAt(Date.now()); setSrc(dominant); bump(); } else setLive(false);
       } catch { setLive(false); }
     };
 
@@ -132,5 +137,5 @@ export function useMarketData(market, intervalMs = 20000) {
     return () => { stop = true; clearInterval(id); clearInterval(intraId); clearInterval(allId); };
   }, [market, intervalMs]);
 
-  return { live, liveAt, tick };
+  return { live, liveAt, tick, src };
 }
