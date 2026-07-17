@@ -79,14 +79,17 @@ export function brokerSymbol(sym, broker) {
       if (mkt !== "US" || s.isIndex) return null;       // US index quoting differs
       return sym;
 
-    /* Dhan, Angel One and Groww quote by NUMERIC instrument IDs from their own
-       instrument master files, which we have not downloaded. Rather than invent a
-       symbol format, we map nothing — so they cannot silently quote the wrong
-       stock. Wiring these means fetching and caching their instrument dumps. */
+    /* Dhan, Angel One, Groww and IND Money trade by NUMERIC instrument IDs. The SERVER
+       resolves the id from each broker's own instrument master and REFUSES if it can't
+       match strictly (see dhanSecurityId / angelToken) — so a wrong stock is impossible.
+       Here we just pass the plain NSE cash-equity symbol; indices are not supported. */
     case "dhan":
     case "angelone":
     case "groww":
-      return null;
+    case "indmoney":
+      if (mkt !== "IN" && mkt !== "FNO") return null;
+      if (s.isIndex) return null;                       // index F&O needs contract ids we don't map
+      return sym;
 
     default:
       return null;
@@ -108,10 +111,14 @@ export function mappableSymbols(broker, syms) {
 export const BROKER_COVERAGE = {
   zerodha:   { markets: ["IN", "FNO"], name: "Zerodha",        realtime: true,  orders: true },
   fyers:     { markets: ["IN", "FNO"], name: "FYERS",          realtime: true,  orders: true },
-  dhan:      { markets: ["IN", "FNO"], name: "Dhan",           realtime: false, orders: false },
-  angelone:  { markets: ["IN", "FNO"], name: "Angel One",      realtime: false, orders: false },
-  groww:     { markets: ["IN"],        name: "Groww",          realtime: false, orders: false },
-  delta:     { markets: ["Crypto"],    name: "Delta Exchange", realtime: false, orders: false },
+  dhan:      { markets: ["IN", "FNO"], name: "Dhan",           realtime: false, orders: true },
+  angelone:  { markets: ["IN", "FNO"], name: "Angel One",      realtime: false, orders: true },
+  groww:     { markets: ["IN"],        name: "Groww",          realtime: false, orders: true },
+  indmoney:  { markets: ["IN", "US"],  name: "IND Money",      realtime: false, orders: true },
+  delta:     { markets: ["Crypto"],    name: "Delta Exchange", realtime: true,  orders: true },
+  coindcx:   { markets: ["Crypto"],    name: "CoinDCX",        realtime: false, orders: true },
+  binance:   { markets: ["Crypto"],    name: "Binance",        realtime: false, orders: true },
+  coinswitch:{ markets: ["Crypto"],    name: "CoinSwitch",     realtime: false, orders: true },
   schwab:    { markets: ["US"],        name: "Charles Schwab", realtime: false, orders: false },
   robinhood: { markets: ["US"],        name: "Robinhood",      realtime: false, orders: false },
 };
