@@ -376,7 +376,7 @@ function SecurityQuestionCard() {
   );
 }
 
-export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, onAdmin, isAdminUser = false, adminMode = false, onToggleAdminMode, portfolio = [], trades = [], deposits = [], market = "IN", onBroker, brokerName, onUsernameChanged, onEmailChanged, marketBrokers = {}, houseFeeds = {} }) {
+export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, onAdmin, isAdminUser = false, adminMode = false, onToggleAdminMode, portfolio = [], trades = [], deposits = [], market = "IN", onBroker, brokerName, onUsernameChanged, onEmailChanged, marketBrokers = {}, houseFeeds = {}, onDisconnectBroker }) {
   const [uidEdit, setUidEdit] = useState(false);
   const [uidVal, setUidVal] = useState("");
   const [uidBusy, setUidBusy] = useState(false);
@@ -437,19 +437,26 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
             </div>
             <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 3, lineHeight: 1.45 }}>A different broker per market. Prices are live via the built-in feed where shown.</div>
             {[["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["Commodity", "🪙 Commodity"]].map(([m, label]) => {
-              const personal = brokerById(marketBrokers && marketBrokers[m]);
-              const feedName = m === "IN" && houseFeeds.fyers ? "FYERS" : m === "Crypto" && houseFeeds.delta ? "Delta" : null;
-              const name = personal ? personal.name : feedName;
-              const isFeed = !personal && !!feedName;
+              const personal = brokerById(marketBrokers && marketBrokers[m]);   // a broker YOU connected
+              const feedName = m === "IN" && houseFeeds.fyers ? "FYERS" : m === "Crypto" && houseFeeds.delta ? "Delta" : null;   // built-in price feed
               return (
-                <div key={m} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderTop: "1px solid var(--line)" }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 700 }}>{label}</span>
-                  {name ? (
-                    <span style={{ fontSize: 11.5, fontWeight: 800, color: "var(--up)", display: "flex", alignItems: "center", gap: 5 }}>
-                      <span style={{ width: 6, height: 6, borderRadius: 6, background: "var(--up)" }} /> {name}
-                    </span>
+                <div key={m} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "9px 0", borderTop: "1px solid var(--line)" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700 }}>{label}</div>
+                    {!personal && feedName && (
+                      <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700, marginTop: 1 }}>Prices live via {feedName} feed</div>
+                    )}
+                  </div>
+                  {personal ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 11.5, fontWeight: 800, color: "var(--up)", display: "flex", alignItems: "center", gap: 5 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: 6, background: "var(--up)" }} /> {personal.name}
+                      </span>
+                      <button onClick={() => onBroker(m)} className="tap disp" style={{ border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 9, padding: "5px 9px", fontWeight: 800, fontSize: 10.5, cursor: "pointer" }}>Change</button>
+                      <button onClick={() => onDisconnectBroker && onDisconnectBroker(personal.id)} className="tap disp" style={{ border: "1px solid var(--line)", background: "transparent", color: "var(--down)", borderRadius: 9, padding: "5px 9px", fontWeight: 800, fontSize: 10.5, cursor: "pointer" }}>Disconnect</button>
+                    </div>
                   ) : (
-                    <button onClick={() => onBroker(m)} className="tap disp" style={{ border: "none", background: "var(--ink)", color: "var(--surface)", borderRadius: 9, padding: "6px 14px", fontWeight: 800, fontSize: 11.5, cursor: "pointer" }}>Connect Broker</button>
+                    <button onClick={() => onBroker(m)} className="tap disp" style={{ border: "none", background: "var(--ink)", color: "var(--surface)", borderRadius: 9, padding: "6px 14px", fontWeight: 800, fontSize: 11.5, cursor: "pointer", flex: "0 0 auto" }}>Connect Broker</button>
                   )}
                 </div>
               );
