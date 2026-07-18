@@ -38,6 +38,13 @@ const DELTA_MAP = {
 
 /** @returns {string|null} the broker's symbol, or null if we cannot map it honestly. */
 export function brokerSymbol(sym, broker) {
+  // A REAL Delta holding is read back already as its perpetual symbol ("EVAAUSD", "XRPUSD").
+  // That's often not a literal universe entry (the universe stores the bare coin "EVAA"), but it
+  // IS already the exact Delta symbol — so for Delta, pass a "<COIN>USD(T)" symbol straight
+  // through instead of failing "no symbol mapping". The server still verifies the product exists.
+  if (broker === "delta" && /USDT?$/i.test(String(sym)) && !ALL.find((a) => a.sym === sym)) {
+    return String(sym).replace(/USDT$/i, "USD");
+  }
   const s = ALL.find((a) => a.sym === sym);
   if (!s) return null;
   const mkt = marketOf(sym);

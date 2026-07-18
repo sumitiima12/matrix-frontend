@@ -385,7 +385,10 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
           // Real technicals ONLY when the stock is in our universe. For anything FYERS holds
           // that we don't track, we show price/P&L and say analysis isn't available — we
           // never invent a confidence or risk score.
-          const uni = ALL.find((a) => a.sym === h.sym);
+          // Real Delta holdings arrive as "<COIN>USD" (XRPUSD, EVAAUSD) — strip the suffix so
+          // they match the universe's bare coin ("XRP", "EVAA") and get trend/risk analysis.
+          const baseSym = String(h.sym).replace(/USDT?$/i, "").replace(/\.P$/i, "");
+          const uni = ALL.find((a) => a.sym === h.sym) || ALL.find((a) => a.sym === baseSym);
           const sig = uni ? techSignal(uni) : null;
           const pnlPct = (h.avg && h.ltp) ? ((h.ltp / h.avg) - 1) * 100 : null;
           return (
