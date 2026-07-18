@@ -619,7 +619,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
   ]);
   const [sl, setSl] = useState("3");
   const [tp, setTp] = useState("8");
-  const [capital, setCapital] = useState("1");         // QUANTITY, default 1 (was a rupee capital amount)
+  const [capital, setCapital] = useState(market === "Crypto" ? "10" : "1");   // crypto: $ amount (default 10); else quantity (default 1)
 
   /* Order-execution defaults for the automation. */
   const [buyType, setBuyType] = useState("Intraday");   // Intraday (MIS) | NRML
@@ -951,6 +951,24 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
         <MetricMini k="P&L" v={p.pnl == null ? "—" : (p.pnl >= 0 ? "+" : "") + fmt(p.pnl, "IN")} c={chgColor(p.pnl)} />
         <MetricMini k="Returns" v={pct(p.retPct, 1)} c={chgColor(p.retPct)} />
       </div>
+      {/* Deploy size — AMOUNT (USD) for crypto, QUANTITY for other markets. Default $10 / 1 qty. */}
+      {(() => {
+        const isC = market === "Crypto";
+        const step = isC ? 10 : 1;
+        const val = s.qty != null ? s.qty : (isC ? 10 : 1);
+        const set = (n) => { const v = Math.max(isC ? 1 : 1, n); updateStrat(s.id, { qty: v, cap: v }); };
+        return (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10, gap: 8 }}>
+            <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>{isC ? "Amount per trade (USD)" : "Quantity per trade"}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <button onClick={() => set(Number(val) - step)} className="tap" style={{ width: 26, height: 26, borderRadius: 8, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", display: "grid", placeItems: "center", fontWeight: 800 }}>−</button>
+              {isC && <span className="mono" style={{ fontWeight: 800, fontSize: 12, color: "var(--muted)" }}>$</span>}
+              <input value={val} onChange={(e) => { const n = isC ? parseFloat(e.target.value.replace(/[^0-9.]/g, "")) : parseInt(e.target.value.replace(/[^0-9]/g, ""), 10); set(Number.isFinite(n) && n > 0 ? n : 1); }} inputMode={isC ? "decimal" : "numeric"} className="mono no-ring" style={{ width: 56, textAlign: "center", border: "1px solid var(--line)", borderRadius: 8, padding: "5px 4px", fontWeight: 800, fontSize: 12.5, background: "var(--elev)", color: "var(--ink)" }} />
+              <button onClick={() => set(Number(val) + step)} className="tap" style={{ width: 26, height: 26, borderRadius: 8, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", display: "grid", placeItems: "center", fontWeight: 800 }}>+</button>
+            </div>
+          </div>
+        );
+      })()}
       {entryTriggered && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10, padding: "9px 12px", borderRadius: 12, background: "var(--elev)", border: "1px solid var(--line)" }}>
           <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>Live P&amp;L · {openTrades.length} open</div>

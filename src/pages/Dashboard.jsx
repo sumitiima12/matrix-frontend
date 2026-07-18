@@ -657,6 +657,14 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const [capSaved, setCapSaved] = useState(false);
   useEffect(() => { setCapDraft(deployCapMap[market] != null ? deployCapMap[market] : capDefault(market)); /* eslint-disable-next-line */ }, [market]);
   const [plPeriod, setPlPeriod] = useState("today");
+  /* Product type — PER MARKET, persisted. "Intraday" = auto-square-off (MIS/INTRADAY);
+     "NRML" = carry-forward / delivery (CNC on equity). Only meaningful for Indian markets;
+     crypto/US ignore it. Default to NRML so positions aren't force-closed at 3:20pm. */
+  const [prodMap, setProdMap] = useState(() => { const v = lsGet("mx_autobuy_product", {}); return (v && typeof v === "object") ? v : {}; });
+  const product = prodMap[market] || "NRML";                       // "NRML" | "INTRADAY"
+  const setProduct = (v) => setProdMap((prev) => { const next = { ...prev, [market]: v }; lsSet("mx_autobuy_product", next); return next; });
+  const prodCode = product === "INTRADAY" ? "MIS" : "CNC";         // what the broker order body expects
+  const showProduct = market === "IN" || market === "FNO";         // concept only applies to Indian equity/F&O
   const [autoOverrides, setAutoOverrides] = useState({});   // sym -> {tp, sl}
   const [editSym, setEditSym] = useState(null);
   const [showTrades, setShowTrades] = useState(false);
@@ -704,7 +712,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       if (!u) return;
       // F&O: buy the futures contract (priced off the underlying, qty = 1 lot).
       const inst = u;   // no futures: auto-buy trades the stock itself
-      (onAutoBuy || onBuy)(inst, t.qty, { tp: t.tpPct, sl: t.slPct, tradeType: "Auto Buy" });
+      (onAutoBuy || onBuy)(inst, t.qty, { tp: t.tpPct, sl: t.slPct, tradeType: "Auto Buy", product: prodCode });
     });
     lsSet(key, true);
   }, [autoOn, market]);
@@ -744,7 +752,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
         <div style={{ position: "relative" }}>
           {/* slider */}
           <div className="pill" style={{ display: "inline-flex", background: "rgba(0,0,0,.28)", padding: 3, marginBottom: 14 }}>
-            {[["total", "Total"], ["auto", "Auto Buy"]].map(([k, l]) => (
+            {[["total", "Total"], ["auto", "Smart Auto-Buy"]].map(([k, l]) => (
               <button key={k} onClick={() => setDashView(k)} className="pill tap disp" style={{ padding: "6px 16px", fontSize: 12, fontWeight: 800, border: "none", background: dashView === k ? "#fff" : "transparent", color: dashView === k ? "#141416" : "rgba(255,255,255,.8)" }}>{l}</button>
             ))}
           </div>
@@ -765,7 +773,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           ) : (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 12, opacity: .85 }}>Auto-Buy · {MKT_LABEL[market]}</span>
+                <span style={{ fontSize: 12, opacity: .85 }}>Smart Auto-Buy · {MKT_LABEL[market]}</span>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <div className="pill" style={{ display: "inline-flex", background: "rgba(0,0,0,.28)", padding: 2 }}>
                     {[["today", "Today"], ["month", "Month"], ["lifetime", "Lifetime"]].map(([k, l]) => (
@@ -778,7 +786,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                       const turningOn = !autoOn;
                       if (turningOn && mode === "real" && !lsGet("mx_autobuy_warned", false)) {
                         const ok = typeof window === "undefined" || window.confirm(
-                          "Auto-Buy will place REAL orders on its own, without asking you each time. It will also auto-sell when your stop-loss or target is hit. Turn it on?"
+                          "Smart Auto-Buy will place REAL orders on its own, without asking you each time. It will also auto-sell when your stop-loss or target is hit. Turn it on?"
                         );
                         if (!ok) return;
                         lsSet("mx_autobuy_warned", true);
@@ -790,6 +798,17 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   </label>
                 </div>
               </div>
+              {showProduct && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+                  <span style={{ fontSize: 10.5, opacity: .8, fontWeight: 700 }}>Product</span>
+                  <div className="pill" style={{ display: "inline-flex", background: "rgba(0,0,0,.28)", padding: 2 }}>
+                    {[["INTRADAY", "Intraday"], ["NRML", "NRML"]].map(([k, l]) => (
+                      <button key={k} onClick={() => setProduct(k)} className="pill tap disp" style={{ padding: "5px 12px", fontSize: 10.5, fontWeight: 800, border: "none", background: product === k ? "#fff" : "transparent", color: product === k ? "#141416" : "rgba(255,255,255,.8)" }}>{l}</button>
+                    ))}
+                  </div>
+                  <span style={{ fontSize: 9.5, opacity: .6 }}>{product === "INTRADAY" ? "auto-squared off same day" : "carried forward"}</span>
+                </div>
+              )}
               <div style={{ fontSize: 10, opacity: .7, marginTop: 2 }}>P&amp;L · {periodLabel} {autoOn ? "· live positions (real exits)" : "· simulated preview"}</div>
               <div className="mono" style={{ fontWeight: 800, fontSize: 27, marginTop: 3, color: autoPnl >= 0 ? "#9CFFD6" : "#FFB3BE" }}>{(autoPnl >= 0 ? "+" : "") + fmt(autoPnl, aggCur)}</div>
               <div style={{ fontSize: 11, opacity: .85 }}>{`${periodStats.trades} trades · ${autoWinRate.toFixed(0)}% win rate · ${CUR[aggCur]}${(capNum / 1000).toFixed(0)}k capital`}</div>
@@ -842,7 +861,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 </div>
               ) : (
                 <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-                  <div style={{ fontSize: 11, opacity: .8, lineHeight: 1.5 }}>Today's plan — these are the picks Auto-Buy would enter at the live price, with the target/stop it would arm. Turn Auto-Buy on to place them for real.</div>
+                  <div style={{ fontSize: 11, opacity: .8, lineHeight: 1.5 }}>Today's plan — these are the positions Smart Auto-Buy would enter at the live price, with the target/stop it would arm. Turn it on to place them for real.</div>
                   {autoTrades.map((t) => (
                     <div key={t.sym} style={{ background: "rgba(0,0,0,.22)", borderRadius: 12, padding: "10px 12px" }}>
                       <div onClick={() => { const st = ALL.find((a) => a.sym === t.sym); st && onOpen(st); }} className="tap" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>

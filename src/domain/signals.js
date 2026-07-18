@@ -21,8 +21,16 @@ export function techSignal(s) {
   if (!s || !s.hasData || s.rsi == null || s.sma50 == null) return null;
   const px = s.price;
   const cur = (v) => fmt(v, marketOf(s.sym));
-  const sup = s.support, res = s.resistance;
-  const atr = s.atr || (px * 0.02);
+  const isCrypto = marketOf(s.sym) === "Crypto";
+  // Dirty-candle guard (applies to EVERY market). A single bad print can report a
+  // 60-session "resistance" 100× above price or a "support" near zero. Any level that
+  // far from the current price is a data artifact, not a tradeable level — drop it and
+  // fall back to ATR-based projection. Band is a bit wider for crypto's real volatility.
+  const levHi = px * (isCrypto ? 1.6 : 1.4);
+  const levLo = px * (isCrypto ? 0.55 : 0.7);
+  const res = (s.resistance != null && s.resistance > px && s.resistance <= levHi) ? s.resistance : null;
+  const sup = (s.support != null && s.support < px && s.support >= levLo) ? s.support : null;
+  const atr = Math.min(s.atr || (px * 0.02), px * 0.10);   // ATR never more than 10% of price
   const volRatio = (s.avgVol && s.vol != null) ? s.vol / s.avgVol : null;   // real relative volume, or nothing
   const range52 = (s.high52 != null && s.low52 != null && s.high52 > s.low52)
     ? (px - s.low52) / (s.high52 - s.low52) : null;             // where in the 52w range
@@ -69,15 +77,23 @@ export function techSignal(s) {
   if (s.chg != null) score += Math.max(-1, Math.min(1, s.chg * 0.15));
 
   // ---- REAL stop / target from support-resistance and ATR ----
-  const stop = sup != null && sup < px ? Math.max(sup - 0.25 * atr, px - 3 * atr) : px - 2 * atr;
-  const target = res != null && res > px ? res : px + 2.5 * atr;
+  // Levels are already dirty-candle-sanitised above; here we additionally keep target/stop
+  // inside a believable swing band so a daily idea is reachable in days, not never, and the
+  // stop can never underflow below zero.
+  const tpCap = px * (isCrypto ? 1.30 : 1.20);               // target at most +30% (crypto) / +20%
+  const slFloor = px * (isCrypto ? 0.85 : 0.90);             // stop at most −15% (crypto) / −10%, always > 0
+  let target = (res != null && res <= tpCap) ? res : px + 2.5 * atr;
+  target = Math.min(Math.max(target, px * 1.01), tpCap);     // between +1% and the cap
+  let stop = (sup != null && sup >= slFloor) ? Math.max(sup - 0.25 * atr, slFloor) : px - 2 * atr;
+  stop = Math.min(Math.max(stop, slFloor), px * 0.995);      // between the floor and −0.5%, always positive
   const slPct = +(((px - stop) / px) * 100).toFixed(1);
   const tpPct = +(((target - px) / px) * 100).toFixed(1);
   const rr = slPct > 0 ? +(tpPct / slPct).toFixed(1) : null;
+  const dp = px < 1 ? 6 : px < 10 ? 4 : 2;                   // sub-dollar coins need real precision
 
   return {
     score: +score.toFixed(2), signal, pattern, why,
-    stop: +stop.toFixed(2), target: +target.toFixed(2), slPct, tpPct, rr,
+    stop: +stop.toFixed(dp), target: +target.toFixed(dp), slPct, tpPct, rr,
     volRatio: volRatio != null ? +volRatio.toFixed(2) : null,
   };
 }
