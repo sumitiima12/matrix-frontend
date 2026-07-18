@@ -862,13 +862,16 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
   // Premium strategies are shown in EVERY market (not market-filtered) and are locked:
   // name + description only, activate + backtest, no template/edit.
   const premiumStrats = strats.filter((s) => s.premium);
+  /* A strategy belongs to the market of the symbol it's deployed on. So a crypto strategy
+     doesn't show under US. Strategies with no symbol yet appear in every market. */
+  const stratInMarket = (s) => { const sy = (s.symbols || [])[0]; return !sy || marketOf(sy) === market; };
   // "Mine" = ONLY strategies this user created (not samples, premium, or others' public).
-  const mineOwn      = perf.filter(({ s }) => s.by === creator);
+  const mineOwn      = perf.filter(({ s }) => s.by === creator && stratInMarket(s));
   const myStrats     = mineOwn;
   /* "Deployed" spans EVERY type (Mine, Premium, Sample, Public), split into Active
-     (running now) and Inactive, each shown with its type + state tag. */
-  const deployedActive   = strats.filter((s) => s.active).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
-  const deployedInactive = strats.filter((s) => !s.active).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
+     (running now) and Inactive, each shown with its type + state tag — market-filtered. */
+  const deployedActive   = strats.filter((s) => s.active && stratInMarket(s)).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
+  const deployedInactive = strats.filter((s) => !s.active && stratInMarket(s)).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
   const myActive     = deployedActive;
   const myInactive   = deployedInactive;
   const byOptions = ["All", "Matrix", "You", "Community"];

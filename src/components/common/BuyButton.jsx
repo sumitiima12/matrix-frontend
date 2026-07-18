@@ -29,23 +29,31 @@ import { fmt } from "../../lib/format";
  *                  call to action is one consistent full-width bar.
  */
 export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1, variant = "solid", label = "Buy", fullWidth = false }) {
-  const step = lot || 1;
-  const [qty, setQty] = useState(step);
+  /* CRYPTO trades by AMOUNT (USD), not share quantity: you buy "$10 of BTC", and we convert
+     amount → units at the live price (a small fill-price variation is expected and fine).
+     Everything else trades by quantity/lots as before. */
+  const isCrypto = market === "Crypto";
+  const step = isCrypto ? 10 : (lot || 1);        // crypto steps in $10, else by lot
+  const [val, setVal] = useState(step);            // amount ($) for crypto, else quantity
 
   const light = variant === "light";
   const priced = s?.price != null;
-  const total = priced ? s.price * (Number(qty) || 0) : null;
+  // For crypto the "total" spent is the amount itself; for stocks it's price × qty.
+  const total = priced ? (isCrypto ? (Number(val) || 0) : s.price * (Number(val) || 0)) : null;
 
-  const dec = (e) => { e.stopPropagation(); setQty((q) => Math.max(step, (Number(q) || step) - step)); };
-  const inc = (e) => { e.stopPropagation(); setQty((q) => (Number(q) || 0) + step); };
+  const dec = (e) => { e.stopPropagation(); setVal((q) => Math.max(step, (Number(q) || step) - step)); };
+  const inc = (e) => { e.stopPropagation(); setVal((q) => (Number(q) || 0) + step); };
 
   const commit = (e) => {
     e.stopPropagation();
     if (!onBuy || !priced) return;
-    const n = Number(qty) || 0;
-    if (n <= 0) return;
-    onBuy(s, n, opts);
-    setQty(step);
+    const amount = Number(val) || 0;
+    if (amount <= 0) return;
+    // Crypto: convert the dollar amount to units at the live price. Fractional is allowed.
+    const qty = isCrypto ? +(amount / s.price).toFixed(6) : amount;
+    if (qty <= 0) return;
+    onBuy(s, qty, { ...opts, amount: isCrypto ? amount : undefined });
+    setVal(step);
   };
 
   const stepBtn = {
@@ -74,31 +82,32 @@ export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1,
           border: light ? "1px solid rgba(255,255,255,.20)" : "1px solid var(--line)",
         }}
       >
-        <button onClick={dec} className="tap" aria-label="Decrease quantity" style={stepBtn}>
+        <button onClick={dec} className="tap" aria-label={isCrypto ? "Decrease amount" : "Decrease quantity"} style={stepBtn}>
           <Minus size={12} />
         </button>
 
+        {isCrypto && <span className="mono" style={{ fontWeight: 800, fontSize: 12, color: light ? "#fff" : "var(--muted)", paddingLeft: 4 }}>$</span>}
         <input
           type="number"
-          min={step}
+          min={isCrypto ? 1 : step}
           step={step}
-          value={qty}
+          value={val}
           onClick={(e) => e.stopPropagation()}
           onChange={(e) => {
-            const v = parseInt(e.target.value, 10);
-            setQty(Number.isFinite(v) && v > 0 ? v : "");
+            const v = isCrypto ? parseFloat(e.target.value) : parseInt(e.target.value, 10);
+            setVal(Number.isFinite(v) && v > 0 ? v : "");
           }}
-          onBlur={() => { if (!qty || Number(qty) < step) setQty(step); }}
+          onBlur={() => { if (!val || Number(val) < (isCrypto ? 1 : step)) setVal(step); }}
           className="mono"
-          aria-label="Quantity"
+          aria-label={isCrypto ? "Amount in USD" : "Quantity"}
           style={{
-            width: 34, textAlign: "center", fontWeight: 800, fontSize: 12,
+            width: isCrypto ? 42 : 34, textAlign: "center", fontWeight: 800, fontSize: 12,
             border: "none", outline: "none", background: "transparent",
             color: light ? "#fff" : "var(--ink)",
           }}
         />
 
-        <button onClick={inc} className="tap" aria-label="Increase quantity" style={stepBtn}>
+        <button onClick={inc} className="tap" aria-label={isCrypto ? "Increase amount" : "Increase quantity"} style={stepBtn}>
           <Plus size={12} />
         </button>
       </div>
@@ -107,7 +116,7 @@ export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1,
         onClick={commit}
         disabled={!priced}
         className="tap disp"
-        title={priced ? `${label} ${qty} × ${s.sym} = ${fmt(total, market)}` : "No live price yet"}
+        title={priced ? (isCrypto ? `${label} $${val} of ${s.sym} (~${(Number(val) / s.price).toFixed(6)})` : `${label} ${val} × ${s.sym} = ${fmt(total, market)}`) : "No live price yet"}
         style={{
           padding: fullWidth ? "10px 16px" : "6px 13px",
           borderRadius: fullWidth ? 11 : 9,

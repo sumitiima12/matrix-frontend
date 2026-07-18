@@ -501,7 +501,7 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 700 }}>USER ID</div>
-                <div className="disp mono" style={{ fontWeight: 800, fontSize: 14, marginTop: 2 }}>{auth.username || "—"}</div>
+                <div className="disp mono" style={{ fontWeight: 800, fontSize: 14, marginTop: 2, color: auth.username ? "var(--ink)" : "var(--muted)" }}>{auth.username ? "@" + auth.username : "Not set — tap Change"}</div>
               </div>
               {!uidEdit && <button onClick={() => { setUidVal(auth.username || ""); setUidEdit(true); setUidErr(null); }} className="tap disp" style={{ flex: "0 0 auto", border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: "7px 12px", fontWeight: 800, fontSize: 12 }}>Change</button>}
             </div>

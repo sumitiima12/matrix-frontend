@@ -23,6 +23,12 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
   // and starting over just to buy two instead of one.
   const [qty, setQty] = useState(initialQty || 1);
   useEffect(() => { setQty(initialQty || 1); }, [initialQty, order && order.s && order.s.sym]);
+  /* CRYPTO is sized by AMOUNT (USD), not units. We edit dollars here and convert to units
+     at the live price on confirm (a small fill variance is expected). */
+  const isCrypto = market === "Crypto";
+  const cprice = order && order.s ? order.s.price : null;
+  const [amount, setAmount] = useState(() => (initialQty && cprice) ? Math.max(1, Math.round(initialQty * cprice)) : 10);
+  useEffect(() => { const p = order && order.s ? order.s.price : null; setAmount((initialQty && p) ? Math.max(1, Math.round(initialQty * p)) : 10); }, [initialQty, order && order.s && order.s.sym]);
 
   /* Stop-loss / take-profit (%), PRE-FILLED from the pick's or idea's suggestion when the
      buy was launched from one of those cards. Editable, and applied to the position on
@@ -49,8 +55,10 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
   if (!order) return null;
 
   const price = s.price;
-  const units = qty * (lot || 1);
-  const total = price != null ? price * units : null;
+  // Crypto: units derive from the dollar amount; everything else from qty × lot.
+  const effQty = isCrypto ? (price ? +(amount / price).toFixed(6) : 0) : qty;
+  const units = isCrypto ? effQty : qty * (lot || 1);
+  const total = isCrypto ? (Number(amount) || 0) : (price != null ? price * units : null);
   const short = total != null && side === "BUY" && total > wallet;
   const after = total != null ? (side === "BUY" ? wallet - total : wallet + total) : null;
 
@@ -160,32 +168,32 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
             <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>
-              {lot > 1 ? `Quantity (lots of ${lot})` : "Quantity"}
+              {isCrypto ? "Amount (USD)" : (lot > 1 ? `Quantity (lots of ${lot})` : "Quantity")}
             </span>
             <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <button
-                onClick={() => setQty((q) => Math.max(1, q - 1))}
-                disabled={qty <= 1}
-                aria-label="Decrease quantity"
+                onClick={() => isCrypto ? setAmount((a) => Math.max(1, (Number(a) || 10) - 10)) : setQty((q) => Math.max(1, q - 1))}
+                disabled={isCrypto ? amount <= 1 : qty <= 1}
+                aria-label="Decrease"
                 className="tap"
-                style={{ width: 30, height: 30, borderRadius: 9, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", display: "grid", placeItems: "center", cursor: qty <= 1 ? "not-allowed" : "pointer", opacity: qty <= 1 ? 0.45 : 1 }}
+                style={{ width: 30, height: 30, borderRadius: 9, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", display: "grid", placeItems: "center" }}
               >
                 <Minus size={14} />
               </button>
               <input
-                value={qty}
+                value={isCrypto ? amount : qty}
                 onChange={(e) => {
-                  const v = parseInt(String(e.target.value).replace(/[^0-9]/g, ""), 10);
-                  setQty(Number.isFinite(v) && v > 0 ? v : 1);
+                  if (isCrypto) { const v = parseFloat(String(e.target.value).replace(/[^0-9.]/g, "")); setAmount(Number.isFinite(v) && v > 0 ? v : 1); }
+                  else { const v = parseInt(String(e.target.value).replace(/[^0-9]/g, ""), 10); setQty(Number.isFinite(v) && v > 0 ? v : 1); }
                 }}
-                inputMode="numeric"
-                aria-label="Quantity"
+                inputMode={isCrypto ? "decimal" : "numeric"}
+                aria-label={isCrypto ? "Amount in USD" : "Quantity"}
                 className="mono no-ring"
-                style={{ width: 56, textAlign: "center", border: "1px solid var(--line)", borderRadius: 9, padding: "6px 4px", fontWeight: 800, fontSize: 13, background: "var(--elev)", color: "var(--ink)" }}
+                style={{ width: 64, textAlign: "center", border: "1px solid var(--line)", borderRadius: 9, padding: "6px 4px", fontWeight: 800, fontSize: 13, background: "var(--elev)", color: "var(--ink)" }}
               />
               <button
-                onClick={() => setQty((q) => q + 1)}
-                aria-label="Increase quantity"
+                onClick={() => isCrypto ? setAmount((a) => (Number(a) || 0) + 10) : setQty((q) => q + 1)}
+                aria-label="Increase"
                 className="tap"
                 style={{ width: 30, height: 30, borderRadius: 9, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", display: "grid", placeItems: "center", cursor: "pointer" }}
               >
@@ -193,7 +201,13 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
               </button>
             </div>
           </div>
-          {lot > 1 && (
+          {isCrypto && (
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+              <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>≈ Units</span>
+              <span className="mono" style={{ fontSize: 13, fontWeight: 800 }}>{effQty} {s.sym}</span>
+            </div>
+          )}
+          {!isCrypto && lot > 1 && (
             <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
               <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>Total units</span>
               <span className="mono" style={{ fontSize: 13, fontWeight: 800 }}>{units}</span>
@@ -254,7 +268,7 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
             Cancel
           </button>
           <button
-            onClick={() => onConfirm(qty, product, { sl: sl !== "" ? +sl : undefined, tp: tp !== "" ? +tp : undefined })}
+            onClick={() => onConfirm(effQty, product, { sl: sl !== "" ? +sl : undefined, tp: tp !== "" ? +tp : undefined, amount: isCrypto ? Number(amount) : undefined })}
             disabled={price == null || short}
             className="tap disp"
             style={{
