@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useMemo, useRef, useEffect, Suspense } from "react";
-import { fetchIndicators, fetchTrades, marketOpen, postTrade, resolveExitFromCandles, fetchLiveQuotes, apiVerifyPin } from "./domain/api";
+import { fetchIndicators, fetchTrades, marketOpen, postTrade, resolveExitFromCandles, fetchLiveQuotes } from "./domain/api";
 import {
   Search, User, Wallet, Home, Repeat, Lightbulb, Bot, Bolt, Briefcase,
   Star, TrendingUp, TrendingDown, X, ChevronRight, Send, Plus, Trash2,
@@ -325,20 +325,6 @@ function AppInner() {
   const [mode, setModeRaw] = useState(() => (lsGet("mx_mode") === "real" ? "real" : "virtual"));
   const setMode = useCallback((v) => { lsSet("mx_mode", v); setModeRaw(v); }, []);
   const [confirmReal, setConfirmReal] = useState(false);   // arming Real needs a deliberate yes
-  const [realPin, setRealPin] = useState("");              // step-up PIN to enter Real mode
-  const [realPinErr, setRealPinErr] = useState(null);
-  const [realPinBusy, setRealPinBusy] = useState(false);
-  const confirmRealMode = async () => {
-    setRealPinErr(null);
-    if (!/^\d{4,6}$/.test(realPin)) { setRealPinErr("Enter your login PIN."); return; }
-    setRealPinBusy(true);
-    try {
-      const ok = await apiVerifyPin(realPin);
-      if (!ok) { setRealPinErr("Incorrect PIN."); setRealPinBusy(false); return; }
-      setMode("real"); setConfirmReal(false); setRealPin(""); setBuyToast({ t: "Real mode — orders now go to your broker", e: true });
-    } catch (e) { setRealPinErr(String(e.message || e)); }
-    setRealPinBusy(false);
-  };
 
   const [deposits, setDeposits] = useState([]);
 
@@ -880,11 +866,8 @@ function AppInner() {
       <div style={{ maxWidth: 460, margin: "0 auto", minHeight: "100vh", position: "relative", zIndex: 1, paddingBottom: 86 }}>
         {/* ambient glow */}
         <div style={{ position: "absolute", top: -80, left: "50%", transform: "translateX(-50%)", width: 420, height: 320, background: "radial-gradient(circle, rgba(150,150,160,.12), transparent 70%)", pointerEvents: "none", zIndex: 0 }} />
-        {/* REAL-MODE CHROME — a persistent red hairline at the very top so you always know,
-            at a glance, that orders here move real money. */}
-        {mode === "real" && <div style={{ position: "sticky", top: 0, zIndex: 31, height: 3, background: "var(--down)" }} />}
         {/* HEADER */}
-        <div className="glass" style={{ position: "sticky", top: mode === "real" ? 3 : 0, zIndex: 30, background: "var(--header-bg)", borderBottom: mode === "real" ? "1px solid var(--down)" : "1px solid var(--line)" }}>
+        <div className="glass" style={{ position: "sticky", top: 0, zIndex: 30, background: "var(--header-bg)", borderBottom: "1px solid var(--line)" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px 8px", gap: 8 }}>
             <div onClick={() => { setTab("home"); setDetail(null); }} className="tap disp" style={{ display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minWidth: 0, marginRight: "auto" }}>
               <Wordmark height={28} />
@@ -896,7 +879,7 @@ function AppInner() {
                 <Wallet size={15} color={mode === "real" ? "var(--down)" : "var(--gold)"} />
                 <span className="mono" style={{ fontSize: 11.5, fontWeight: 800, color: mode === "real" ? "var(--down)" : "var(--ink)" }}>
                   {mode === "real"
-                    ? ((realPortfolio && realPortfolio.cash != null) ? ((market === "Crypto" || market === "US") ? "$" : "₹") + compact(realPortfolio.cash) : "Real")
+                    ? ((realPortfolio && realPortfolio.cash != null) ? ((market === "Crypto" || market === "US") ? "$" : "₹") + Number(realPortfolio.cash).toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : "Real")
                     : compact(wallet)}
                 </span>
               </button>
@@ -1091,20 +1074,14 @@ function AppInner() {
               <br /><br />
               Your virtual wallet and paper trade history are kept separately and are not affected.
             </div>
-            {/* Step-up: entering Real money requires your login PIN. */}
-            <div style={{ marginTop: 16 }}>
-              <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Enter your login PIN to confirm</div>
-              <input value={realPin} onChange={(e) => { setRealPin(e.target.value.replace(/[^0-9]/g, "").slice(0, 6)); setRealPinErr(null); }} onKeyDown={(e) => { if (e.key === "Enter") confirmRealMode(); }} type="password" inputMode="numeric" autoFocus placeholder="••••" className="no-ring mono" style={{ width: "100%", border: "1px solid " + (realPinErr ? "var(--down)" : "var(--line)"), borderRadius: 12, padding: "12px 14px", fontSize: 18, letterSpacing: "6px", textAlign: "center", background: "var(--elev)", color: "var(--ink)" }} />
-              {realPinErr && <div style={{ color: "var(--down)", fontSize: 11.5, fontWeight: 600, marginTop: 6 }}>{realPinErr}</div>}
-            </div>
-            <div style={{ display: "flex", gap: 9, marginTop: 16 }}>
-              <button onClick={() => { setConfirmReal(false); setRealPin(""); setRealPinErr(null); }} className="tap disp"
+            <div style={{ display: "flex", gap: 9, marginTop: 18 }}>
+              <button onClick={() => setConfirmReal(false)} className="tap disp"
                 style={{ flex: 1.3, border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 12, padding: 13, fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>
                 Stay in Virtual
               </button>
-              <button onClick={confirmRealMode} disabled={realPinBusy || !/^\d{4,6}$/.test(realPin)} className="tap disp"
-                style={{ flex: 1, border: "none", background: /^\d{4,6}$/.test(realPin) ? "var(--down)" : "var(--elev)", color: /^\d{4,6}$/.test(realPin) ? "#fff" : "var(--muted)", borderRadius: 12, padding: 13, fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>
-                {realPinBusy ? "Checking…" : "Use Real"}
+              <button onClick={() => { setMode("real"); setConfirmReal(false); setBuyToast({ t: "Real mode — orders now go to your broker", e: true }); }} className="tap disp"
+                style={{ flex: 1, border: "none", background: "var(--down)", color: "#fff", borderRadius: 12, padding: 13, fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>
+                Use Real
               </button>
             </div>
           </div>

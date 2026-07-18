@@ -634,6 +634,8 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   // in VIRTUAL mode it reflects your paper holdings. Each market is isolated, so switching
   // the market at the top changes the figure (US shows only US, Crypto only Crypto, etc.).
   const isReal = mode === "real";
+  // Real-mode money shown to ONE decimal (a Delta cash balance like $162.20473968 is noise).
+  const money1 = (v) => ((market === "Crypto" || market === "US") ? "$" : "₹") + Number(v || 0).toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const inMarket = (sym, m) => (m || marketOf(sym) || "IN") === market;
   // Real broker holdings arrive as an OBJECT { holdings:[...], cash } — not an array — with
   // each holding shaped { sym, qty, avg, value, pnl }. Normalise to the paper-holding shape
@@ -800,10 +802,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 <span style={{ fontSize: 12, opacity: .85 }}>{isReal ? "Real" : "Virtual"} · {MKT_LABEL[market]} · current value</span>
                 <span className="pill" style={{ fontSize: 11, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "4px 10px", display: "flex", alignItems: "center", gap: 4 }}>My Portfolio <ChevronRight size={13} /></span>
               </div>
-              <div className="mono" style={{ fontWeight: 800, fontSize: 27, marginTop: 2 }}>{fmt(dash.val, market)}</div>
+              <div className="mono" style={{ fontWeight: 800, fontSize: 27, marginTop: 2 }}>{isReal ? money1(dash.val) : fmt(dash.val, market)}</div>
               <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
-                <DashStat k="Returns %" v={(retPct >= 0 ? "+" : "") + retPct.toFixed(2) + "%"} pos={retPct >= 0} />
-                <DashStat k="Net returns" v={(net >= 0 ? "+" : "") + fmt(net, market)} pos={net >= 0} />
+                <DashStat k="Returns %" v={(retPct >= 0 ? "+" : "") + retPct.toFixed(1) + "%"} pos={retPct >= 0} />
+                <DashStat k="Net returns" v={(net >= 0 ? "+" : "") + (isReal ? money1(net) : fmt(net, market))} pos={net >= 0} />
               </div>
               {portfolio.length === 0 && <div style={{ fontSize: 11.5, opacity: .8, marginTop: 10 }}>No holdings yet — buy your first stock in Virtual Trade.</div>}
             </div>
