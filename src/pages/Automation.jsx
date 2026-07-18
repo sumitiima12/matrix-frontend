@@ -354,9 +354,30 @@ function NumF({ label, v, set }) {
  * candles and report exactly what came out — and we label it a backtest, because
  * that is what it is. Hindsight is not performance.
  */
-function SampleStrategyCard({ s, onActivate, onClone, onEdit }) {
+/* Deploy-size control shown on every strategy card — "Amount per trade ($)" for crypto
+   (default 10, ±10), "Quantity per trade" for other markets (default 1, ±1). */
+function DeploySizeField({ market, value, onChange }) {
+  const isC = market === "Crypto";
+  const step = isC ? 10 : 1;
+  const val = value != null ? value : (isC ? 10 : 1);
+  const set = (n) => onChange(Math.max(1, n));
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, gap: 8 }}>
+      <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>{isC ? "Amount per trade (USD)" : "Quantity per trade"}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <button onClick={() => set(Number(val) - step)} className="tap" style={{ width: 26, height: 26, borderRadius: 8, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", display: "grid", placeItems: "center", fontWeight: 800 }}>−</button>
+        {isC && <span className="mono" style={{ fontWeight: 800, fontSize: 12, color: "var(--muted)" }}>$</span>}
+        <input value={val} onChange={(e) => { const n = isC ? parseFloat(e.target.value.replace(/[^0-9.]/g, "")) : parseInt(e.target.value.replace(/[^0-9]/g, ""), 10); set(Number.isFinite(n) && n > 0 ? n : 1); }} inputMode={isC ? "decimal" : "numeric"} className="mono no-ring" style={{ width: 56, textAlign: "center", border: "1px solid var(--line)", borderRadius: 8, padding: "5px 4px", fontWeight: 800, fontSize: 12.5, background: "var(--elev)", color: "var(--ink)" }} />
+        <button onClick={() => set(Number(val) + step)} className="tap" style={{ width: 26, height: 26, borderRadius: 8, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", display: "grid", placeItems: "center", fontWeight: 800 }}>+</button>
+      </div>
+    </div>
+  );
+}
+
+function SampleStrategyCard({ s, onActivate, onClone, onEdit, market = "IN" }) {
   const { loading, stats } = useBacktestStats(s);
   const [bt, setBt] = useState(false);
+  const [size, setSize] = useState(market === "Crypto" ? 10 : 1);
 
   const Stat = ({ k, v, c }) => (
     <div style={{ flex: 1, background: "var(--elev)", borderRadius: 11, padding: "9px 10px", minWidth: 0 }}>
@@ -401,6 +422,8 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit }) {
         </>
       )}
 
+      <DeploySizeField market={market} value={size} onChange={setSize} />
+
       {/* TEST BEFORE YOU ACTIVATE. The headline stats above are a fixed backtest; this
           is the interactive one — pick the symbol, timeframe and window yourself. It was
           only available on strategies you'd already deployed, which is backwards. */}
@@ -425,7 +448,7 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit }) {
           </button>
         )}
         {onActivate && (
-          <button onClick={() => onActivate(s)} className="tap disp"
+          <button onClick={() => onActivate(s, size)} className="tap disp"
             style={{ flex: 1, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>
             Use
           </button>
@@ -447,6 +470,7 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit }) {
 function PremiumStrategyCard({ s, active, onToggle, onEdit, market = "IN" }) {
   const { loading, stats } = useBacktestStats(s);
   const [bt, setBt] = useState(false);
+  const [size, setSize] = useState(market === "Crypto" ? 10 : 1);
   /* Show a symbol relevant to the CURRENT market. Premium strategies are shared across
      markets, so under Crypto we surface a crypto symbol, not the Indian one they were saved
      with. Fall back to the first symbol of this market's universe. */
@@ -482,6 +506,8 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, market = "IN" }) {
         </div>
       ) : null}
 
+      <DeploySizeField market={market} value={size} onChange={setSize} />
+
       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
         <button
           onClick={() => setBt((v) => !v)}
@@ -497,7 +523,7 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, market = "IN" }) {
           </button>
         )}
         <button
-          onClick={() => onToggle(relSym)}
+          onClick={() => onToggle(relSym, size)}
           className="tap disp"
           style={{ flex: 1, border: "1px solid " + (active ? "var(--up)" : "var(--primary)"), background: active ? "var(--up-soft)" : "var(--primary)", color: active ? "var(--up)" : "#fff", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
         >
@@ -566,7 +592,7 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
   );
 }
 
-export default function Automation({ market = "IN", onRecord, trades = [], strats = [], setStrats, onExitAll, me = null, isAdmin = false, userId = null, brokerFor = null, adminKey = "" }) {
+export default function Automation({ market = "IN", appMode = "virtual", onRecord, trades = [], strats = [], setStrats, onExitAll, me = null, isAdmin = false, userId = null, brokerFor = null, adminKey = "" }) {
   // Which strategy is being armed for real-money auto-buy, and the form for it.
   const [liveStrat, setLiveStrat] = useState(null);
   const [liveAmt, setLiveAmt] = useState("");
@@ -617,8 +643,13 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
     { la: "MACD1.line", op: "crosses_below", bType: "ind", b: "MACD1.signal" },
     { la: "RSI1", op: ">", bType: "num", b: "70", gate: "OR" },
   ]);
-  const [sl, setSl] = useState("3");
-  const [tp, setTp] = useState("8");
+  // Default risk per market: crypto is more volatile so it gets wider stops/targets.
+  const defSL = (m) => (m === "Crypto" ? "2" : "1");     // Crypto SL 2% · Indian/US/Commodity SL 1%
+  const defTP = (m) => (m === "Crypto" ? "5" : "3");     // Crypto TP 5% · Indian/US/Commodity TP 3%
+  const [sl, setSl] = useState(defSL(market));
+  const [tp, setTp] = useState(defTP(market));
+  // When you switch market (fresh builder context), reset SL/TP to that market's default.
+  useEffect(() => { setSl(defSL(market)); setTp(defTP(market)); /* eslint-disable-next-line */ }, [market]);
   const [capital, setCapital] = useState(market === "Crypto" ? "10" : "1");   // crypto: $ amount (default 10); else quantity (default 1)
 
   /* Order-execution defaults for the automation. */
@@ -753,20 +784,21 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
     setToast(`Editing "${s.name}" — change it below, then Save.`);
     setTimeout(() => { try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {} }, 40);
   };
-  const activateTemplate = (t, syms) => {
+  const activateTemplate = (t, syms, size) => {
     const symbols = syms && syms.length ? syms : ["NIFTY50"];
     const id = "t" + Date.now();
+    const sz = size != null ? size : (market === "Crypto" ? 10 : 1);
     // by: creator — the moment YOU activate it, it is YOUR strategy and belongs under
     // "My strategies". It was previously tagged "Matrix", which filed the user's own
     // running strategies under the samples.
-    setStrats((p) => [{ id, name: t.name, by: creator, active: true, alerts: false, cfg: t.cfg, cap: 100000, symbols, created: Date.now() }, ...p]);
+    setStrats((p) => [{ id, name: t.name, by: creator, active: true, alerts: false, cfg: t.cfg, cap: sz, qty: sz, symbols, created: Date.now() }, ...p]);
     setToast(`${t.name} is live on ${symbols.join(", ")} — it will place orders when its rules trigger.`);
     setStratTab("mine"); setTopTab("mine");
     setTimeout(() => stratsRef.current && stratsRef.current.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   };
 
   /* "Use this strategy" on a sample: copy its rules and symbols into your own. */
-  const useTemplateStrategy = (s) => activateTemplate({ name: s.name, cfg: s.cfg }, s.symbols);
+  const useTemplateStrategy = (s, size) => activateTemplate({ name: s.name, cfg: s.cfg }, s.symbols, size);
 
   /* Clone: drop an editable copy into "My strategies" (inactive), so you can tweak it
      before deploying. Works from Samples and from your own strategies. */
@@ -813,10 +845,11 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
      now evaluates the real rules against real candles once a minute and places
      both buys and sells. */
 
-  const toggleActive = (id, relSym) => setStrats((p) => p.map((s) => s.id === id
+  const toggleActive = (id, relSym, size) => setStrats((p) => p.map((s) => s.id === id
     // When ACTIVATING, snap the strategy to a symbol relevant to the market you're on, so a
-    // shared premium strategy deploys on (say) BTC under Crypto instead of an Indian stock.
-    ? { ...s, active: !s.active, ...(relSym && !s.active ? { symbols: [relSym] } : {}) }
+    // shared premium strategy deploys on (say) BTC under Crypto instead of an Indian stock,
+    // and carry the per-trade size chosen on the card.
+    ? { ...s, active: !s.active, ...(relSym && !s.active ? { symbols: [relSym] } : {}), ...(size != null && !s.active ? { qty: size, cap: size } : {}) }
     : s));
   const toggleAlerts = (s) => { const willOn = !s.alerts; setStrats((p) => p.map((x) => x.id === s.id ? { ...x, alerts: willOn } : x)); if (willOn) fireAlert(s); };
   const updateStrat = (id, patch) => setStrats((p) => p.map((s) => s.id === id ? { ...s, ...patch } : s));
@@ -1040,11 +1073,12 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
       <div className="disp" style={{ fontWeight: 700, fontSize: 22, marginTop: 8 }}>Automate with Neo</div>
       <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 2 }}>{{ IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", FNO: "⚡ F&O", Commodity: "🪙 Commodity" }[market]} strategies · track performance and manage automations.</div>
 
-      <div style={{ marginTop: 14 }}><LiveAutoBuys userId={userId} market={market} isAdmin={isAdmin} adminKey={adminKey} /></div>
+      {/* Live Real Deployed — REAL mode only (real-money armed strategies). */}
+      {appMode === "real" && <div style={{ marginTop: 14 }}><LiveAutoBuys userId={userId} market={market} isAdmin={isAdmin} adminKey={adminKey} /></div>}
 
       {/* Virtual Live Deployed — the paper-mode twin of "Live Real Deployed": every ACTIVE
-          paper strategy for this market, with its simulated P&L. No real orders here. */}
-      {(() => {
+          paper strategy for this market, with its simulated P&L. VIRTUAL mode only. */}
+      {appMode !== "real" && (() => {
         const vd = strats.filter((s) => s.active && inMkt(s)).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
         if (!vd.length) return null;
         return (
@@ -1322,7 +1356,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
       {topTab === "sample" ? (
         sampleStrats.length === 0
           ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No sample strategies for this market.</div>
-          : sampleStrats.map(({ s }) => <SampleStrategyCard key={s.id} s={s} onActivate={useTemplateStrategy} onClone={cloneStrategy} onEdit={isAdmin ? loadForEdit : undefined} />)
+          : sampleStrats.map(({ s }) => <SampleStrategyCard key={s.id} s={s} market={market} onActivate={useTemplateStrategy} onClone={cloneStrategy} onEdit={isAdmin ? loadForEdit : undefined} />)
       ) : topTab === "premium" ? (
         <>
           <div style={{ fontSize: 11.5, color: "var(--muted)", margin: "0 2px 4px", lineHeight: 1.5 }}>

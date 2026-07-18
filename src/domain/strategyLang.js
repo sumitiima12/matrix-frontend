@@ -129,11 +129,19 @@ export function defOperands(defs) {
  * backtestable conditions the engine understands. */
 export const MACD_DEF = { type: "MACD", len: "", name: "MACD" };
 export const BB_DEF = { type: "BB", len: "20", name: "BB" };
+export const CC_DEF = { type: "CurrentCandle", len: "", name: "CC" };   // this candle's O/H/L/C
 export function mapToken(tok) {
   const t = tok.toLowerCase();
   if (/hist/.test(t)) return { operand: "MACD.hist", def: MACD_DEF };
   if (/signal/.test(t)) return { operand: "MACD.signal", def: MACD_DEF };
   if (/macd/.test(t)) return { operand: "MACD.line", def: MACD_DEF };
+  // Candle O/H/L/C — must be checked BEFORE the generic price/close catch, and each maps to
+  // the real candle field so "close > open" means a green candle (not the old bug where
+  // "open" was dropped and it collapsed to "price > 0").
+  if (/\bopen\b/.test(t)) return { operand: "CC.open", def: CC_DEF };
+  if (/\bhigh\b/.test(t)) return { operand: "CC.high", def: CC_DEF };
+  if (/\blow\b/.test(t)) return { operand: "CC.low", def: CC_DEF };
+  if (/\bclose\b/.test(t)) return { operand: "CC.close", def: CC_DEF };
   let m;
   if ((m = t.match(/(\d+)\s*[- ]?\s*ema|ema\s*\(?\s*(\d+)?/))) { const len = m[1] || m[2] || "20"; return { operand: "EMA" + len, def: { type: "EMA", len, name: "EMA" + len } }; }
   if ((m = t.match(/(\d+)\s*[- ]?\s*sma|sma\s*\(?\s*(\d+)?/))) { const len = m[1] || m[2] || "50"; return { operand: "SMA" + len, def: { type: "SMA", len, name: "SMA" + len } }; }
@@ -145,10 +153,10 @@ export function mapToken(tok) {
   if (/cci/.test(t)) return { operand: "CCI", def: { type: "CCI", len: "20", name: "CCI" } };
   if (/vwap/.test(t)) return { operand: "VWAP", def: { type: "VWAP", len: "", name: "VWAP" } };
   if (/volume/.test(t)) return { operand: "Volume", def: { type: "Volume", len: "", name: "Volume" } };
-  if (/price|close|ltp|spot/.test(t)) return { operand: "Price", def: null };
+  if (/price|ltp|spot/.test(t)) return { operand: "Price", def: null };
   return null;
 }
-export const TOKEN_RE = /macd\s*hist\w*|macd\s*signal\w*|signal\s*line|macd\s*line|macd|\d+\s*[- ]?\s*ema|ema\s*\(?\s*\d*\s*\)?|\d+\s*[- ]?\s*sma|sma\s*\(?\s*\d*\s*\)?|upper\s*band|lower\s*band|middle\s*band|bollinger\s*\w*|\brsi\b|\badx\b|\bcci\b|\bvwap\b|\bvolume\b|\bprice\b|\bclose\b|\bltp\b/gi;
+export const TOKEN_RE = /macd\s*hist\w*|macd\s*signal\w*|signal\s*line|macd\s*line|macd|\d+\s*[- ]?\s*ema|ema\s*\(?\s*\d*\s*\)?|\d+\s*[- ]?\s*sma|sma\s*\(?\s*\d*\s*\)?|upper\s*band|lower\s*band|middle\s*band|bollinger\s*\w*|\brsi\b|\badx\b|\bcci\b|\bvwap\b|\bvolume\b|\bprice\b|\bclose\b|\bopen\b|\bhigh\b|\blow\b|\bltp\b/gi;
 export function detectOp(clause) {
   const c = clause.toLowerCase();
   if (/cross(es|ing)?\s*(above|over)/.test(c)) return { op: "crosses_above" };

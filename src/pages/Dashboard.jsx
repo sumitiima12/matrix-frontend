@@ -628,10 +628,19 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   // the market at the top changes the figure (US shows only US, Crypto only Crypto, etc.).
   const isReal = mode === "real";
   const inMarket = (sym, m) => (m || marketOf(sym) || "IN") === market;
+  // Real broker holdings arrive as an OBJECT { holdings:[...], cash } — not an array — with
+  // each holding shaped { sym, qty, avg, value, pnl }. Normalise to the paper-holding shape
+  // (buy = avg cost, price = current unit value) so the same math works for both modes.
+  const realHoldings = (realPortfolio && Array.isArray(realPortfolio.holdings)) ? realPortfolio.holdings : (Array.isArray(realPortfolio) ? realPortfolio : []);
   const holds = isReal
-    ? (realPortfolio || [])
+    ? realHoldings
         .filter((h) => inMarket(h.sym, h.market) && h.qty)
-        .map((h) => ({ sym: h.sym, qty: h.qty, buy: (h.avg != null ? h.avg : h.price), date: h.entryAt || Date.now(), price: h.price }))
+        .map((h) => ({
+          sym: h.sym, qty: h.qty,
+          buy: (h.avg != null ? h.avg : (h.value != null && h.qty ? h.value / h.qty : 0)),
+          price: (h.value != null && h.qty ? h.value / h.qty : (h.price != null ? h.price : null)),
+          date: h.entryAt || (Date.now() - 30 * 864e5),
+        }))
     : (portfolio || []).filter((h) => inMarket(h.sym, h.market));
   // Refresh real positions when entering real mode / switching market, so the figure isn't stale.
   useEffect(() => { if (isReal && onRefreshReal) onRefreshReal(); /* eslint-disable-next-line */ }, [isReal, market]);
@@ -642,14 +651,12 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     a.annNum += (Math.pow(cur / h.buy, 365 / days) - 1) * (h.buy * h.qty);
     return a;
   }, { val: 0, inv: 0, annNum: 0 });
-  // Unrealised P&L on open holdings...
+  // Net returns = unrealised P&L on the holdings CURRENTLY shown. If current value is ₹0
+  // (no open holdings), returns are ₹0 too — we no longer bolt lifetime realised paper P&L
+  // onto this card (that was why "value ₹0" could sit next to "+₹29,037"). Realised auto-buy
+  // performance still has its own home in the Smart Auto-Buy tab.
   const unrealised = dash.val - dash.inv;
-  // ...PLUS realised P&L from CLOSED paper trades for THIS market (virtual only — real
-  // realised P&L lives with the broker, not in the paper trade log).
-  const realisedPnl = isReal ? 0 : (trades || [])
-    .filter((t) => t.exitAt != null && t.pnl != null && inMarket(t.sym, t.market))
-    .reduce((a, t) => a + (t.pnl || 0), 0);
-  const net = unrealised + realisedPnl;
+  const net = unrealised;
   const retPct = dash.inv ? (net / dash.inv) * 100 : 0;
   const annPct = dash.inv ? (dash.annNum / dash.inv) * 100 : 0;
 
