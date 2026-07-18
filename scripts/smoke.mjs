@@ -44,9 +44,13 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import HomeView from ${P("src/pages/Dashboard.jsx")};
 import Automation from ${P("src/pages/Automation.jsx")};
+import Portfolio from ${P("src/pages/PortfolioPage.jsx")};
+import Ideas from ${P("src/pages/Ideas.jsx")};
 
 const realPortfolio = { holdings: [{ sym: "AAPL", qty: 2, avg: 100, value: 240, pnl: 40, market: "US" }], cash: 500 };
 const noop = () => {};
+const portfolioProps = (mode, market) => ({ portfolio: [], wallet: 0, market, onGoHome: noop, onBuy: noop, onSell: noop, onUpdate: noop, onRemove: noop, priceSnap: {}, onWhy: noop, onOpen: noop, mode, realPortfolio, realErr: null, realLoading: false, onRefreshReal: noop, brokerName: "Delta", realAvailable: true, userId: "u1" });
+const ideasProps = (market) => ({ onOpen: noop, onBuy: noop, market, onWhy: noop, me: "tester", isAdmin: false, adminKey: "", signupAt: Date.now() });
 const homeProps = (mode, market) => ({
   market, setMarket: noop, segment: "", setSegment: noop, list: [], onOpen: noop, onBuy: noop, onAutoBuy: noop,
   mode, watch: [], toggleWatch: noop, profile: {}, portfolio: [], realPortfolio, onRefreshReal: noop, wallet: 0,
@@ -68,6 +72,11 @@ check("Home · real · Crypto", React.createElement(HomeView, homeProps("real", 
 check("Home · virtual · IN", React.createElement(HomeView, homeProps("virtual", "IN")));
 check("Automation · virtual", React.createElement(Automation, autoProps("virtual")));
 check("Automation · real", React.createElement(Automation, autoProps("real")));
+check("Portfolio · virtual · IN", React.createElement(Portfolio, portfolioProps("virtual", "IN")));
+check("Portfolio · real · Crypto", React.createElement(Portfolio, portfolioProps("real", "Crypto")));
+check("Portfolio · real · US", React.createElement(Portfolio, portfolioProps("real", "US")));
+check("Ideas · Crypto", React.createElement(Ideas, ideasProps("Crypto")));
+check("Ideas · IN", React.createElement(Ideas, ideasProps("IN")));
 globalThis.__SMOKE_FAILED__ = failed;
 `;
 

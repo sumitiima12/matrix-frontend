@@ -232,6 +232,20 @@ export async function loadAutoExits(userId) {
   } catch { return { positions: [], engineLive: false }; }
 }
 
+/** Arm a stop-loss / take-profit / trailing-stop on an EXISTING real holding. The server
+    registers a managed position and the exit engine sells (reduce-only) when a level hits. */
+export async function registerAutoExit(userId, payload) {
+  if (!BACKEND_URL) throw new Error("no-backend");
+  const r = await fetch(`${BACKEND_URL}/api/autoexit/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-User-Id": String(userId || "") },
+    body: JSON.stringify(payload || {}),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || d.error) throw new Error(d.error || "Couldn't arm the exit");
+  return d;
+}
+
 /** Stop the engine watching a position (does NOT touch the position at the broker). */
 export async function cancelAutoExit(userId, id) {
   if (!BACKEND_URL) return;

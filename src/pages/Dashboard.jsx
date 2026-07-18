@@ -215,10 +215,14 @@ function LiveNewsStrip({ symbols = [], onOpen, onBuy, list = [], market = "IN" }
     ...(untagged ? ["Others"] : []),
   ];
 
-  const shown =
+  const filtered =
     tag === "Others" ? items.filter((x) => !x.tag)
     : tag ? items.filter((x) => x.tag === tag)
     : items;
+  // ONE card per symbol — keep the newest headline for each. Multiple headlines about the
+  // same stock (e.g. three EICHERMOT stories) collapsed into three identical-looking cards;
+  // the "Read more" carousel already shows every headline for that symbol.
+  const shown = (() => { const seen = new Set(); return filtered.filter((n) => { if (!n.sym || seen.has(n.sym)) return false; seen.add(n.sym); return true; }); })();
 
   const TAG_COLOR = {
     Earnings: "var(--primary)", Dividend: "var(--up)", Split: "#8B5CF6",
@@ -293,10 +297,13 @@ function LiveNewsStrip({ symbols = [], onOpen, onBuy, list = [], market = "IN" }
                   </div>
                 </div>
 
+                {/* Read more ALWAYS opens the 7-day news carousel (never the stock drawer).
+                    Generous vertical padding gives a comfortable tap target that doesn't
+                    bleed into the headline tap-area above it. */}
                 <button
-                  onClick={(e) => { e.stopPropagation(); setReadSym(n.sym); }}
+                  onClick={(e) => { e.stopPropagation(); e.preventDefault(); setReadSym(n.sym); }}
                   className="tap disp"
-                  style={{ alignSelf: "flex-start", marginTop: 9, background: "none", border: "none", padding: 0, color: "var(--primary)", fontWeight: 800, fontSize: 11.5, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 3 }}
+                  style={{ alignSelf: "stretch", marginTop: 6, background: "none", border: "none", padding: "10px 2px", color: "var(--primary)", fontWeight: 800, fontSize: 12, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 3 }}
                 >
                   Read more <ChevronRight size={13} />
                 </button>

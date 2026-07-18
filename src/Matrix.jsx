@@ -49,7 +49,7 @@ import WalletSheet from "./components/common/WalletSheet";
 import ConfirmOrder from "./components/common/ConfirmOrder";
 import BrokerSheet from "./components/common/BrokerSheet";
 import { brokerSymbol } from "./domain/brokerSymbols";
-import { brokerPlaceOrder } from "./services/brokerService";
+import { brokerPlaceOrder, registerAutoExit } from "./services/brokerService";
 import MatrixRain from "./components/common/MatrixRain";
 import MLogo from "./components/common/MLogo";
 import NeoIcon from "./components/common/NeoIcon";
@@ -422,6 +422,18 @@ function AppInner() {
       }, true);
       let t = `Real ${side.toLowerCase()} sent to ${route.meta.name} — order ${r.orderId}`;
       if (side === "BUY" && (opts.sl > 0 || opts.tp > 0)) { if (isDelta && r.bracket && r.bracket.placed) t += " · SL/TP set"; else if (r.autoExitId) t += " · auto-exit armed"; }
+      // Journal the real order so it's visible (e.g. the homepage Auto-Buy "positions" list reads
+      // this ledger). recordTrade only appends to the journal — it never touches the paper book —
+      // so this stays real-only. We tag it real:true and carry the tradeType (Auto Buy / Manual…).
+      if (side === "BUY") {
+        try {
+          recordTrade({
+            id: `real-${r.orderId || Date.now()}`, sym: s.sym, market: mkt, qty: q, side: "BUY",
+            entry: s.price ?? undefined, entryAt: Date.now(), tradeType: opts.tradeType || "Manual",
+            real: true, tp: opts.tp || undefined, sl: opts.sl || undefined,
+          });
+        } catch {}
+      }
       setBuyToast({ t }); refreshPortfolio(); return true;
     } catch (e) { setBuyToast({ t: `Broker rejected the order: ${String(e.message || e)}`, e: true }); return false; }
   };
@@ -432,6 +444,26 @@ function AppInner() {
     placeOrder({ stock, side: "BUY",  qty, opts }); return true;
   };
   const sellStockNow = (stock, qty = 1, opts = {}) => { placeOrder({ stock, side: "SELL", qty, opts }); return true; };
+  /* Arm a stop-loss / take-profit / trailing-stop on an EXISTING real holding (from My
+     Portfolio in real mode). Resolves the broker symbol, then registers a server auto-exit so
+     the engine sells reduce-only when a level is hit. Entry defaults to the holding's avg cost. */
+  const armRealExit = async (holding, risk = {}) => {
+    const mkt = marketOf(holding.sym) || holding.market || market;
+    const route = brokerFor(mkt);
+    if (!route) { setBuyToast({ t: `No broker connected for ${MKT_LABEL[mkt] || mkt}`, e: true }); return false; }
+    const bsym = brokerSymbol(holding.sym, route.id);
+    if (!bsym) { setBuyToast({ t: `${route.meta.name} can't map ${holding.sym}`, e: true }); return false; }
+    if (!(risk.sl > 0) && !(risk.tp > 0) && !(risk.tsl > 0)) { setBuyToast({ t: "Set a stop-loss, target or trailing stop first", e: true }); return false; }
+    try {
+      await registerAutoExit(userId, {
+        broker: route.id, symbol: holding.sym, brokerSym: bsym, qty: holding.qty,
+        entry: holding.avg != null ? holding.avg : holding.ltp, market: mkt,
+        sl: risk.sl, tp: risk.tp, tsl: risk.tsl, product: "CNC",
+      });
+      setBuyToast({ t: `Stop/target armed for ${holding.sym} — the exit engine will sell when hit.` });
+      return true;
+    } catch (e) { setBuyToast({ t: `Couldn't arm exit: ${String(e.message || e)}`, e: true }); return false; }
+  };
 
   /* THE AUTOMATION LOOP. Evaluates every active strategy's entry/exit rules
      against real candles once a minute and places real orders through the normal
@@ -942,7 +974,7 @@ function AppInner() {
               {tab === "trade" && <TradeView walletMap={walletMap} adjustWallet={adjustWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} recordTrade={recordTrade} />}
               {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} market={market} onWhy={openWhy} me={auth ? (auth.username || null) : null} isAdmin={effAdmin} adminKey={adminKey} signupAt={auth ? (auth.createdAt || null) : null} />}
               {tab === "automation" && <Automation market={market} appMode={mode} onRecord={recordTrade} trades={trades} strats={strats} setStrats={setStrats} onExitAll={exitAllStrategies} me={auth ? (auth.username || null) : null} isAdmin={effAdmin} userId={userId} brokerFor={brokerFor} adminKey={adminKey} />}
-              {tab === "portfolio" && <Portfolio mode={mode} realPortfolio={realPortfolio} realErr={realErr} realLoading={realLoading} onRefreshReal={() => refreshPortfolio(market)} realAvailable={!!brokerFor(market)} userId={userId} brokerName={(brokerFor(market) && brokerFor(market).meta ? brokerFor(market).meta.name : (liveBroker ? liveBroker.name : null))} portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} onBuy={buyStock} onSell={sellStock} onUpdate={updateHolding} priceSnap={priceSnap} onWhy={openWhy} onOpen={openStock} onRemove={(sym) => { setPortfolio((prev) => prev.filter((h) => h.sym !== sym)); setBuyToast({ t: `${sym} removed` }); }} />}
+              {tab === "portfolio" && <Portfolio mode={mode} realPortfolio={realPortfolio} realErr={realErr} realLoading={realLoading} onRefreshReal={() => refreshPortfolio(market)} realAvailable={!!brokerFor(market)} userId={userId} brokerName={(brokerFor(market) && brokerFor(market).meta ? brokerFor(market).meta.name : (liveBroker ? liveBroker.name : null))} portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} onBuy={buyStock} onSell={sellStock} onUpdate={updateHolding} onArmRealExit={armRealExit} priceSnap={priceSnap} onWhy={openWhy} onOpen={openStock} onRemove={(sym) => { setPortfolio((prev) => prev.filter((h) => h.sym !== sym)); setBuyToast({ t: `${sym} removed` }); }} />}
               {tab === "watchlist" && <WatchlistView watchlists={watchlists} activeWl={activeWl} setActiveWl={setActiveWl} createWatchlist={createWatchlist} deleteWatchlist={deleteWatchlist} toggleWatch={toggleWatch} onOpen={openStock} />}
               {tab === "ask" && (
                 <div className="fade">

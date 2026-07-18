@@ -98,15 +98,41 @@ export function techSignal(s) {
   };
 }
 
+/* A BULLISH one-liner for Top Picks. techSignal.why is a neutral verdict — for a range-bound
+   name it literally says "chopping… no clear edge", which is nonsense on a card that is
+   recommending you BUY. Top Picks are, by construction, the strongest setups we found, so the
+   blurb states the bullish thesis (what's working) and the upside, never "no edge". */
+export function pickReason(s, t) {
+  const cur = (v) => fmt(v, marketOf(s.sym));
+  const trendUp = s.sma200 != null ? s.sma50 > s.sma200 : (s.sma50 != null && s.price > s.sma50);
+  const macdBull = s.macd != null && s.macdSignal != null && s.macd > s.macdSignal;
+  const vr = (s.avgVol && s.vol != null) ? s.vol / s.avgVol : null;
+  let lead;
+  if (t.pattern === "breakout") lead = `Breaking through its ${cur(s.resistance)} ceiling`;
+  else if (t.pattern === "doubleBottom") lead = `Bouncing off ${cur(s.support)} support`;
+  else if (t.pattern === "cup") lead = `Reclaiming ground after an oversold dip`;
+  else if (trendUp) lead = `Holding a steady uptrend above its 50-day average`;
+  else lead = `Basing above support with buyers stepping in`;
+  const conf = [];
+  if (macdBull) conf.push("MACD positive");
+  if (s.rsi != null && s.rsi >= 50 && s.rsi < 70) conf.push(`RSI ${s.rsi} with room to run`);
+  if (s.adx != null && s.adx > 25) conf.push(`ADX ${Math.round(s.adx)} trend strength`);
+  if (vr && vr > 1.3) conf.push(`${vr.toFixed(1)}× average volume`);
+  const tail = conf.length ? ` — ${conf.slice(0, 2).join(", ")}.` : ".";
+  return `${lead}${tail} Upside toward ${cur(t.target)} (+${t.tpPct}%).`;
+}
+
 // Ranked picks — only from instruments with REAL data. Refreshed hourly.
 export function dailyPicks(list) {
   return (list || [])
     .filter((s) => s.hasData && s.rsi != null && s.sma50 != null && s.sector !== "Volatility")
     .map((s) => ({ s, t: techSignal(s) }))
-    .filter((x) => x.t && x.t.score > 0)
+    // A "top pick" is a BUY idea, so we drop outright bearish/overbought readings — never
+    // surface a stretched or edgeless name as a pick.
+    .filter((x) => x.t && x.t.score > 0 && x.t.signal !== "Overbought")
     .sort((a, b) => b.t.score - a.t.score)
     .map(({ s, t }) => Object.assign(s, {
-      pickSignal: t.signal, pickReason: t.why, pickPattern: t.pattern,
+      pickSignal: t.signal, pickReason: pickReason(s, t), pickPattern: t.pattern,
       pickStop: t.stop, pickTarget: t.target, pickSlPct: t.slPct, pickTpPct: t.tpPct, pickRR: t.rr,
       pickScore: t.score,
     }));

@@ -95,13 +95,20 @@ function Stat({ k, v, c }) { return <div><div style={{ color: "var(--muted)" }}>
 
 /* ============================== WATCHLIST ============================== */
 
-function ManageHolding({ r, st, onBuy, onSell, onUpdate, onClose }) {
+function ManageHolding({ r, st, onBuy, onSell, onUpdate, onClose, real = false, onArmExit }) {
   const [buyQty, setBuyQty] = useState(1);
   const [sellQty, setSellQty] = useState(r.qty || 1);   // default to selling the whole holding
   const [sl, setSl] = useState(r.sl ? String(r.sl) : "");
   const [tsl, setTsl] = useState(r.tsl ? String(r.tsl) : "");
   const [tp, setTp] = useState(r.tp ? String(r.tp) : "");
-  const saveRisk = () => { onUpdate && onUpdate(r.sym, { sl: sl === "" ? undefined : +sl, tsl: tsl === "" ? undefined : +tsl, tp: tp === "" ? undefined : +tp }); onClose && onClose(); };
+  const [busy, setBusy] = useState(false);
+  // In REAL mode "Save" arms a broker-side stop/target via the exit engine; in virtual it just
+  // updates the paper holding's risk levels.
+  const saveRisk = async () => {
+    const risk = { sl: sl === "" ? undefined : +sl, tsl: tsl === "" ? undefined : +tsl, tp: tp === "" ? undefined : +tp };
+    if (real && onArmExit) { setBusy(true); await onArmExit(r, risk); setBusy(false); onClose && onClose(); return; }
+    onUpdate && onUpdate(r.sym, risk); onClose && onClose();
+  };
   // The +/- button style. Referenced but never defined — every "Manage" panel threw.
   const qBtn = {
     border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)",
@@ -128,7 +135,7 @@ function ManageHolding({ r, st, onBuy, onSell, onUpdate, onClose }) {
         <button onClick={() => { onSell && onSell(st, sellQty, { market: r.market || r.m }); onClose && onClose(); }} className="tap disp" style={{ flex: 1, background: "linear-gradient(120deg,var(--down),#D93A4E)", color: "#fff", border: "none", borderRadius: 10, padding: 11, fontWeight: 800, fontSize: 13 }}>Sell · {sellQty}</button>
       </div>
       <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 7 }}>You hold {r.qty} units · sell up to {r.qty}.</div>
-      <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600, margin: "12px 0 6px" }}>Risk orders (%)</div>
+      <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600, margin: "12px 0 6px" }}>{real ? "Stop / target (%) — armed with your broker" : "Risk orders (%)"}</div>
       <div style={{ display: "flex", gap: 8 }}>
         {[["Stop loss", sl, setSl], ["Trailing SL", tsl, setTsl], ["Take profit", tp, setTp]].map(([lbl, val, setter]) => (
           <div key={lbl} style={{ flex: 1, border: "1px solid var(--line)", borderRadius: 10, padding: "7px 9px", background: "var(--elev)" }}>
@@ -137,7 +144,7 @@ function ManageHolding({ r, st, onBuy, onSell, onUpdate, onClose }) {
           </div>
         ))}
       </div>
-      <button onClick={saveRisk} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--primary)", color: "var(--on-primary)", border: "none", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5 }}>Save risk orders</button>
+      <button onClick={saveRisk} disabled={busy} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--primary)", color: "var(--on-primary)", border: "none", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, opacity: busy ? 0.7 : 1 }}>{busy ? "Arming…" : real ? "Arm stop / target" : "Save risk orders"}</button>
     </div>
   );
 }
@@ -198,7 +205,7 @@ function AnalyzeBlock({ onRun, loading, review }) {
   );
 }
 
-export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, onUpdate, onRemove, priceSnap = {}, onWhy, onOpen, mode = "virtual", realPortfolio = null, realErr = null, realLoading = false, onRefreshReal, brokerName, realAvailable = false, userId = null }) {
+export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, onUpdate, onArmRealExit, onRemove, priceSnap = {}, onWhy, onOpen, mode = "virtual", realPortfolio = null, realErr = null, realLoading = false, onRefreshReal, brokerName, realAvailable = false, userId = null }) {
   // Crypto and US settle in USD; Indian/Commodity in INR. Used to format the real book.
   const ccy = (market === "Crypto" || market === "US") ? "$" : "₹";
   const loc = ccy === "$" ? "en-US" : "en-IN";
@@ -212,6 +219,45 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
     catch { setAiReview({ overall: "Couldn't reach Neo right now — try again in a moment.", holdings: [] }); }
     finally { setAiLoading(false); }
   };
+
+  /* ---- VIRTUAL-book state & derived data ----
+     These hooks and computations MUST run on every render (Rules of Hooks). They used to
+     live below the `if (mode === "real")` early-return, so switching to Real ran fewer hooks
+     than Virtual and React threw error #300. They're harmless in real mode (computed from the
+     paper book, simply unused), so we run them unconditionally and read them only in the
+     virtual return. */
+  const [expand, setExpand] = useState(null);   // sym with open trade panel
+  const [fType, setFType] = useState([]);       // Manual / Auto Buy / Automate
+  const mkt = market;
+  const mLabel = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", Commodity: "🪙 Commodity" }[market];
+  const orphans = portfolio.filter((h) => !h.isFut && !h.isOpt && marketOf(h.sym) === null && (h.market || null) === market);
+  const unplaceable = portfolio.filter((h) => !h.isFut && !h.isOpt && marketOf(h.sym) === null && !h.market);
+  const TRADE_TYPES = ["Manual", "Auto Buy", "Automate"];
+  const typeOf = (h) => h.tradeType || "Manual";
+  const rows = portfolio
+    .filter((h) => !h.isFut && !/\sFUT$/.test(h.sym || ""))
+    .filter((h) => (h.market || marketOf(h.sym)) === mkt)
+    .filter((h) => (fType.length ? fType.includes(typeOf(h)) : true))
+    .map((h) => {
+      const m = marketOf(h.sym);
+      const cur = priceSnap[h.sym] != null ? priceSnap[h.sym] : h.buy;   // frozen until next buy/sell
+      const inv = h.buy * h.qty, val = cur * h.qty;
+      const pl = val - inv, plp = (cur / h.buy - 1) * 100;
+      const days = Math.max(1, Math.round((Date.now() - h.date) / 86400000)) || 1;
+      return { ...h, m, cur, inv, val, pl, plp, days };
+    });
+  const totalVal = rows.reduce((a, r) => a + r.val, 0);
+  const totalInv = rows.reduce((a, r) => a + r.inv, 0);
+  const totalPL = totalVal - totalInv;
+  const intel = useMemo(() => {
+    const map = {};
+    rows.forEach((r) => { const st = ALL.find((a) => a.sym === r.sym); map[r.sym] = analyzeHolding(r, st, st ? techSignal(st) : null); });
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows.map((r) => `${r.sym}:${r.qty}:${r.cur}:${r.sl || ""}:${r.tp || ""}`).join(",")]);
+  const analyses = Object.values(intel);
+  const health = useMemo(() => portfolioHealth(analyses, wallet), [analyses, wallet]);
+  const sectors = useMemo(() => sectorExposure(analyses, (sym) => ALL.find((a) => a.sym === sym)), [analyses]);
 
   /* REAL MODE shows the user's ACTUAL broker holdings. It is read-only and entirely
      separate from the paper book — no paper position appears here, and no real
@@ -383,6 +429,31 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
                   Trend and risk analysis isn't available for this holding — it's not in Matrix's tracked universe.
                 </div>
               )}
+
+              {/* MANAGE a REAL holding — sell (real order), buy more, or arm a broker-side
+                  stop-loss / take-profit that the exit engine will act on. */}
+              {onSell && (
+                <>
+                  <button
+                    onClick={() => setExpand(expand === h.sym ? null : h.sym)}
+                    className="tap disp"
+                    style={{ width: "100%", marginTop: 10, border: "1px solid var(--line)", background: expand === h.sym ? "var(--elev)" : "transparent", color: "var(--ink)", borderRadius: 10, padding: 10, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
+                  >
+                    {expand === h.sym ? "Close" : "Manage — sell / set stop"}
+                  </button>
+                  {expand === h.sym && (
+                    <ManageHolding
+                      real
+                      r={{ sym: h.sym, qty: h.qty, market: mkt, m: mkt, avg: h.avg, ltp: h.ltp }}
+                      st={uni || { sym: h.sym, price: h.ltp, market: mkt }}
+                      onBuy={onBuy}
+                      onSell={onSell}
+                      onArmExit={onArmRealExit}
+                      onClose={() => setExpand(null)}
+                    />
+                  )}
+                </>
+              )}
             </div>
           );
         })}
@@ -404,78 +475,6 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
       </div>
     );
   }
-  const [expand, setExpand] = useState(null);   // sym with open trade panel
-  const [fType, setFType] = useState([]);      // Manual / Auto Buy / Automate
-  const mkt = market;
-  const mLabel = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", Commodity: "🪙 Commodity" }[market];
-
-  /* Positions we can no longer price: the symbol isn't in the universe, so no feed
-     carries it (LAB is the real example — a dollar-priced token, not an Indian stock).
-
-     These were being dumped under the INDIAN tab, which is precisely the thing the old
-     comment claimed not to do. A dollar-denominated token is not an Indian holding, and
-     showing it there makes the Indian portfolio wrong.
-
-     Now they appear under the market they were actually BOUGHT in, which the order
-     records. Options carry market:"IN" and are priced fine, so they never land here. */
-  const orphans = portfolio.filter(
-    (h) => !h.isFut && !h.isOpt && marketOf(h.sym) === null && (h.market || null) === market
-  );
-
-  /* Positions with NO recorded market at all — bought before the order started recording
-     it. They belong to no tab, so if we simply filtered them out they would sit in storage
-     forever, invisible and unremovable. We surface them once, clearly labelled, with a way
-     to delete them. Hiding a position is not the same as it not existing. */
-  const unplaceable = portfolio.filter(
-    (h) => !h.isFut && !h.isOpt && marketOf(h.sym) === null && !h.market
-  );
-
-
-  const TRADE_TYPES = ["Manual", "Auto Buy", "Automate"];
-  const typeOf = (h) => h.tradeType || "Manual";
-
-  const rows = portfolio
-    /* F&O holdings live under Indian now that the F&O tab is gone. The old filter
-       (`marketOf(h.sym) === mkt && !h.fno`) EXCLUDED them from Indian and showed them
-       only on the F&O tab — so removing that tab would have made any open F&O position
-       invisible while you still owned it. */
-    /* There is no F&O tab. Options bought by automation file under INDIAN — they carry
-       market:"IN" from the order, so they land here alongside the stocks. We do NOT try to
-       re-derive their market from the symbol: "NSE:NIFTY26JUL24050CE" is a broker contract
-       string, not a universe entry, and marketOf() would return nothing — the position
-       would match no tab and you'd own something you couldn't see.
-
-       Legacy FUTURES positions (from when futures existed) are dropped: they can no longer
-       be priced or exited by any code path in the app, so showing a live-looking P&L for
-       them would be a fiction. */
-    .filter((h) => !h.isFut && !/\sFUT$/.test(h.sym || ""))
-    .filter((h) => (h.market || marketOf(h.sym)) === mkt)
-    .filter((h) => (fType.length ? fType.includes(typeOf(h)) : true))
-    .map((h) => {
-    const m = marketOf(h.sym);
-    const cur = priceSnap[h.sym] != null ? priceSnap[h.sym] : h.buy;   // frozen until next buy/sell
-    const inv = h.buy * h.qty, val = cur * h.qty;
-    const pl = val - inv, plp = (cur / h.buy - 1) * 100;
-    const days = Math.max(1, Math.round((Date.now() - h.date) / 86400000)) || 1;
-    return { ...h, m, cur, inv, val, pl, plp, days };
-  });
-  const totalVal = rows.reduce((a, r) => a + r.val, 0);
-  const totalInv = rows.reduce((a, r) => a + r.inv, 0);
-  const totalPL = totalVal - totalInv;
-
-  // ---- PORTFOLIO INTELLIGENCE (real data only; no guesses) ----
-  const intel = useMemo(() => {
-    const map = {};
-    rows.forEach((r) => {
-      const st = ALL.find((a) => a.sym === r.sym);
-      map[r.sym] = analyzeHolding(r, st, st ? techSignal(st) : null);
-    });
-    return map;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows.map((r) => `${r.sym}:${r.qty}:${r.cur}:${r.sl || ""}:${r.tp || ""}`).join(",")]);
-  const analyses = Object.values(intel);
-  const health = useMemo(() => portfolioHealth(analyses, wallet), [analyses, wallet]);
-  const sectors = useMemo(() => sectorExposure(analyses, (sym) => ALL.find((a) => a.sym === sym)), [analyses]);
 
   return (
     <div className="mx fade">
