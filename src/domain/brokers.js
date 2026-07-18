@@ -121,17 +121,16 @@ export const BROKERS = [
   {
     id: "indmoney",
     name: "IND Money",
-    markets: ["US"],
+    markets: ["IN", "FNO"],
     status: "ready",
-    realtime: true,
+    realtime: false,
     oi: false,
     depth: false,
     userCreds: true,
-    adminOnly: true,   // US house account (like Delta for crypto / FYERS for Indian) — only the admin connects it and trades US; every user sees the US prices it (or the feed) provides.
     fields: [
-      { key: "accessToken", label: "Access token", type: "password", hint: "From web.indstocks.com → API section → Get Started with INDstocks APIs" },
+      { key: "accessToken", label: "Access token", type: "password", hint: "indstocks.com → log in → /app/api-trading → Generate Token. NOTE: it expires every 24h, regenerate daily." },
     ],
-    note: "Powers US stocks for Matrix. Only the admin connects IND Money and places US orders; all users see US prices. Paste your INDstocks access token.",
+    note: "Trade Indian (NSE) stocks via the INDstocks API. Paste your access token from indstocks.com/app/api-trading (expires daily). Flat ₹5/order. (US prices in Matrix already come from IND Money automatically — no connection needed for those.)",
     docs: "https://api-docs.indstocks.com/",
   },
   {

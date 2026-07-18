@@ -375,7 +375,39 @@ function AppInner() {
      time it's about to fire we show a single heads-up (see Dashboard), then never again.
      Auto-sell on SL/TP is already handled by the exit monitor in useOrders. */
   const autoBuyNow = (stock, qty = 1, opts = {}) => buyStockNow(stock, qty, { ...opts, tradeType: "Auto Buy" });
-  const buyStockNow  = (stock, qty = 1, opts = {}) => { if (!auth) { setBuyToast({ t: "Log in to trade — buying needs an account." }); setLoginOpen(true); return false; } placeOrder({ stock, side: "BUY",  qty, opts }); return true; };
+  /* Place a REAL market order WITHOUT the confirm sheet (for instant/auto buys). Routes by
+     market to the connected broker, attaches SL/TP, and hands exits to the engine. Used when
+     the app is in REAL mode so instant buys and Auto-Buy actually move real money. */
+  const placeRealMarketOrder = async (s, side, q, prod, opts = {}) => {
+    const mkt = marketOf(s.sym) || s.market || market;
+    const route = brokerFor(mkt);
+    if (!route) { setBuyToast({ t: `No broker connected for ${MKT_LABEL[mkt] || mkt} — cannot place a real order`, e: true }); return false; }
+    const bsym = brokerSymbol(s.sym, route.id);
+    if (!bsym) { setBuyToast({ t: `${route.meta.name} can't trade ${s.sym} — no symbol mapping`, e: true }); return false; }
+    try {
+      const isDelta = route.id === "delta";
+      const wantExit = side === "BUY" && (opts.sl > 0 || opts.tp > 0 || opts.tsl > 0 || !!opts.strategy);
+      const useEngine = wantExit && (!isDelta || opts.tsl > 0 || !!opts.strategy);
+      const r = await brokerPlaceOrder(route.session, userId, {
+        symbol: bsym, side, qty: q, orderType: "MARKET", product: prod || "CNC",
+        entryPrice: s.price ?? undefined,
+        slPct: (side === "BUY" && opts.sl > 0) ? opts.sl : undefined,
+        tpPct: (side === "BUY" && opts.tp > 0) ? opts.tp : undefined,
+        tslPct: (side === "BUY" && opts.tsl > 0) ? opts.tsl : undefined,
+        autoExit: useEngine || undefined,
+        strategy: opts.strategy || undefined,
+      }, true);
+      let t = `Real ${side.toLowerCase()} sent to ${route.meta.name} — order ${r.orderId}`;
+      if (side === "BUY" && (opts.sl > 0 || opts.tp > 0)) { if (isDelta && r.bracket && r.bracket.placed) t += " · SL/TP set"; else if (r.autoExitId) t += " · auto-exit armed"; }
+      setBuyToast({ t }); refreshPortfolio(); return true;
+    } catch (e) { setBuyToast({ t: `Broker rejected the order: ${String(e.message || e)}`, e: true }); return false; }
+  };
+  const buyStockNow  = (stock, qty = 1, opts = {}) => {
+    if (!auth) { setBuyToast({ t: "Log in to trade — buying needs an account." }); setLoginOpen(true); return false; }
+    // REAL mode -> real broker order (auto-buy included); otherwise the paper book.
+    if (mode === "real") { placeRealMarketOrder(stock, "BUY", qty, opts.product || "CNC", opts); return true; }
+    placeOrder({ stock, side: "BUY",  qty, opts }); return true;
+  };
   const sellStockNow = (stock, qty = 1, opts = {}) => { placeOrder({ stock, side: "SELL", qty, opts }); return true; };
 
   /* THE AUTOMATION LOOP. Evaluates every active strategy's entry/exit rules

@@ -667,7 +667,8 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     const tpPct = ov ? ov.tp : auto.tp;
     const slPct = ov ? ov.sl : auto.sl;
     const entry = s.price;
-    const qty = Math.max(1, Math.floor(perCap / entry));
+    // Crypto sizes by AMOUNT (fractional units); stocks by whole shares.
+    const qty = m === "Crypto" ? +(perCap / entry).toFixed(6) : Math.max(1, Math.floor(perCap / entry));
     const dp = entry < 1 ? 6 : entry < 10 ? 4 : 2;
     return { sym: s.sym, m, qty, entry, tpPct, slPct, auto };   // planned entry; the exit engine closes it at real prices
   }).filter(Boolean);   // F&O names with no real lot size are dropped, not guessed

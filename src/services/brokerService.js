@@ -101,7 +101,7 @@ export function clearSession(broker) {
 /** Which markets each broker can actually serve. */
 export const BROKER_MARKETS = {
   fyers: ["IN", "Commodity"], zerodha: ["IN", "Commodity"], dhan: ["IN", "Commodity"], angelone: ["IN", "Commodity"], groww: ["IN", "Commodity"],
-  indmoney: ["US"],   // IND Money is the US house broker (admin-only) — like Delta for crypto
+  indmoney: ["IN", "FNO"],   // IND Money (INDstocks API) trades Indian NSE stocks; US is prices-only
   delta: ["Crypto"], coindcx: ["Crypto"], coinswitch: ["Crypto"], binance: ["Crypto"],
   schwab: ["US"],
 };
