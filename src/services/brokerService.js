@@ -273,3 +273,15 @@ export async function cancelAutoBuy(userId, id) {
   if (!BACKEND_URL) return;
   try { await fetch(`${BACKEND_URL}/api/autobuy/cancel`, { method: "POST", headers: { "Content-Type": "application/json", "X-User-Id": String(userId || "") }, body: JSON.stringify({ id }) }); } catch { /* ignore */ }
 }
+/** Admin flips the whole auto-buy engine LIVE / dry-run at runtime. */
+export async function setAutoBuyLive(adminKey, on) {
+  if (!BACKEND_URL) return { ok: false };
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/autobuy/live`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(adminKey ? { "X-Admin-Key": adminKey } : {}) },
+      body: JSON.stringify({ on: !!on }),
+    });
+    return r.json().catch(() => ({ ok: false }));
+  } catch { return { ok: false }; }
+}

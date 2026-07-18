@@ -16,7 +16,7 @@ import OptionLeg from "../components/common/OptionLeg";
 import MultiSelect from "../components/common/MultiSelect";
 import { selStyle } from "../components/common/styles";
 import { brokerSymbol } from "../domain/brokerSymbols";
-import { registerAutoBuy, loadAutoBuys, pauseAutoBuy, cancelAutoBuy } from "../services/brokerService";
+import { registerAutoBuy, loadAutoBuys, pauseAutoBuy, cancelAutoBuy, setAutoBuyLive } from "../services/brokerService";
 
 /**
  * Automation — visual strategy builder, plain-English rules, and backtesting on REAL candles.
@@ -514,36 +514,51 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, market = "IN" }) {
   );
 }
 
-/* Manager for strategies armed for real-money auto-buy: shows each with its LIVE/DRY-RUN
-   state and lets the user pause or cancel it (a real-money kill for that one strategy). */
-function LiveAutoBuys({ userId }) {
+/* Manager for strategies armed for real-money auto-buy — filtered to the CURRENT market,
+   with each strategy's name, live P&L, and pause/cancel. An admin can flip the whole engine
+   between LIVE and DRY-RUN here (no server env change needed). */
+function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" }) {
   const [data, setData] = useState({ strategies: [], engineLive: false });
+  const [busy, setBusy] = useState(false);
   const refresh = () => { if (userId) loadAutoBuys(userId).then(setData); };
-  useEffect(() => { refresh(); const id = setInterval(refresh, 20000); return () => clearInterval(id); /* eslint-disable-next-line */ }, [userId]);
-  const live = (data.strategies || []).filter((s) => s.status === "active" || s.status === "paused");
+  useEffect(() => { refresh(); const id = setInterval(refresh, 12000); return () => clearInterval(id); /* eslint-disable-next-line */ }, [userId]);
+  // Only strategies for the market you're on (a crypto auto-buy doesn't show under Indian).
+  const live = (data.strategies || []).filter((s) => (s.status === "active" || s.status === "paused") && (s.market || "Crypto") === market);
   if (!userId || !live.length) return null;
   const doPause = async (s) => { await pauseAutoBuy(userId, s.id, s.status === "active"); refresh(); };
   const doCancel = async (s) => { await cancelAutoBuy(userId, s.id); refresh(); };
+  const toggleLive = async () => {
+    if (!isAdmin || !adminKey) return;
+    setBusy(true);
+    await setAutoBuyLive(adminKey, !data.engineLive);
+    setBusy(false); refresh();
+  };
+  const ccy = market === "Crypto" || market === "US" ? "$" : "₹";
   return (
     <div className="card" style={{ padding: 14, marginBottom: 12, border: "1px solid var(--down)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <Bolt size={15} color="var(--down)" />
-        <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>Live auto-buys</div>
-        <span className="pill" style={{ marginLeft: "auto", fontSize: 9, fontWeight: 800, padding: "3px 8px", background: data.engineLive ? "var(--down-soft)" : "var(--elev)", color: data.engineLive ? "var(--down)" : "var(--muted)" }}>
-          {data.engineLive ? "TRADING LIVE" : "DRY-RUN"}
-        </span>
+        <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>Live Real Deployed</div>
+        {isAdmin && adminKey
+          ? <button onClick={toggleLive} disabled={busy} className="tap disp" style={{ marginLeft: "auto", fontSize: 9, fontWeight: 800, padding: "4px 10px", borderRadius: 999, border: "1px solid " + (data.engineLive ? "var(--down)" : "var(--line)"), background: data.engineLive ? "var(--down-soft)" : "var(--elev)", color: data.engineLive ? "var(--down)" : "var(--muted)" }}>{busy ? "…" : (data.engineLive ? "● TRADING LIVE — tap to pause" : "DRY-RUN — tap to GO LIVE")}</button>
+          : <span className="pill" style={{ marginLeft: "auto", fontSize: 9, fontWeight: 800, padding: "3px 8px", background: data.engineLive ? "var(--down-soft)" : "var(--elev)", color: data.engineLive ? "var(--down)" : "var(--muted)" }}>{data.engineLive ? "TRADING LIVE" : "DRY-RUN"}</span>}
       </div>
-      {!data.engineLive && <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 8, lineHeight: 1.5 }}>Engine is in dry-run — it logs entries but places no real orders until AUTO_BUY_LIVE is enabled on the server.</div>}
+      {!data.engineLive && <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 8, lineHeight: 1.5 }}>{isAdmin ? "Dry-run — logs entries but places no real orders. Tap the badge above to go live." : "Engine is in dry-run — logs entries but places no real orders yet."}</div>}
       {live.map((s) => (
-        <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: "1px solid var(--line)" }}>
+        <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: "1px solid var(--line)" }}>
           <div style={{ minWidth: 0 }}>
-            <div className="disp" style={{ fontWeight: 700, fontSize: 12.5 }}>{s.name || s.symbol} {s.status === "paused" && <span style={{ color: "var(--muted)", fontWeight: 700 }}>· paused</span>}</div>
+            <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{s.name || s.symbol} {s.status === "paused" && <span style={{ color: "var(--muted)", fontWeight: 700 }}>· paused</span>}</div>
             <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600, marginTop: 1 }}>{s.symbol} · {s.broker}</div>
-            <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>{s.notional} / trade · {s.tp ? `TP ${s.tp}% ` : ""}{s.sl ? `SL ${s.sl}%` : ""}{s.openPositionId ? " · in position" : ""}</div>
+            <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>{ccy}{s.notional} / trade · {s.tp ? `TP ${s.tp}% ` : ""}{s.sl ? `SL ${s.sl}%` : ""}</div>
           </div>
-          <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-            <button onClick={() => doPause(s)} className="tap" title={s.status === "active" ? "Pause" : "Resume"} style={{ border: "1px solid var(--line)", background: "transparent", color: "var(--muted)", borderRadius: 8, padding: "4px 8px", fontSize: 10.5, fontWeight: 700 }}>{s.status === "active" ? "Pause" : "Resume"}</button>
-            <button onClick={() => doCancel(s)} className="tap" title="Stop for good" style={{ border: "1px solid var(--down)", background: "transparent", color: "var(--down)", borderRadius: 8, padding: "4px 8px", fontSize: 10.5, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 3 }}><X size={11} /> Stop</button>
+          <div style={{ marginLeft: "auto", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+            {s.inPosition
+              ? <div className="mono" style={{ fontSize: 12, fontWeight: 800, color: (s.livePnl || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{(s.livePnl || 0) >= 0 ? "+" : ""}{ccy}{Math.abs(s.livePnl || 0).toFixed(2)}</div>
+              : <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>waiting for signal</div>}
+            <div style={{ display: "flex", gap: 6 }}>
+              <button onClick={() => doPause(s)} className="tap" style={{ border: "1px solid var(--line)", background: "transparent", color: "var(--muted)", borderRadius: 8, padding: "3px 8px", fontSize: 10, fontWeight: 700 }}>{s.status === "active" ? "Pause" : "Resume"}</button>
+              <button onClick={() => doCancel(s)} className="tap" style={{ border: "1px solid var(--down)", background: "transparent", color: "var(--down)", borderRadius: 8, padding: "3px 8px", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 2 }}><X size={10} /> Stop</button>
+            </div>
           </div>
         </div>
       ))}
@@ -551,7 +566,7 @@ function LiveAutoBuys({ userId }) {
   );
 }
 
-export default function Automation({ market = "IN", onRecord, trades = [], strats = [], setStrats, onExitAll, me = null, isAdmin = false, userId = null, brokerFor = null }) {
+export default function Automation({ market = "IN", onRecord, trades = [], strats = [], setStrats, onExitAll, me = null, isAdmin = false, userId = null, brokerFor = null, adminKey = "" }) {
   // Which strategy is being armed for real-money auto-buy, and the form for it.
   const [liveStrat, setLiveStrat] = useState(null);
   const [liveAmt, setLiveAmt] = useState("");
@@ -698,7 +713,8 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
   /* The option leg travels WITH the strategy, not with a symbol — "when this fires, buy
      the ATM call" is a property of the strategy. */
   const saveStrategy = (makeActive) => {
-    const name = stratName.trim() || (mode === "builder" ? "Custom strategy" : "Plain-English strategy");
+    const name = stratName.trim();
+    if (!name) { setToast("Give your strategy a name first."); return; }
     const symbols = deploySyms.length ? deploySyms : ["NIFTY50"];
     // Indian options are limit-only — never save a market order on an option strategy.
     const effEntryType = optLeg.enabled ? "Limit" : entryType;
@@ -1006,7 +1022,7 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
       <div className="disp" style={{ fontWeight: 700, fontSize: 22, marginTop: 8 }}>Automate with Neo</div>
       <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 2 }}>{{ IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", FNO: "⚡ F&O", Commodity: "🪙 Commodity" }[market]} strategies · track performance and manage automations.</div>
 
-      <div style={{ marginTop: 14 }}><LiveAutoBuys userId={userId} /></div>
+      <div style={{ marginTop: 14 }}><LiveAutoBuys userId={userId} market={market} isAdmin={isAdmin} adminKey={adminKey} /></div>
 
       {/* Automation dashboard — collapsed by default (P&L + expand), expands to all details. */}
       <div className="card glow metal" style={{ marginTop: 18, padding: 18, border: "none", background: "var(--feature-grad)", color: "#fff" }}>
