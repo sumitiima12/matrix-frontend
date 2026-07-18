@@ -1,4 +1,5 @@
 import { BACKEND_URL } from "../config";
+import { getAuthToken } from "./tradeService";
 
 /**
  * services/brokerService.js — every broker HTTP call. No fetch() outside services/.
@@ -113,10 +114,19 @@ export function brokerForMarket(market) {
   return hit ? { broker: hit, session: all[hit] } : null;
 }
 
-/** Identify ourselves to the backend: opaque id + who we are. Never a broker token. */
+/** Identify ourselves to the backend: the verified JWT (Authorization) is the SOURCE OF TRUTH
+    for who we are — the server derives identity from it, not from the X-User-Id header. We still
+    send the opaque broker-session id and (for back-compat) X-User-Id, but money routes now trust
+    only the token. Never a broker token here. */
+/** Just the Bearer token header (or nothing) — for routes that only need identity, not a session. */
+function tokenHdr() { const t = (() => { try { return getAuthToken(); } catch { return null; } })(); return t ? { Authorization: `Bearer ${t}` } : {}; }
 function authHeaders(session, userId) {
-  if (!session || !session.sessionId) return {};
-  return { "X-Broker-Session": session.sessionId, "X-User-Id": String(userId || "") };
+  const h = {};
+  const tok = (() => { try { return getAuthToken(); } catch { return null; } })();
+  if (tok) h.Authorization = `Bearer ${tok}`;
+  if (session && session.sessionId) h["X-Broker-Session"] = session.sessionId;
+  if (userId) h["X-User-Id"] = String(userId);
+  return h;
 }
 
 async function get(path, headers = {}) {
@@ -148,7 +158,7 @@ export async function brokerSession(broker, requestToken, userId, extra) {
   if (!BACKEND_URL) throw new Error("no-backend");
   const r = await fetch(`${BACKEND_URL}/api/broker/session`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...tokenHdr() },
     body: JSON.stringify({ broker, requestToken, userId, extra: extra || undefined }),
   });
   const d = await r.json().catch(() => ({}));
@@ -163,7 +173,7 @@ export async function resumeBroker(broker, userId) {
   try {
     const r = await fetch(`${BACKEND_URL}/api/broker/resume`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-User-Id": String(userId || "") },
+      headers: { "Content-Type": "application/json", ...tokenHdr(), "X-User-Id": String(userId || "") },
       body: JSON.stringify({ broker }),
     });
     const d = await r.json().catch(() => ({}));
@@ -228,7 +238,7 @@ export async function brokerPortfolio(session, userId) {
 export async function loadAutoExits(userId) {
   if (!BACKEND_URL) return { positions: [], engineLive: false };
   try {
-    const r = await fetch(`${BACKEND_URL}/api/autoexit`, { headers: { "X-User-Id": String(userId || "") } });
+    const r = await fetch(`${BACKEND_URL}/api/autoexit`, { headers: { ...tokenHdr(), "X-User-Id": String(userId || "") } });
     const d = await r.json().catch(() => ({}));
     return { positions: Array.isArray(d.positions) ? d.positions : [], engineLive: !!d.engineLive, last: d.last || null };
   } catch { return { positions: [], engineLive: false }; }
@@ -240,7 +250,7 @@ export async function registerAutoExit(userId, payload) {
   if (!BACKEND_URL) throw new Error("no-backend");
   const r = await fetch(`${BACKEND_URL}/api/autoexit/register`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-User-Id": String(userId || "") },
+    headers: { "Content-Type": "application/json", ...tokenHdr(), "X-User-Id": String(userId || "") },
     body: JSON.stringify(payload || {}),
   });
   const d = await r.json().catch(() => ({}));
@@ -254,7 +264,7 @@ export async function cancelAutoExit(userId, id) {
   try {
     await fetch(`${BACKEND_URL}/api/autoexit/cancel`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-User-Id": String(userId || "") },
+      headers: { "Content-Type": "application/json", ...tokenHdr(), "X-User-Id": String(userId || "") },
       body: JSON.stringify({ id }),
     });
   } catch { /* best-effort */ }
@@ -276,18 +286,18 @@ export async function registerAutoBuy(session, userId, payload) {
 export async function loadAutoBuys(userId) {
   if (!BACKEND_URL) return { strategies: [], engineLive: false };
   try {
-    const r = await fetch(`${BACKEND_URL}/api/autobuy`, { headers: { "X-User-Id": String(userId || "") } });
+    const r = await fetch(`${BACKEND_URL}/api/autobuy`, { headers: { ...tokenHdr(), "X-User-Id": String(userId || "") } });
     const d = await r.json().catch(() => ({}));
     return { strategies: Array.isArray(d.strategies) ? d.strategies : [], engineLive: !!d.engineLive, last: d.last || null };
   } catch { return { strategies: [], engineLive: false }; }
 }
 export async function pauseAutoBuy(userId, id, paused) {
   if (!BACKEND_URL) return;
-  try { await fetch(`${BACKEND_URL}/api/autobuy/pause`, { method: "POST", headers: { "Content-Type": "application/json", "X-User-Id": String(userId || "") }, body: JSON.stringify({ id, paused }) }); } catch { /* ignore */ }
+  try { await fetch(`${BACKEND_URL}/api/autobuy/pause`, { method: "POST", headers: { "Content-Type": "application/json", ...tokenHdr(), "X-User-Id": String(userId || "") }, body: JSON.stringify({ id, paused }) }); } catch { /* ignore */ }
 }
 export async function cancelAutoBuy(userId, id) {
   if (!BACKEND_URL) return;
-  try { await fetch(`${BACKEND_URL}/api/autobuy/cancel`, { method: "POST", headers: { "Content-Type": "application/json", "X-User-Id": String(userId || "") }, body: JSON.stringify({ id }) }); } catch { /* ignore */ }
+  try { await fetch(`${BACKEND_URL}/api/autobuy/cancel`, { method: "POST", headers: { "Content-Type": "application/json", ...tokenHdr(), "X-User-Id": String(userId || "") }, body: JSON.stringify({ id }) }); } catch { /* ignore */ }
 }
 /** Admin flips the whole auto-buy engine LIVE / dry-run at runtime. */
 export async function setAutoBuyLive(adminKey, on) {
