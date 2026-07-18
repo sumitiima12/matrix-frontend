@@ -632,7 +632,12 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const [autoOnMapLocal, setAutoOnMapLocal] = useState({ IN: false, US: false, Crypto: false, Commodity: false, FNO: false });
   const autoOnMap = autoOnMapProp || autoOnMapLocal;
   const setAutoOnMap = setAutoOnMapProp || setAutoOnMapLocal;
-  const [deployCapital, setDeployCapital] = useState("100000");
+  /* Capital-to-deploy is PER MARKET and persisted, so it survives logout/login and each
+     market keeps its own (a $ amount for US/Crypto, ₹ for Indian). */
+  const [deployCapMap, setDeployCapMap] = useState(() => { const v = lsGet("mx_deploy_capital", {}); return (v && typeof v === "object") ? v : {}; });
+  const capDefault = (m) => (m === "US" || m === "Crypto") ? "1000" : "100000";
+  const deployCapital = deployCapMap[market] != null ? deployCapMap[market] : capDefault(market);
+  const setDeployCapital = (v) => { setDeployCapMap((prev) => { const next = { ...prev, [market]: v }; lsSet("mx_deploy_capital", next); return next; }); };
   const [plPeriod, setPlPeriod] = useState("today");
   const [autoOverrides, setAutoOverrides] = useState({});   // sym -> {tp, sl}
   const [editSym, setEditSym] = useState(null);
@@ -694,7 +699,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     return 0;                                       // lifetime
   }, [plPeriod]);
   const autoRows = useMemo(() => (trades || [])
-    .filter((t) => (t.tradeType === "Auto Buy") && (t.market || "IN") === market && (t.entryAt || 0) >= periodFrom)
+    .filter((t) => (t.tradeType === "Auto Buy") && ((t.market || marketOf(t.sym) || "IN")) === market && (t.entryAt || 0) >= periodFrom)
     .map((t) => {
       const open = t.exitAt == null;
       const cur = open ? ((ALL.find((a) => a.sym === t.sym) || {}).price ?? t.entry) : t.exit;
@@ -794,11 +799,11 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                       <div onClick={() => { const st = ALL.find((a) => a.sym === t.sym); st && onOpen(st); }} className="tap" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
                         <span className="disp" style={{ fontWeight: 800, fontSize: 12.5 }}>{t.sym} <span style={{ fontSize: 10, opacity: .7, fontWeight: 600 }}>×{t.qty}</span></span>
                         <span style={{ fontSize: 9.5, opacity: .85, fontWeight: 800 }}>{t.open ? "● OPEN" : t.exitType}</span>
-                        <span className="mono" style={{ fontWeight: 800, fontSize: 13, color: t.realPnl >= 0 ? "#9CFFD6" : "#FFB3BE" }}>{t.realPnl >= 0 ? "+" : ""}{fmt(t.realPnl, t.market || "IN")}</span>
+                        <span className="mono" style={{ fontWeight: 800, fontSize: 13, color: t.realPnl >= 0 ? "#9CFFD6" : "#FFB3BE" }}>{t.realPnl >= 0 ? "+" : ""}{fmt(t.realPnl, (t.market || marketOf(t.sym) || "IN"))}</span>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 7, fontSize: 10, opacity: .82 }}>
-                        <div><div style={{ opacity: .7 }}>Entry</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.entry, t.market || "IN")}</div><div style={{ opacity: .7 }}>{t.entryAt ? new Date(t.entryAt).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</div></div>
-                        <div style={{ textAlign: "right" }}><div style={{ opacity: .7 }}>{t.open ? "Current" : "Exit"}</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.cur, t.market || "IN")}</div><div style={{ opacity: .7 }}>{t.open ? "position open" : new Date(t.exitAt).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</div></div>
+                        <div><div style={{ opacity: .7 }}>Entry</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.entry, (t.market || marketOf(t.sym) || "IN"))}</div><div style={{ opacity: .7 }}>{t.entryAt ? new Date(t.entryAt).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</div></div>
+                        <div style={{ textAlign: "right" }}><div style={{ opacity: .7 }}>{t.open ? "Current" : "Exit"}</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.cur, (t.market || marketOf(t.sym) || "IN"))}</div><div style={{ opacity: .7 }}>{t.open ? "position open" : new Date(t.exitAt).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</div></div>
                       </div>
                       {(t.tp || t.sl) && <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.12)", fontSize: 10.5, fontWeight: 700 }}>🎯 Target <span style={{ color: "#9CFFD6" }}>+{t.tp}%</span> · 🛑 Stop <span style={{ color: "#FFB3BE" }}>−{t.sl}%</span></div>}
                     </div>
