@@ -372,7 +372,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
               </div>
             ))}
             <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 11, lineHeight: 1.5 }}>
-              Based on your live FYERS holdings. Trend and stop-protection scores aren't shown here — they need technical analysis we only run on tracked stocks.
+              Based on your live {brokerName || "broker"} holdings. Trend and stop-protection scores aren't shown here — they need technical analysis we only run on tracked stocks.
             </div>
           </div>
         )}
@@ -409,7 +409,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
                 <div style={{ textAlign: "right" }}>
                   <div className="mono" style={{ fontSize: 13.5, fontWeight: 800 }}>{h.ltp != null ? ccy + h.ltp.toFixed(2) : "—"}</div>
                   <div className="mono" style={{ fontSize: 10.5, fontWeight: 800, marginTop: 2, color: h.pnl == null ? "var(--muted)" : h.pnl >= 0 ? "var(--up)" : "var(--down)" }}>
-                    {h.pnl == null ? "—" : (h.pnl >= 0 ? "+" : "") + ccy + h.pnl.toFixed(0)}
+                    {h.pnl == null ? "—" : (h.pnl >= 0 ? "+" : "") + ccy + (Math.abs(h.pnl) >= 100 ? h.pnl.toFixed(0) : Math.abs(h.pnl) >= 1 ? h.pnl.toFixed(2) : h.pnl.toFixed(4))}
                     {pnlPct != null && <span style={{ opacity: .8 }}> ({pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(1)}%)</span>}
                   </div>
                 </div>
