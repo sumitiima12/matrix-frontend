@@ -505,7 +505,10 @@ function TrendingRow({ s, market, onOpen, onBuy, onWhy }) {
   const tone = (v) => (v == null ? "var(--muted)" : v >= 0 ? "var(--up)" : "var(--down)");
   const sign = (v) => (v == null ? "—" : `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`);
   return (
-    <div className="card tap" onClick={() => onOpen(s)} style={{ flex: "0 0 auto", width: 210, padding: 13 }}>
+    /* Fixed height + column layout so EVERY card lines up: tags reserve their space, "Why?"
+       always sits just below them, and the Buy row is pinned to the bottom (marginTop:auto)
+       so it's on the same line across cards whether or not they have tags. */
+    <div className="card tap" onClick={() => onOpen(s)} style={{ flex: "0 0 auto", width: 210, padding: 13, display: "flex", flexDirection: "column", minHeight: 244 }}>
       {/* symbol left, price top-right */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
         <div className="disp" style={{ fontWeight: 700, fontSize: 13.5, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.sym}</div>
@@ -529,13 +532,21 @@ function TrendingRow({ s, market, onOpen, onBuy, onWhy }) {
         </div>
       )}
 
-      {/* REAL technical tags, each backed by a number the Why panel can quote. */}
+      {/* REAL technical tags (empty when the instrument has no signal yet). */}
       <div style={{ marginTop: 8 }}>
-        <TagRow s={s} max={2} onWhy={onWhy ? (x) => onWhy(x, "Trending now — moving on real 5-minute candles") : null} />
+        <TagRow s={s} max={2} />
       </div>
 
+      {/* "Why?" ALWAYS below the tags, on its own line. */}
+      {onWhy && (
+        <button onClick={(e) => { e.stopPropagation(); onWhy(s, "Trending now — moving on real 5-minute candles"); }} className="tap"
+          style={{ alignSelf: "flex-start", marginTop: 8, border: "1px solid var(--line)", background: "transparent", color: "var(--muted)", borderRadius: 7, padding: "3px 9px", fontSize: 9.5, fontWeight: 800, cursor: "pointer" }}>
+          Why?
+        </button>
+      )}
+
       {onBuy && (
-        <div style={{ marginTop: 11 }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ marginTop: "auto", paddingTop: 11 }} onClick={(e) => e.stopPropagation()}>
           <BuyButton s={s} market={market} onBuy={onBuy} lot={s.lot || 1} fullWidth />
         </div>
       )}
@@ -640,6 +651,11 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const capDefault = (m) => (m === "US" || m === "Crypto") ? "1000" : "100000";
   const deployCapital = deployCapMap[market] != null ? deployCapMap[market] : capDefault(market);
   const setDeployCapital = (v) => { setDeployCapMap((prev) => { const next = { ...prev, [market]: v }; lsSet("mx_deploy_capital", next); return next; }); };
+  /* An explicit Save: you type into a draft, then tap Save to commit (and persist) it. The
+     "Capital" figure only updates on Save, so it's clear what's applied vs being typed. */
+  const [capDraft, setCapDraft] = useState(deployCapital);
+  const [capSaved, setCapSaved] = useState(false);
+  useEffect(() => { setCapDraft(deployCapMap[market] != null ? deployCapMap[market] : capDefault(market)); /* eslint-disable-next-line */ }, [market]);
   const [plPeriod, setPlPeriod] = useState("today");
   const [autoOverrides, setAutoOverrides] = useState({});   // sym -> {tp, sl}
   const [editSym, setEditSym] = useState(null);
@@ -784,10 +800,20 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 <DashStat k="Capital" v={fmt(capNum, aggCur)} pos={true} />
               </div>
 
-              {/* capital */}
-              <div style={{ marginTop: 12, background: "rgba(0,0,0,.25)", borderRadius: 12, padding: "8px 12px" }}>
-                <div style={{ fontSize: 9.5, opacity: .8, fontWeight: 700 }}>CAPITAL TO DEPLOY ({CUR[aggCur]})</div>
-                <input value={deployCapital} onChange={(e) => setDeployCapital(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" placeholder="100000" className="no-ring mono" style={{ width: "100%", background: "transparent", border: "none", color: "#fff", fontSize: 17, fontWeight: 800, marginTop: 2 }} />
+              {/* capital — type then Save */}
+              <div style={{ marginTop: 12, background: "rgba(0,0,0,.25)", borderRadius: 12, padding: "8px 12px", display: "flex", alignItems: "flex-end", gap: 8 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 9.5, opacity: .8, fontWeight: 700 }}>CAPITAL TO DEPLOY ({CUR[aggCur]})</div>
+                  <input value={capDraft} onChange={(e) => { setCapDraft(e.target.value.replace(/[^0-9]/g, "")); setCapSaved(false); }} inputMode="numeric" placeholder={capDefault(market)} className="no-ring mono" style={{ width: "100%", background: "transparent", border: "none", color: "#fff", fontSize: 17, fontWeight: 800, marginTop: 2 }} />
+                </div>
+                <button
+                  onClick={() => { setDeployCapital(capDraft); setCapSaved(true); setTimeout(() => setCapSaved(false), 2500); }}
+                  disabled={capDraft === deployCapital}
+                  className="tap disp"
+                  style={{ flex: "0 0 auto", border: "none", borderRadius: 10, padding: "8px 16px", fontWeight: 800, fontSize: 12.5, background: capDraft === deployCapital ? "rgba(255,255,255,.15)" : "#fff", color: capDraft === deployCapital ? "rgba(255,255,255,.6)" : "#141416" }}
+                >
+                  {capSaved ? "Saved ✓" : "Save"}
+                </button>
               </div>
 
               {/* Positions — REAL. Planned entries when Auto-Buy is off; live/closed
