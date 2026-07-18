@@ -237,9 +237,9 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
           </div>
         )}
 
-        {/* DELAYED-PRICE guard (real mode): if this market has no live broker feed, the price is
-            ~15 min delayed and a real market order can fill materially away from what's shown. */}
-        {isReal && s && !s.liveSource && price != null && (
+        {/* DELAYED-PRICE guard (real mode): only when NO broker is connected for this market —
+            with a broker connected the feed is live, so the warning would be a false positive. */}
+        {isReal && s && !s.liveSource && !brokerName && price != null && (
           <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 12, padding: 11, borderRadius: 11, background: "var(--down-soft)", border: "1px solid var(--down)" }}>
             <AlertTriangle size={15} color="var(--down)" style={{ flex: "0 0 auto", marginTop: 1 }} />
             <span style={{ fontSize: 11.5, color: "var(--ink)", lineHeight: 1.45 }}>
