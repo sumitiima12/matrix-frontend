@@ -1042,6 +1042,35 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
 
       <div style={{ marginTop: 14 }}><LiveAutoBuys userId={userId} market={market} isAdmin={isAdmin} adminKey={adminKey} /></div>
 
+      {/* Virtual Live Deployed — the paper-mode twin of "Live Real Deployed": every ACTIVE
+          paper strategy for this market, with its simulated P&L. No real orders here. */}
+      {(() => {
+        const vd = strats.filter((s) => s.active && inMkt(s)).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
+        if (!vd.length) return null;
+        return (
+          <div className="card" style={{ padding: 14, marginTop: 12, border: "1px solid var(--primary)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <Sparkles size={15} color="var(--primary)" />
+              <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>Virtual Live Deployed</div>
+              <span className="pill" style={{ marginLeft: "auto", fontSize: 9, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: "var(--muted)" }}>PAPER</span>
+            </div>
+            {vd.map(({ s, p }) => (
+              <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: "1px solid var(--line)" }}>
+                <div style={{ minWidth: 0 }}>
+                  <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{s.name || (s.symbols && s.symbols[0]) || "Strategy"}</div>
+                  <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600, marginTop: 1 }}>{(s.symbols || []).join(", ") || "—"} · by {s.by}</div>
+                  <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>{p.trades} trades · {p.trades ? (p.wins / p.trades * 100).toFixed(0) : 0}% win</div>
+                </div>
+                <div style={{ marginLeft: "auto", textAlign: "right" }}>
+                  <div className="mono" style={{ fontSize: 12.5, fontWeight: 800, color: chgColor(p.pnl) }}>{p.trades ? (p.pnl >= 0 ? "+" : "") + fmt(p.pnl, market) : "—"}</div>
+                  <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>{p.trades ? "paper P&L" : "waiting for signal"}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
       {/* Automation dashboard — collapsed by default (P&L + expand), expands to all details. */}
       <div className="card glow metal" style={{ marginTop: 18, padding: 18, border: "none", background: "var(--feature-grad)", color: "#fff" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
@@ -1121,13 +1150,18 @@ export default function Automation({ market = "IN", onRecord, trades = [], strat
 
           {mode === "builder" && (
             <>
-              {/* Strategy Ideas (templates) */}
-              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", margin: "18px 2px 10px", display: "flex", alignItems: "center", gap: 7 }}><Sparkles size={14} color="var(--primary)" /> Strategy Ideas — pick a symbol, then activate</div>
-              <div className="hide-scroll" style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 2 }}>
-                {TEMPLATES.map((t) => (
-                  <TemplateCard key={t.name} t={t} market={market} onActivate={activateTemplate} onToggleBt={(n) => setBtTpl(btTpl === n ? null : n)} btActive={btTpl === t.name} onLoad={loadTemplate} selected={selectedTpl === t.name} />
-                ))}
-              </div>
+              {/* Strategy Ideas (templates) — hidden while EDITING an existing strategy, so you
+                  don't accidentally overwrite your own indicators by tapping a template. */}
+              {!editingId && (
+                <>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", margin: "18px 2px 10px", display: "flex", alignItems: "center", gap: 7 }}><Sparkles size={14} color="var(--primary)" /> Strategy Ideas — pick a symbol, then activate</div>
+                  <div className="hide-scroll" style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 2 }}>
+                    {TEMPLATES.map((t) => (
+                      <TemplateCard key={t.name} t={t} market={market} onActivate={activateTemplate} onToggleBt={(n) => setBtTpl(btTpl === n ? null : n)} btActive={btTpl === t.name} onLoad={loadTemplate} selected={selectedTpl === t.name} />
+                    ))}
+                  </div>
+                </>
+              )}
               {btTpl && (
                 <div className="card" style={{ marginTop: 12, padding: 14 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>

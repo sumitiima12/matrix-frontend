@@ -69,15 +69,38 @@ import MultiSelect from "./components/common/MultiSelect";
 import WatchAddButton from "./components/common/WatchAddButton";
 import ResearchVerdict from "./components/ai/ResearchVerdict";
 import HomeView from "./pages/Dashboard";
-const DetailPage = React.lazy(() => import("./pages/StockDetail"));
-const Portfolio = React.lazy(() => import("./pages/PortfolioPage"));
-const TradeHistory = React.lazy(() => import("./pages/Orders"));
-const Automation = React.lazy(() => import("./pages/Automation"));
-const Screener = React.lazy(() => import("./pages/Screener"));
-const Ideas = React.lazy(() => import("./pages/Ideas"));
-const WatchlistView = React.lazy(() => import("./pages/Watchlist"));
+/* lazyWithRetry — after a new deploy, an already-open tab still holds the OLD index.js, which
+   references chunk filenames (PortfolioPage-<hash>.js) that Vercel has since replaced. The
+   dynamic import then 404s: "Failed to fetch dynamically imported module." We catch that once
+   and hard-reload to pull the fresh index + chunk hashes; a sessionStorage guard prevents any
+   reload loop, and we clear it on the next successful load so future deploys can reload again. */
+function lazyWithRetry(importer) {
+  return React.lazy(async () => {
+    try {
+      const m = await importer();
+      try { sessionStorage.removeItem("mx_chunk_reload"); } catch {}
+      return m;
+    } catch (err) {
+      let already = false;
+      try { already = sessionStorage.getItem("mx_chunk_reload") === "1"; } catch {}
+      if (!already) {
+        try { sessionStorage.setItem("mx_chunk_reload", "1"); } catch {}
+        window.location.reload();
+        return new Promise(() => {});   // stay in Suspense until the reload happens
+      }
+      throw err;                         // genuine failure after a fresh load — let the boundary show it
+    }
+  });
+}
+const DetailPage = lazyWithRetry(() => import("./pages/StockDetail"));
+const Portfolio = lazyWithRetry(() => import("./pages/PortfolioPage"));
+const TradeHistory = lazyWithRetry(() => import("./pages/Orders"));
+const Automation = lazyWithRetry(() => import("./pages/Automation"));
+const Screener = lazyWithRetry(() => import("./pages/Screener"));
+const Ideas = lazyWithRetry(() => import("./pages/Ideas"));
+const WatchlistView = lazyWithRetry(() => import("./pages/Watchlist"));
 import ChatPanel from "./pages/AIAssistant";
-const TradeView = React.lazy(() => import("./pages/Trade"));
+const TradeView = lazyWithRetry(() => import("./pages/Trade"));
 import AdminPanel from "./components/common/AdminPanel";
 import { adminCheck, adminIsAdminUser } from "./services/adminService";
 import ProfileSheet, { LoginScreen, Onboarding, LoginModal, SetUsernameModal } from "./components/auth/Auth";
@@ -915,7 +938,7 @@ function AppInner() {
             <DetailPage s={detail} onBack={() => setDetail(null)} watched={watch.includes(detail.sym)} toggleWatch={toggleWatch} onTrade={goTrade} onBuy={buyStock} />
           ) : (
             <>
-              {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} onAutoBuy={autoBuyNow} mode={mode} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} trades={trades} liveTick={liveTick} onWhy={openWhy} autoOnMap={autoOnMap} setAutoOnMap={setAutoOnMap} />}
+              {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} onAutoBuy={autoBuyNow} mode={mode} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} realPortfolio={realPortfolio} onRefreshReal={() => refreshPortfolio(market)} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} trades={trades} liveTick={liveTick} onWhy={openWhy} autoOnMap={autoOnMap} setAutoOnMap={setAutoOnMap} />}
               {tab === "trade" && <TradeView walletMap={walletMap} adjustWallet={adjustWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} recordTrade={recordTrade} />}
               {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} market={market} onWhy={openWhy} me={auth ? (auth.username || null) : null} isAdmin={effAdmin} adminKey={adminKey} signupAt={auth ? (auth.createdAt || null) : null} />}
               {tab === "automation" && <Automation market={market} onRecord={recordTrade} trades={trades} strats={strats} setStrats={setStrats} onExitAll={exitAllStrategies} me={auth ? (auth.username || null) : null} isAdmin={effAdmin} userId={userId} brokerFor={brokerFor} adminKey={adminKey} />}

@@ -554,7 +554,7 @@ function TrendingRow({ s, market, onOpen, onBuy, onWhy }) {
   );
 }
 
-export default function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, onAutoBuy, mode, watch, toggleWatch, profile, portfolio = [], wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [], liveTick = 0, onWhy, autoOnMap: autoOnMapProp, setAutoOnMap: setAutoOnMapProp }) {
+export default function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, onAutoBuy, mode, watch, toggleWatch, profile, portfolio = [], realPortfolio = [], onRefreshReal, wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [], liveTick = 0, onWhy, autoOnMap: autoOnMapProp, setAutoOnMap: setAutoOnMapProp }) {
   const [glMode, setGlMode] = useState("Gainers");
   // Picks refresh ONCE AN HOUR (not on every tick) so they don't churn.
   const [pickHour, setPickHour] = useState(() => Math.floor(Date.now() / 3600000));
@@ -622,9 +622,21 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const smart = list.filter((s) => s.inst);
   const trendingView = trending;
 
-  // portfolio dashboard math
-  const dash = portfolio.reduce((a, h) => {
-    const cur = (ALL.find((x) => x.sym === h.sym) || { price: h.buy }).price;
+  // portfolio dashboard math — PER MODE and PER MARKET.
+  // In REAL mode the Total reflects your actual broker positions for the selected market;
+  // in VIRTUAL mode it reflects your paper holdings. Each market is isolated, so switching
+  // the market at the top changes the figure (US shows only US, Crypto only Crypto, etc.).
+  const isReal = mode === "real";
+  const inMarket = (sym, m) => (m || marketOf(sym) || "IN") === market;
+  const holds = isReal
+    ? (realPortfolio || [])
+        .filter((h) => inMarket(h.sym, h.market) && h.qty)
+        .map((h) => ({ sym: h.sym, qty: h.qty, buy: (h.avg != null ? h.avg : h.price), date: h.entryAt || Date.now(), price: h.price }))
+    : (portfolio || []).filter((h) => inMarket(h.sym, h.market));
+  // Refresh real positions when entering real mode / switching market, so the figure isn't stale.
+  useEffect(() => { if (isReal && onRefreshReal) onRefreshReal(); /* eslint-disable-next-line */ }, [isReal, market]);
+  const dash = holds.reduce((a, h) => {
+    const cur = h.price != null ? h.price : (ALL.find((x) => x.sym === h.sym) || { price: h.buy }).price;
     const days = Math.max(1, Math.round((Date.now() - h.date) / 86400000));
     a.val += cur * h.qty; a.inv += h.buy * h.qty;
     a.annNum += (Math.pow(cur / h.buy, 365 / days) - 1) * (h.buy * h.qty);
@@ -632,9 +644,11 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   }, { val: 0, inv: 0, annNum: 0 });
   // Unrealised P&L on open holdings...
   const unrealised = dash.val - dash.inv;
-  // ...PLUS realised P&L from every CLOSED trade — manual, automate AND Auto Buy — so the
-  // homepage Total reflects auto-buy activity, not just what's still open.
-  const realisedPnl = (trades || []).filter((t) => t.exitAt != null && t.pnl != null).reduce((a, t) => a + (t.pnl || 0), 0);
+  // ...PLUS realised P&L from CLOSED paper trades for THIS market (virtual only — real
+  // realised P&L lives with the broker, not in the paper trade log).
+  const realisedPnl = isReal ? 0 : (trades || [])
+    .filter((t) => t.exitAt != null && t.pnl != null && inMarket(t.sym, t.market))
+    .reduce((a, t) => a + (t.pnl || 0), 0);
   const net = unrealised + realisedPnl;
   const retPct = dash.inv ? (net / dash.inv) * 100 : 0;
   const annPct = dash.inv ? (dash.annNum / dash.inv) * 100 : 0;
@@ -705,6 +719,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   // them at real market prices — no simulated win/loss.
   useEffect(() => {
     if (!autoOn || !onBuy || !BACKEND_URL) return;
+    // Don't consume the once-per-day guard before the picks have actually loaded — otherwise
+    // toggling ON early (while UNIVERSE prices are still null → autoTrades empty) marks the day
+    // "done" and buys nothing, leaving 0 positions until tomorrow. Wait for real picks first.
+    if (!autoTrades.length) return;
     const key = `mx_autobuy_${market}_${DAY}`;
     if (lsGet(key, false)) return;
     autoTrades.forEach((t) => {
@@ -760,13 +778,13 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           {dashView === "total" ? (
             <div onClick={onGoPortfolio} className="tap">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 12, opacity: .85 }}>Current value</span>
+                <span style={{ fontSize: 12, opacity: .85 }}>{isReal ? "Real" : "Virtual"} · {MKT_LABEL[market]} · current value</span>
                 <span className="pill" style={{ fontSize: 11, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "4px 10px", display: "flex", alignItems: "center", gap: 4 }}>My Portfolio <ChevronRight size={13} /></span>
               </div>
-              <div className="mono" style={{ fontWeight: 800, fontSize: 27, marginTop: 2 }}>{fmt(dash.val, "IN")}</div>
+              <div className="mono" style={{ fontWeight: 800, fontSize: 27, marginTop: 2 }}>{fmt(dash.val, market)}</div>
               <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
                 <DashStat k="Returns %" v={(retPct >= 0 ? "+" : "") + retPct.toFixed(2) + "%"} pos={retPct >= 0} />
-                <DashStat k="Net returns" v={(net >= 0 ? "+" : "") + fmt(net, "IN")} pos={net >= 0} />
+                <DashStat k="Net returns" v={(net >= 0 ? "+" : "") + fmt(net, market)} pos={net >= 0} />
               </div>
               {portfolio.length === 0 && <div style={{ fontSize: 11.5, opacity: .8, marginTop: 10 }}>No holdings yet — buy your first stock in Virtual Trade.</div>}
             </div>
