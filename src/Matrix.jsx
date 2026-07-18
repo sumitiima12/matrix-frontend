@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useMemo, useRef, useEffect, Suspense } from "react";
-import { fetchIndicators, fetchTrades, marketOpen, postTrade, resolveExitFromCandles, fetchLiveQuotes } from "./domain/api";
+import { fetchIndicators, fetchTrades, marketOpen, postTrade, resolveExitFromCandles, fetchLiveQuotes, apiVerifyPin } from "./domain/api";
 import {
   Search, User, Wallet, Home, Repeat, Lightbulb, Bot, Bolt, Briefcase,
   Star, TrendingUp, TrendingDown, X, ChevronRight, Send, Plus, Trash2,
@@ -325,6 +325,20 @@ function AppInner() {
   const [mode, setModeRaw] = useState(() => (lsGet("mx_mode") === "real" ? "real" : "virtual"));
   const setMode = useCallback((v) => { lsSet("mx_mode", v); setModeRaw(v); }, []);
   const [confirmReal, setConfirmReal] = useState(false);   // arming Real needs a deliberate yes
+  const [realPin, setRealPin] = useState("");              // step-up PIN to enter Real mode
+  const [realPinErr, setRealPinErr] = useState(null);
+  const [realPinBusy, setRealPinBusy] = useState(false);
+  const confirmRealMode = async () => {
+    setRealPinErr(null);
+    if (!/^\d{4,6}$/.test(realPin)) { setRealPinErr("Enter your login PIN."); return; }
+    setRealPinBusy(true);
+    try {
+      const ok = await apiVerifyPin(realPin);
+      if (!ok) { setRealPinErr("Incorrect PIN."); setRealPinBusy(false); return; }
+      setMode("real"); setConfirmReal(false); setRealPin(""); setBuyToast({ t: "Real mode — orders now go to your broker", e: true });
+    } catch (e) { setRealPinErr(String(e.message || e)); }
+    setRealPinBusy(false);
+  };
 
   const [deposits, setDeposits] = useState([]);
 
@@ -372,6 +386,15 @@ function AppInner() {
   const { trades, setTrades, recordTrade, recordBatch, placeOrder, riskLimits, setRiskLimits } =
     useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, userId, broker, notify });
   const [histOpen, setHistOpen] = useState(false);
+  // Persistent ACTIVITY LOG — toasts vanish; this keeps the last 50 actions/results (orders,
+  // rejects, connects, arms) so you can verify "did that go through?" after the fact.
+  const [activity, setActivity] = useState(() => { try { return JSON.parse(localStorage.getItem("mx_activity") || "[]"); } catch { return []; } });
+  const [activityOpen, setActivityOpen] = useState(false);
+  useEffect(() => {
+    if (!buyToast || !buyToast.t) return;
+    setActivity((prev) => { const next = [{ at: Date.now(), text: buyToast.t, err: !!buyToast.e }, ...prev].slice(0, 50); try { localStorage.setItem("mx_activity", JSON.stringify(next)); } catch {} return next; });
+  }, [buyToast]);
+  const clearActivity = () => { setActivity([]); try { localStorage.removeItem("mx_activity"); } catch {} };
   const [hydratedUser, setHydratedUser] = useState(null);
 
   /* ---- Orders: the ONLY way to trade. Everything funnels through the pipeline:
@@ -877,6 +900,11 @@ function AppInner() {
                     : compact(wallet)}
                 </span>
               </button>
+              {/* Activity log — recent actions & their outcomes (orders, rejects, connects). */}
+              <button onClick={() => setActivityOpen(true)} aria-label="Activity" className="tap" style={{ position: "relative", border: "1px solid var(--line)", background: "transparent", borderRadius: 10, width: 34, height: 34, display: "grid", placeItems: "center", cursor: "pointer", flexShrink: 0 }}>
+                <Clock size={16} color="var(--muted)" />
+                {activity.length > 0 && <span style={{ position: "absolute", top: -4, right: -4, minWidth: 15, height: 15, padding: "0 3px", borderRadius: 8, background: "var(--primary)", color: "#fff", fontSize: 8.5, fontWeight: 800, display: "grid", placeItems: "center" }}>{activity.length > 9 ? "9+" : activity.length}</span>}
+              </button>
               {/* Profile: the icon, with a label below — "Login" for a guest, the username
                   (or name) once signed in. Tapping opens the profile sheet either way. */}
               <div onClick={() => setShowProfile(true)} className="tap" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, flexShrink: 0, cursor: "pointer" }}>
@@ -1063,15 +1091,49 @@ function AppInner() {
               <br /><br />
               Your virtual wallet and paper trade history are kept separately and are not affected.
             </div>
-            <div style={{ display: "flex", gap: 9, marginTop: 18 }}>
-              <button onClick={() => setConfirmReal(false)} className="tap disp"
+            {/* Step-up: entering Real money requires your login PIN. */}
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Enter your login PIN to confirm</div>
+              <input value={realPin} onChange={(e) => { setRealPin(e.target.value.replace(/[^0-9]/g, "").slice(0, 6)); setRealPinErr(null); }} onKeyDown={(e) => { if (e.key === "Enter") confirmRealMode(); }} type="password" inputMode="numeric" autoFocus placeholder="••••" className="no-ring mono" style={{ width: "100%", border: "1px solid " + (realPinErr ? "var(--down)" : "var(--line)"), borderRadius: 12, padding: "12px 14px", fontSize: 18, letterSpacing: "6px", textAlign: "center", background: "var(--elev)", color: "var(--ink)" }} />
+              {realPinErr && <div style={{ color: "var(--down)", fontSize: 11.5, fontWeight: 600, marginTop: 6 }}>{realPinErr}</div>}
+            </div>
+            <div style={{ display: "flex", gap: 9, marginTop: 16 }}>
+              <button onClick={() => { setConfirmReal(false); setRealPin(""); setRealPinErr(null); }} className="tap disp"
                 style={{ flex: 1.3, border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 12, padding: 13, fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>
                 Stay in Virtual
               </button>
-              <button onClick={() => { setMode("real"); setConfirmReal(false); setBuyToast({ t: "Real mode — orders now go to your broker", e: true }); }} className="tap disp"
-                style={{ flex: 1, border: "none", background: "var(--down)", color: "#fff", borderRadius: 12, padding: 13, fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>
-                Use Real
+              <button onClick={confirmRealMode} disabled={realPinBusy || !/^\d{4,6}$/.test(realPin)} className="tap disp"
+                style={{ flex: 1, border: "none", background: /^\d{4,6}$/.test(realPin) ? "var(--down)" : "var(--elev)", color: /^\d{4,6}$/.test(realPin) ? "#fff" : "var(--muted)", borderRadius: 12, padding: 13, fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>
+                {realPinBusy ? "Checking…" : "Use Real"}
               </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {activityOpen && (
+        <>
+          <div onClick={() => setActivityOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 150 }} />
+          <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--surface)", borderRadius: "22px 22px 0 0", zIndex: 151, padding: "18px 18px 24px", maxHeight: "70vh", display: "flex", flexDirection: "column", boxShadow: "0 -16px 44px rgba(0,0,0,.3)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div className="disp" style={{ fontSize: 17, fontWeight: 800, display: "flex", alignItems: "center", gap: 7 }}><Clock size={17} /> Activity</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                {activity.length > 0 && <button onClick={clearActivity} className="tap disp" style={{ border: "1px solid var(--line)", background: "transparent", color: "var(--muted)", borderRadius: 9, padding: "5px 10px", fontWeight: 800, fontSize: 11 }}>Clear</button>}
+                <button onClick={() => setActivityOpen(false)} aria-label="Close" className="tap" style={{ border: "none", background: "var(--elev)", borderRadius: 9, width: 30, height: 30, display: "grid", placeItems: "center", cursor: "pointer" }}><X size={15} /></button>
+              </div>
+            </div>
+            <div className="hide-scroll" style={{ overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+              {activity.length === 0 ? (
+                <div style={{ fontSize: 12.5, color: "var(--muted)", padding: "20px 0", textAlign: "center" }}>No recent activity yet. Orders, rejects and connections will appear here.</div>
+              ) : activity.map((a, i) => (
+                <div key={a.at + "-" + i} style={{ display: "flex", gap: 9, alignItems: "flex-start", padding: "9px 11px", borderRadius: 11, background: "var(--elev)", border: "1px solid " + (a.err ? "rgba(232,72,85,.35)" : "var(--line)") }}>
+                  {a.err ? <X size={15} color="var(--down)" style={{ flex: "0 0 auto", marginTop: 1 }} /> : <Check size={15} color="var(--up)" style={{ flex: "0 0 auto", marginTop: 1 }} />}
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 12, color: "var(--ink)", lineHeight: 1.4 }}>{a.text}</div>
+                    <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2 }}>{new Date(a.at).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </>

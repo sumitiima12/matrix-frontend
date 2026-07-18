@@ -189,6 +189,13 @@ export async function changePin(currentPin, newPin) {
   return d;
 }
 
+/** Verify the login PIN (step-up for entering Real mode). Returns true/false. */
+export async function verifyPin(pin) {
+  const d = await post("/api/pin/verify", { pin });
+  if (!d || d.error) throw new Error((d && d.error) || "Couldn't verify your PIN");
+  return !!d.ok;
+}
+
 export async function saveState(userId, state) {
   return post("/api/state", { state });
 }

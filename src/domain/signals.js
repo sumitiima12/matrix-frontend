@@ -88,7 +88,9 @@ export function techSignal(s) {
   stop = Math.min(Math.max(stop, slFloor), px * 0.995);      // between the floor and −0.5%, always positive
   const slPct = +(((px - stop) / px) * 100).toFixed(1);
   const tpPct = +(((target - px) / px) * 100).toFixed(1);
-  const rr = slPct > 0 ? +(tpPct / slPct).toFixed(1) : null;
+  // Clamp displayed R:R to a believable band — a hair-tight stop next to a capped target used
+  // to read like "38.7:1", which is meaningless to a real trader.
+  const rr = slPct > 0 ? Math.min(10, +(tpPct / slPct).toFixed(1)) : null;
   const dp = px < 1 ? 6 : px < 10 ? 4 : 2;                   // sub-dollar coins need real precision
 
   return {
