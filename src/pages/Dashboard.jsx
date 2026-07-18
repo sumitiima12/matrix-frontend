@@ -634,8 +634,13 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   // in VIRTUAL mode it reflects your paper holdings. Each market is isolated, so switching
   // the market at the top changes the figure (US shows only US, Crypto only Crypto, etc.).
   const isReal = mode === "real";
-  // Real-mode money shown to ONE decimal (a Delta cash balance like $162.20473968 is noise).
-  const money1 = (v) => ((market === "Crypto" || market === "US") ? "$" : "₹") + Number(v || 0).toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  // Real-mode money: 1 decimal for values ≥ $1 (a Delta balance like $162.20473968 is noise),
+  // but ADAPTIVE precision under $1 so tiny crypto P&L like $0.0062 stays legible instead of $0.0.
+  const money1 = (v) => {
+    const n = Number(v || 0), a = Math.abs(n), sym = (market === "Crypto" || market === "US") ? "$" : "₹";
+    const dp = a >= 1 ? 1 : a >= 0.01 ? 4 : a > 0 ? 6 : 1;
+    return sym + n.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
+  };
   const inMarket = (sym, m) => (m || marketOf(sym) || "IN") === market;
   // Real broker holdings arrive as an OBJECT { holdings:[...], cash } — not an array — with
   // each holding shaped { sym, qty, avg, value, pnl }. Normalise to the paper-holding shape

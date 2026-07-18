@@ -879,7 +879,7 @@ function AppInner() {
                 <Wallet size={15} color={mode === "real" ? "var(--down)" : "var(--gold)"} />
                 <span className="mono" style={{ fontSize: 11.5, fontWeight: 800, color: mode === "real" ? "var(--down)" : "var(--ink)" }}>
                   {mode === "real"
-                    ? ((realPortfolio && realPortfolio.cash != null) ? ((market === "Crypto" || market === "US") ? "$" : "₹") + Number(realPortfolio.cash).toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : "Real")
+                    ? ((realPortfolio && realPortfolio.cash != null) ? ((market === "Crypto" || market === "US") ? "$" : "₹") + Number(realPortfolio.cash).toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: Math.abs(Number(realPortfolio.cash)) < 1 ? 4 : 1 }) : "Real")
                     : compact(wallet)}
                 </span>
               </button>
