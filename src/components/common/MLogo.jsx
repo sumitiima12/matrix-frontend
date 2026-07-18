@@ -10,7 +10,9 @@ import React from "react";
  */
 export default function MLogo({ size = 30 }) {
   // Unique gradient ids so multiple instances on one page never collide.
-  const uid = React.useId ? React.useId().replace(/:/g, "") : "mlogo";
+  // useId is called UNCONDITIONALLY (React 18 always provides it) — a ternary guard around a
+  // hook is a Rules-of-Hooks violation.
+  const uid = React.useId().replace(/:/g, "");
   const gid = `mlg-${uid}`;
   const bid = `mlb-${uid}`;
   const did = `mld-${uid}`;

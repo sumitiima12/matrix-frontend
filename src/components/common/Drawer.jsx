@@ -22,12 +22,9 @@ export default function Drawer({ s, onClose, onDetails, onBuy }) {
      mid-read, so the sheet appeared to vanish. A scroll gesture should scroll. Opening
      the full page is what the button is for. */
 
-  if (!s) return null;
-  const market = marketOf(s.sym);
-  /* REAL news. The old code read s.news[0].t — a hardcoded fake headline baked
-     onto the instrument. We deleted those arrays, so this crashed on every card
-     tap. Now it fetches the actual headline, and simply shows nothing if there
-     is none. */
+  /* REAL news. Hooks MUST run before the `if (!s)` early return (Rules of Hooks) — otherwise a
+     render where s is null runs fewer hooks than one where it isn't, and React throws. The
+     effect is null-safe on s?.sym, so running it unconditionally is harmless. */
   const [news, setNews] = useState(null);
   useEffect(() => {
     let stop = false;
@@ -36,6 +33,9 @@ export default function Drawer({ s, onClose, onDetails, onBuy }) {
     fetchNews(s.sym).then((n) => { if (!stop && n && n.length) setNews(n[0]); }).catch(() => {});
     return () => { stop = true; };
   }, [s?.sym]);
+
+  if (!s) return null;
+  const market = marketOf(s.sym);
 
   const onTS = (e) => { startY.current = e.touches[0].clientY; };
   const onTM = (e) => { if (startY.current == null) return; setDy(Math.max(0, e.touches[0].clientY - startY.current)); };  // down only

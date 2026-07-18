@@ -1,21 +1,28 @@
 {
-  "name": "matrix-frontend",
-  "version": "1.0.0",
+  "name": "matrix",
   "private": true,
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "smoke": "node scripts/smoke.mjs",
+    "lint": "eslint src",
+    "check": "eslint src && node scripts/smoke.mjs",
+    "predeploy": "eslint src && node scripts/smoke.mjs && vite build"
   },
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "lucide-react": "^0.383.0",
-    "recharts": "^2.12.7"
+    "recharts": "^2.12.7",
+    "lucide-react": "^0.383.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
-    "vite": "^5.4.1"
+    "esbuild": "^0.23.0",
+    "eslint": "^9.0.0",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "vite": "^5.4.0"
   }
 }

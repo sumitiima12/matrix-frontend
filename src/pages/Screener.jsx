@@ -48,7 +48,9 @@ export default function Screener({ onOpen, market, list, watchlists, addToWatch,
     "banking stocks with RSI > 55",
   ];
 
-  const useSuggestion = (q) => {
+  // NOT a hook — renamed off the `use*` prefix so it can't be mistaken for one (by readers or
+  // the react-hooks lint rule) when called from an onClick handler.
+  const applySuggestion = (q) => {
     cancelled.current = text;      // ignore whatever the model was chewing on
     setText(q);
     setTimedOut(false);
@@ -164,7 +166,7 @@ export default function Screener({ onOpen, market, list, watchlists, addToWatch,
               {SUGGESTIONS.map((q) => (
                 <button
                   key={q}
-                  onClick={() => useSuggestion(q)}
+                  onClick={() => applySuggestion(q)}
                   className="tap mono"
                   style={{ border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", borderRadius: 9, padding: "6px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
                 >
