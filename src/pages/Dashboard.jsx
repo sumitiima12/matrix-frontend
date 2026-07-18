@@ -821,7 +821,13 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 <DashStat k="Returns %" v={(retPct >= 0 ? "+" : "") + retPct.toFixed(1) + "%"} pos={retPct >= 0} />
                 <DashStat k="Net returns" v={(net >= 0 ? "+" : "") + (isReal ? money1(net) : fmt(net, market))} pos={net >= 0} />
               </div>
-              {portfolio.length === 0 && <div style={{ fontSize: 11.5, opacity: .8, marginTop: 10 }}>No holdings yet — buy your first stock in Virtual Trade.</div>}
+              {/* At-a-glance counts — holdings, auto-buy positions, and any rejects for THIS market. */}
+              <div style={{ display: "flex", gap: 14, marginTop: 12, fontSize: 12, opacity: .9, flexWrap: "wrap" }}>
+                <span><b style={{ fontWeight: 800 }}>{holds.length}</b> <span style={{ opacity: .7 }}>open</span></span>
+                <span><b style={{ fontWeight: 800 }}>{filledRows.length}</b> <span style={{ opacity: .7 }}>auto-buy</span></span>
+                {autoRows.some((r) => r.rejected) && <span style={{ color: "#FFB3BE" }}><b style={{ fontWeight: 800 }}>{autoRows.filter((r) => r.rejected).length}</b> rejected</span>}
+              </div>
+              {portfolio.length === 0 && !isReal && <div style={{ fontSize: 11.5, opacity: .8, marginTop: 10 }}>No holdings yet — buy your first stock in Virtual Trade.</div>}
             </div>
           ) : (
             <div>
