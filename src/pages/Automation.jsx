@@ -591,7 +591,9 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
           <div style={{ marginLeft: "auto", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
             {s.inPosition
               ? <div className="mono" style={{ fontSize: 12, fontWeight: 800, color: (s.livePnl || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{(s.livePnl || 0) >= 0 ? "+" : ""}{ccy}{Math.abs(s.livePnl || 0).toFixed(2)}</div>
-              : <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>waiting for signal</div>}
+              : s.lastOrderStatus === "rejected"
+                ? <div style={{ fontSize: 9.5, color: "var(--down)", fontWeight: 800 }}>rejected</div>
+                : <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }} title="Buys automatically when your entry rule fires on live candles.">waiting for entry</div>}
             <div style={{ display: "flex", gap: 6 }}>
               <button onClick={() => doPause(s)} className="tap" style={{ border: "1px solid var(--line)", background: "transparent", color: "var(--muted)", borderRadius: 8, padding: "3px 8px", fontSize: 10, fontWeight: 700 }}>{s.status === "active" ? "Pause" : "Resume"}</button>
               <button onClick={() => doCancel(s)} className="tap" style={{ border: "1px solid var(--down)", background: "transparent", color: "var(--down)", borderRadius: 8, padding: "3px 8px", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 2 }}><X size={10} /> Stop</button>

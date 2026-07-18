@@ -853,9 +853,16 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   <span style={{ fontSize: 9.5, opacity: .6 }}>{product === "INTRADAY" ? "auto-squared off same day" : "carried forward"}</span>
                 </div>
               )}
-              <div style={{ fontSize: 10, opacity: .7, marginTop: 2 }}>P&amp;L · {periodLabel} {autoOn ? "· live positions (real exits)" : "· simulated preview"}</div>
+              {/* Plain-English "how this works" so the behaviour and requirements are obvious. */}
+              <div style={{ fontSize: 9.5, opacity: .6, marginTop: 3, lineHeight: 1.45 }}>
+                Buys Matrix's top {MKT_LABEL[market]} picks once a day at the live price{autoOn ? ", and auto-exits at your target/stop" : ""}. {isReal ? "Real orders — needs a connected broker + enough balance." : "Paper preview until you switch to Real."}
+              </div>
+              <div style={{ fontSize: 10, opacity: .7, marginTop: 4 }}>P&amp;L · {periodLabel} {autoOn ? "· live positions (real exits)" : "· simulated preview"}</div>
               <div className="mono" style={{ fontWeight: 800, fontSize: 27, marginTop: 3, color: autoPnl >= 0 ? "#9CFFD6" : "#FFB3BE" }}>{(autoPnl >= 0 ? "+" : "") + fmt(autoPnl, aggCur)}</div>
               <div style={{ fontSize: 11, opacity: .85 }}>{`${periodStats.trades} trades · ${autoWinRate.toFixed(0)}% win rate · ${CUR[aggCur]}${(capNum / 1000).toFixed(0)}k capital`}</div>
+              {autoRows.some((r) => r.rejected) && (
+                <div style={{ fontSize: 10, color: "#FFB3BE", fontWeight: 700, marginTop: 3 }}>⚠ {autoRows.filter((r) => r.rejected).length} order(s) rejected — open Show Positions for the reason</div>
+              )}
 
               <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
                 <DashStat k="Trades" v={periodStats.trades} pos={true} />
