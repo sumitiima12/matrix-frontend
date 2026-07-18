@@ -3,7 +3,7 @@ import { currentIdeas, resolveIdea } from "../domain/ideas";
 import { BACKEND_URL } from "../config";
 import { fmt } from "../lib/format";
 import { ALL, marketOf, UNIVERSE } from "../domain/universe";
-import { fetchHistory, apiListIdeas, apiPostIdea, apiDeleteIdea } from "../domain/api";
+import { fetchHistory, apiListIdeas, apiPostIdea, apiDeleteIdea, apiReviewIdea } from "../domain/api";
 import { ChevronDown, ChevronUp, Plus, Sparkles, Trash2, X } from "lucide-react";
 import MiniCandles from "../components/charts/MiniCandles";
 import { selStyle } from "../components/common/styles";
@@ -111,7 +111,7 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null })
 }
 
 /* Community ideas — anyone can post; everyone sees them. Filters by symbol and poster. */
-function CommunityIdeas({ market, me, isAdmin, onOpen }) {
+function CommunityIdeas({ market, me, isAdmin, adminKey = "", onOpen }) {
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -122,21 +122,32 @@ function CommunityIdeas({ market, me, isAdmin, onOpen }) {
   const [note, setNote] = useState("");
   const [tgt, setTgt] = useState("");
   const [stp, setStp] = useState("");
+  const [tags, setTags] = useState([]);       // up to 4 short tags
+  const [tagIn, setTagIn] = useState("");
+  const [shot, setShot] = useState(null);     // screenshot data URL
   const [busy, setBusy] = useState(false);
+  const [posted, setPosted] = useState(false);
   const symOptions = useMemo(() => (UNIVERSE[market] || []).map((s) => s.sym), [market]);
-  const refresh = () => { setLoading(true); apiListIdeas({ symbol: fSym, by: fBy }).then((l) => { setList(Array.isArray(l) ? l : []); setLoading(false); }); };
+  const refresh = () => { setLoading(true); apiListIdeas({ symbol: fSym, by: fBy, adminKey: isAdmin ? adminKey : "" }).then((l) => { setList(Array.isArray(l) ? l : []); setLoading(false); }); };
   useEffect(() => { refresh(); /* eslint-disable-next-line */ }, [fSym, fBy]);
   const marketList = list.filter((i) => marketOf(i.symbol) === market);
   const byOptions = useMemo(() => Array.from(new Set(marketList.map((i) => i.owner_name).filter(Boolean))), [list, market]);
   const symFilterOptions = useMemo(() => Array.from(new Set(marketList.map((i) => i.symbol))), [list, market]);
+  const addTag = () => { const t = tagIn.trim().replace(/^#/, "").slice(0, 24); if (t && tags.length < 4 && !tags.includes(t)) setTags([...tags, t]); setTagIn(""); };
+  const onShot = (e) => {
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    if (f.size > 1_400_000) { alert("Image too large — please use one under ~1.4MB."); return; }
+    const rd = new FileReader(); rd.onload = () => setShot(String(rd.result)); rd.readAsDataURL(f);
+  };
   const submit = async () => {
     if (!sym) return;
     setBusy(true);
-    const r = await apiPostIdea({ symbol: sym, direction: dir, note, target: tgt, stop: stp });
+    const r = await apiPostIdea({ symbol: sym, direction: dir, note, target: tgt, stop: stp, tags, screenshot: shot });
     setBusy(false);
-    if (r && r.ok) { setSym(""); setNote(""); setTgt(""); setStp(""); setShowForm(false); refresh(); }
+    if (r && r.ok) { setSym(""); setNote(""); setTgt(""); setStp(""); setTags([]); setShot(null); setShowForm(false); setPosted(true); setTimeout(() => setPosted(false), 6000); refresh(); }
   };
   const del = async (id) => { await apiDeleteIdea(id); refresh(); };
+  const reviewIt = async (id, status) => { await apiReviewIdea(id, status, adminKey); refresh(); };
   const sel = { ...selStyle, flex: "1 1 0", minWidth: 0, fontSize: 11.5 };
   const dt = (t) => { try { return new Date(t).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }); } catch { return ""; } };
   return (
@@ -156,11 +167,24 @@ function CommunityIdeas({ market, me, isAdmin, onOpen }) {
           <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Why this trade? (thesis, levels…)" className="no-ring" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 11, fontSize: 13, minHeight: 64, background: "var(--elev)", color: "var(--ink)", marginTop: 8, resize: "vertical" }} />
           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
             <input value={tgt} onChange={(e) => setTgt(e.target.value)} placeholder="Target (optional)" className="no-ring mono" style={{ ...sel, textAlign: "center" }} />
-            <input value={stp} onChange={(e) => setStp(e.target.value)} placeholder="Stop (optional)" className="no-ring mono" style={{ ...sel, textAlign: "center" }} />
+            <input value={stp} onChange={(e) => setStp(e.target.value)} placeholder="Stop loss (optional)" className="no-ring mono" style={{ ...sel, textAlign: "center" }} />
+          </div>
+          {/* Tags — up to 4. */}
+          <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
+            {tags.map((t) => <span key={t} className="pill" style={{ fontSize: 10.5, fontWeight: 700, background: "var(--primary-soft)", color: "var(--primary)", padding: "3px 9px", display: "inline-flex", gap: 4, alignItems: "center" }}>#{t}<X size={11} className="tap" onClick={() => setTags(tags.filter((x) => x !== t))} /></span>)}
+            {tags.length < 4 && <input value={tagIn} onChange={(e) => setTagIn(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }} placeholder="+ tag" className="no-ring" style={{ ...sel, flex: "0 0 90px", fontSize: 11.5 }} />}
+          </div>
+          {/* Screenshot (optional). */}
+          <div style={{ marginTop: 8 }}>
+            {shot
+              ? <div style={{ position: "relative", display: "inline-block" }}><img src={shot} alt="idea" style={{ maxHeight: 120, borderRadius: 10, border: "1px solid var(--line)" }} /><button onClick={() => setShot(null)} className="tap" style={{ position: "absolute", top: 4, right: 4, background: "rgba(0,0,0,.6)", color: "#fff", border: "none", borderRadius: 8, padding: "2px 6px", fontSize: 11 }}>Remove</button></div>
+              : <label className="tap disp" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px dashed var(--line)", borderRadius: 10, padding: "8px 12px", fontSize: 11.5, fontWeight: 700, color: "var(--muted)", cursor: "pointer" }}>📎 Add a screenshot<input type="file" accept="image/*" onChange={onShot} style={{ display: "none" }} /></label>}
           </div>
           <button onClick={submit} disabled={busy || !sym || !me} className="tap disp glow" style={{ width: "100%", marginTop: 10, background: (sym && me) ? "linear-gradient(120deg,var(--primary),var(--primary-2))" : "var(--elev)", color: (sym && me) ? "#fff" : "var(--muted)", border: "none", borderRadius: 12, padding: 12, fontWeight: 800, fontSize: 13 }}>{busy ? "Posting…" : "Post idea"}</button>
+          <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 6, textAlign: "center" }}>Posted as @{me || "you"} · goes live after admin approval.</div>
         </div>
       )}
+      {posted && <div className="card" style={{ padding: 11, marginBottom: 10, background: "var(--up-soft)", color: "var(--up)", fontSize: 12, fontWeight: 700, textAlign: "center" }}>Idea submitted — it'll appear once an admin approves it.</div>}
 
       <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
         <select value={fSym} onChange={(e) => setFSym(e.target.value)} aria-label="Symbol filter" style={sel}><option value="">Symbol: All</option>{symFilterOptions.map((s) => <option key={s} value={s}>{s}</option>)}</select>
@@ -179,16 +203,29 @@ function CommunityIdeas({ market, me, isAdmin, onOpen }) {
                   <span onClick={() => s && onOpen(s)} className="disp tap" style={{ fontWeight: 700, fontSize: 14 }}>{idea.symbol}</span>
                   <span className="pill" style={{ fontSize: 10, fontWeight: 800, padding: "3px 8px", background: idea.direction === "Short" ? "var(--down-soft)" : "var(--up-soft)", color: idea.direction === "Short" ? "var(--down)" : "var(--up)" }}>{idea.direction}</span>
                 </div>
-                <span style={{ fontSize: 10.5, color: "var(--muted)", flex: "0 0 auto" }}>by {idea.owner_name || "user"} · {dt(idea.created_at)}</span>
+                <span style={{ fontSize: 10.5, color: "var(--muted)", flex: "0 0 auto" }}>by @{idea.owner_name || "user"} · {dt(idea.created_at)}</span>
               </div>
+              {idea.status && idea.status !== "approved" && (
+                <span className="pill" style={{ fontSize: 9, fontWeight: 800, padding: "2px 8px", marginTop: 6, display: "inline-block", background: idea.status === "rejected" ? "var(--down-soft)" : "var(--amber-soft, rgba(245,158,11,.15))", color: idea.status === "rejected" ? "var(--down)" : "var(--amber, #F59E0B)" }}>{idea.status === "rejected" ? "REJECTED" : "PENDING REVIEW"}</span>
+              )}
               {idea.note && <div style={{ fontSize: 12.5, lineHeight: 1.55, color: "var(--ink-soft, var(--ink))", marginTop: 8 }}>{idea.note}</div>}
+              {Array.isArray(idea.tags) && idea.tags.length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
+                  {idea.tags.map((t) => <span key={t} className="pill" style={{ fontSize: 9.5, fontWeight: 700, background: "var(--elev)", color: "var(--muted)", padding: "2px 8px" }}>#{t}</span>)}
+                </div>
+              )}
+              {idea.screenshot && <img src={idea.screenshot} alt="idea" style={{ width: "100%", borderRadius: 10, border: "1px solid var(--line)", marginTop: 8 }} />}
               {(idea.target || idea.stop) && (
                 <div style={{ display: "flex", gap: 14, marginTop: 8, fontSize: 11.5 }}>
                   {idea.target && <span style={{ color: "var(--muted)" }}>Target <b className="mono" style={{ color: "var(--up)" }}>{idea.target}</b></span>}
                   {idea.stop && <span style={{ color: "var(--muted)" }}>Stop <b className="mono" style={{ color: "var(--down)" }}>{idea.stop}</b></span>}
                 </div>
               )}
-              {canDel && <button onClick={() => del(idea.id)} className="tap" title="Delete" style={{ marginTop: 8, border: "1px solid var(--line)", background: "transparent", color: "var(--down)", borderRadius: 9, padding: "5px 10px", fontSize: 11, fontWeight: 700, display: "inline-flex", gap: 5, alignItems: "center" }}><Trash2 size={12} /> Delete</button>}
+              <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                {isAdmin && idea.status !== "approved" && <button onClick={() => reviewIt(idea.id, "approved")} className="tap" style={{ border: "1px solid var(--up)", background: "var(--up-soft)", color: "var(--up)", borderRadius: 9, padding: "5px 12px", fontSize: 11, fontWeight: 800 }}>✓ Approve</button>}
+                {isAdmin && idea.status !== "rejected" && <button onClick={() => reviewIt(idea.id, "rejected")} className="tap" style={{ border: "1px solid var(--down)", background: "transparent", color: "var(--down)", borderRadius: 9, padding: "5px 12px", fontSize: 11, fontWeight: 800 }}>Reject</button>}
+                {canDel && <button onClick={() => del(idea.id)} className="tap" title="Delete" style={{ border: "1px solid var(--line)", background: "transparent", color: "var(--down)", borderRadius: 9, padding: "5px 10px", fontSize: 11, fontWeight: 700, display: "inline-flex", gap: 5, alignItems: "center" }}><Trash2 size={12} /> Delete</button>}
+              </div>
             </div>
           );
         })}
@@ -196,7 +233,7 @@ function CommunityIdeas({ market, me, isAdmin, onOpen }) {
   );
 }
 
-export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, isAdmin = false, signupAt = null }) {
+export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, isAdmin = false, adminKey = "", signupAt = null }) {
   const [dashOpen, setDashOpen] = useState(false);
   const [view, setView] = useState("all");   // "all" | "neo" | "community"
   // Recomputed from real data as it arrives, rather than frozen at import time.
@@ -283,7 +320,7 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
         );
       })}
 
-      {view !== "neo" && <CommunityIdeas market={market} me={me} isAdmin={isAdmin} onOpen={onOpen} />}
+      {view !== "neo" && <CommunityIdeas market={market} me={me} isAdmin={isAdmin} adminKey={adminKey} onOpen={onOpen} />}
     </div>
   );
 }

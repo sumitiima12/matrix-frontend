@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { adminListUsers, adminGetUser, adminSetBlocked, adminResetPin } from "../../services/adminService";
+import { apiListIdeas, apiReviewIdea } from "../../domain/api";
 import { tradesToCSV, downloadCSV, tradeFilename } from "../../lib/csv";
 
 /**
@@ -16,6 +17,7 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
   const [selected, setSelected] = useState(null);   // full detail of one user
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [section, setSection] = useState("users");  // users | ideas
 
   const refresh = async () => {
     try { setUsers(await adminListUsers(userId, adminKey)); setErr(null); }
@@ -139,8 +141,17 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
           <TradesSection trades={selected.trades || []} cardStyle={card} />
         </div>
       ) : (
-        /* USER LIST */
+        /* USER LIST + IDEAS MODERATION */
         <div>
+          <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3, marginTop: 8, marginBottom: 4 }}>
+            {[["users", "Users"], ["ideas", "Ideas"]].map(([k, l]) => (
+              <button key={k} onClick={() => setSection(k)} className="pill tap disp" style={{ padding: "6px 16px", fontSize: 12, fontWeight: 800, border: "none", background: section === k ? "var(--primary)" : "transparent", color: section === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
+            ))}
+          </div>
+          {section === "ideas" ? (
+            <IdeasModeration adminKey={adminKey} card={card} />
+          ) : (
+          <>
           <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 4 }}>
             {users ? `${users.length} user${users.length !== 1 ? "s" : ""}` : "Loading…"}
           </div>
@@ -157,8 +168,48 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
             </div>
           ))}
           {loadingDetail && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 10 }}>Loading user…</div>}
+          </>
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+/* Idea moderation: every pending community idea, with approve/reject. Uses the admin key. */
+function IdeasModeration({ adminKey, card }) {
+  const [list, setList] = useState(null);
+  const [filter, setFilter] = useState("pending");   // pending | all
+  const refresh = () => apiListIdeas({ adminKey }).then((l) => setList(Array.isArray(l) ? l : []));
+  useEffect(() => { refresh(); /* eslint-disable-next-line */ }, []);
+  const review = async (id, status) => { await apiReviewIdea(id, status, adminKey); refresh(); };
+  const del = async (id) => { const { apiDeleteIdea } = await import("../../domain/api"); await apiDeleteIdea(id); refresh(); };
+  const shown = (list || []).filter((i) => filter === "all" ? true : (i.status || "approved") === "pending");
+  const chip = (on) => ({ border: "1px solid " + (on ? "var(--primary)" : "var(--line)"), background: on ? "var(--primary-soft)" : "var(--elev)", color: on ? "var(--primary)" : "var(--muted)", borderRadius: 9, padding: "6px 12px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" });
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <button onClick={() => setFilter("pending")} style={chip(filter === "pending")}>Pending</button>
+        <button onClick={() => setFilter("all")} style={chip(filter === "all")}>All</button>
+      </div>
+      {list == null ? <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 12 }}>Loading ideas…</div>
+        : shown.length === 0 ? <div style={{ ...card, textAlign: "center", color: "var(--muted)", fontSize: 12.5 }}>Nothing to review.</div>
+        : shown.map((i) => (
+          <div key={i.id} style={card}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+              <div style={{ fontWeight: 800, fontSize: 13.5 }}>{i.symbol} <span style={{ color: i.direction === "Short" ? "var(--down)" : "var(--up)", fontSize: 11 }}>{i.direction}</span></div>
+              <span style={{ fontSize: 10.5, color: "var(--muted)" }}>@{i.owner_name} · {(i.status || "approved").toUpperCase()}</span>
+            </div>
+            {i.note && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>{i.note}</div>}
+            {Array.isArray(i.tags) && i.tags.length > 0 && <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 6 }}>{i.tags.map((t) => "#" + t).join("  ")}</div>}
+            {i.screenshot && <img src={i.screenshot} alt="idea" style={{ width: "100%", borderRadius: 10, border: "1px solid var(--line)", marginTop: 8 }} />}
+            <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+              {i.status !== "approved" && <button onClick={() => review(i.id, "approved")} className="tap" style={{ border: "1px solid var(--up)", background: "var(--up-soft)", color: "var(--up)", borderRadius: 9, padding: "6px 14px", fontSize: 11.5, fontWeight: 800 }}>✓ Approve</button>}
+              {i.status !== "rejected" && <button onClick={() => review(i.id, "rejected")} className="tap" style={{ border: "1px solid var(--down)", background: "transparent", color: "var(--down)", borderRadius: 9, padding: "6px 14px", fontSize: 11.5, fontWeight: 800 }}>Reject</button>}
+              <button onClick={() => del(i.id)} className="tap" style={{ border: "1px solid var(--line)", background: "transparent", color: "var(--down)", borderRadius: 9, padding: "6px 12px", fontSize: 11.5, fontWeight: 700 }}>Delete</button>
+            </div>
+          </div>
+        ))}
     </div>
   );
 }

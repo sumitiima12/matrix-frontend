@@ -120,19 +120,34 @@ export async function unpublishStrategy(id) {
 }
 
 /** Community ideas — anyone can post; everyone can browse. */
-export async function listIdeas({ symbol = "", by = "" } = {}) {
+export async function listIdeas({ symbol = "", by = "", adminKey = "" } = {}) {
   if (!BACKEND_URL) return [];
   try {
     const q = new URLSearchParams();
     if (symbol) q.set("symbol", symbol);
     if (by) q.set("by", by);
-    const r = await fetch(`${BACKEND_URL}/api/ideas?${q.toString()}`);
+    // With the admin key, the server returns pending ideas too (so the admin can review them).
+    const headers = authHeaders(adminKey ? { "X-Admin-Key": adminKey } : {});
+    const r = await fetch(`${BACKEND_URL}/api/ideas?${q.toString()}`, { headers });
     if (!r.ok) return [];
     return (await r.json()).ideas || [];
   } catch { return []; }
 }
 export async function postIdea(idea) {
   return post("/api/ideas", idea);
+}
+/** Admin approves or rejects a pending idea. */
+export async function reviewIdea(id, status, adminKey) {
+  if (!BACKEND_URL) return { ok: false };
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/ideas/${encodeURIComponent(id)}/review`, {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json", ...(adminKey ? { "X-Admin-Key": adminKey } : {}) }),
+      body: JSON.stringify({ status }),
+    });
+    handle401(r.status);
+    return r.json().catch(() => ({ ok: false }));
+  } catch { return { ok: false }; }
 }
 export async function deleteIdea(id) {
   if (!BACKEND_URL) return null;

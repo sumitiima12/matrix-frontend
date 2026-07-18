@@ -13,7 +13,7 @@ import { MATRIX_PERSONA, BACKEND_URL } from "../config";
 import { yahooSymbol, marketOf } from "./universe";
 import { getQuotes, getHistory, getNews, getIndicators, getIntraday } from "../services/marketService";
 import { ask as aiAsk, interpretScreen, interpretStrategy, marketBrief } from "../services/aiService";
-import { saveTrade, listTrades, register, login, forgotQuestion as _fq, forgotReset as _fr, getMySecurityQuestion as _gsq, setMySecurityQuestion as _ssq, checkUsername as _cu, setUsername as _su, setEmail as _se, listPublicStrategies as _lps, publishStrategy as _pub, unpublishStrategy as _unpub, listIdeas as _li, postIdea as _pi, deleteIdea as _di } from "../services/tradeService";
+import { saveTrade, listTrades, register, login, forgotQuestion as _fq, forgotReset as _fr, getMySecurityQuestion as _gsq, setMySecurityQuestion as _ssq, checkUsername as _cu, setUsername as _su, setEmail as _se, listPublicStrategies as _lps, publishStrategy as _pub, unpublishStrategy as _unpub, listIdeas as _li, postIdea as _pi, deleteIdea as _di, reviewIdea as _ri } from "../services/tradeService";
 import { isMarketOpen } from "../services/riskService";
 
 /* ----------------------------- AI ----------------------------- */
@@ -50,6 +50,7 @@ export const apiUnpublishStrategy = (id) => _unpub(id);
 export const apiListIdeas = (filters) => _li(filters);
 export const apiPostIdea = (idea) => _pi(idea);
 export const apiDeleteIdea = (id) => _di(id);
+export const apiReviewIdea = (id, status, adminKey) => _ri(id, status, adminKey);
 export const apiForgotQuestion = (phone) => _fq(phone);
 export const apiForgotReset = (phone, answer, newPin) => _fr(phone, answer, newPin);
 export const apiGetSecurityQuestion = () => _gsq();
