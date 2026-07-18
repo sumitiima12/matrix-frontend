@@ -420,22 +420,32 @@ function AppInner() {
         autoExit: useEngine || undefined,
         strategy: opts.strategy || undefined,
       }, true);
-      let t = `Real ${side.toLowerCase()} sent to ${route.meta.name} — order ${r.orderId}`;
+      const fillQty = Number(r.filledQty) > 0 ? Number(r.filledQty) : q;
+      const fillPx = Number(r.avgPrice) > 0 ? Number(r.avgPrice) : (s.price ?? undefined);
+      const status = r.status || "filled";                 // filled | partial
+      let t = `Real ${side.toLowerCase()} ${status === "partial" ? `PARTIALLY filled (${fillQty}/${q})` : "filled"} on ${route.meta.name}`;
       if (side === "BUY" && (opts.sl > 0 || opts.tp > 0)) { if (isDelta && r.bracket && r.bracket.placed) t += " · SL/TP set"; else if (r.autoExitId) t += " · auto-exit armed"; }
-      // Journal the real order so it's visible (e.g. the homepage Auto-Buy "positions" list reads
-      // this ledger). recordTrade only appends to the journal — it never touches the paper book —
-      // so this stays real-only. We tag it real:true and carry the tradeType (Auto Buy / Manual…).
+      // Journal the real order with its FILL STATUS so the user sees Filled/Partial in history and
+      // positions. recordTrade only appends to the journal — it never touches the paper book.
       if (side === "BUY") {
         try {
           recordTrade({
-            id: `real-${r.orderId || Date.now()}`, sym: s.sym, market: mkt, qty: q, side: "BUY",
-            entry: s.price ?? undefined, entryAt: Date.now(), tradeType: opts.tradeType || "Manual",
-            real: true, tp: opts.tp || undefined, sl: opts.sl || undefined,
+            id: `real-${r.orderId || Date.now()}`, sym: s.sym, market: mkt, qty: fillQty, side: "BUY",
+            entry: fillPx, entryAt: Date.now(), tradeType: opts.tradeType || "Manual",
+            real: true, status, orderId: r.orderId || null, tp: opts.tp || undefined, sl: opts.sl || undefined,
           });
         } catch {}
       }
       setBuyToast({ t }); refreshPortfolio(); return true;
-    } catch (e) { setBuyToast({ t: `Broker rejected the order: ${String(e.message || e)}`, e: true }); return false; }
+    } catch (e) {
+      // REJECTED (e.g. insufficient balance). Record the reject WITH the reason so it shows in
+      // history with a status — never as a phantom position with P&L — and tell the user why.
+      const reason = e && e.reason ? e.reason : String(e.message || e);
+      if (side === "BUY") {
+        try { recordTrade({ id: `rej-${Date.now()}-${s.sym}`, sym: s.sym, market: mkt, qty: q, side: "BUY", entryAt: Date.now(), tradeType: opts.tradeType || "Manual", real: true, status: "rejected", rejectReason: reason }); } catch {}
+      }
+      setBuyToast({ t: `Order rejected: ${reason}`, e: true }); return false;
+    }
   };
   const buyStockNow  = (stock, qty = 1, opts = {}) => {
     if (!auth) { setBuyToast({ t: "Log in to trade — buying needs an account." }); setLoginOpen(true); return false; }
@@ -847,17 +857,25 @@ function AppInner() {
       <div style={{ maxWidth: 460, margin: "0 auto", minHeight: "100vh", position: "relative", zIndex: 1, paddingBottom: 86 }}>
         {/* ambient glow */}
         <div style={{ position: "absolute", top: -80, left: "50%", transform: "translateX(-50%)", width: 420, height: 320, background: "radial-gradient(circle, rgba(150,150,160,.12), transparent 70%)", pointerEvents: "none", zIndex: 0 }} />
+        {/* REAL-MODE CHROME — a persistent red hairline at the very top so you always know,
+            at a glance, that orders here move real money. */}
+        {mode === "real" && <div style={{ position: "sticky", top: 0, zIndex: 31, height: 3, background: "var(--down)" }} />}
         {/* HEADER */}
-        <div className="glass" style={{ position: "sticky", top: 0, zIndex: 30, background: "var(--header-bg)", borderBottom: "1px solid var(--line)" }}>
+        <div className="glass" style={{ position: "sticky", top: mode === "real" ? 3 : 0, zIndex: 30, background: "var(--header-bg)", borderBottom: mode === "real" ? "1px solid var(--down)" : "1px solid var(--line)" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px 8px", gap: 8 }}>
             <div onClick={() => { setTab("home"); setDetail(null); }} className="tap disp" style={{ display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minWidth: 0, marginRight: "auto" }}>
               <Wordmark height={28} />
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
-              {/* The wallet icon opens the WALLET, not the profile sheet. */}
-              <button onClick={() => setWalletOpen(true)} aria-label="Wallet" className="tap pill gold-border" style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 11px", whiteSpace: "nowrap", flexShrink: 0, background: "transparent", cursor: "pointer" }}>
-                <Wallet size={15} color="var(--gold)" />
-                <span className="mono" style={{ fontSize: 11.5, fontWeight: 800, color: "var(--ink)" }}>{compact(wallet)}</span>
+              {/* Balance — in REAL mode this is your broker's actual cash (never the paper
+                  wallet), tinted red so real money is never mistaken for virtual capital. */}
+              <button onClick={() => setWalletOpen(true)} aria-label={mode === "real" ? "Real balance" : "Virtual wallet"} className="tap pill gold-border" style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 11px", whiteSpace: "nowrap", flexShrink: 0, background: "transparent", cursor: "pointer", borderColor: mode === "real" ? "var(--down)" : undefined }}>
+                <Wallet size={15} color={mode === "real" ? "var(--down)" : "var(--gold)"} />
+                <span className="mono" style={{ fontSize: 11.5, fontWeight: 800, color: mode === "real" ? "var(--down)" : "var(--ink)" }}>
+                  {mode === "real"
+                    ? ((realPortfolio && realPortfolio.cash != null) ? ((market === "Crypto" || market === "US") ? "$" : "₹") + compact(realPortfolio.cash) : "Real")
+                    : compact(wallet)}
+                </span>
               </button>
               {/* Profile: the icon, with a label below — "Login" for a guest, the username
                   (or name) once signed in. Tapping opens the profile sheet either way. */}
@@ -964,7 +982,9 @@ function AppInner() {
 
         {/* BODY */}
         <div style={{ padding: "0 18px", position: "relative", zIndex: 1 }}>
-          <ErrorBoundary name={detail ? "Stock detail" : tab}>
+          {/* key per tab/detail: a crash in one page no longer latches the boundary for every
+              other tab — switching tabs remounts a fresh boundary and clears the error. */}
+          <ErrorBoundary key={detail ? "detail" : tab} name={detail ? "Stock detail" : tab}>
           <Suspense fallback={<div style={{ padding: 40, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>Loading…</div>}>
           {detail ? (
             <DetailPage s={detail} onBack={() => setDetail(null)} watched={watch.includes(detail.sym)} toggleWatch={toggleWatch} onTrade={goTrade} onBuy={buyStock} />
@@ -1109,6 +1129,8 @@ function AppInner() {
           <ConfirmOrder
             order={confirmOrder}
             wallet={walletMap[confirmOrder.market] ?? 0}
+            mode={mode}
+            brokerName={(brokerFor(confirmOrder.market) && brokerFor(confirmOrder.market).meta ? brokerFor(confirmOrder.market).meta.name : (liveBroker ? liveBroker.name : null))}
             onConfirm={runConfirmedOrder}
             onCancel={() => setConfirmOrder(null)}
           />
@@ -1138,7 +1160,11 @@ function AppInner() {
       {showProfile && <ProfileSheet onAdmin={effAdmin ? openAdmin : undefined} isAdminUser={isAdminUser} adminMode={adminMode} onToggleAdminMode={() => setAdminMode((v) => !v)} onBroker={openBrokers} brokerName={liveBroker ? liveBroker.name : null} profile={profile} walletMap={walletMap} portfolio={portfolio} trades={trades} deposits={deposits} market={market} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={() => { doLogout(); setGuest(false); setProfile(null); setOnboardSkipped(false); setAuthed(false); setLoginOpen(false); }} onPersonalise={() => setRepersonalise(true)} onUsernameChanged={(u) => onAuthed({ ...auth, username: u })} onEmailChanged={(em) => onAuthed({ ...auth, email: em })} marketBrokers={brokerMarketMap} houseFeeds={houseFeeds} onDisconnectBroker={(bid) => { disconnectBroker(bid); setBuyToast({ t: "Broker disconnected" }); }} />}
       {adminOpen && <AdminPanel userId={userId} adminKey={adminKey} onClose={() => setAdminOpen(false) /* keep key in memory so admin actions (idea approval) work this session */} />}
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} onAuthed={onAuthed} />}
-      {histOpen && <TradeHistory userId={userId} trades={trades} onClose={() => setHistOpen(false)} />}
+      {histOpen && (
+        <Suspense fallback={<div style={{ position: "fixed", inset: 0, zIndex: 150, display: "grid", placeItems: "center", background: "rgba(0,0,0,.4)", color: "#fff", fontSize: 13 }}>Loading…</div>}>
+          <TradeHistory userId={userId} trades={trades} onClose={() => setHistOpen(false)} />
+        </Suspense>
+      )}
       {buyToast && (
         <div style={{ position: "fixed", left: 0, right: 0, bottom: 96, display: "flex", justifyContent: "center", zIndex: 90, pointerEvents: "none" }}>
           <div className="card glow" style={{ display: "flex", alignItems: "center", gap: 9, padding: "12px 16px", maxWidth: 380, border: "1px solid " + (buyToast.e ? "var(--down)" : "var(--up)") }}>

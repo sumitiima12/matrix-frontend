@@ -213,7 +213,9 @@ export async function brokerPlaceOrder(session, userId, order, confirmLive) {
     body: JSON.stringify(order),
   });
   const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+  // A rejected order comes back 400 with a human reason (e.g. insufficient balance). Surface
+  // that reason verbatim so the user sees WHY, not a generic HTTP code.
+  if (!r.ok) { const e = new Error(d.reason || d.error || `HTTP ${r.status}`); e.status = d.status || "rejected"; e.reason = d.reason || d.error; throw e; }
   return d;
 }
 

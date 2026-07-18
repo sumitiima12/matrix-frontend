@@ -576,6 +576,17 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
             <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{s.name || s.symbol} {s.status === "paused" && <span style={{ color: "var(--muted)", fontWeight: 700 }}>· paused</span>}</div>
             <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600, marginTop: 1 }}>{s.symbol} · {s.broker}</div>
             <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>{ccy}{s.notional} / trade · {s.tp ? `TP ${s.tp}% ` : ""}{s.sl ? `SL ${s.sl}%` : ""}</div>
+            {/* Order status of the last attempt — a rejected order shows WHY (e.g. insufficient
+                balance), so it's never mistaken for a silent no-op. */}
+            {s.lastOrderStatus === "rejected" && s.lastError && (
+              <div style={{ fontSize: 10, color: "var(--down)", fontWeight: 700, marginTop: 3, lineHeight: 1.4 }}>⚠ Last order rejected — {s.lastError}</div>
+            )}
+            {s.lastOrderStatus === "partial" && s.lastError && (
+              <div style={{ fontSize: 10, color: "#B87514", fontWeight: 700, marginTop: 3 }}>◑ {s.lastError}</div>
+            )}
+            {s.lastOrderStatus === "filled" && s.inPosition && (
+              <div style={{ fontSize: 9.5, color: "var(--up)", fontWeight: 700, marginTop: 3 }}>● Filled — position open</div>
+            )}
           </div>
           <div style={{ marginLeft: "auto", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
             {s.inPosition

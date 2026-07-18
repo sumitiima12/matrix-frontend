@@ -15,8 +15,9 @@ import { isOptionable } from "../../domain/fno";
  * total value, and what it does to your wallet. If the total exceeds the wallet,
  * it says so here rather than letting the risk engine reject it after the tap.
  */
-export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userId }) {
+export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userId, mode = "virtual", brokerName }) {
   const { s, qty: initialQty, side, market, lot = 1 } = order || {};
+  const isReal = mode === "real";
 
   // Quantity is EDITABLE here. The confirmation step is the last place you can
   // still change your mind about size, so making it read-only meant cancelling
@@ -259,6 +260,30 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
                 {tp !== "" ? `Auto-sell if it rises to ${fmt(price * (1 + (parseFloat(tp) || 0) / 100), market)}.` : ""}
               </div>
             )}
+            {/* Risk in MONEY, not just %. A real user thinks in "how much can I lose", not
+                percentages — so we show the max loss / target profit and the reward:risk. */}
+            {total != null && (sl !== "" || tp !== "") && (
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                {sl !== "" && (
+                  <div style={{ flex: 1, borderRadius: 10, padding: "7px 10px", background: "var(--elev)" }}>
+                    <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 700 }}>MAX LOSS</div>
+                    <div className="mono" style={{ fontSize: 13.5, fontWeight: 800, color: "var(--down)", marginTop: 2 }}>−{fmt(total * (parseFloat(sl) || 0) / 100, market)}</div>
+                  </div>
+                )}
+                {tp !== "" && (
+                  <div style={{ flex: 1, borderRadius: 10, padding: "7px 10px", background: "var(--elev)" }}>
+                    <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 700 }}>TARGET PROFIT</div>
+                    <div className="mono" style={{ fontSize: 13.5, fontWeight: 800, color: "var(--up)", marginTop: 2 }}>+{fmt(total * (parseFloat(tp) || 0) / 100, market)}</div>
+                  </div>
+                )}
+                {sl !== "" && tp !== "" && (parseFloat(sl) > 0) && (
+                  <div style={{ flex: "0 0 auto", borderRadius: 10, padding: "7px 10px", background: "var(--elev)", textAlign: "center" }}>
+                    <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 700 }}>R:R</div>
+                    <div className="mono" style={{ fontSize: 13.5, fontWeight: 800, marginTop: 2 }}>{((parseFloat(tp) || 0) / (parseFloat(sl) || 1)).toFixed(1)}</div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -285,8 +310,10 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
         </>
         )}
 
-        <div style={{ fontSize: 10.5, color: "var(--muted)", textAlign: "center", marginTop: 10, lineHeight: 1.45 }}>
-          Paper trade. Virtual capital, filled at the real live price.
+        <div style={{ fontSize: 10.5, color: isReal ? "var(--down)" : "var(--muted)", textAlign: "center", marginTop: 10, lineHeight: 1.45, fontWeight: isReal ? 700 : 400 }}>
+          {isReal
+            ? `REAL order — executes on ${brokerName || "your broker"} with real money. Not investment advice.`
+            : "Paper trade. Virtual capital, filled at the real live price."}
         </div>
       </div>
     </>

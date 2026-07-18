@@ -762,12 +762,17 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const autoRows = useMemo(() => (trades || [])
     .filter((t) => (t.tradeType === "Auto Buy") && ((t.market || marketOf(t.sym) || "IN")) === market && (t.entryAt || 0) >= periodFrom)
     .map((t) => {
-      const open = t.exitAt == null;
+      const rejected = t.status === "rejected";
+      const open = !rejected && t.exitAt == null;
       const cur = open ? ((ALL.find((a) => a.sym === t.sym) || {}).price ?? t.entry) : t.exit;
-      return { ...t, open, cur, realPnl: +(((cur - t.entry) * (t.qty || 1))).toFixed(2) };
+      // A rejected order never executed — no entry, no P&L. Only filled/partial rows carry P&L.
+      const realPnl = rejected || t.entry == null ? 0 : +(((cur - t.entry) * (t.qty || 1))).toFixed(2);
+      return { ...t, rejected, open, cur, realPnl };
     }), [trades, market, periodFrom]);
-  const closedRows = autoRows.filter((t) => !t.open);
-  const periodStats = { pnl: autoRows.reduce((a, t) => a + t.realPnl, 0), trades: autoRows.length, wins: closedRows.filter((t) => t.realPnl > 0).length };
+  const closedRows = autoRows.filter((t) => !t.open && !t.rejected);
+  // Stats exclude rejects — they aren't trades, they're failed attempts (shown separately).
+  const filledRows = autoRows.filter((t) => !t.rejected);
+  const periodStats = { pnl: filledRows.reduce((a, t) => a + t.realPnl, 0), trades: filledRows.length, wins: closedRows.filter((t) => t.realPnl > 0).length };
   const autoPnl = periodStats.pnl;
   const autoWinRate = closedRows.length ? closedRows.filter((t) => t.realPnl > 0).length / closedRows.length * 100 : 0;
   const periodLabel = plPeriod === "today" ? "today" : plPeriod === "month" ? "this month" : "last 12 months";
@@ -876,20 +881,32 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
               {showTrades && (autoOn ? (
                 <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
                   {autoRows.length === 0 && <div style={{ fontSize: 11.5, opacity: .82, lineHeight: 1.6 }}>No auto-buy positions in this period yet. Positions are placed at real market prices and closed by the exit engine when a target or stop is actually hit.</div>}
-                  {autoRows.map((t) => (
-                    <div key={t.id} style={{ background: "rgba(0,0,0,.22)", borderRadius: 12, padding: "10px 12px" }}>
+                  {autoRows.map((t) => {
+                    const cyc = (t.market || marketOf(t.sym) || "IN");
+                    const statusLabel = t.rejected ? "REJECTED" : t.status === "partial" ? "◑ PARTIAL" : t.open ? "● OPEN" : (t.exitType || "CLOSED");
+                    const statusColor = t.rejected ? "#FFB3BE" : t.status === "partial" ? "#FFD27A" : undefined;
+                    return (
+                    <div key={t.id} style={{ background: t.rejected ? "rgba(232,72,85,.12)" : "rgba(0,0,0,.22)", borderRadius: 12, padding: "10px 12px", border: t.rejected ? "1px solid rgba(232,72,85,.4)" : "none" }}>
                       <div onClick={() => { const st = ALL.find((a) => a.sym === t.sym); st && onOpen(st); }} className="tap" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
                         <span className="disp" style={{ fontWeight: 800, fontSize: 12.5 }}>{t.sym} <span style={{ fontSize: 10, opacity: .7, fontWeight: 600 }}>×{t.qty}</span></span>
-                        <span style={{ fontSize: 9.5, opacity: .85, fontWeight: 800 }}>{t.open ? "● OPEN" : t.exitType}</span>
-                        <span className="mono" style={{ fontWeight: 800, fontSize: 13, color: t.realPnl >= 0 ? "#9CFFD6" : "#FFB3BE" }}>{t.realPnl >= 0 ? "+" : ""}{fmt(t.realPnl, (t.market || marketOf(t.sym) || "IN"))}</span>
+                        <span style={{ fontSize: 9.5, opacity: .9, fontWeight: 800, color: statusColor }}>{statusLabel}</span>
+                        {!t.rejected && <span className="mono" style={{ fontWeight: 800, fontSize: 13, color: t.realPnl >= 0 ? "#9CFFD6" : "#FFB3BE" }}>{t.realPnl >= 0 ? "+" : ""}{fmt(t.realPnl, cyc)}</span>}
                       </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 7, fontSize: 10, opacity: .82 }}>
-                        <div><div style={{ opacity: .7 }}>Entry</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.entry, (t.market || marketOf(t.sym) || "IN"))}</div><div style={{ opacity: .7 }}>{t.entryAt ? new Date(t.entryAt).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</div></div>
-                        <div style={{ textAlign: "right" }}><div style={{ opacity: .7 }}>{t.open ? "Current" : "Exit"}</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.cur, (t.market || marketOf(t.sym) || "IN"))}</div><div style={{ opacity: .7 }}>{t.open ? "position open" : new Date(t.exitAt).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</div></div>
-                      </div>
-                      {(t.tp || t.sl) && <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.12)", fontSize: 10.5, fontWeight: 700 }}>🎯 Target <span style={{ color: "#9CFFD6" }}>+{t.tp}%</span> · 🛑 Stop <span style={{ color: "#FFB3BE" }}>−{t.sl}%</span></div>}
+                      {t.rejected ? (
+                        <div style={{ marginTop: 6, fontSize: 10.5, color: "#FFC2C9", lineHeight: 1.45 }}>
+                          Order not placed{t.rejectReason ? ` — ${t.rejectReason}` : "."} {t.entryAt ? "· " + new Date(t.entryAt).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}
+                        </div>
+                      ) : (
+                        <>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 7, fontSize: 10, opacity: .82 }}>
+                            <div><div style={{ opacity: .7 }}>Entry</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.entry, cyc)}</div><div style={{ opacity: .7 }}>{t.entryAt ? new Date(t.entryAt).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</div></div>
+                            <div style={{ textAlign: "right" }}><div style={{ opacity: .7 }}>{t.open ? "Current" : "Exit"}</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.cur, cyc)}</div><div style={{ opacity: .7 }}>{t.open ? "position open" : (t.exitAt ? new Date(t.exitAt).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—")}</div></div>
+                          </div>
+                          {(t.tp || t.sl) && <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.12)", fontSize: 10.5, fontWeight: 700 }}>🎯 Target <span style={{ color: "#9CFFD6" }}>+{t.tp}%</span> · 🛑 Stop <span style={{ color: "#FFB3BE" }}>−{t.sl}%</span></div>}
+                        </>
+                      )}
                     </div>
-                  ))}
+                  ); })}
                 </div>
               ) : (
                 <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
