@@ -13,7 +13,7 @@ import { MATRIX_PERSONA, BACKEND_URL } from "../config";
 import { yahooSymbol, marketOf } from "./universe";
 import { getQuotes, getHistory, getNews, getIndicators, getIntraday } from "../services/marketService";
 import { ask as aiAsk, interpretScreen, interpretStrategy, marketBrief } from "../services/aiService";
-import { saveTrade, listTrades, register, login, forgotQuestion as _fq, forgotReset as _fr, getMySecurityQuestion as _gsq, setMySecurityQuestion as _ssq, checkUsername as _cu, setUsername as _su, setEmail as _se, listPublicStrategies as _lps, publishStrategy as _pub, unpublishStrategy as _unpub, listIdeas as _li, postIdea as _pi, deleteIdea as _di, reviewIdea as _ri } from "../services/tradeService";
+import { saveTrade, listTrades, register, login, changePin as _cp, forgotQuestion as _fq, forgotReset as _fr, getMySecurityQuestion as _gsq, setMySecurityQuestion as _ssq, checkUsername as _cu, setUsername as _su, setEmail as _se, listPublicStrategies as _lps, publishStrategy as _pub, unpublishStrategy as _unpub, listIdeas as _li, postIdea as _pi, deleteIdea as _di, reviewIdea as _ri } from "../services/tradeService";
 import { isMarketOpen } from "../services/riskService";
 
 /* ----------------------------- AI ----------------------------- */
@@ -44,6 +44,7 @@ export const apiRegister = (phone, pin, name, secQuestion, secAnswer, username, 
 export const apiCheckUsername = (u) => _cu(u);
 export const apiSetUsername = (username) => _su(username);
 export const apiSetEmail = (email) => _se(email);
+export const apiChangePin = (currentPin, newPin) => _cp(currentPin, newPin);
 export const apiListPublicStrategies = (filters) => _lps(filters);
 export const apiPublishStrategy = (strategy) => _pub(strategy);
 export const apiUnpublishStrategy = (id) => _unpub(id);

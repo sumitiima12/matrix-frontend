@@ -182,6 +182,13 @@ export async function login(phone, pin) {
 
 export function logout() { setAuthToken(null); }
 
+/** Change the login PIN. Needs the current PIN; identity comes from the auth token server-side. */
+export async function changePin(currentPin, newPin) {
+  const d = await post("/api/pin/change", { currentPin, newPin });
+  if (!d || d.error || !d.ok) throw new Error((d && d.error) || "Couldn't change your PIN");
+  return d;
+}
+
 export async function saveState(userId, state) {
   return post("/api/state", { state });
 }

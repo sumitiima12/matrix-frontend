@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { } from "../../domain/universe";
 import { fmt, profileSummary } from "../../lib/format";
 import { Check, ChevronLeft, Clock, Copy, LogIn, LogOut, Sparkles, User } from "lucide-react";
-import { apiLogin, apiRegister, apiForgotQuestion, apiForgotReset, apiGetSecurityQuestion, apiSetSecurityQuestion, apiSetUsername, apiSetEmail } from "../../domain/api";
+import { apiLogin, apiRegister, apiForgotQuestion, apiForgotReset, apiGetSecurityQuestion, apiSetSecurityQuestion, apiSetUsername, apiSetEmail, apiChangePin } from "../../domain/api";
 import EquityCurve from "../common/EquityCurve";
 import headerLogo from "../../assets/brand/header-logo.png";
 import headerLogoDark from "../../assets/brand/header-logo-dark.png";
@@ -397,6 +397,28 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
     } catch { setEmailErr("Network error."); }
     setEmailBusy(false);
   };
+  // Change login PIN.
+  const [pinEdit, setPinEdit] = useState(false);
+  const [pinCur, setPinCur] = useState("");
+  const [pinNew, setPinNew] = useState("");
+  const [pinNew2, setPinNew2] = useState("");
+  const [pinBusy, setPinBusy] = useState(false);
+  const [pinErr, setPinErr] = useState(null);
+  const [pinOk, setPinOk] = useState(false);
+  const pinValid = /^\d{4,6}$/.test(pinNew) && pinNew === pinNew2 && /^\d{4,6}$/.test(pinCur) && pinNew !== pinCur;
+  const savePin = async () => {
+    if (!/^\d{4,6}$/.test(pinCur)) { setPinErr("Enter your current PIN."); return; }
+    if (!/^\d{4,6}$/.test(pinNew)) { setPinErr("New PIN must be 4–6 digits."); return; }
+    if (pinNew !== pinNew2) { setPinErr("New PINs don't match."); return; }
+    if (pinNew === pinCur) { setPinErr("New PIN must differ from the current one."); return; }
+    setPinErr(null); setPinBusy(true);
+    try {
+      await apiChangePin(pinCur, pinNew);
+      setPinOk(true); setPinEdit(false); setPinCur(""); setPinNew(""); setPinNew2("");
+      setTimeout(() => setPinOk(false), 2500);
+    } catch (e) { setPinErr(String(e.message || e)); }
+    setPinBusy(false);
+  };
   const uidValid = /^[A-Za-z][A-Za-z0-9_]{2,19}$/.test(uidVal);
   const saveUid = async () => {
     if (!uidValid) { setUidErr("3–20 chars, starts with a letter."); return; }
@@ -531,6 +553,27 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
                 <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                   <button onClick={() => setEmailEdit(false)} className="tap disp" style={{ flex: 1, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: 10, fontWeight: 800, fontSize: 12.5 }}>Cancel</button>
                   <button onClick={saveEmail} disabled={emailBusy || !emailValid} className="tap disp" style={{ flex: 1, border: "none", background: emailValid ? "var(--primary)" : "var(--elev)", color: emailValid ? "var(--on-primary)" : "var(--muted)", borderRadius: 10, padding: 10, fontWeight: 800, fontSize: 12.5 }}>{emailBusy ? "Saving…" : "Save"}</button>
+                </div>
+              </div>
+            )}
+
+            {/* LOGIN PIN — change it (needs the current PIN). */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 700 }}>LOGIN PIN</div>
+                <div className="disp" style={{ fontWeight: 700, fontSize: 13.5, marginTop: 2 }}>{pinOk ? <span style={{ color: "var(--up)" }}>Updated ✓</span> : "••••"}</div>
+              </div>
+              {!pinEdit && <button onClick={() => { setPinEdit(true); setPinErr(null); setPinCur(""); setPinNew(""); setPinNew2(""); }} className="tap disp" style={{ flex: "0 0 auto", border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: "7px 12px", fontWeight: 800, fontSize: 12 }}>Change PIN</button>}
+            </div>
+            {pinEdit && (
+              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                <input value={pinCur} onChange={(e) => setPinCur(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))} type="password" inputMode="numeric" placeholder="Current PIN" className="no-ring mono" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px", fontSize: 14, background: "var(--elev)", color: "var(--ink)", letterSpacing: "3px" }} />
+                <input value={pinNew} onChange={(e) => setPinNew(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))} type="password" inputMode="numeric" placeholder="New PIN (4–6 digits)" className="no-ring mono" style={{ width: "100%", border: "1px solid " + (pinNew ? (/^\d{4,6}$/.test(pinNew) ? "var(--up)" : "var(--down)") : "var(--line)"), borderRadius: 10, padding: "10px 12px", fontSize: 14, background: "var(--elev)", color: "var(--ink)", letterSpacing: "3px" }} />
+                <input value={pinNew2} onChange={(e) => setPinNew2(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))} type="password" inputMode="numeric" placeholder="Confirm new PIN" className="no-ring mono" style={{ width: "100%", border: "1px solid " + (pinNew2 ? (pinNew2 === pinNew ? "var(--up)" : "var(--down)") : "var(--line)"), borderRadius: 10, padding: "10px 12px", fontSize: 14, background: "var(--elev)", color: "var(--ink)", letterSpacing: "3px" }} />
+                {pinErr && <div style={{ color: "var(--down)", fontSize: 11.5, fontWeight: 600 }}>{pinErr}</div>}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => setPinEdit(false)} className="tap disp" style={{ flex: 1, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: 10, fontWeight: 800, fontSize: 12.5 }}>Cancel</button>
+                  <button onClick={savePin} disabled={pinBusy || !pinValid} className="tap disp" style={{ flex: 1, border: "none", background: pinValid ? "var(--primary)" : "var(--elev)", color: pinValid ? "var(--on-primary)" : "var(--muted)", borderRadius: 10, padding: 10, fontWeight: 800, fontSize: 12.5 }}>{pinBusy ? "Saving…" : "Update PIN"}</button>
                 </div>
               </div>
             )}
