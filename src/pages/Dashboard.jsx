@@ -131,8 +131,9 @@ function StockIdeasStrip({ onOpen, onBuy, market, liveTick = 0 }) {
   const all = ideas.filter((i) => marketOf(i.sym) === mkt);
   /* Ordered by POTENTIAL LEFT, descending: how far the price still has to run to
      the target, measured against the live price. An idea whose target is already
-     hit has nothing left to give, so it sinks to the bottom rather than leading. */
-  const top = (all.length ? all : ideas)
+     hit has nothing left to give, so it sinks to the bottom rather than leading.
+     Market-strict: if this market has no ideas, show NONE (not other markets'). */
+  const top = all
     .map((i) => {
       const st = ALL.find((a) => a.sym === i.sym);
       const cur = st && st.price != null ? st.price : i.entry;
@@ -143,6 +144,7 @@ function StockIdeasStrip({ onOpen, onBuy, market, liveTick = 0 }) {
     .map((x) => x.i);
   return (
     <Section title="Ideas" icon={<Lightbulb size={17} color="var(--primary)" />}>
+      {top.length === 0 && <div style={{ fontSize: 12, color: "var(--muted)", padding: "2px 2px 8px", lineHeight: 1.5 }}>No ideas for this market right now — check back later or switch markets.</div>}
       <div className="hide-scroll" style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4 }}>
         {top.map((idea, i) => {
           const s = ALL.find((a) => a.sym === idea.sym); const m = marketOf(idea.sym);
@@ -644,7 +646,9 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const [showTrades, setShowTrades] = useState(false);
   const MKT_LABEL = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", Commodity: "🪙 Commodity", FNO: "⚡ F&O" };
   const autoOn = !!autoOnMap[market];                       // on/off for the currently selected market
-  const capNum = Math.max(1000, parseInt(deployCapital) || 100000);
+  // Minimum is small for $-markets (US/Crypto) so you can deploy e.g. $100; ₹ markets keep a higher floor.
+  const capMin = (market === "US" || market === "Crypto") ? 10 : 1000;
+  const capNum = Math.max(capMin, parseInt(deployCapital) || Number(capDefault(market)));
   const aggCur = market;          // currency of the selected market
   const dayStr = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
   const mkTime = (addMin) => { const base = 9 * 60 + 15 + addMin; const h = Math.floor(base / 60), mm = base % 60; return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`; };
@@ -867,7 +871,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 </div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 12 }}>
                   <span className="mono" style={{ fontWeight: 800, fontSize: 19 }}>{fmt(s.price, market)}</span>
-                  <span style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 700 }}>{s.chg == null ? "—" : (s.chg >= 0 ? "▲ " : "▼ ") + pct(s.chg, 2, false)}{s.isFut ? ` · lot ${s.lot}` : ""}</span>
+                  <span style={{ fontSize: 10.5, color: s.chg == null ? "var(--muted)" : s.chg >= 0 ? "var(--up)" : "var(--down)", fontWeight: 800 }}>{s.chg == null ? "—" : (s.chg >= 0 ? "▲ " : "▼ ") + pct(s.chg, 2, false)}</span>{s.isFut ? <span style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 700 }}>{` · lot ${s.lot}`}</span> : null}
                 </div>
                 {/* REAL technical tags from the tag engine — Golden Cross, Bull Flag,
                     Breakout, Volume Spike and so on, each true and each backed by a

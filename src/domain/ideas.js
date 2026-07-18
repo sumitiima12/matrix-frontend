@@ -10,13 +10,14 @@ export function buildDailyIdeas() {
   const scored = ALL
     .filter((s) => s.sector !== "Volatility" && s.sector !== "Index" && s.hasData)
     .map((s) => ({ s, t: techSignal(s) }))
-    // techSignal() already returns null without real data, but be explicit:
-    // an idea with no entry price is not an idea.
-    .filter((x) => x.t && x.s.price != null && x.t.score > 0 && x.t.target && x.t.stop);
+    // techSignal() returns null without real data. We require real entry + target/stop levels,
+    // but NOT a positive score — so every market can surface its best 5 each day even when the
+    // signals are only mildly bullish (we just take the top-ranked ones available).
+    .filter((x) => x.t && x.s.price != null && x.t.target && x.t.stop);
 
-  // Group by market and take the strongest signals in EACH — so every market
-  // (Indian, US, Crypto, Commodity, F&O) gets fresh daily ideas, not just whichever
-  // market happens to top a single global ranking.
+  // Group by market and take the top 5 strongest signals in EACH — so every market (Indian,
+  // US, Crypto, Commodity, F&O) gets 5 fresh daily ideas, not just whichever market tops a
+  // single global ranking.
   const byMarket = {};
   for (const x of scored) {
     const m = marketOf(x.s.sym);
@@ -25,7 +26,7 @@ export function buildDailyIdeas() {
   const out = [];
   for (const m of Object.keys(byMarket)) {
     byMarket[m].sort((a, b) => b.t.score - a.t.score);
-    for (const { s, t } of byMarket[m].slice(0, 6)) {
+    for (const { s, t } of byMarket[m].slice(0, 5)) {
       out.push({
         by: "Neo",
         publishedAt: today,
