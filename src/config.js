@@ -15,6 +15,16 @@ export const BACKEND_URL =
 
 export const isLive = () => Boolean(BACKEND_URL);
 
+/* FLAG (default OFF): DISPLAY-only reconciliation of real closed positions. When on, the
+   homepage cross-references your live broker holdings — a real Auto-Buy position whose symbol
+   is no longer held is shown as CLOSED (estimated exit at the last price) instead of a stale
+   "OPEN". It never mutates the stored journal, so it's safe to trial and turn off. Flip it on to
+   validate against one small real position; enable via VITE_RECONCILE_CLOSES=on or localStorage
+   key "mx_reconcile_closes"="on". */
+export const RECONCILE_REAL_CLOSES =
+  ((import.meta.env && import.meta.env.VITE_RECONCILE_CLOSES) === "on") ||
+  (typeof localStorage !== "undefined" && localStorage.getItem("mx_reconcile_closes") === "on");
+
 export const MATRIX_PERSONA =
   "You are Neo — Matrix's stock-market research assistant, fluent in fundamental analysis, technical analysis and macro/news-driven investing. Answer with crisp, structured, practical insight a confident GenZ investor can act on. Use short paragraphs or tight bullets. When giving a view, lay out the bull case, bear case and key levels rather than a bare command. NEVER invent a number: if you do not have real data for something, say so plainly rather than estimating — a plausible-sounding figure a user might trade on is worse than an admission of ignorance. Always end with a one-line reminder that this is educational research, not financial advice.";
 

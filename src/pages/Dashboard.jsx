@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { currentIdeas } from "../domain/ideas";
 import { dailyPicks, techSignal } from "../domain/signals";
 import { Building2, ChevronRight, Lightbulb, Newspaper, Pencil, Sparkles, TrendingUp, X, Zap } from "lucide-react";
-import { BACKEND_URL } from "../config";
+import { BACKEND_URL, RECONCILE_REAL_CLOSES } from "../config";
 import { CUR, DAY, chgColor, clamp, compact, fmt, lsGet, lsSet, pct, timeAgo } from "../lib/format";
 import { ALL, GLOBAL_MKTS, UNIVERSE, marketOf } from "../domain/universe";
 import { askMatrix, fetchNews, fetchNewsFeed } from "../domain/api";
@@ -766,16 +766,25 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     if (plPeriod === "month") { d.setDate(1); d.setHours(0, 0, 0, 0); return d.getTime(); }
     return 0;                                       // lifetime
   }, [plPeriod]);
+  // FLAG (default off): DISPLAY-only reconciliation of real closes. A real Auto-Buy position
+  // whose symbol is no longer in the live broker holdings has been closed (e.g. Delta's own
+  // bracket fired) — show it CLOSED (est. exit at last price) rather than a stale "OPEN". Never
+  // mutates the journal. Only trusts holdings once they've actually loaded.
+  const realHeld = (isReal && RECONCILE_REAL_CLOSES && realPortfolio && Array.isArray(realPortfolio.holdings))
+    ? new Set(realPortfolio.holdings.filter((h) => h.qty).map((h) => h.sym))
+    : null;
   const autoRows = useMemo(() => (trades || [])
     .filter((t) => (t.tradeType === "Auto Buy") && ((t.market || marketOf(t.sym) || "IN")) === market && (t.entryAt || 0) >= periodFrom)
     .map((t) => {
       const rejected = t.status === "rejected";
-      const open = !rejected && t.exitAt == null;
-      const cur = open ? ((ALL.find((a) => a.sym === t.sym) || {}).price ?? t.entry) : t.exit;
-      // A rejected order never executed — no entry, no P&L. Only filled/partial rows carry P&L.
+      const last = (ALL.find((a) => a.sym === t.sym) || {}).price;
+      // Reconciled close: real, still-journalled-open, but no longer held → treat as closed (est).
+      const reconciledClosed = realHeld && !rejected && t.exitAt == null && t.real && !realHeld.has(t.sym);
+      const open = !rejected && t.exitAt == null && !reconciledClosed;
+      const cur = open ? (last ?? t.entry) : (reconciledClosed ? (last ?? t.entry) : t.exit);
       const realPnl = rejected || t.entry == null ? 0 : +(((cur - t.entry) * (t.qty || 1))).toFixed(2);
-      return { ...t, rejected, open, cur, realPnl };
-    }), [trades, market, periodFrom]);
+      return { ...t, rejected, open, cur, realPnl, reconciledClosed, exitType: reconciledClosed ? "Closed (est.)" : t.exitType };
+    }), [trades, market, periodFrom, realHeld]);
   const closedRows = autoRows.filter((t) => !t.open && !t.rejected);
   // Stats exclude rejects — they aren't trades, they're failed attempts (shown separately).
   const filledRows = autoRows.filter((t) => !t.rejected);
