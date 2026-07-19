@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { currentIdeas } from "../domain/ideas";
 import { dailyPicks, techSignal } from "../domain/signals";
 import { Building2, ChevronRight, Lightbulb, Newspaper, Pencil, Sparkles, TrendingUp, X, Zap } from "lucide-react";
@@ -349,7 +350,7 @@ function NewsReadMore({ sym, stock, feed = [], market = "IN", onOpen, onBuy, onC
   const cur = articles[idx] || articles[0];
   const many = articles.length > 1;
 
-  return (
+  const __sheet = (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(10,10,20,.42)", zIndex: 120, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
       <div
         onClick={(e) => e.stopPropagation()}
@@ -422,6 +423,10 @@ function NewsReadMore({ sym, stock, feed = [], market = "IN", onOpen, onBuy, onC
       </div>
     </div>
   );
+  // Portal to <body> so the sheet escapes the home page's scroll-transform ancestor —
+  // otherwise position:fixed anchors to that transformed parent and the sheet overlaps the
+  // list above instead of covering the viewport.
+  return typeof document !== "undefined" && document.body ? createPortal(__sheet, document.body) : __sheet;
 }
 
 function MarketBrief({ market, list = [] }) {

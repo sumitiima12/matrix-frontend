@@ -130,8 +130,10 @@ export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1,
           opacity: priced ? 1 : 0.75,
         }}
       >
-        {/* Show the money at stake ON the button so it's visible before the confirm sheet. */}
-        {priced ? `${label} · ${isCrypto ? "$" + (Number(val) || 0) : fmt(total, market)}` : label}
+        {/* Just "Buy" — no price on the button (keeps every card tidy and prevents the label
+            overflowing narrow Trending cards). The amount at stake is shown in the confirm sheet
+            and in the button's title tooltip. */}
+        {label}
       </button>
     </div>
   );
