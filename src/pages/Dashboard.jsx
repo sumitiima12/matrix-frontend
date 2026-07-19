@@ -423,10 +423,13 @@ function NewsReadMore({ sym, stock, feed = [], market = "IN", onOpen, onBuy, onC
       </div>
     </div>
   );
-  // Portal to <body> so the sheet escapes the home page's scroll-transform ancestor —
-  // otherwise position:fixed anchors to that transformed parent and the sheet overlaps the
-  // list above instead of covering the viewport.
-  return typeof document !== "undefined" && document.body ? createPortal(__sheet, document.body) : __sheet;
+  // Portal to <body> so the sheet escapes the home page's scroll-transform ancestor (otherwise
+  // position:fixed anchors to that transformed parent and overlaps the list). BUT the theme CSS
+  // variables live on the inner ".mx theme-*" div, not on <body> — so wrap the portaled sheet in
+  // the current theme class or it renders with no background (transparent overlap bug).
+  if (typeof document === "undefined" || !document.body) return __sheet;
+  const themeClass = document.querySelector(".theme-dark") ? "theme-dark" : "theme-light";
+  return createPortal(<div className={themeClass}>{__sheet}</div>, document.body);
 }
 
 function MarketBrief({ market, list = [] }) {
