@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Activity, Building2, ChevronRight, Newspaper, Plus, X } from "lucide-react";
 import { fmt } from "../../lib/format";
 import { marketOf } from "../../domain/universe";
-import { fetchNews } from "../../domain/api";
+import { fetchNews, fetchFundamentals } from "../../domain/api";
 import Change from "../../components/common/Change";
 import ProChart from "../../components/charts/ProChart";
 import VerdictTag from "../../components/common/VerdictTag";
@@ -34,6 +34,17 @@ export default function Drawer({ s, onClose, onDetails, onBuy }) {
     return () => { stop = true; };
   }, [s?.sym]);
 
+  // REAL fundamentals (indianapi for NSE/BSE, FMP for US via backend). Crypto has none.
+  const [fund, setFund] = useState(null);
+  useEffect(() => {
+    let stop = false;
+    setFund(null);
+    if (!s?.sym) return undefined;
+    if (marketOf(s.sym) === "Crypto") { setFund({ unavailable: true }); return undefined; }
+    fetchFundamentals(s.sym).then((f) => { if (!stop) setFund(f); }).catch(() => { if (!stop) setFund({ unavailable: true }); });
+    return () => { stop = true; };
+  }, [s?.sym]);
+
   if (!s) return null;
   const market = marketOf(s.sym);
 
@@ -61,16 +72,19 @@ export default function Drawer({ s, onClose, onDetails, onBuy }) {
         <div onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE} style={{ padding: "2px 0 10px", margin: "-2px 0 0", cursor: "grab", touchAction: "none" }}>
           <div style={{ width: 40, height: 4, background: "var(--line)", borderRadius: 9, margin: "0 auto" }} />
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <div className="disp" style={{ fontWeight: 700, fontSize: 19 }}>{s.sym}</div>
-            <div style={{ color: "var(--muted)", fontSize: 12.5 }}>{s.name}</div>
+        {/* Symbol + price stay pinned while the sheet scrolls. */}
+        <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--surface)", paddingBottom: 10, marginBottom: 2 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div className="disp" style={{ fontWeight: 700, fontSize: 19 }}>{s.sym}</div>
+              <div style={{ color: "var(--muted)", fontSize: 12.5 }}>{s.name}</div>
+            </div>
+            <X size={22} className="tap" onClick={onClose} color="var(--muted)" />
           </div>
-          <X size={22} className="tap" onClick={onClose} color="var(--muted)" />
-        </div>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 10 }}>
-          <span className="mono" style={{ fontWeight: 700, fontSize: 26 }}>{fmt(s.price, market)}</span>
-          <Change v={s.chg} big />
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 8 }}>
+            <span className="mono" style={{ fontWeight: 700, fontSize: 26 }}>{fmt(s.price, market)}</span>
+            <Change v={s.chg} big />
+          </div>
         </div>
         <div style={{ marginTop: 10 }}>
           <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, marginBottom: 4 }}>Price action · candles</div>
@@ -87,9 +101,20 @@ export default function Drawer({ s, onClose, onDetails, onBuy }) {
             ? "Waiting for live indicators."
             : `RSI ${s.rsi} (${s.rsi > 70 ? "overbought" : s.rsi < 30 ? "oversold" : "neutral"}), price ${s.price > s.sma50 ? "above" : "below"} 50-DMA. Support ${fmt(s.support, market)} · Resistance ${fmt(s.resistance, market)}.`}
         </Block>
-        <Block title="Fundamental summary" icon={<Building2 size={14} />}>
-
-        </Block>
+        {market !== "Crypto" && (
+          <Block title="Fundamental summary" icon={<Building2 size={14} />}>
+            {fund == null
+              ? "Loading fundamentals…"
+              : fund.unavailable
+                ? "Fundamentals aren’t available for this symbol right now."
+                : (() => {
+                    const p = (x) => (x == null ? "—" : x.toFixed(1));
+                    const pc = (x) => (x == null ? "—" : (x * 100).toFixed(1) + "%");
+                    const cr = fund.marketCap != null ? "₹" + (fund.marketCap / 1e7).toLocaleString("en-IN", { maximumFractionDigits: 0 }) + " Cr" : "—";
+                    return `P/E ${p(fund.peTrailing)} · P/B ${p(fund.pb)} · ROE ${pc(fund.roe)} · Net margin ${pc(fund.profitMargin)} · Div ${fund.dividendYield != null ? (fund.dividendYield * 100).toFixed(2) + "%" : "—"} · Mkt cap ${cr}${fund.sectorPE != null ? ` · Sector P/E ${(+fund.sectorPE).toFixed(1)}` : ""}.`;
+                  })()}
+          </Block>
+        )}
 
         <div className="card" style={{ marginTop: 12, padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--bg)" }}>
           <div>
