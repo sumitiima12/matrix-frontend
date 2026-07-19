@@ -52,17 +52,12 @@ export async function getHistory(ySym, tf) {
   const m = TF_YF[tf] || TF_YF["1d"];
   const d = await get(`/api/history?symbol=${encodeURIComponent(ySym)}&range=${m.r}&interval=${m.i}`);
   if (!d) return null;
+  // Adaptive precision: 2dp for >=$1, but KEEP sub-dollar detail so cheap crypto (LAB $0.156,
+  // BEAT $0.025, PEPE $0.000001) doesn't collapse into a flat line at 2 decimals.
+  const r = (x) => (x == null ? x : Math.abs(+x) >= 1 ? +(+x).toFixed(2) : +(+x).toPrecision(6));
   const rows = (d.candles || [])
     .filter((c) => c.o != null && c.c != null && c.h != null && c.l != null)
-    .map((c, i) => ({
-      i,
-      t: c.t,
-      o: +(+c.o).toFixed(2),
-      h: +(+c.h).toFixed(2),
-      l: +(+c.l).toFixed(2),
-      c: +(+c.c).toFixed(2),
-      v: c.v,
-    }));
+    .map((c, i) => ({ i, t: c.t, o: r(c.o), h: r(c.h), l: r(c.l), c: r(c.c), v: c.v }));
 
   return m.agg ? aggregate(rows, m.agg) : rows;
 }
