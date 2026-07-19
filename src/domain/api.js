@@ -109,11 +109,15 @@ export async function resolveExitFromCandles(trade, risk = {}) {
 export async function fetchNewsFeed(symbols, { taggedOnly = false } = {}) {
   if (!BACKEND_URL || !symbols || !symbols.length) return [];
   try {
-    const u = `${BACKEND_URL}/api/news/feed?symbols=${encodeURIComponent(symbols.join(","))}${taggedOnly ? "&tagged=1" : ""}`;
+    // Send EXCHANGE-QUALIFIED tickers (HAL -> HAL.NS) so the backend can tell an Indian stock from
+    // its US namesake (HAL = Halliburton), then map the returned items back to our app symbols.
+    const ySyms = symbols.map(yahooSymbol);
+    const back = new Map(symbols.map((s) => [String(yahooSymbol(s)).toUpperCase(), s]));
+    const u = `${BACKEND_URL}/api/news/feed?symbols=${encodeURIComponent(ySyms.join(","))}${taggedOnly ? "&tagged=1" : ""}`;
     const r = await fetch(u);
     if (!r.ok) return [];
     const d = await r.json();
-    return d.news || [];
+    return (d.news || []).map((n) => ({ ...n, sym: back.get(String(n.sym).toUpperCase()) || n.sym }));
   } catch {
     return [];
   }

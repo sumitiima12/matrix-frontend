@@ -208,9 +208,13 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
         <div style={{ width: 40, height: 4, background: "var(--line)", borderRadius: 9, margin: "0 auto 8px" }} />
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <button onClick={onBack} className="tap" style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 12, width: 38, height: 38, display: "grid", placeItems: "center" }}><ChevronLeft size={20} /></button>
-          <div style={{ textAlign: "center" }}>
-            <div className="disp" style={{ fontWeight: 700, fontSize: 15 }}>{s.sym}</div>
-            <div style={{ fontSize: 10.5, color: "var(--muted)" }}>{s.name}</div>
+          <div style={{ textAlign: "center", minWidth: 0 }}>
+            <div className="disp" style={{ fontWeight: 700, fontSize: 15, lineHeight: 1.15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.sym}</div>
+            {/* Price stays visible in the sticky header while you scroll the page. */}
+            <div style={{ display: "flex", alignItems: "baseline", gap: 5, justifyContent: "center", marginTop: 1 }}>
+              <span className="mono" style={{ fontWeight: 800, fontSize: 12.5 }}>{fmt(s.price, market)}</span>
+              <Change v={s.chg} />
+            </div>
           </div>
           <button onClick={() => toggleWatch(s.sym)} className="tap" style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 12, width: 38, height: 38, display: "grid", placeItems: "center" }}>
             <Star size={18} fill={watched ? "var(--primary)" : "none"} color={watched ? "var(--primary)" : "var(--muted)"} />
