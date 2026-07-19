@@ -56,10 +56,13 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
   if (!order) return null;
 
   const price = s.price;
-  // Crypto: units derive from the dollar amount; everything else from qty × lot.
-  const effQty = isCrypto ? (price ? +(amount / price).toFixed(6) : 0) : qty;
-  const units = isCrypto ? effQty : qty * (lot || 1);
-  const total = isCrypto ? (Number(amount) || 0) : (price != null ? price * units : null);
+  // Crypto BUYS are sized by dollar AMOUNT; SELLS are sized by the exact QUANTITY you hold
+  // (converting a held amount to $ and back inflates it past what you own and the risk check
+  // rejects it). So only buys use amount-mode.
+  const amountMode = isCrypto && side === "BUY";
+  const effQty = amountMode ? (price ? +(amount / price).toFixed(6) : 0) : qty;
+  const units = amountMode ? effQty : (isCrypto ? qty : qty * (lot || 1));
+  const total = amountMode ? (Number(amount) || 0) : (price != null ? price * units : null);
   const short = total != null && side === "BUY" && total > wallet;
   const after = total != null ? (side === "BUY" ? wallet - total : wallet + total) : null;
 
@@ -169,12 +172,12 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
             <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>
-              {isCrypto ? "Amount (USD)" : (lot > 1 ? `Quantity (lots of ${lot})` : "Quantity")}
+              {amountMode ? "Amount (USD)" : (isCrypto ? "Quantity (units)" : (lot > 1 ? `Quantity (lots of ${lot})` : "Quantity"))}
             </span>
             <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <button
-                onClick={() => isCrypto ? setAmount((a) => Math.max(1, (Number(a) || 10) - 10)) : setQty((q) => Math.max(1, q - 1))}
-                disabled={isCrypto ? amount <= 1 : qty <= 1}
+                onClick={() => amountMode ? setAmount((a) => Math.max(1, (Number(a) || 10) - 10)) : setQty((q) => Math.max(1, q - 1))}
+                disabled={amountMode ? amount <= 1 : qty <= 1}
                 aria-label="Decrease"
                 className="tap"
                 style={{ width: 30, height: 30, borderRadius: 9, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", display: "grid", placeItems: "center" }}
@@ -182,18 +185,18 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
                 <Minus size={14} />
               </button>
               <input
-                value={isCrypto ? amount : qty}
+                value={amountMode ? amount : qty}
                 onChange={(e) => {
-                  if (isCrypto) { const v = parseFloat(String(e.target.value).replace(/[^0-9.]/g, "")); setAmount(Number.isFinite(v) && v > 0 ? v : 1); }
-                  else { const v = parseInt(String(e.target.value).replace(/[^0-9]/g, ""), 10); setQty(Number.isFinite(v) && v > 0 ? v : 1); }
+                  if (amountMode) { const v = parseFloat(String(e.target.value).replace(/[^0-9.]/g, "")); setAmount(Number.isFinite(v) && v > 0 ? v : 1); }
+                  else { const v = parseFloat(String(e.target.value).replace(/[^0-9.]/g, "")); setQty(Number.isFinite(v) && v > 0 ? v : 1); }
                 }}
-                inputMode={isCrypto ? "decimal" : "numeric"}
-                aria-label={isCrypto ? "Amount in USD" : "Quantity"}
+                inputMode={(amountMode || isCrypto) ? "decimal" : "numeric"}
+                aria-label={amountMode ? "Amount in USD" : "Quantity"}
                 className="mono no-ring"
                 style={{ width: 64, textAlign: "center", border: "1px solid var(--line)", borderRadius: 9, padding: "6px 4px", fontWeight: 800, fontSize: 13, background: "var(--elev)", color: "var(--ink)" }}
               />
               <button
-                onClick={() => isCrypto ? setAmount((a) => (Number(a) || 0) + 10) : setQty((q) => q + 1)}
+                onClick={() => amountMode ? setAmount((a) => (Number(a) || 0) + 10) : setQty((q) => q + 1)}
                 aria-label="Increase"
                 className="tap"
                 style={{ width: 30, height: 30, borderRadius: 9, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", display: "grid", placeItems: "center", cursor: "pointer" }}
@@ -202,7 +205,7 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
               </button>
             </div>
           </div>
-          {isCrypto && (
+          {amountMode && (
             <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
               <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>≈ Units</span>
               <span className="mono" style={{ fontSize: 13, fontWeight: 800 }}>{effQty} {s.sym}</span>
@@ -304,7 +307,7 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
             Cancel
           </button>
           <button
-            onClick={() => onConfirm(effQty, product, { sl: sl !== "" ? +sl : undefined, tp: tp !== "" ? +tp : undefined, amount: isCrypto ? Number(amount) : undefined })}
+            onClick={() => onConfirm(effQty, product, { sl: sl !== "" ? +sl : undefined, tp: tp !== "" ? +tp : undefined, amount: amountMode ? Number(amount) : undefined })}
             disabled={price == null || short}
             className="tap disp"
             style={{
