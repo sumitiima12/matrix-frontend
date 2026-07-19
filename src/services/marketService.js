@@ -62,6 +62,14 @@ export async function getHistory(ySym, tf) {
   return m.agg ? aggregate(rows, m.agg) : rows;
 }
 
+/** Real fundamentals from Yahoo quoteSummary (via backend crumb flow). Returns the object,
+ *  or { unavailable:true } when Yahoo declines / the instrument has none (e.g. crypto). */
+export async function getFundamentals(ySym) {
+  if (!ySym) return null;
+  try { return await get(`/api/fundamentals?symbol=${encodeURIComponent(ySym)}`); }
+  catch { return { unavailable: true }; }
+}
+
 /** Real headlines: [{ t, d, src, url }]. */
 export async function getNews(ySym) {
   const d = await get(`/api/news?symbol=${encodeURIComponent(ySym)}`);

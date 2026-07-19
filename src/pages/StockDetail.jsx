@@ -8,7 +8,7 @@ import { clamp, compact, fmt, timeAgo } from "../lib/format";
 import { marketOf } from "../domain/universe";
 import { techSignal, techStrength } from "../domain/signals";
 import { strengthFromCandles, STRENGTH_TFS } from "../domain/strength";
-import { fetchHistory, fetchNews } from "../domain/api";
+import { fetchHistory, fetchNews, fetchFundamentals } from "../domain/api";
 import { analyzeStock } from "../services/aiService";
 import BarBlock from "../components/common/BarBlock";
 import Change from "../components/common/Change";
@@ -150,6 +150,15 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
   const n = (v, suf = "") => (v == null ? "n/a" : v + suf);
   const ctx = `Stock: ${s.name} (${s.sym}), market ${market}. Price ${fmt(s.price, market)} (${s.chg >= 0 ? "+" : ""}${s.chg}% today). REAL indicators — RSI ${n(s.rsi)}, MACD ${n(s.macd)} (signal ${n(s.macdSignal)}), ADX ${n(s.adx)}, ATR ${n(s.atr)}, 50-DMA ${n(s.sma50)}, 200-DMA ${n(s.sma200)}, support ${n(s.support)}, resistance ${n(s.resistance)}, 52w ${n(s.low52)}-${n(s.high52)}, volume ${n(s.vol)} vs 20d avg ${n(s.avgVol)}. Only use the figures given; if something is n/a, say so rather than guessing.`;
 
+  // REAL fundamentals (Yahoo quoteSummary via backend). Crypto has none -> unavailable.
+  const [fund, setFund] = useState(null);
+  useEffect(() => {
+    let alive = true; setFund(null);
+    if (market === "Crypto") { setFund({ unavailable: true }); return; }
+    fetchFundamentals(s.sym).then((f) => { if (alive) setFund(f); }).catch(() => { if (alive) setFund({ unavailable: true }); });
+    return () => { alive = false; };
+  }, [s.sym, market]);
+
   useEffect(() => {
     const io = new IntersectionObserver((entries) => {
       entries.forEach((e) => { if (e.isIntersecting) setActive(e.target.dataset.sec); });
@@ -276,6 +285,42 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
           <button onClick={() => onBuy && onBuy(s, 1)} className="tap disp glow" style={{ flex: 1, background: "linear-gradient(120deg,var(--up),#12B98A)", color: "#fff", border: "none", borderRadius: 16, padding: 14, fontWeight: 800, fontSize: 14.5, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}><Plus size={17} /> Buy</button>
           <button onClick={() => onTrade(s)} className="tap disp" style={{ flex: 1, background: "var(--elev)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 16, padding: 14, fontWeight: 700, fontSize: 14.5 }}>Trade…</button>
         </div>
+
+        {/* FUNDAMENTALS — real Yahoo quoteSummary. Only for equities; crypto has none. */}
+        {market !== "Crypto" && (
+          <div className="card" style={{ marginTop: 12, padding: 16 }}>
+            <div className="disp" style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}><Building2 size={16} color="var(--primary)" /> Fundamentals</div>
+            {fund == null ? (
+              <div style={{ color: "var(--muted)", fontSize: 12.5 }}>Loading fundamentals…</div>
+            ) : fund.unavailable ? (
+              <div style={{ color: "var(--muted)", fontSize: 12.5 }}>Fundamentals aren’t available for this symbol right now.</div>
+            ) : (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 16px" }}>
+                  {[
+                    ["Market cap", fund.marketCap != null ? compact(fund.marketCap) : "—"],
+                    ["P/E (TTM)", fund.peTrailing != null ? fund.peTrailing.toFixed(1) : "—"],
+                    ["P/E (fwd)", fund.peForward != null ? fund.peForward.toFixed(1) : "—"],
+                    ["P/B", fund.pb != null ? fund.pb.toFixed(1) : "—"],
+                    ["EPS", fund.eps != null ? fund.eps.toFixed(2) : "—"],
+                    ["ROE", fund.roe != null ? (fund.roe * 100).toFixed(1) + "%" : "—"],
+                    ["Profit margin", fund.profitMargin != null ? (fund.profitMargin * 100).toFixed(1) + "%" : "—"],
+                    ["Rev growth (yoy)", fund.revenueGrowth != null ? (fund.revenueGrowth * 100).toFixed(1) + "%" : "—"],
+                    ["Debt / equity", fund.debtToEquity != null ? fund.debtToEquity.toFixed(0) : "—"],
+                    ["Div yield", fund.dividendYield != null ? (fund.dividendYield * 100).toFixed(2) + "%" : "—"],
+                  ].map(([k, v]) => (
+                    <div key={k} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 12.5, borderBottom: "1px solid var(--line)", paddingBottom: 4 }}>
+                      <span style={{ color: "var(--muted)" }}>{k}</span><span className="mono" style={{ fontWeight: 700 }}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+                {(fund.sector || fund.industry) && (
+                  <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 10 }}>{[fund.sector, fund.industry].filter(Boolean).join(" · ")}</div>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* TECHNICALS */}
