@@ -109,18 +109,35 @@ export function pickReason(s, t) {
   const trendUp = s.sma200 != null ? s.sma50 > s.sma200 : (s.sma50 != null && s.price > s.sma50);
   const macdBull = s.macd != null && s.macdSignal != null && s.macd > s.macdSignal;
   const vr = (s.avgVol && s.vol != null) ? s.vol / s.avgVol : null;
-  let lead;
-  if (t.pattern === "breakout") lead = `Breaking through its ${cur(s.resistance)} ceiling`;
-  else if (t.pattern === "doubleBottom") lead = `Bouncing off ${cur(s.support)} support`;
-  else if (t.pattern === "cup") lead = `Reclaiming ground after an oversold dip`;
-  else if (trendUp) lead = `Holding a steady uptrend above its 50-day average`;
-  else lead = `Basing above support with buyers stepping in`;
+  const aboveSup = (s.support != null && s.price != null) ? ((s.price - s.support) / s.support) * 100 : null;
+  const above50 = s.sma50 != null && s.price != null && s.price > s.sma50;
+  /* Lead with the SINGLE most compelling, stock-SPECIFIC reason that's actually true right now —
+     ordered strongest to weakest, first hit wins. This is why two picks no longer read identically. */
+  const cands = [
+    [t.pattern === "breakout", () => `Breaking out above its ${cur(s.resistance)} ceiling`],
+    [vr != null && vr >= 1.8, () => `Volume ${vr.toFixed(1)}× its average — buyers stepping in hard`],
+    [t.pattern === "doubleBottom", () => `Double-bottom bounce off ${cur(s.support)} support`],
+    [s.adx != null && s.adx >= 30 && trendUp, () => `Powerful uptrend — ADX ${Math.round(s.adx)}, above both moving averages`],
+    [s.rsi != null && s.rsi >= 40 && s.rsi < 50 && macdBull, () => `Momentum turning up from a reset — RSI ${s.rsi}, MACD crossed positive`],
+    [trendUp && above50 && macdBull, () => `Uptrend intact above the 50-day average with MACD support`],
+    [t.pattern === "cup", () => `Reclaiming ground after an oversold dip`],
+    [aboveSup != null && aboveSup >= 0 && aboveSup <= 4, () => `Holding just above ${cur(s.support)} support — a low-risk base`],
+    [macdBull, () => `MACD just turned positive — an early momentum shift`],
+    [s.adx != null && s.adx >= 25, () => `Trend strengthening — ADX ${Math.round(s.adx)}`],
+    [s.rsi != null && s.rsi >= 50 && s.rsi < 70, () => `Momentum building, RSI ${s.rsi} with room to run`],
+    [vr != null && vr > 1.3, () => `Above-average volume (${vr.toFixed(1)}×) confirming interest`],
+  ];
+  let lead = null;
+  for (const [ok, f] of cands) { if (ok) { lead = f(); break; } }
+  if (!lead) lead = `Constructive base with a favorable risk/reward setup`;
+
+  // One supporting confluence, skipping anything the lead already stated.
   const conf = [];
-  if (macdBull) conf.push("MACD positive");
-  if (s.rsi != null && s.rsi >= 50 && s.rsi < 70) conf.push(`RSI ${s.rsi} with room to run`);
-  if (s.adx != null && s.adx > 25) conf.push(`ADX ${Math.round(s.adx)} trend strength`);
-  if (vr && vr > 1.3) conf.push(`${vr.toFixed(1)}× average volume`);
-  const tail = conf.length ? ` — ${conf.slice(0, 2).join(", ")}.` : ".";
+  if (macdBull && !/MACD/.test(lead)) conf.push("MACD positive");
+  if (s.adx != null && s.adx > 25 && !/ADX/.test(lead)) conf.push(`ADX ${Math.round(s.adx)}`);
+  if (vr && vr > 1.3 && !/volume|×/i.test(lead)) conf.push(`${vr.toFixed(1)}× volume`);
+  if (s.rsi != null && s.rsi >= 50 && s.rsi < 70 && !/RSI/.test(lead)) conf.push(`RSI ${s.rsi}`);
+  const tail = conf.length ? ` · ${conf.slice(0, 2).join(", ")}.` : ".";
   return `${lead}${tail} Upside toward ${cur(t.target)} (+${t.tpPct}%).`;
 }
 
