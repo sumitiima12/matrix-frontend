@@ -61,6 +61,7 @@ export function LoginScreen({ onAuthed, onGuest }) {
   const [mobile, setMobile] = useState("");
   const [pin, setPin] = useState("");
   const [userId, setUserId] = useState("");
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [referral, setReferral] = useState(() => { try { return new URLSearchParams(window.location.search).get("ref") || ""; } catch { return ""; } });
   const [busy, setBusy] = useState(false);
@@ -90,9 +91,10 @@ export function LoginScreen({ onAuthed, onGuest }) {
   // Step 2 — a brand-new user picks a handle (+ optional email), then we register them.
   const submitSignup = async () => {
     if (!validId) { setErr("Choose a user ID: 3–20 characters, starting with a letter."); return; }
+    if (!name.trim()) { setErr("Please enter your name."); return; }
     if (!emailOk) { setErr("Enter a valid email, or leave it blank."); return; }
     setErr(null); setBusy(true);
-    const res = await apiRegister(mobile, pin, "", "", "", userId, referral, email);
+    const res = await apiRegister(mobile, pin, name.trim(), "", "", userId, referral, email);
     setBusy(false);
     if (res && res.pending) { setPending(true); return; }      // created, awaiting admin approval
     if (res && res.ok && res.token) { finish(res, true); return; }  // approved (admin) -> homepage
@@ -154,12 +156,13 @@ export function LoginScreen({ onAuthed, onGuest }) {
                 <input className="lginput mono" value={userId} onChange={(e) => setUserId(e.target.value.replace(/[^A-Za-z0-9_]/g, "").slice(0, 20))} placeholder="Choose a user ID (unique)" style={{ ...field, borderColor: userId ? (validId ? "rgba(52,224,125,.7)" : "rgba(255,120,120,.6)") : field.border }} />
                 <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.55)", marginTop: 5, paddingLeft: 4 }}>3–20 characters, starts with a letter. This is your public handle & referral code.</div>
               </div>
+              <input className="lginput" value={name} onChange={(e) => setName(e.target.value.slice(0, 60))} placeholder="Your name" style={field} />
               <input className="lginput" value={email} onChange={(e) => setEmail(e.target.value.trim())} type="email" inputMode="email" placeholder="Email (optional)" style={{ ...field, borderColor: email ? (emailOk ? "rgba(52,224,125,.7)" : "rgba(255,120,120,.6)") : field.border }} />
               <input className="lginput mono" value={referral} onChange={(e) => setReferral(e.target.value.replace(/[^A-Za-z0-9_]/g, "").slice(0, 20))} placeholder="Referral code (optional)" style={field} />
             </div>
             {err && <div style={{ color: "#FFB3BE", fontSize: 12.5, fontWeight: 600, marginTop: 12 }}>{err}</div>}
 
-            <button onClick={submitSignup} disabled={busy || !validId} className="tap disp" style={{ width: "100%", marginTop: 22, background: validId ? "#fff" : "rgba(255,255,255,.3)", color: "#141416", border: "none", borderRadius: 999, padding: 16, fontWeight: 800, fontSize: 15, letterSpacing: ".02em", opacity: busy ? 0.6 : 1 }}>{busy ? "PLEASE WAIT…" : "SIGN UP"}</button>
+            <button onClick={submitSignup} disabled={busy || !validId || !name.trim()} className="tap disp" style={{ width: "100%", marginTop: 22, background: (validId && name.trim()) ? "#fff" : "rgba(255,255,255,.3)", color: "#141416", border: "none", borderRadius: 999, padding: 16, fontWeight: 800, fontSize: 15, letterSpacing: ".02em", opacity: busy ? 0.6 : 1 }}>{busy ? "PLEASE WAIT…" : "SIGN UP"}</button>
 
             <div style={{ textAlign: "center", marginTop: 16 }}>
               <span onClick={() => { setStage("auth"); setErr(null); }} className="tap" style={{ color: "rgba(255,255,255,.7)", fontSize: 12.5, fontWeight: 700, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>← Use a different number</span>

@@ -788,11 +788,22 @@ function AppInner() {
     return () => { alive = false; };
   }, [userId]);
 
+  const ADMIN_AUTH_TTL = 24 * 60 * 60 * 1000;   // re-use a verified admin key for 24h
   const openAdmin = async () => {
+    // Skip the password prompt if the admin authenticated within the last 24 hours.
+    try {
+      const saved = JSON.parse(localStorage.getItem("mx_admin_auth") || "null");
+      if (saved && saved.key && saved.at && (Date.now() - saved.at) < ADMIN_AUTH_TTL) {
+        const ok = await adminCheck(userId, saved.key);
+        if (ok) { setAdminKey(saved.key); setAdminOpen(true); setShowProfile(false); return; }
+        localStorage.removeItem("mx_admin_auth");   // stale/invalid — fall through to prompt
+      }
+    } catch { /* ignore */ }
     const key = typeof window !== "undefined" ? window.prompt("Admin key:") : "";
     if (!key) return;
     const ok = await adminCheck(userId, key);
     if (!ok) { setBuyToast({ t: "Not authorized for admin.", e: true }); return; }
+    try { localStorage.setItem("mx_admin_auth", JSON.stringify({ key, at: Date.now() })); } catch { /* ignore */ }
     setAdminKey(key);
     setAdminOpen(true);
     setShowProfile(false);

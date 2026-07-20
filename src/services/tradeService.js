@@ -179,6 +179,19 @@ export async function adminApproveUser(phone, approved, adminKey) {
   } catch { return { ok: false }; }
 }
 
+/* Admin: permanently delete any account by phone. */
+export async function adminDeleteUser(phone, adminKey) {
+  if (!BACKEND_URL) return { ok: false };
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/admin/delete-user`, {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json", ...(adminKey ? { "X-Admin-Key": adminKey } : {}) }),
+      body: JSON.stringify({ phone }),
+    });
+    return r.json().catch(() => ({ ok: false }));
+  } catch { return { ok: false }; }
+}
+
 /* Permanently delete the signed-in user's own account and all their data. */
 export async function deleteAccount() {
   if (!BACKEND_URL) return { ok: false };

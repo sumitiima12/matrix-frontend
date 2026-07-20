@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { adminListUsers, adminGetUser, adminSetBlocked, adminResetPin } from "../../services/adminService";
-import { adminPendingUsers, adminApproveUser } from "../../services/tradeService";
+import { adminPendingUsers, adminApproveUser, adminDeleteUser } from "../../services/tradeService";
 import { apiListIdeas, apiReviewIdea } from "../../domain/api";
 import { tradesToCSV, downloadCSV, tradeFilename } from "../../lib/csv";
 
@@ -57,6 +57,17 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
       await adminApproveUser(phone, next, adminKey);
       await refresh();
       if (selected && selected.phone === phone) await openUser(phone);
+    } catch (e) { setErr(String(e.message || e)); }
+    finally { setBusy(false); }
+  };
+  const removeUser = async (phone, label) => {
+    if (typeof window !== "undefined" && !window.confirm(`Permanently delete ${label || phone} and ALL their data? This cannot be undone.`)) return;
+    setBusy(true);
+    try {
+      const r = await adminDeleteUser(phone, adminKey);
+      if (r && r.error) { setErr(r.error); return; }
+      setSelected(null);
+      await refresh();
     } catch (e) { setErr(String(e.message || e)); }
     finally { setBusy(false); }
   };
@@ -141,6 +152,14 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
             {selected.user.approved === false && (
               <div style={{ fontSize: 10.5, color: "var(--down)", fontWeight: 700, marginTop: 6 }}>AWAITING APPROVAL — this user cannot log in until you tap Approve.</div>
             )}
+            <button
+              onClick={() => removeUser(selected.phone, selected.user.name || (selected.user.username ? "@" + selected.user.username : selected.phone))}
+              disabled={busy}
+              className="tap disp"
+              style={{ marginTop: 14, width: "100%", border: "1px solid var(--down)", borderRadius: 10, padding: "10px 14px", fontWeight: 800, fontSize: 12, cursor: "pointer", background: "var(--down)", color: "#fff", opacity: busy ? 0.6 : 1 }}
+            >
+              Delete this account permanently
+            </button>
           </div>
 
           {/* Onboarding answers / profile */}
@@ -198,6 +217,7 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
                 <div className="mono" style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{u.phone}</div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {u.approved === false && <span className="pill" style={{ fontSize: 8.5, fontWeight: 800, padding: "2px 7px", background: "#F59E42", color: "#fff" }}>PENDING</span>}
                 {u.blocked && <span className="pill" style={{ fontSize: 8.5, fontWeight: 800, padding: "2px 7px", background: "var(--down)", color: "#fff" }}>BLOCKED</span>}
                 <span style={{ color: "var(--muted)", fontSize: 16 }}>›</span>
               </div>
