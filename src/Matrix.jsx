@@ -422,15 +422,6 @@ function AppInner() {
     if (av[group]) return true;                     // paper trading enabled for this group
     return Boolean(brokerFor && brokerFor(m));       // else must have a broker for real trades
   };
-  /* Whether a market TAB should be shown. The Indian tab is hidden for a non-admin who can't
-     use it: in Virtual mode unless the admin enabled Indian paper trading, and in Real mode
-     unless an Indian broker is connected. Other markets are always shown. */
-  const marketTabVisible = (mkt) => {
-    if (effAdmin || mkt !== "IN") return true;
-    const av = (appSettings && appSettings.allowVirtual) || { IN: false, Global: false };
-    if (mode === "real") return Boolean(brokerFor && brokerFor("IN"));
-    return !!av.IN;
-  };
   const buyStock  = (stock, qty = 1, opts = {}) => {
     if (!requireLogin()) return false;
     const mkt = marketOf(stock.sym) || market;
@@ -781,14 +772,6 @@ function AppInner() {
     try { const r = await apiSaveAppSettings(next, adminKey); if (r && r.settings) setAppSettings(r.settings); }
     catch { /* keep optimistic value; a reload re-syncs */ }
   }, [adminKey]);
-  // If the Indian market is selected but hidden for this user (virtual disabled + no Indian
-  // broker), move them off it so they're never stranded on a market with no tab to leave it.
-  useEffect(() => {
-    if (effAdmin || market !== "IN") return;
-    const av = (appSettings && appSettings.allowVirtual) || { IN: false, Global: false };
-    const ok = mode === "real" ? Boolean(brokerFor && brokerFor("IN")) : !!av.IN;
-    if (!ok) setMarket("US");
-  }, [market, mode, appSettings, effAdmin, brokerFor]);
   // What THIS user may do, given the gates (admins are never restricted).
   const canRealMode = effAdmin || Boolean(appSettings && appSettings.allowRealMode);
   const canConnectMarket = useCallback((mkt) => effAdmin || Boolean(appSettings && appSettings.allowBrokerConnect && appSettings.allowBrokerConnect[mkt]), [effAdmin, appSettings]);
@@ -1063,7 +1046,7 @@ function AppInner() {
           </div>
           {!detail && ["home", "ideas", "automation", "portfolio"].includes(tab) && (
             <div className="hide-scroll" style={{ display: "flex", gap: 8, overflowX: "auto", padding: "0 18px 12px" }}>
-              {[["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["Commodity", "🪙 Commodity"]].filter(([k]) => marketTabVisible(k)).map(([k, l]) => (
+              {[["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["Commodity", "🪙 Commodity"]].map(([k, l]) => (
                 <button key={k} onClick={() => setMarket(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "8px 14px", fontWeight: 700, fontSize: 12.5, border: "1px solid " + (market === k ? "var(--primary)" : "var(--line)"), background: market === k ? "var(--primary)" : "var(--surface)", color: market === k ? "var(--on-primary)" : "var(--ink)" }}>{l}</button>
               ))}
             </div>
