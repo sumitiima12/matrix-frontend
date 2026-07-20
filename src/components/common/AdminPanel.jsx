@@ -78,7 +78,7 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
     <div style={wrap}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
         <div className="disp" style={{ fontWeight: 800, fontSize: 20 }}>Admin</div>
-        <button onClick={onClose} className="tap disp" style={{ border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 10, padding: "7px 14px", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>Close</button>
+        <button onClick={onClose} className="tap disp" style={{ border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 10, padding: "7px 14px", fontWeight: 700, fontSize: 12.5, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}><span style={{ fontSize: 15, lineHeight: 1 }}>✕</span> Close</button>
       </div>
 
       {err && (
