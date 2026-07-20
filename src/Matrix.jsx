@@ -420,7 +420,9 @@ function AppInner() {
     const av = (appSettings && appSettings.allowVirtual) || { IN: false, Global: false };
     const group = (m === "IN" || m === "Commodity") ? "IN" : "Global";
     if (av[group]) return true;                     // paper trading enabled for this group
-    return Boolean(brokerFor && brokerFor(m));       // else must have a broker for real trades
+    // Real path: needs BOTH a connected broker for this market AND Real mode allowed for it.
+    // A broker connected but Real mode off for that market → no Buy button.
+    return canRealMode(m) && Boolean(brokerFor && brokerFor(m));
   };
   const buyStock  = (stock, qty = 1, opts = {}) => {
     if (!requireLogin()) return false;
@@ -772,12 +774,13 @@ function AppInner() {
     try { const r = await apiSaveAppSettings(next, adminKey); if (r && r.settings) setAppSettings(r.settings); }
     catch { /* keep optimistic value; a reload re-syncs */ }
   }, [adminKey]);
-  // What THIS user may do, given the gates (admins are never restricted).
-  const canRealMode = effAdmin || Boolean(appSettings && appSettings.allowRealMode);
+  // What THIS user may do, given the gates (admins are never restricted). Real mode is now
+  // per-market, like broker-connect: the admin can allow Real on Crypto but not on Indian.
+  const canRealMode = useCallback((mkt = market) => effAdmin || Boolean(appSettings && appSettings.allowRealMode && appSettings.allowRealMode[marketOf(mkt) || mkt]), [effAdmin, appSettings, market]);
   const canConnectMarket = useCallback((mkt) => effAdmin || Boolean(appSettings && appSettings.allowBrokerConnect && appSettings.allowBrokerConnect[mkt]), [effAdmin, appSettings]);
-  /* If a member is (or was) in Real mode but the admin has turned Real off, snap them back to
-     Virtual — a stored "real" preference must not override a live admin lock. */
-  useEffect(() => { if (appSettings && !canRealMode && mode === "real") setMode("virtual"); }, [appSettings, canRealMode, mode, setMode]);
+  /* If a member is (or was) in Real mode but the admin has turned Real off for the market they're
+     on, snap them back to Virtual — a stored "real" preference must not override a live admin lock. */
+  useEffect(() => { if (appSettings && !canRealMode(market) && mode === "real") setMode("virtual"); }, [appSettings, canRealMode, market, mode, setMode]);
   /* Open the admin console: prompt for the key, verify with the backend (which checks the
      key AND that this userId is an admin), and only then mount the panel. The key lives in
      memory for the session only. */
@@ -1008,7 +1011,7 @@ function AppInner() {
 
             {/* VIRTUAL / REAL. Red when armed — this one spends real money. Hidden entirely for
                 members when the admin hasn't allowed Real mode: no toggle, no way to switch. */}
-            {canRealMode && (
+            {canRealMode(market) && (
               <Toggle
                 on={mode === "real"}
                 offLabel="VIRTUAL"

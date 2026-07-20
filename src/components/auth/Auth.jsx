@@ -418,7 +418,9 @@ function AdminGates({ settings, onSave }) {
     setSaving(true);
     try { await onSave(next); } finally { setSaving(false); }
   };
-  const setReal = (v) => push({ ...local, allowRealMode: v });
+  // allowRealMode is per-market now (like allowBrokerConnect). Tolerate a legacy boolean.
+  const arm = (local.allowRealMode && typeof local.allowRealMode === "object") ? local.allowRealMode : {};
+  const setReal = (m, v) => push({ ...local, allowRealMode: { ...arm, [m]: v } });
   const setMkt = (m, v) => push({ ...local, allowBrokerConnect: { ...(local.allowBrokerConnect || {}), [m]: v } });
   const av = local.allowVirtual || { IN: false, Global: false };
   const setVirtual = (k, v) => push({ ...local, allowVirtual: { ...av, [k]: v } });
@@ -431,15 +433,18 @@ function AdminGates({ settings, onSave }) {
         Applies to all members. You (admin) are never restricted by these.
       </div>
 
-      {/* 1. Real mode */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, paddingBottom: 12, borderBottom: "1px solid var(--line)" }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 12.5 }}>Allow users in Real Mode</div>
-          <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2, lineHeight: 1.4 }}>
-            {local.allowRealMode ? "Members can switch to Real and trade real money." : "Members see Virtual only — no Real toggle."}
-          </div>
+      {/* 1. Real mode — per market, like broker connect. */}
+      <div style={{ paddingBottom: 12, borderBottom: "1px solid var(--line)" }}>
+        <div style={{ fontWeight: 700, fontSize: 12.5 }}>Allow users in Real Mode</div>
+        <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2, marginBottom: 6, lineHeight: 1.4 }}>
+          Per market — members can switch to Real and trade real money only on the markets you enable.
         </div>
-        <YesNo on={Boolean(local.allowRealMode)} onChange={setReal} />
+        {GATE_MARKETS.map(([m, label]) => (
+          <div key={m} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "6px 0" }}>
+            <div style={{ fontSize: 12, color: "var(--ink)" }}>{label}</div>
+            <YesNo on={Boolean(arm[m])} onChange={(v) => setReal(m, v)} />
+          </div>
+        ))}
       </div>
 
       {/* 2. Virtual (paper) trading — split Indian vs Global. Both default No. */}
