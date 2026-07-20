@@ -112,10 +112,31 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
     }
   };
 
+  /* BRING-YOUR-OWN-KEYS (Delta): no OAuth. Save the user's own Delta API key + secret on the
+     server, then create a session (a signed call proves the keys work). Trades then execute on
+     THIS user's Delta account. */
+  const submitDeltaKeys = async (b) => {
+    const appId = String(creds.appId || "").trim();
+    const secret = String(creds.secret || "").trim();
+    if (!appId || !secret) { setErr("Enter your Delta API Key and Secret."); return; }
+    setErr(null);
+    setBusy(b.id);
+    try {
+      await saveBrokerAppCreds(b.id, appId, secret, "");   // encrypted per-user on the server
+      await onConnect(b.id, null);                          // server verifies the keys + opens a session
+      setBusy(null);
+      onClose && onClose();
+    } catch (e) {
+      setErr(String(e.message || e));
+      setBusy(null);
+    }
+  };
+
   const start = async (b) => {
     setErr(null);
-    // Bring-your-own-app OR bring-your-own-credential brokers open an inline form first.
-    if (b.userCreds || b.byoaOAuth) { setCredFor((cur) => (cur === b.id ? null : b.id)); setCreds({}); return; }
+    // Bring-your-own-app OR bring-your-own-credential OR bring-your-own-keys (Delta) brokers
+    // open an inline form first.
+    if (b.userCreds || b.byoaOAuth || b.byoaKeys) { setCredFor((cur) => (cur === b.id ? null : b.id)); setCreds({}); return; }
     setBusy(b.id);
     try {
       /* Delta has no login page. It authenticates with API keys held on the SERVER and
@@ -222,7 +243,7 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
           const configured = Boolean(server && server.brokers && server.brokers[b.id] && server.brokers[b.id].configured);
           // Bring-your-own-app / bring-your-own-credential brokers don't need SERVER keys — the
           // user supplies them inline — so they're connectable regardless of `configured`.
-          const selfServe = b.byoaOAuth || b.userCreds;
+          const selfServe = b.byoaOAuth || b.userCreds || b.byoaKeys;
           // Admin gate: connectable only if the admin allows broker-connect for a market this
           // broker serves (admins pass through — canConnectMarket returns true for them).
           const gm = marketFilter ? [marketFilter] : gateMarketsFor(b);
@@ -293,6 +314,12 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
                       </div>
                     </div>
                   )}
+                  {b.byoaKeys && staticIp && (
+                    <div style={{ marginBottom: 12, padding: 11, borderRadius: 11, background: "var(--elev)" }}>
+                      <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, marginBottom: 3 }}>WHITELIST THIS IP ON YOUR DELTA API KEY</div>
+                      <div style={{ fontSize: 11.5, fontFamily: "monospace", color: "var(--ink)", background: "var(--surface)", borderRadius: 8, padding: "6px 8px" }}>{staticIp}</div>
+                    </div>
+                  )}
                   {(b.fields || []).map((f) => (
                     <div key={f.key} style={{ marginBottom: 10 }}>
                       <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>{f.label.toUpperCase()}</div>
@@ -308,7 +335,7 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
                       {f.hint && <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 3, lineHeight: 1.4 }}>{f.hint}</div>}
                     </div>
                   ))}
-                  <button onClick={() => (b.byoaOAuth ? submitByoa(b) : submitCreds(b))} disabled={busy === b.id} className="tap disp"
+                  <button onClick={() => (b.byoaOAuth ? submitByoa(b) : b.byoaKeys ? submitDeltaKeys(b) : submitCreds(b))} disabled={busy === b.id} className="tap disp"
                     style={{ width: "100%", marginTop: 4, border: "none", background: "var(--ink)", color: "var(--surface)", borderRadius: 10, padding: 11, fontWeight: 800, fontSize: 12.5, cursor: "pointer", opacity: busy === b.id ? 0.5 : 1 }}>
                     {busy === b.id ? (b.byoaOAuth ? "Saving…" : "Connecting…") : (b.byoaOAuth ? `Save & log in to ${b.name}` : `Connect ${b.name}`)}
                   </button>

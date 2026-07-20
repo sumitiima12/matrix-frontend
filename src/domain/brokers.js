@@ -48,18 +48,17 @@ export const BROKERS = [
     id: "delta",
     name: "Delta Exchange",
     markets: ["Crypto"],
-    // NOT BUILT. The server implements fyers and zerodha only — there is no Delta OAuth,
-    // no quote adapter, no order path and no env keys. Marking this "ready" put a Connect
-    // button in front of an integration that does not exist, which is a promise the app
-    // cannot keep.
     status: "ready",
     realtime: true,
     oi: true,
     depth: true,
-    apiKeyOnly: true,   // no OAuth redirect — the server's API keys ARE the credential
-    adminOnly: true,    // server-side account (like FYERS) — not a per-user connect
-    note: "Powers the built-in crypto price feed for all users. Signed with API keys held on the server (the server's Delta account) — configured on the server.",
-    docs: "https://docs.delta.exchange/",
+    byoaKeys: true,     // per-user: you enter YOUR OWN Delta API key + secret (no OAuth redirect)
+    fields: [
+      { key: "appId", label: "API Key", type: "text", hint: "Your Delta API key, from Delta → Settings → API Keys (needs Trading permission)." },
+      { key: "secret", label: "API Secret", type: "password", hint: "The secret shown once when you created the API key." },
+    ],
+    note: "Enter your own Delta API key and secret. Your crypto trades execute on YOUR Delta account — never a shared one. Create read+trade keys in Delta → Settings → API Keys, and whitelist the IP shown below.",
+    docs: "https://docs.delta.exchange/#authentication",
   },
   {
     id: "coindcx",
