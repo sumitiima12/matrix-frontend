@@ -463,6 +463,15 @@ function AdminGates({ settings, onSave }) {
         <YesNo on={Boolean(av.Global)} onChange={(v) => setVirtual("Global", v)} />
       </div>
 
+      {/* 2b. Show Indian market to users without a broker (delayed BSE feed). Default No. */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, paddingTop: 10, paddingBottom: 12, borderBottom: "1px solid var(--line)" }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 12.5 }}>Show Indian market without broker connect</div>
+          <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2, lineHeight: 1.4 }}>Off: users must connect an Indian broker to see the Indian market. On: they see it on the delayed BSE feed.</div>
+        </div>
+        <YesNo on={Boolean(local.showIndianWithoutBroker)} onChange={(v) => push({ ...local, showIndianWithoutBroker: v })} />
+      </div>
+
       {/* 3. Broker connect, per market */}
       <div style={{ fontWeight: 700, fontSize: 12.5, marginTop: 12, marginBottom: 6 }}>Allow users to connect brokers</div>
       {GATE_MARKETS.map(([m, label]) => (
