@@ -367,7 +367,7 @@ function NumF({ label, v, set }) {
 function DeploySizeField({ market, value, onChange }) {
   const isC = market === "Crypto";
   const step = isC ? 10 : 1;
-  const val = value != null ? value : (isC ? 10 : 1);
+  const val = value != null ? value : (isC ? 200 : 1);
   const set = (n) => onChange(Math.max(1, n));
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, gap: 8 }}>
@@ -385,7 +385,7 @@ function DeploySizeField({ market, value, onChange }) {
 function SampleStrategyCard({ s, onActivate, onClone, onEdit, market = "IN" }) {
   const { loading, stats } = useBacktestStats(s);
   const [bt, setBt] = useState(false);
-  const [size, setSize] = useState(market === "Crypto" ? 10 : 1);
+  const [size, setSize] = useState(market === "Crypto" ? 200 : 1);
 
   const Stat = ({ k, v, c }) => (
     <div style={{ flex: 1, background: "var(--elev)", borderRadius: 11, padding: "9px 10px", minWidth: 0 }}>
@@ -478,7 +478,7 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, market = "IN" }) {
 function PremiumStrategyCard({ s, active, onToggle, onEdit, market = "IN" }) {
   const { loading, stats } = useBacktestStats(s);
   const [bt, setBt] = useState(false);
-  const [size, setSize] = useState(market === "Crypto" ? 10 : 1);
+  const [size, setSize] = useState(market === "Crypto" ? 200 : 1);
   /* Show a symbol relevant to the CURRENT market. Premium strategies are shared across
      markets, so under Crypto we surface a crypto symbol, not the Indian one they were saved
      with. Fall back to the first symbol of this market's universe. */
@@ -559,8 +559,18 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
   // Only strategies for the market you're on (a crypto auto-buy doesn't show under Indian).
   const live = (data.strategies || []).filter((s) => (s.status === "active" || s.status === "paused") && (s.market || "Crypto") === market);
   if (!userId || !live.length) return null;
-  const doPause = async (s) => { await pauseAutoBuy(userId, s.id, s.status === "active"); refresh(); };
-  const doCancel = async (s) => { await cancelAutoBuy(userId, s.id); refresh(); };
+  const doPause = async (s) => {
+    const nowActive = s.status === "active";
+    // Optimistic: flip the row immediately so Pause/Start responds instantly, then confirm with the server.
+    setData((d) => ({ ...d, strategies: (d.strategies || []).map((x) => x.id === s.id ? { ...x, status: nowActive ? "paused" : "active" } : x) }));
+    await pauseAutoBuy(userId, s.id, nowActive);
+    refresh();
+  };
+  const doCancel = async (s) => {
+    setData((d) => ({ ...d, strategies: (d.strategies || []).filter((x) => x.id !== s.id) }));   // optimistic remove
+    await cancelAutoBuy(userId, s.id);
+    refresh();
+  };
   const toggleLive = async () => {
     if (!isAdmin || !adminKey) return;
     setBusy(true);
@@ -578,7 +588,7 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
           : <span className="pill" style={{ marginLeft: "auto", fontSize: 9, fontWeight: 800, padding: "3px 8px", background: data.engineLive ? "var(--down-soft)" : "var(--elev)", color: data.engineLive ? "var(--down)" : "var(--muted)" }}>{data.engineLive ? "TRADING LIVE" : "DRY-RUN"}</span>}
       </div>
       {!data.engineLive && <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 8, lineHeight: 1.5 }}>{isAdmin ? "Dry-run — logs entries but places no real orders. Tap the badge above to go live." : "Engine is in dry-run — logs entries but places no real orders yet."}</div>}
-      {live.map((s) => (
+      <CollapsibleList items={live} render={(s) => (
         <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: "1px solid var(--line)" }}>
           <div style={{ minWidth: 0 }}>
             <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{s.name || s.symbol} {s.status === "paused" && <span style={{ color: "var(--muted)", fontWeight: 700 }}>· paused</span>}</div>
@@ -603,13 +613,31 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
                 ? <div style={{ fontSize: 9.5, color: "var(--down)", fontWeight: 800 }}>rejected</div>
                 : <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }} title="Buys automatically when your entry rule fires on live candles.">waiting for entry</div>}
             <div style={{ display: "flex", gap: 6 }}>
-              <button onClick={() => doPause(s)} className="tap" style={{ border: "1px solid var(--line)", background: "transparent", color: "var(--muted)", borderRadius: 8, padding: "3px 8px", fontSize: 10, fontWeight: 700 }}>{s.status === "active" ? "Pause" : "Resume"}</button>
+              <button onClick={() => doPause(s)} className="tap" style={{ border: "1px solid " + (s.status === "active" ? "var(--line)" : "var(--up)"), background: s.status === "active" ? "transparent" : "var(--up-soft)", color: s.status === "active" ? "var(--muted)" : "var(--up)", borderRadius: 8, padding: "3px 9px", fontSize: 10, fontWeight: 800 }}>{s.status === "active" ? "❚❚ Pause" : "▶ Start"}</button>
               <button onClick={() => doCancel(s)} className="tap" style={{ border: "1px solid var(--down)", background: "transparent", color: "var(--down)", borderRadius: 8, padding: "3px 8px", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 2 }}><X size={10} /> Stop</button>
             </div>
           </div>
         </div>
-      ))}
+      )} />
     </div>
+  );
+}
+
+/* Renders a list of deployed strategies newest-first, collapsed to the latest few with a
+   "Show all" toggle so a long deployment history doesn't fill the whole screen. */
+function CollapsibleList({ items, render, initial = 3 }) {
+  const [open, setOpen] = useState(false);
+  const ordered = [...items].reverse();
+  const shown = open ? ordered : ordered.slice(0, initial);
+  return (
+    <>
+      {shown.map(render)}
+      {ordered.length > initial && (
+        <button onClick={() => setOpen((v) => !v)} className="tap disp" style={{ width: "100%", marginTop: 2, marginBottom: 12, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--primary)", borderRadius: 11, padding: "10px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>
+          {open ? "Show less" : `Show all (${ordered.length})`}
+        </button>
+      )}
+    </>
   );
 }
 
@@ -621,6 +649,12 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const [liveBusy, setLiveBusy] = useState(false);
   const [liveMsg, setLiveMsg] = useState(null);
   const AUTOBUY_BROKERS = ["delta", "coindcx", "zerodha", "fyers"];
+  /* Which of the user's own strategies are ALREADY armed for real money — so the card shows a
+     non-clickable "Real Live" instead of "Go Live" and can't be armed a second time. */
+  const [armedReal, setArmedReal] = useState([]);
+  const refreshArmed = () => { if (userId) loadAutoBuys(userId).then((d) => setArmedReal((d && d.strategies) || [])).catch(() => {}); };
+  useEffect(() => { refreshArmed(); const t = setInterval(refreshArmed, 20000); return () => clearInterval(t); /* eslint-disable-next-line */ }, [userId]);
+  const isArmedReal = (s) => armedReal.some((a) => a && a.status !== "cancelled" && (a.name || "") === (s.name || "") && (!s.symbols || !s.symbols.length || a.symbol === s.symbols[0]));
   async function armLive(s) {
     setLiveMsg(null);
     const sym = (s.symbols && s.symbols[0]) || null;
@@ -642,8 +676,8 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         notional: amt, interval: s.tf || "5m", product: liveProduct,
         sl: s.cfg.sl || null, tp: s.cfg.tp || null, tsl: s.cfg.tsl || null,
       });
-      setLiveMsg({ t: r.live ? "Armed — the engine will trade this live." : "Armed (engine in dry-run until AUTO_BUY_LIVE is on)." });
-      setLiveStrat(null); setLiveAmt("");
+      setLiveMsg({ t: r.already ? "Already live — this strategy is already armed." : (r.live ? "Armed — the engine will trade this live." : "Armed (engine in dry-run until AUTO_BUY_LIVE is on).") });
+      setLiveStrat(null); setLiveAmt(""); refreshArmed();
     } catch (e) { setLiveMsg({ e: true, t: String(e.message || e) }); }
     finally { setLiveBusy(false); }
   }
@@ -671,7 +705,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const [tp, setTp] = useState(defTP(market));
   // When you switch market (fresh builder context), reset SL/TP to that market's default.
   useEffect(() => { setSl(defSL(market)); setTp(defTP(market)); /* eslint-disable-next-line */ }, [market]);
-  const [capital, setCapital] = useState(market === "Crypto" ? "10" : "1");   // crypto: $ amount (default 10); else quantity (default 1)
+  const [capital, setCapital] = useState(market === "Crypto" ? "200" : "1");   // crypto: $ amount (default 200 — enough for ≥1 Delta contract); else quantity (default 1)
 
   /* Order-execution defaults for the automation. */
   const [buyType, setBuyType] = useState("Intraday");   // Intraday (MIS) | NRML
@@ -824,7 +858,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const activateTemplate = (t, syms, size) => {
     const symbols = syms && syms.length ? syms : ["NIFTY50"];
     const id = "t" + Date.now();
-    const sz = size != null ? size : (market === "Crypto" ? 10 : 1);
+    const sz = size != null ? size : (market === "Crypto" ? 200 : 1);
     // by: creator — the moment YOU activate it, it is YOUR strategy and belongs under
     // "My strategies". It was previously tagged "Matrix", which filed the user's own
     // running strategies under the samples.
@@ -1025,7 +1059,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       {(() => {
         const isC = market === "Crypto";
         const step = isC ? 10 : 1;
-        const val = s.qty != null ? s.qty : (isC ? 10 : 1);
+        const val = s.qty != null ? s.qty : (isC ? 200 : 1);
         const set = (n) => { const v = Math.max(isC ? 1 : 1, n); updateStrat(s.id, { qty: v, cap: v }); };
         return (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10, gap: 8 }}>
@@ -1056,10 +1090,13 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         <button onClick={() => toggleActive(s.id)} className="tap disp" style={{ flex: "1 1 100px", borderRadius: 11, background: s.active ? "var(--surface)" : "linear-gradient(120deg,var(--up),#0EA968)", color: s.active ? "var(--ink)" : "#fff", boxShadow: s.active ? "none" : "0 6px 16px rgba(16,185,129,.3)", padding: "7px 10px", display: "flex", gap: 5, alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800, border: s.active ? "1px solid var(--line)" : "none" }}>
           {s.active ? <><Pause size={13} /> Deactivate</> : <><Play size={13} /> Activate</>}
         </button>
-        {/* Real-money auto-buy: only offered for the user's OWN strategies. */}
-        <button onClick={() => { setLiveStrat(liveStrat === s.id ? null : s.id); setLiveMsg(null); }} className="tap disp" title="Trade this strategy with real money" style={{ border: "1px solid var(--down)", borderRadius: 11, background: liveStrat === s.id ? "var(--down-soft)" : "var(--surface)", color: "var(--down)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 800 }}><Bolt size={13} /> Go Live</button>
+        {/* Real-money auto-buy: only offered for the user's OWN strategies. Once armed it shows a
+            non-clickable "Real Live" badge so it can't be armed twice. */}
+        {isArmedReal(s)
+          ? <span className="pill" title="This strategy is live on your broker" style={{ border: "1px solid var(--down)", borderRadius: 11, background: "var(--down-soft)", color: "var(--down)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 800, cursor: "default" }}><Bolt size={13} /> ● Real Live</span>
+          : <button onClick={() => { const opening = liveStrat !== s.id; setLiveStrat(opening ? s.id : null); setLiveMsg(null); if (opening) setLiveAmt(String(s.qty != null ? s.qty : (market === "Crypto" ? 200 : 1))); }} className="tap disp" title="Trade this strategy with real money" style={{ border: "1px solid var(--down)", borderRadius: 11, background: liveStrat === s.id ? "var(--down-soft)" : "var(--surface)", color: "var(--down)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 800 }}><Bolt size={13} /> Go Live</button>}
       </div>
-      {liveStrat === s.id && (
+      {liveStrat === s.id && !isArmedReal(s) && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
           <div style={{ fontSize: 11.5, color: "var(--down)", fontWeight: 800, marginBottom: 6 }}>⚠ Real-money auto-buy</div>
           <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.5, marginBottom: 10 }}>
@@ -1515,12 +1552,12 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                   >
                     Exit all active strategies
                   </button>
-                  {deployedActive.map(({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>)}
+                  <CollapsibleList items={deployedActive} render={({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>} />
                 </>
           ) : (
             deployedInactive.length === 0
               ? <div style={{ fontSize: 12.5, color: "var(--muted)" }}>None inactive.</div>
-              : deployedInactive.map(({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>)
+              : <CollapsibleList items={deployedInactive} render={({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>} />
           )}
         </>
       ) : mineOwn.length === 0 ? (
@@ -1530,7 +1567,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       ) : (
         /* MINE — only strategies this user created; each card carries its Active/Inactive tag. */
         <>
-          {mineOwn.map(({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>)}
+          <CollapsibleList items={mineOwn} render={({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>} />
         </>
       )}
       </>)}
