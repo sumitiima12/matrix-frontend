@@ -111,23 +111,39 @@ export default function Drawer({ s, onClose, onDetails, onBuy }) {
             </div>
           );
           const Col = ({ title, icon, children }) => (
-            <div className="card" style={{ padding: 12, minWidth: 0 }}>
+            <div className="card" style={{ padding: 12, minWidth: 0, display: "flex", flexDirection: "column" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 9, color: "var(--muted)", fontWeight: 800, fontSize: 11.5 }}>{icon}{title}</div>
               {children}
             </div>
           );
+          // A compact 0–100 meter (bar + label), like the detail page's gauge.
+          const scoreColor = (v) => (v >= 55 ? "var(--up)" : v >= 40 ? "var(--amber, #F59E42)" : "var(--down)");
+          const Meter = ({ label, score }) => (
+            <div style={{ marginTop: "auto", paddingTop: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                <span style={{ fontSize: 10.5, fontWeight: 800, color: "var(--ink)" }}>{label}</span>
+                <span className="mono" style={{ fontSize: 10.5, fontWeight: 800, color: scoreColor(score) }}>{score}/100</span>
+              </div>
+              <div style={{ height: 6, borderRadius: 6, background: "var(--elev)", overflow: "hidden" }}>
+                <div style={{ width: `${Math.max(3, Math.min(100, score))}%`, height: "100%", borderRadius: 6, background: scoreColor(score) }} />
+              </div>
+            </div>
+          );
           return (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12, alignItems: "start" }}>
-              <Col title="Technical" icon={<Activity size={13} />}>
-                {tr ? tr.rows.map((r) => <Bullet key={r.k} k={r.k} v={r.v} tone={r.tone} />) : <div style={{ fontSize: 11, color: "var(--muted)" }}>Waiting for live indicators.</div>}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12, alignItems: "stretch" }}>
+              <Col title="Technicals" icon={<Activity size={13} />}>
+                {tr ? (<>
+                    {tr.rows.map((r) => <Bullet key={r.k} k={r.k} v={r.v} tone={r.tone} />)}
+                    <Meter label={tr.grade} score={tr.score} />
+                  </>) : <div style={{ fontSize: 11, color: "var(--muted)" }}>Waiting for live indicators.</div>}
               </Col>
-              <Col title="Fundamental" icon={<Building2 size={13} />}>
+              <Col title="Fundamentals" icon={<Building2 size={13} />}>
                 {market === "Crypto" ? <div style={{ fontSize: 11, color: "var(--muted)" }}>Not applicable to crypto.</div>
                   : fund == null ? <div style={{ fontSize: 11, color: "var(--muted)" }}>Loading…</div>
                   : fund.unavailable ? <div style={{ fontSize: 11, color: "var(--muted)" }}>Not available right now.</div>
                   : fr ? (<>
                       {fr.rows.map((r) => <Bullet key={r.k} k={r.k} v={r.v} tone={r.tone} />)}
-                      <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px solid var(--line)", fontSize: 10.5, fontWeight: 800 }}>{fr.verdict} · {fr.score}/100</div>
+                      <Meter label={fr.verdict} score={fr.score} />
                     </>) : <div style={{ fontSize: 11, color: "var(--muted)" }}>—</div>}
               </Col>
             </div>

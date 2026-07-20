@@ -197,7 +197,37 @@ export function technicalRead(s, tech) {
       pos >= 0.85 ? "good" : pos <= 0.15 ? "warn" : "neutral");
   }
 
+  // Support — how much cushion is below price.
+  if (s.support != null && s.support > 0 && s.price != null && s.support < s.price * 1.5) {
+    const gap = (s.price - s.support) / s.price * 100;
+    add("Support", `${gap.toFixed(1)}% away`,
+      gap <= 1.5 ? "Sitting right on support — a bounce zone, but a break turns it into resistance." : gap >= 8 ? "Well above support — a long way to fall before the floor." : "A comfortable cushion above the nearest floor.",
+      gap <= 1.5 ? "warn" : "good");
+  }
+
+  // Resistance — how much room is above price.
+  if (s.resistance != null && s.resistance > (s.price || 0) && s.resistance < s.price * 1.5) {
+    const room = (s.resistance - s.price) / s.price * 100;
+    add("Resistance", `${room.toFixed(1)}% away`,
+      room <= 1.5 ? "Pressing against resistance — a breakout would open room to run." : room >= 8 ? "Plenty of headroom before the next ceiling." : "Some room to the nearest ceiling.",
+      room <= 1.5 ? "warn" : "good");
+  }
+
+  // Volatility — ATR as a share of price.
+  if (s.atr != null && s.price) {
+    const atrPct = s.atr / s.price * 100;
+    add("Volatility", `${atrPct.toFixed(1)}% ATR`,
+      atrPct >= 5 ? "High volatility — wider stops needed; moves are large in both directions." : atrPct <= 1 ? "Low volatility — quiet, tight ranges; watch for an expansion." : "Moderate day-to-day range.",
+      "neutral");
+  }
+
   const verdict = tech && tech.signal ? tech.signal : (trendUp ? "Uptrend" : "Range-bound");
   const summary = tech && tech.why ? tech.why : `${verdict} on the current timeframe.`;
-  return { verdict, rows, summary };
+  // Roll tones into a 0–100 technical score + a plain verdict (mirrors the fundamental meter).
+  const toneVal = { good: 1, neutral: 0.5, warn: 0.25, bad: 0 };
+  let ws = 0, n = 0;
+  rows.forEach((r) => { if (toneVal[r.tone] != null) { ws += toneVal[r.tone]; n++; } });
+  const score = n ? Math.round((ws / n) * 100) : 50;
+  const grade = score >= 70 ? "Strong" : score >= 55 ? "Constructive" : score >= 40 ? "Mixed" : "Weak";
+  return { verdict, rows, summary, score, grade };
 }

@@ -1084,9 +1084,6 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       {/* Market pulse strip — not for Commodity */}
       {market !== "Commodity" && <MarketPulseStrip market={market} list={list} onOpen={onOpen} liveTick={liveTick} />}
 
-      {/* Sector heatmap — live average move per sector (renders only where sectors exist) */}
-      <SectorHeatmap market={market} list={list} />
-
       {/* Earnings — Recent & Upcoming (US calendar / India results; hides if no data) */}
       <EarningsSection market={market} onOpen={(sym) => { const st = list.find((x) => x.sym === sym); if (st) onOpen(st); }} />
 
@@ -1129,6 +1126,9 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           </div>
         </Section>
       )}
+
+      {/* Sector heatmap — placed below Gainers & Losers (renders only where sectors exist) */}
+      <SectorHeatmap market={market} list={list} />
 
 
       {/* In the news — REAL headlines fetched live (not for F&O) */}

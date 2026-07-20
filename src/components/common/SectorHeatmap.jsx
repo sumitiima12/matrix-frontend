@@ -11,9 +11,11 @@ import { Grid3x3 } from "lucide-react";
  */
 export default function SectorHeatmap({ list = [], market, onPick }) {
   const sectors = useMemo(() => {
+    const HIDE = new Set(["cement"]);   // sectors excluded from the heatmap
     const byS = new Map();
     for (const s of list) {
       if (!s || s.isIndex || !s.sector || s.chg == null || s.price == null) continue;
+      if (HIDE.has(String(s.sector).trim().toLowerCase())) continue;
       const g = byS.get(s.sector) || { sector: s.sector, sum: 0, n: 0, up: 0 };
       g.sum += s.chg; g.n += 1; if (s.chg >= 0) g.up += 1;
       byS.set(s.sector, g);
