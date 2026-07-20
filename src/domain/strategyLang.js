@@ -97,6 +97,30 @@ export function detectTf(text) {
   if ((m = t.match(/(\d+)\s*(?:d\b|day|days)/))) return m[1] === "1" ? "1D" : m[1] + "D";
   return null;
 }
+/* Momentum phrase -> a price-jump scan spec, or null. Recognises both a ratio ("current price /
+   previous candle close > 1.02") and plain English ("price jumped 2% in 5 mins", "down 3% today").
+   The timeframe comes from detectTf ("5 mins"/"1 hour"/"4 hours"/"daily"); default 1d. */
+export function parseMomentum(text) {
+  const t = String(text || "").toLowerCase();
+  const tf = detectTf(t) || "1d";
+  // Ratio form: <price/close> / <...previous...close> <op> <number>. Anything between the slash and
+  // the second "close" ("price of previous candle") is allowed.
+  let m = t.match(/(?:current\s*)?(?:price|close|ltp)\s*\/\s*[a-z\s'()]*close\s*(>=?|<=?|above|below|greater\s*than|less\s*than)\s*(\d+(?:\.\d+)?)/);
+  if (m) {
+    const ratio = parseFloat(m[2]);
+    const down = /<|below|less/.test(m[1]);
+    const pct = Math.abs((ratio - 1) * 100);
+    if (pct > 0) return { pct: +pct.toFixed(4), dir: down ? "down" : "up", tf };
+  }
+  // Plain-English form: a percent + a direction word.
+  const pm = t.match(/(\d+(?:\.\d+)?)\s*%/);
+  if (pm) {
+    const up = /(jump|jumped|jumps|rose|rise|rises|risen|rally|rallied|surge|surged|gain|gained|gains|gaining|\bup\b|increase|increased|higher|spike|spiked|rocket|pump|pumped|moved?\s*up|rallies)/.test(t);
+    const dn = /(fell|fall|falls|drop|dropped|drops|declin|\bdown\b|lost|lose|loses|lower|dump|dumped|crash|plunge|plunged|sink|sank|moved?\s*down)/.test(t);
+    if (up || dn) { const pct = parseFloat(pm[1]); if (pct > 0) return { pct, dir: dn && !up ? "down" : "up", tf }; }
+  }
+  return null;
+}
 /* MACD(fast,slow,signal) and BB(length,mult) carry their bracket/number params onto the def so
    "MACD(3,10,16)" or "RSI 21" actually change the calculation instead of using defaults. */
 function macdDef(nums) { const d = { type: "MACD", len: "", name: "MACD" }; if (nums && nums.length >= 3) { d.fast = nums[0]; d.slow = nums[1]; d.signal = nums[2]; } return d; }

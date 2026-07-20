@@ -35,6 +35,21 @@ export async function scanPattern(pattern, appSyms) {
     return (d.matches || []).map((m) => ({ ...m, sym: bySy.get(m.sym) || m.sym }));
   } catch { return []; }
 }
+/* Momentum scan — "which stocks moved X% over one <tf> candle". Returns [{sym, chg, ratio}]. */
+export async function scanMomentum({ tf, pct, dir, bars, syms }) {
+  if (!BACKEND_URL || !syms || !syms.length || !(pct > 0)) return [];
+  try {
+    const ySyms = syms.map(yahooSymbol);
+    const r = await fetch(`${BACKEND_URL}/api/momentum-scan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tf, pct, dir, bars, symbols: ySyms }),
+    });
+    const d = await r.json().catch(() => ({}));
+    const bySy = new Map(syms.map((s) => [yahooSymbol(s), s]));
+    return (d.matches || []).map((m) => ({ ...m, sym: bySy.get(m.sym) || m.sym }));
+  } catch { return []; }
+}
 export const aiInterpretStrategyAI = (text) => interpretStrategyAI(text);
 export const aiInterpretStrategy = (text) => interpretStrategy(text);
 export const aiMarketBrief = (facts) => marketBrief(facts);

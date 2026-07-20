@@ -4,8 +4,8 @@ import ListRow from "../components/cards/ListRow";
 import { selStyle } from "../components/common/styles";
 import WatchAddButton from "../components/common/WatchAddButton";
 import { Filter, Plus, Trash2 } from "lucide-react";
-import { aiInterpretScreen, scanPattern } from "../domain/api";
-import { patternKeyFromText } from "../domain/strategyLang";
+import { aiInterpretScreen, scanPattern, scanMomentum } from "../domain/api";
+import { patternKeyFromText, parseMomentum } from "../domain/strategyLang";
 
 /**
  * Screener — multi-condition scans over real indicator data.
@@ -81,6 +81,27 @@ export default function Screener({ onOpen, market, list, watchlists, addToWatch,
         setParsedNote(matched.length
           ? `Applied: stocks forming a ${label} (${matched.length})`
           : `No stocks in this market are currently forming a ${label}.`);
+        setResults(matched);
+        return;
+      }
+      /* PRICE-MOVE SCAN: "price jumped 2% in 5 mins", "current price / previous close > 1.02",
+         "up 3% today", "down 5% in 1 hour". Fetches candles at the requested timeframe per symbol
+         and returns those whose one-candle move clears the threshold — real intraday/daily data,
+         not the snapshot metrics. */
+      const mom = parseMomentum(text);
+      if (mom) {
+        setAiBusy(true); setTimedOut(false);
+        const verb = mom.dir === "up" ? "up" : "down";
+        setParsedNote(`Scanning for price ${verb} ${mom.pct}% over ${mom.tf}…`);
+        const syms = (list || []).map((s) => s.sym);
+        const found = await scanMomentum({ tf: mom.tf, pct: mom.pct, dir: mom.dir, syms }).catch(() => []);
+        setAiBusy(false);
+        const chgBy = new Map(found.map((f) => [f.sym, f.chg]));
+        const matched = (list || []).filter((s) => chgBy.has(s.sym))
+          .sort((a, b) => (mom.dir === "up" ? chgBy.get(b.sym) - chgBy.get(a.sym) : chgBy.get(a.sym) - chgBy.get(b.sym)));
+        setParsedNote(matched.length
+          ? `Applied: price ${verb} ≥ ${mom.pct}% over ${mom.tf} (${matched.length})`
+          : `No stocks moved ${verb} ${mom.pct}% over ${mom.tf} right now.`);
         setResults(matched);
         return;
       }
