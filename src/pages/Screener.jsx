@@ -4,7 +4,8 @@ import ListRow from "../components/cards/ListRow";
 import { selStyle } from "../components/common/styles";
 import WatchAddButton from "../components/common/WatchAddButton";
 import { Filter, Plus, Trash2 } from "lucide-react";
-import { aiInterpretScreen } from "../domain/api";
+import { aiInterpretScreen, scanPattern } from "../domain/api";
+import { patternKeyFromText } from "../domain/strategyLang";
 
 /**
  * Screener — multi-condition scans over real indicator data.
@@ -64,6 +65,25 @@ export default function Screener({ onOpen, market, list, watchlists, addToWatch,
   const runScreener = async () => {
     if (text.trim()) {
       setSelRec(null);
+      /* CHART-PATTERN SCAN: if the prompt names a pattern ("cup and handle", "double bottom
+         is forming"), fetch daily candles for the current universe and return the stocks
+         actually forming it. This is real detection on price history, not an indicator filter. */
+      const pk = patternKeyFromText(text);
+      if (pk) {
+        const label = pk.replace(/-/g, " ");
+        setAiBusy(true); setTimedOut(false);
+        setParsedNote("Scanning charts for a " + label + "…");
+        const syms = (list || []).map((s) => s.sym);
+        const found = await scanPattern(pk, syms).catch(() => []);
+        setAiBusy(false);
+        const hit = new Set(found.map((f) => f.sym));
+        const matched = (list || []).filter((s) => hit.has(s.sym));
+        setParsedNote(matched.length
+          ? `Applied: stocks forming a ${label} (${matched.length})`
+          : `No stocks in this market are currently forming a ${label}.`);
+        setResults(matched);
+        return;
+      }
       const res = parseScreen(text);
       if (res.sectors.length || res.caps.length || res.conds.length || res.dma || res.dmaBear) {
         setParsedNote("Applied: " + res.note.join(" · "));

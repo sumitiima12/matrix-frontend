@@ -20,6 +20,21 @@ import { isMarketOpen } from "../services/riskService";
 export const askMatrix = (messages, system = MATRIX_PERSONA, maxTokens = 1000) =>
   aiAsk(messages, system, maxTokens);
 export const aiInterpretScreen = (text, metricFields) => interpretScreen(text, metricFields);
+/** Scan a set of app symbols for a chart pattern. Returns [{ sym, pattern, name, dir }]. */
+export async function scanPattern(pattern, appSyms) {
+  if (!BACKEND_URL || !pattern || !appSyms || !appSyms.length) return [];
+  try {
+    const ySyms = appSyms.map(yahooSymbol);
+    const r = await fetch(`${BACKEND_URL}/api/pattern-scan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pattern, symbols: ySyms }),
+    });
+    const d = await r.json().catch(() => ({}));
+    const bySy = new Map(appSyms.map((s) => [yahooSymbol(s), s]));
+    return (d.matches || []).map((m) => ({ ...m, sym: bySy.get(m.sym) || m.sym }));
+  } catch { return []; }
+}
 export const aiInterpretStrategyAI = (text) => interpretStrategyAI(text);
 export const aiInterpretStrategy = (text) => interpretStrategy(text);
 export const aiMarketBrief = (facts) => marketBrief(facts);
