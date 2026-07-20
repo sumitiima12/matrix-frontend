@@ -571,7 +571,7 @@ function TrendingRow({ s, market, onOpen, onBuy, onWhy }) {
   );
 }
 
-export default function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, onAutoBuy, mode, watch, toggleWatch, profile, portfolio = [], realPortfolio = [], onRefreshReal, wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [], liveTick = 0, onWhy, autoOnMap: autoOnMapProp, setAutoOnMap: setAutoOnMapProp }) {
+export default function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, onAutoBuy, mode, watch, toggleWatch, profile, portfolio = [], realPortfolio = [], onRefreshReal, wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [], liveTick = 0, onWhy, autoOnMap: autoOnMapProp, setAutoOnMap: setAutoOnMapProp, hideDash = false }) {
   const [glMode, setGlMode] = useState("Gainers");
   // Picks refresh ONCE AN HOUR (not on every tick) so they don't churn.
   const [pickHour, setPickHour] = useState(() => Math.floor(Date.now() / 3600000));
@@ -635,7 +635,8 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
      s.vol, which was always undefined: the comparator did nothing and the result only
      LOOKED ranked. An ordering that pretends to mean something is worse than an
      obvious one that doesn't. */
-  const inNews = list.slice(0, 12);
+  // News is for tradable stocks only — never indices (NIFTY 50, SENSEX, BANK NIFTY, …).
+  const inNews = list.filter((s) => !s.isIndex).slice(0, 12);
   const smart = list.filter((s) => s.inst);
   const trendingView = trending;
 
@@ -810,7 +811,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
 
       <TunedStrip profile={profile} />
 
-      {/* Portfolio / Auto-Buy dashboard card */}
+      {/* Portfolio / Auto-Buy dashboard card. Hidden for gated users (non-admin, virtual mode,
+          Indian paper trading off) — there is nothing to trade, so a ₹0 virtual portfolio would
+          only mislead. */}
+      {!hideDash && (
       <div className="card glow metalblack" style={{ marginTop: 14, padding: 16, border: "none", color: "#fff", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "relative" }}>
           {/* slider */}
@@ -981,6 +985,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           )}
         </div>
       </div>
+      )}
 
       {/* Matrix picks */}
       <Section title="Top Picks" icon={<Sparkles size={17} color="var(--primary-2)" />}>

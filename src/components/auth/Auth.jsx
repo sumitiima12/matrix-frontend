@@ -607,7 +607,7 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
         {(() => {
           const av = (appSettings && appSettings.allowVirtual) || { IN: false, Global: false };
           const effAdmin = isAdminUser && adminMode;
-          const rows = WMKTS.filter(([k]) => effAdmin || av[(k === "IN" || k === "FNO") ? "IN" : "Global"]);
+          const rows = WMKTS.filter(([k]) => effAdmin || av[(k === "IN" || k === "FNO" || k === "Commodity") ? "IN" : "Global"]);
           if (rows.length === 0) return null;
           return (
             <>
