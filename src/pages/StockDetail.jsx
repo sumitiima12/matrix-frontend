@@ -131,7 +131,7 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
   useEffect(() => {
     let stop = false; setLiveNews(null); setLiveCandles(null);
     if (BACKEND_URL) {
-      fetchNews(s.sym).then((n) => { if (!stop && n && n.length) setLiveNews(n); }).catch(() => {});
+      fetchNews(s.sym, s.name).then((n) => { if (!stop && n && n.length) setLiveNews(n); }).catch(() => {});
       fetchHistory(s.sym, "1d").then((d) => { if (!stop && d && d.length > 4) setLiveCandles(d); }).catch(() => {});
     }
     return () => { stop = true; };
@@ -352,6 +352,9 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
                       <span className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{fundRead.verdict}</span>
                       <span style={{ fontSize: 10.5, fontWeight: 800, color: fundRead.score >= 55 ? "var(--up)" : fundRead.score >= 40 ? "var(--amber, #F59E42)" : "var(--down)", background: "var(--elev)", borderRadius: 20, padding: "2px 9px" }}>{fundRead.score}/100</span>
                     </div>
+                    {/* Fundamental-strength dial — the same gauge the Technicals section uses, so both
+                        halves of the analysis read at a glance. */}
+                    {fundRead.score != null && <Gauge value={fundRead.score} label="Fundamental strength" />}
                     <div style={{ display: "grid", gap: 7 }}>
                       {fundRead.rows.map((r) => (
                         <div key={r.k} style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 12 }}>

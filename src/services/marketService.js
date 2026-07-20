@@ -77,8 +77,9 @@ export async function getEarnings(market) {
   catch { return { recent: [], upcoming: [] }; }
 }
 
-export async function getNews(ySym) {
-  const d = await get(`/api/news?symbol=${encodeURIComponent(ySym)}`);
+export async function getNews(ySym, name) {
+  const nameQ = name ? `&name=${encodeURIComponent(name)}` : "";
+  const d = await get(`/api/news?symbol=${encodeURIComponent(ySym)}${nameQ}`);
   return d ? (d.news || []) : null;
 }
 

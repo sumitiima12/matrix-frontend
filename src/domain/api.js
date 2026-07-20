@@ -41,7 +41,7 @@ export const aiMarketBrief = (facts) => marketBrief(facts);
 
 /* -------------------------- Market data -------------------------- */
 export const fetchHistory = (sym, tf) => getHistory(yahooSymbol(sym), tf);
-export const fetchNews = (sym) => getNews(yahooSymbol(sym));
+export const fetchNews = (sym, name) => getNews(yahooSymbol(sym), name);
 export const fetchFundamentals = (sym) => getFundamentals(yahooSymbol(sym));
 export const fetchEarnings = (market) => getEarnings(market);
 export const fetchIndicators = (syms) => getIndicators((syms || []).map(yahooSymbol));
