@@ -72,7 +72,7 @@ export const apiPostIdea = (idea) => _pi(idea);
 export const apiDeleteIdea = (id) => _di(id);
 export const apiReviewIdea = (id, status, adminKey) => _ri(id, status, adminKey);
 export const apiGetAppSettings = () => _gas();
-export const apiSaveAppSettings = (settings, adminKey) => _sas(settings, adminKey);
+export const apiSaveAppSettings = (settings, userId, adminKey) => _sas(settings, userId, adminKey);
 export const apiDeleteAccount = () => _dacc();
 export const apiForgotQuestion = (phone) => _fq(phone);
 export const apiForgotReset = (phone, answer, newPin) => _fr(phone, answer, newPin);

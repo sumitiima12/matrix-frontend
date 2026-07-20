@@ -212,12 +212,14 @@ export async function getAppSettings() {
     return d.settings || DEFAULT_SETTINGS;
   } catch { return DEFAULT_SETTINGS; }
 }
-export async function saveAppSettings(settings, adminKey) {
+export async function saveAppSettings(settings, userId, adminKey) {
   if (!BACKEND_URL) return { ok: false };
   try {
     const r = await fetch(`${BACKEND_URL}/api/app-settings`, {
       method: "POST",
-      headers: authHeaders({ "Content-Type": "application/json", ...(adminKey ? { "X-Admin-Key": adminKey } : {}) }),
+      // isAdmin() on the server needs BOTH X-User-Id and X-Admin-Key — sending only the key 403s
+      // and the setting silently reverts on reload.
+      headers: authHeaders({ "Content-Type": "application/json", "X-User-Id": String(userId || ""), ...(adminKey ? { "X-Admin-Key": adminKey } : {}) }),
       body: JSON.stringify({ settings }),
     });
     handle401(r.status);

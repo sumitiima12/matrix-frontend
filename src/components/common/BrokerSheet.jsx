@@ -137,6 +137,13 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
 
   const start = async (b) => {
     setErr(null);
+    // ADMIN + Delta (byoaKeys): connect straight to the server's house Delta account — no key form.
+    if (b.byoaKeys && isAdmin) {
+      setBusy(b.id);
+      try { await onConnect(b.id, null); setBusy(null); onClose && onClose(); }
+      catch (e) { setErr(String(e.message || e)); setBusy(null); }
+      return;
+    }
     // Bring-your-own-app OR bring-your-own-credential OR bring-your-own-keys (Delta) brokers
     // open an inline form first.
     if (b.userCreds || b.byoaOAuth || b.byoaKeys) { setCredFor((cur) => (cur === b.id ? null : b.id)); setCreds({}); return; }

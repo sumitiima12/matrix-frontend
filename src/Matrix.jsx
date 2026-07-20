@@ -771,9 +771,17 @@ function AppInner() {
   useEffect(() => { let alive = true; apiGetAppSettings().then((s) => { if (alive) setAppSettings(s); }); return () => { alive = false; }; }, []);
   const saveAppSettings = useCallback(async (next) => {
     setAppSettings(next);                                   // optimistic
-    try { const r = await apiSaveAppSettings(next, adminKey); if (r && r.settings) setAppSettings(r.settings); }
-    catch { /* keep optimistic value; a reload re-syncs */ }
-  }, [adminKey]);
+    // The server write needs the admin key. Use the in-memory key, or the one cached when the
+    // admin authenticated (mx_admin_auth) — otherwise the POST 403s and the change silently reverts.
+    let key = adminKey;
+    if (!key) { try { const c = JSON.parse(localStorage.getItem("mx_admin_auth") || "null"); if (c && c.key) key = c.key; } catch { /* ignore */ } }
+    if (!key) { setBuyToast({ t: "Open the Admin console once (enter your admin key) to save permissions.", e: true }); return; }
+    try {
+      const r = await apiSaveAppSettings(next, userId, key);
+      if (r && r.settings) setAppSettings(r.settings);
+      else if (r && r.error) setBuyToast({ t: "Settings not saved: " + r.error, e: true });
+    } catch { setBuyToast({ t: "Settings not saved — check your connection.", e: true }); }
+  }, [adminKey, userId]);
   // What THIS user may do, given the gates (admins are never restricted). Real mode is now
   // per-market, like broker-connect: the admin can allow Real on Crypto but not on Indian.
   const canRealMode = useCallback((mkt = market) => effAdmin || Boolean(appSettings && appSettings.allowRealMode && appSettings.allowRealMode[marketOf(mkt) || mkt]), [effAdmin, appSettings, market]);
