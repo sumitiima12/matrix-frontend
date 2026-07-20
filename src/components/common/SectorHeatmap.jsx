@@ -41,19 +41,19 @@ export default function SectorHeatmap({ list = [], market, onPick }) {
         <Grid3x3 size={16} color="var(--primary)" /> Sector heatmap
       </div>
       <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10 }}>Average move across each sector, live.</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(104px, 1fr))", gap: 8 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 5 }}>
         {sectors.map((g) => (
           <button
             key={g.sector}
             onClick={() => onPick && onPick(g.sector)}
             className="tap"
-            style={{ textAlign: "left", border: "1px solid var(--line)", borderRadius: 12, padding: "10px 11px", background: tint(g.avg), cursor: onPick ? "pointer" : "default" }}
+            title={`${g.sector} · ${g.up}/${g.n} up`}
+            style={{ textAlign: "left", border: "1px solid var(--line)", borderRadius: 9, padding: "6px 6px", background: tint(g.avg), cursor: onPick ? "pointer" : "default", minWidth: 0 }}
           >
-            <div className="disp" style={{ fontWeight: 800, fontSize: 12, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{g.sector}</div>
-            <div className="mono" style={{ fontWeight: 800, fontSize: 15, marginTop: 3, color: g.avg >= 0 ? "var(--up)" : "var(--down)" }}>
-              {g.avg >= 0 ? "+" : ""}{g.avg.toFixed(2)}%
+            <div className="disp" style={{ fontWeight: 800, fontSize: 9, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{g.sector}</div>
+            <div className="mono" style={{ fontWeight: 800, fontSize: 11.5, marginTop: 2, color: g.avg >= 0 ? "var(--up)" : "var(--down)" }}>
+              {g.avg >= 0 ? "+" : ""}{g.avg.toFixed(1)}%
             </div>
-            <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 2, fontWeight: 600 }}>{g.up}/{g.n} up</div>
           </button>
         ))}
       </div>
