@@ -236,8 +236,16 @@ export function FAQ({ onClose }) {
       a: "No. MatrixOne is a free personal project, not a commercial service. There are no subscriptions, fees, or paid tips. It exists purely for research and learning.",
     },
     {
+      q: "Can I paper trade Indian (NSE/BSE) stocks with virtual money?",
+      a: "Not by default. Simulated/\"paper\" trading on live Indian market data is turned off in line with SEBI's norms on the use of real-time exchange price data (and NSE/BSE data policies), which restrict virtual or simulated trading on real-time feeds. Instead, you can back-test your strategies on historical data, and place real orders by connecting your own broker account — where the data is licensed to you directly. Virtual trading is only available in a market if it has been explicitly enabled by the operator.",
+    },
+    {
       q: "What is \"paper trading\" and how is it different from real trading?",
-      a: "Paper trading simulates buying and selling with virtual money, so you can test ideas with no financial risk. Nothing is sent to a real exchange and no real money moves. Real trading only happens if you separately connect a live broker and confirm orders yourself.",
+      a: "Paper trading simulates buying and selling with virtual money so you can test ideas with no financial risk — nothing is sent to a real exchange and no real money moves. Where it is available, it is offered for learning only, with no monetary incentive. Real trading only happens if you separately connect your own live broker and confirm orders yourself. For Indian markets, virtual trading is disabled by default (see above); back-testing on historical data remains available to everyone.",
+    },
+    {
+      q: "Can I still back-test my strategies?",
+      a: "Yes. Back-testing runs your rules over historical price data and is always available — it is not affected by the virtual-trading setting. It is a separate, permitted use from live simulated trading.",
     },
   ];
   return (

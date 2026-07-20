@@ -158,6 +158,27 @@ export async function deleteIdea(id) {
   } catch { return { ok: false }; }
 }
 
+/* Admin: accounts awaiting approval, and approve/reject one. */
+export async function adminPendingUsers(adminKey) {
+  if (!BACKEND_URL) return { users: [] };
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/admin/pending-users`, { headers: authHeaders(adminKey ? { "X-Admin-Key": adminKey } : {}) });
+    const d = await r.json().catch(() => ({}));
+    return { users: Array.isArray(d.users) ? d.users : [] };
+  } catch { return { users: [] }; }
+}
+export async function adminApproveUser(phone, approved, adminKey) {
+  if (!BACKEND_URL) return { ok: false };
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/admin/approve`, {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json", ...(adminKey ? { "X-Admin-Key": adminKey } : {}) }),
+      body: JSON.stringify({ phone, approved }),
+    });
+    return r.json().catch(() => ({ ok: false }));
+  } catch { return { ok: false }; }
+}
+
 /* Permanently delete the signed-in user's own account and all their data. */
 export async function deleteAccount() {
   if (!BACKEND_URL) return { ok: false };
@@ -169,7 +190,7 @@ export async function deleteAccount() {
 }
 
 /* ---- Global admin-controlled app settings (Real-mode + broker-connect gates) ---- */
-const DEFAULT_SETTINGS = { allowRealMode: false, allowBrokerConnect: { IN: false, US: false, Crypto: false, Commodity: false } };
+const DEFAULT_SETTINGS = { allowRealMode: false, allowBrokerConnect: { IN: false, US: false, Crypto: false, Commodity: false }, allowVirtual: { IN: false, Global: false } };
 export async function getAppSettings() {
   if (!BACKEND_URL) return DEFAULT_SETTINGS;
   try {

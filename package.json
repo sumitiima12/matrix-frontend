@@ -13,12 +13,13 @@
     "predeploy": "eslint src && node scripts/smoke.mjs && vite build"
   },
   "dependencies": {
+    "lucide-react": "^0.383.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "recharts": "^2.12.7",
-    "lucide-react": "^0.383.0"
+    "recharts": "^2.12.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@vitejs/plugin-react": "^4.3.1",
     "esbuild": "^0.23.0",
     "eslint": "^9.0.0",

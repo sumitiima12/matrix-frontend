@@ -85,7 +85,8 @@ function CandleChart({ data, market }) {
   );
 }
 
-export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, onBuy }) {
+export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, onBuy, canBuy }) {
+  const showBuy = !canBuy || canBuy(s.sym);
   const market = marketOf(s.sym);
 
   /* Netflix-style close: keep scrolling past the end of the page and it shrinks
@@ -309,7 +310,7 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
           </div>
         )}
         <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-          <button onClick={() => onBuy && onBuy(s, 1)} className="tap disp glow" style={{ flex: 1, background: "linear-gradient(120deg,var(--up),#12B98A)", color: "#fff", border: "none", borderRadius: 16, padding: 14, fontWeight: 800, fontSize: 14.5, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}><Plus size={17} /> Buy</button>
+          {showBuy && <button onClick={() => onBuy && onBuy(s, 1)} className="tap disp glow" style={{ flex: 1, background: "linear-gradient(120deg,var(--up),#12B98A)", color: "#fff", border: "none", borderRadius: 16, padding: 14, fontWeight: 800, fontSize: 14.5, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}><Plus size={17} /> Buy</button>}
           <button onClick={() => onTrade(s)} className="tap disp" style={{ flex: 1, background: "var(--elev)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 16, padding: 14, fontWeight: 700, fontSize: 14.5 }}>Trade…</button>
         </div>
 

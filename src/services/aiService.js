@@ -20,6 +20,24 @@ export async function ask(messages, system = MATRIX_PERSONA, maxTokens = 1000) {
   return (d.text || "").trim();
 }
 
+/** Plain English -> STRUCTURED strategy rules (entry/exit conds + defs) via the AI interpreter.
+    Returns { entry, exit, defs } or null. This is the intelligent fallback when the local parser
+    can't fully read a prompt (e.g. unusual phrasing, or a pattern described in words). */
+export async function interpretStrategyAI(text) {
+  if (!BACKEND_URL) return null;
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/ai/strategy`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return null;
+    if (!Array.isArray(d.entry) && !Array.isArray(d.exit)) return null;
+    return { entry: d.entry || [], exit: d.exit || [], defs: d.defs || [] };
+  } catch { return null; }
+}
+
 /** Plain English -> structured screener conditions. Returns null if it can't. */
 export async function interpretScreen(text, metricFields) {
   const system =

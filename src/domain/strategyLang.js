@@ -245,8 +245,10 @@ const PHRASE_RULES = [
   { re: /overbought/i, cond: { la: "RSI", op: ">", b: "70", bType: "num" }, defs: [{ type: "RSI", len: "14", name: "RSI" }] },
   { re: /macd\s*(turns?|crosses?|goes?)?\s*(bullish|positive)/i, cond: { la: "MACD.line", op: "crosses_above", b: "MACD.signal", bType: "ind" }, defs: [{ type: "MACD", len: "", name: "MACD" }] },
   { re: /macd\s*(turns?|crosses?|goes?)?\s*(bearish|negative)/i, cond: { la: "MACD.line", op: "crosses_below", b: "MACD.signal", bType: "ind" }, defs: [{ type: "MACD", len: "", name: "MACD" }] },
-  { re: /golden\s*pocket|bounces?\s*off\s*support|holds?\s*support/i, cond: { la: "Price", op: ">", b: "Support", bType: "ind" }, defs: [] },
-  { re: /rejected?\s*(at|from)\s*resistance|fails?\s*at\s*resistance/i, cond: { la: "Price", op: "<", b: "Resistance", bType: "ind" }, defs: [] },
+  { re: /(?:bounce|bounces|bouncing|bounced|rebound|rebounds|rebounding|reversal|reverses|holds?|holding|respect(?:s|ing)?|defend(?:s|ing)?|support)\s*(?:from|off|at|of|near|the)?\s*support|near\s*support|at\s*support|off\s*support/i, cond: { la: "Price", op: ">", b: "Support", bType: "ind" }, defs: [] },
+  { re: /(?:reject|rejected|rejects|rejecting|fail|fails|failing|failed|reverses?|resistance)\s*(?:at|from|off|near|the)?\s*resistance|near\s*resistance|at\s*resistance|hits?\s*resistance/i, cond: { la: "Price", op: "<", b: "Resistance", bType: "ind" }, defs: [] },
+  { re: /break(?:s|ing|out)?\s*(?:above|over|through|past)?\s*resistance|breakout/i, cond: { la: "Price", op: "crosses_above", b: "Resistance", bType: "ind" }, defs: [] },
+  { re: /break(?:s|ing|down)?\s*(?:below|under|through)?\s*support|breakdown/i, cond: { la: "Price", op: "crosses_below", b: "Support", bType: "ind" }, defs: [] },
 ];
 
 export function interpretText(text) {

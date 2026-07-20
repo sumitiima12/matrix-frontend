@@ -64,6 +64,7 @@ export function LoginScreen({ onAuthed, onGuest }) {
   const [referral, setReferral] = useState(() => { try { return new URLSearchParams(window.location.search).get("ref") || ""; } catch { return ""; } });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  const [pending, setPending] = useState(false);   // signup done, awaiting admin approval
   const validId = /^[A-Za-z][A-Za-z0-9_]{2,19}$/.test(userId);
   const emailOk = email === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const field = { width: "100%", background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.28)", borderRadius: 14, padding: "14px 16px", fontSize: 15, color: "#fff", outline: "none" };
@@ -78,6 +79,7 @@ export function LoginScreen({ onAuthed, onGuest }) {
     setBusy(false);
     if (res && res.ok) { finish(res); return; }               // existing user -> straight in
     if (res && res.newAccount) { setErr(null); setStage("newuser"); return; }  // new -> sign-up step
+    if (res && res.pending) { setErr(null); setPending(true); return; }        // awaiting admin approval
     setErr((res && res.error) || "Wrong PIN for this number.");
   };
 
@@ -88,7 +90,9 @@ export function LoginScreen({ onAuthed, onGuest }) {
     setErr(null); setBusy(true);
     const res = await apiRegister(mobile, pin, "", "", "", userId, referral, email);
     setBusy(false);
-    if (res && res.ok) { finish(res, true); return; }          // signed up -> homepage (skip onboarding)
+    if (res && res.pending) { setPending(true); return; }      // created, awaiting admin approval
+    if (res && res.ok && res.token) { finish(res, true); return; }  // approved (admin) -> homepage
+    if (res && res.ok) { setPending(true); return; }           // ok but no token = pending
     setErr((res && res.error) || "Couldn't create your account.");
   };
 
@@ -104,7 +108,16 @@ export function LoginScreen({ onAuthed, onGuest }) {
           <div style={{ color: "rgba(255,255,255,.7)", fontSize: 12.5, fontWeight: 600, letterSpacing: ".22em", marginTop: 10 }}>SMART TRADING</div>
         </div>
 
-        {stage === "auth" ? (
+        {pending ? (
+          <div style={{ textAlign: "center", color: "#fff" }}>
+            <div style={{ fontSize: 40, marginBottom: 8 }}>⏳</div>
+            <div className="disp" style={{ fontSize: 20, fontWeight: 800 }}>Awaiting approval</div>
+            <div style={{ color: "rgba(255,255,255,.75)", fontSize: 13.5, marginTop: 12, lineHeight: 1.6 }}>
+              Your account has been created. An admin needs to <b style={{ color: "#fff" }}>activate it</b> before you can start using Matrix One. You'll be able to log in once it's approved.
+            </div>
+            <button onClick={() => { setPending(false); setStage("auth"); setErr(null); }} className="tap disp" style={{ marginTop: 24, background: "rgba(255,255,255,.12)", color: "#fff", border: "1px solid rgba(255,255,255,.28)", borderRadius: 999, padding: "13px 28px", fontWeight: 800, fontSize: 13.5 }}>Back to login</button>
+          </div>
+        ) : stage === "auth" ? (
           <>
             <div className="disp" style={{ color: "#fff", fontSize: 18, fontWeight: 800, textAlign: "center", marginBottom: 4 }}>Login / Sign up</div>
             <div style={{ color: "rgba(255,255,255,.6)", fontSize: 12, textAlign: "center", marginBottom: 20 }}>Enter your number and PIN — we'll log you in, or set you up if you're new.</div>
@@ -116,17 +129,7 @@ export function LoginScreen({ onAuthed, onGuest }) {
             {err && <div style={{ color: "#FFB3BE", fontSize: 12.5, fontWeight: 600, marginTop: 12 }}>{err}</div>}
 
             <button onClick={submitAuth} disabled={busy} className="tap disp" style={{ width: "100%", marginTop: 22, background: "#fff", color: "#141416", border: "none", borderRadius: 999, padding: 16, fontWeight: 800, fontSize: 15, letterSpacing: ".02em", opacity: busy ? 0.6 : 1 }}>{busy ? "PLEASE WAIT…" : "LOGIN / SIGN UP"}</button>
-
-            <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "22px 0 16px" }}>
-              <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.25)" }} />
-              <span style={{ color: "rgba(255,255,255,.65)", fontSize: 11, fontWeight: 700 }}>OR</span>
-              <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.25)" }} />
-            </div>
-
-            {/* Guest is a quiet text link, not a button. */}
-            <div style={{ textAlign: "center" }}>
-              <span onClick={onGuest} className="tap" style={{ color: "rgba(255,255,255,.85)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>Continue as guest</span>
-            </div>
+            {/* Guest access removed — every account must be approved by an admin before it can be used. */}
           </>
         ) : (
           <>
@@ -406,6 +409,8 @@ function AdminGates({ settings, onSave }) {
   };
   const setReal = (v) => push({ ...local, allowRealMode: v });
   const setMkt = (m, v) => push({ ...local, allowBrokerConnect: { ...(local.allowBrokerConnect || {}), [m]: v } });
+  const av = local.allowVirtual || { IN: false, Global: false };
+  const setVirtual = (k, v) => push({ ...local, allowVirtual: { ...av, [k]: v } });
   return (
     <div className="card" style={{ padding: 14, marginBottom: 9, border: "1px solid var(--line)" }}>
       <div className="disp" style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 2 }}>
@@ -426,7 +431,23 @@ function AdminGates({ settings, onSave }) {
         <YesNo on={Boolean(local.allowRealMode)} onChange={setReal} />
       </div>
 
-      {/* 2. Broker connect, per market */}
+      {/* 2. Virtual (paper) trading — split Indian vs Global. Both default No. */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 12, paddingBottom: 10, borderBottom: "1px solid var(--line)" }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 12.5 }}>Allow Virtual Trade — Indian</div>
+          <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2, lineHeight: 1.4 }}>Paper trading on NSE/BSE/MCX. Off by default — restricted under SEBI norms.</div>
+        </div>
+        <YesNo on={Boolean(av.IN)} onChange={(v) => setVirtual("IN", v)} />
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, paddingTop: 10, paddingBottom: 12, borderBottom: "1px solid var(--line)" }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 12.5 }}>Allow Virtual Trade — Crypto &amp; US</div>
+          <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2, lineHeight: 1.4 }}>Paper trading on US stocks and crypto.</div>
+        </div>
+        <YesNo on={Boolean(av.Global)} onChange={(v) => setVirtual("Global", v)} />
+      </div>
+
+      {/* 3. Broker connect, per market */}
       <div style={{ fontWeight: 700, fontSize: 12.5, marginTop: 12, marginBottom: 6 }}>Allow users to connect brokers</div>
       {GATE_MARKETS.map(([m, label]) => (
         <div key={m} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "7px 0" }}>

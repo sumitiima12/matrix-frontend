@@ -14,7 +14,8 @@ import VerdictTag from "../../components/common/VerdictTag";
  * Bottom sheet drawer.
  */
 
-export default function Drawer({ s, onClose, onDetails, onBuy }) {
+export default function Drawer({ s, onClose, onDetails, onBuy, canBuy }) {
+  const showBuy = !canBuy || canBuy(s.sym);
   const startY = useRef(null);
   const [dy, setDy] = useState(0);
   const sheetRef = useRef(null);
@@ -166,9 +167,11 @@ export default function Drawer({ s, onClose, onDetails, onBuy }) {
         </div>
 
         <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+          {showBuy && (
           <button onClick={() => { if (onBuy) onBuy(s, 1); onClose(); }} className="tap disp glow" style={{ flex: 1, background: "linear-gradient(120deg,var(--up),#12B98A)", color: "#fff", border: "none", borderRadius: 16, padding: "14px", fontWeight: 800, fontSize: 14.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
             <Plus size={17} /> Buy
           </button>
+          )}
           <button onClick={() => onDetails(s)} className="tap disp" style={{ flex: 1, background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px", fontWeight: 700, fontSize: 14.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
             Details <ChevronRight size={17} />
           </button>

@@ -25,7 +25,7 @@ import { analyzeStock } from "./services/aiService";
 import { recTone } from "./services/researchService";
 import { analyzeHolding, portfolioHealth, sectorExposure } from "./services/portfolioService";
 import { analyzeJournal } from "./services/journalService";
-import BuyButton from "./components/common/BuyButton";
+import BuyButton, { BuyGateContext } from "./components/common/BuyButton";
 import { PATTERNS, TF_N } from "./lib/patterns";
 import { ALL, UNIVERSE, IN_STOCKS, US_STOCKS, CRYPTO, COMMODITY, marketOf, yahooSymbol, istParts, marketHoursLabel } from "./domain/universe";
 import { SEED_STRATS } from "./domain/strategies";
@@ -400,7 +400,34 @@ function AppInner() {
     setLoginOpen(true);
     return false;
   };
-  const buyStock  = (stock, qty = 1, opts = {}) => { if (!requireLogin()) return false; setConfirmOrder({ s: stock, qty, side: "BUY",  opts, market: marketOf(stock.sym) || market, lot: opts.lot || 1 }); return true; };
+  /* COMPLIANCE GATE: virtual (paper) trading is admin-gated per market group, both default OFF.
+     Indian (NSE/BSE/MCX) is restricted under SEBI's May-2024 norms; Global (US+crypto) is a
+     separate opt-in. A non-admin can only place a virtual buy where the admin has enabled it. */
+  const virtualBlocked = (mkt) => {
+    if (effAdmin || mode !== "virtual") return false;
+    const m = marketOf(mkt) || market;
+    const av = (appSettings && appSettings.allowVirtual) || { IN: false, Global: false };
+    const group = (m === "IN" || m === "Commodity") ? "IN" : "Global";
+    return !av[group];
+  };
+  /* Whether the Buy button should even be SHOWN for a symbol. A non-admin has no legal way
+     to buy in a market where paper trading is admin-disabled AND they have no broker connected
+     for that market — so we hide Buy entirely rather than show a button that always errors.
+     Connecting a broker (real trade) OR the admin enabling virtual for the group brings it back. */
+  const canBuy = (sym) => {
+    if (effAdmin) return true;
+    const m = marketOf(sym) || market;
+    const av = (appSettings && appSettings.allowVirtual) || { IN: false, Global: false };
+    const group = (m === "IN" || m === "Commodity") ? "IN" : "Global";
+    if (av[group]) return true;                     // paper trading enabled for this group
+    return Boolean(brokerFor && brokerFor(m));       // else must have a broker for real trades
+  };
+  const buyStock  = (stock, qty = 1, opts = {}) => {
+    if (!requireLogin()) return false;
+    const mkt = marketOf(stock.sym) || market;
+    if (virtualBlocked(mkt)) { setBuyToast({ t: (mkt === "IN" || mkt === "Commodity") ? "Paper trading isn't available for Indian markets. Connect your broker to trade for real." : "Virtual trading isn't enabled for this market.", e: true }); return false; }
+    setConfirmOrder({ s: stock, qty, side: "BUY",  opts, market: mkt, lot: opts.lot || 1 }); return true;
+  };
   const sellStock = (stock, qty = 1, opts = {}) => { setConfirmOrder({ s: stock, qty, side: "SELL", opts, market: opts.market || marketOf(stock.sym) || market, lot: opts.lot || 1 }); return true; };
 
   /* AUTO-BUY places orders WITHOUT the per-trade confirm drawer. In Real mode the first
@@ -460,6 +487,7 @@ function AppInner() {
     if (!auth) { setBuyToast({ t: "Log in to trade — buying needs an account." }); setLoginOpen(true); return false; }
     // REAL mode -> real broker order (auto-buy included); otherwise the paper book.
     if (mode === "real") { placeRealMarketOrder(stock, "BUY", qty, opts.product || "CNC", opts); return true; }
+    if (virtualBlocked(marketOf(stock.sym) || market)) { setBuyToast({ t: "Paper trading isn't enabled for this market.", e: true }); return false; }
     placeOrder({ stock, side: "BUY",  qty, opts }); return true;
   };
   const sellStockNow = (stock, qty = 1, opts = {}) => { placeOrder({ stock, side: "SELL", qty, opts }); return true; };
@@ -861,6 +889,7 @@ function AppInner() {
   const nav = [["home", Home, "Home"], ["ideas", Lightbulb, "Ideas"], ["portfolio", Briefcase, "Portfolio"], ["automation", Bolt, "Auto"], ["ask", NeoIcon, "Neo"], ["watchlist", Star, "Watch"]];
 
   return (
+    <BuyGateContext.Provider value={canBuy}>
     <div className={"mx theme-" + theme} style={{ background: "var(--app-bg, var(--bg))", minHeight: "100vh" }}>
       <style>{CSS}</style>
       {/* fixed gradient backdrop so it stays behind scroll */}
@@ -1016,14 +1045,14 @@ function AppInner() {
           <ErrorBoundary key={detail ? "detail" : tab} name={detail ? "Stock detail" : tab}>
           <Suspense fallback={<div style={{ padding: 40, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>Loading…</div>}>
           {detail ? (
-            <DetailPage s={detail} onBack={() => setDetail(null)} watched={watch.includes(detail.sym)} toggleWatch={toggleWatch} onTrade={goTrade} onBuy={buyStock} />
+            <DetailPage s={detail} onBack={() => setDetail(null)} watched={watch.includes(detail.sym)} toggleWatch={toggleWatch} onTrade={goTrade} onBuy={buyStock} canBuy={canBuy} />
           ) : (
             <>
-              {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} onAutoBuy={autoBuyNow} mode={mode} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} realPortfolio={realPortfolio} onRefreshReal={() => refreshPortfolio(market)} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} trades={trades} liveTick={liveTick} onWhy={openWhy} autoOnMap={autoOnMap} setAutoOnMap={setAutoOnMap} />}
+              {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} onAutoBuy={autoBuyNow} mode={mode} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} canBuy={canBuy} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} realPortfolio={realPortfolio} onRefreshReal={() => refreshPortfolio(market)} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} trades={trades} liveTick={liveTick} onWhy={openWhy} autoOnMap={autoOnMap} setAutoOnMap={setAutoOnMap} />}
               {tab === "trade" && <TradeView walletMap={walletMap} adjustWallet={adjustWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} recordTrade={recordTrade} />}
-              {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} market={market} onWhy={openWhy} me={auth ? (auth.username || null) : null} isAdmin={effAdmin} adminKey={adminKey} signupAt={auth ? (auth.createdAt || null) : null} />}
+              {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} canBuy={canBuy} market={market} onWhy={openWhy} me={auth ? (auth.username || null) : null} isAdmin={effAdmin} adminKey={adminKey} signupAt={auth ? (auth.createdAt || null) : null} />}
               {tab === "automation" && <Automation market={market} appMode={mode} onRecord={recordTrade} trades={trades} strats={strats} setStrats={setStrats} onExitAll={exitAllStrategies} me={auth ? (auth.username || null) : null} isAdmin={effAdmin} userId={userId} brokerFor={brokerFor} adminKey={adminKey} />}
-              {tab === "portfolio" && <Portfolio mode={mode} realPortfolio={realPortfolio} realErr={realErr} realLoading={realLoading} onRefreshReal={() => refreshPortfolio(market)} realAvailable={!!brokerFor(market)} userId={userId} brokerName={(brokerFor(market) && brokerFor(market).meta ? brokerFor(market).meta.name : (liveBroker ? liveBroker.name : null))} portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} onBuy={buyStock} onSell={sellStock} onUpdate={updateHolding} onArmRealExit={armRealExit} priceSnap={priceSnap} onWhy={openWhy} onOpen={openStock} onRemove={(sym) => { setPortfolio((prev) => prev.filter((h) => h.sym !== sym)); setBuyToast({ t: `${sym} removed` }); }} />}
+              {tab === "portfolio" && <Portfolio mode={mode} realPortfolio={realPortfolio} realErr={realErr} realLoading={realLoading} onRefreshReal={() => refreshPortfolio(market)} realAvailable={!!brokerFor(market)} userId={userId} brokerName={(brokerFor(market) && brokerFor(market).meta ? brokerFor(market).meta.name : (liveBroker ? liveBroker.name : null))} portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} onBuy={buyStock} canBuy={canBuy} onSell={sellStock} onUpdate={updateHolding} onArmRealExit={armRealExit} priceSnap={priceSnap} onWhy={openWhy} onOpen={openStock} onRemove={(sym) => { setPortfolio((prev) => prev.filter((h) => h.sym !== sym)); setBuyToast({ t: `${sym} removed` }); }} />}
               {tab === "watchlist" && <WatchlistView watchlists={watchlists} activeWl={activeWl} setActiveWl={setActiveWl} createWatchlist={createWatchlist} deleteWatchlist={deleteWatchlist} toggleWatch={toggleWatch} onOpen={openStock} />}
               {tab === "ask" && (
                 <div className="fade">
@@ -1066,7 +1095,7 @@ function AppInner() {
         </div>
       )}
 
-      {drawer && <Drawer s={drawer} onClose={() => setDrawer(null)} onDetails={openDetail} onBuy={buyStock} />}
+      {drawer && <Drawer s={drawer} onClose={() => setDrawer(null)} onDetails={openDetail} onBuy={buyStock} canBuy={canBuy} />}
 
       {why && (
         <WhyPanel
@@ -1232,6 +1261,7 @@ function AppInner() {
         </div>
       )}
     </div>
+    </BuyGateContext.Provider>
   );
 }
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { adminListUsers, adminGetUser, adminSetBlocked, adminResetPin } from "../../services/adminService";
+import { adminPendingUsers, adminApproveUser } from "../../services/tradeService";
 import { apiListIdeas, apiReviewIdea } from "../../domain/api";
 import { tradesToCSV, downloadCSV, tradeFilename } from "../../lib/csv";
 
@@ -144,12 +145,14 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
         /* USER LIST + IDEAS MODERATION */
         <div>
           <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3, marginTop: 8, marginBottom: 4 }}>
-            {[["users", "Users"], ["ideas", "Ideas"]].map(([k, l]) => (
+            {[["users", "Users"], ["pending", "Pending"], ["ideas", "Ideas"]].map(([k, l]) => (
               <button key={k} onClick={() => setSection(k)} className="pill tap disp" style={{ padding: "6px 16px", fontSize: 12, fontWeight: 800, border: "none", background: section === k ? "var(--primary)" : "transparent", color: section === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
             ))}
           </div>
           {section === "ideas" ? (
             <IdeasModeration adminKey={adminKey} card={card} />
+          ) : section === "pending" ? (
+            <PendingUsers adminKey={adminKey} card={card} />
           ) : (
           <>
           <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 4 }}>
@@ -172,6 +175,47 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/* Signup approval queue: every account awaiting admin activation, with Approve / Reject. */
+function PendingUsers({ adminKey, card }) {
+  const [list, setList] = useState(null);
+  const [busy, setBusy] = useState("");
+  const refresh = () => adminPendingUsers(adminKey).then((d) => setList(Array.isArray(d.users) ? d.users : []));
+  useEffect(() => { refresh(); /* eslint-disable-next-line */ }, []);
+  const act = async (phone, approved) => {
+    setBusy(phone);
+    try { await adminApproveUser(phone, approved, adminKey); await refresh(); }
+    finally { setBusy(""); }
+  };
+  return (
+    <div>
+      <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 8 }}>
+        {list == null ? "Loading…" : list.length ? `${list.length} awaiting approval` : ""}
+      </div>
+      {list != null && list.length === 0 && (
+        <div style={{ ...card, textAlign: "center", color: "var(--muted)", fontSize: 12.5 }}>No accounts awaiting approval.</div>
+      )}
+      {(list || []).map((u) => (
+        <div key={u.phone} style={{ ...card, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 13.5 }}>{u.name || "(no name)"}</div>
+            <div className="mono" style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
+              {u.username ? "@" + u.username + " · " : ""}{u.phone}
+            </div>
+            {u.email && <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>{u.email}</div>}
+            {u.createdAt && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2 }}>Signed up {new Date(u.createdAt).toLocaleString()}</div>}
+          </div>
+          <div style={{ display: "flex", gap: 8, flex: "0 0 auto" }}>
+            <button onClick={() => act(u.phone, true)} disabled={busy === u.phone} className="tap disp"
+              style={{ border: "none", borderRadius: 10, padding: "8px 14px", fontWeight: 800, fontSize: 12, cursor: "pointer", background: "var(--up)", color: "#fff", opacity: busy === u.phone ? 0.6 : 1 }}>Approve</button>
+            <button onClick={() => act(u.phone, false)} disabled={busy === u.phone} className="tap disp"
+              style={{ border: "1px solid var(--down)", borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: 12, cursor: "pointer", background: "transparent", color: "var(--down)", opacity: busy === u.phone ? 0.6 : 1 }}>Reject</button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

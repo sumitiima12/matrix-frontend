@@ -9,7 +9,7 @@ import { chgColor, clamp, fmt, pct } from "../lib/format";
 import { useBacktestStats } from "../hooks/useBacktestStats";
 import { SMAarr, EMAarr, RSIarr, MACDarr, BBarr, CCIarr, ATRarr, VWAParr, ADXarr, CF } from "../lib/series";
 import { ALL, UNIVERSE, marketOf } from "../domain/universe";
-import { apiListPublicStrategies, apiPublishStrategy, apiUnpublishStrategy } from "../domain/api";
+import { apiListPublicStrategies, apiPublishStrategy, apiUnpublishStrategy, aiInterpretStrategyAI } from "../domain/api";
 import { humanizeStrategy, humanizeCond } from "../domain/strategyLang";
 /* Neo's plain-English read-back of a set of conditions: "a Cup & Handle forms, and RSI is below 40". */
 const neoReads = (conds) => (conds || []).map((c, i) => `${i ? (c.gate === "OR" ? "or " : "and ") : ""}${humanizeCond(c)}`).join(", ");
@@ -735,6 +735,30 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   // Plain-English → executable rules
   const eParsed = useMemo(() => parseRules(pEntry), [pEntry]);
   const xParsed = useMemo(() => parseRules(pExit), [pExit]);
+  /* AI interpretation — the intelligent path. When the fast local parser can't fully read a
+     prompt, Neo (LLM) converts it to structured rules, which we load into the visual builder. */
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiMsg, setAiMsg] = useState(null);
+  const runAiInterpret = async () => {
+    const entryTxt = pEntry.trim(), exitTxt = pExit.trim();
+    if (!entryTxt && !exitTxt) { setAiMsg({ ok: false, t: "Type an entry (and optionally an exit) rule first." }); return; }
+    setAiBusy(true); setAiMsg(null);
+    try {
+      const text = [entryTxt && `Entry: ${entryTxt}`, exitTxt && `Exit: ${exitTxt}`].filter(Boolean).join(". ");
+      const ai = await aiInterpretStrategyAI(text);
+      if (ai && ((ai.entry && ai.entry.length) || (ai.exit && ai.exit.length))) {
+        const defsWithId = (ai.defs || []).map((d, i) => ({ id: Date.now() + i, type: d.type, len: String(d.len == null ? "" : d.len), tf, name: d.name }));
+        setDefs(defsWithId);
+        setEntryConds(ai.entry && ai.entry.length ? ai.entry : []);
+        setExitConds(ai.exit && ai.exit.length ? ai.exit : []);
+        setMode("builder");
+        setAiMsg({ ok: true, t: "Neo interpreted your prompt into the builder below — review and deploy." });
+      } else {
+        setAiMsg({ ok: false, t: "Neo couldn't interpret that. Try describing the entry more concretely." });
+      }
+    } catch { setAiMsg({ ok: false, t: "Couldn't reach Neo just now — try again." }); }
+    setAiBusy(false);
+  };
   const plainDefs = useMemo(() => { const d = []; [...eParsed.defs, ...xParsed.defs].forEach((x) => { if (x && !d.find((y) => y.name === x.name)) d.push(x); }); return d; }, [eParsed, xParsed]);
   const cfg = mode === "builder"
     ? { mode: "builder", tf, defs, entry: entryConds, exit: exitConds, sl, tp }
@@ -1288,8 +1312,13 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                 <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, margin: "14px 0 6px" }}>Exit rules — in plain English</div>
                 <textarea value={pExit} onChange={(e) => setPExit(e.target.value)} placeholder="e.g. Exit when price bounces off resistance, or when RSI crosses above 85." className="no-ring" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13, minHeight: 84, background: "var(--elev)", resize: "vertical", lineHeight: 1.5 }} />
                 {xParsed.conds.length > 0 && <div style={{ fontSize: 10.5, color: "var(--up)", marginTop: 6, fontWeight: 700, display: "flex", gap: 5 }}><Sparkles size={12} style={{ flex: "0 0 auto", marginTop: 1 }} /><span>Neo reads: exit when {neoReads(xParsed.conds)}.</span></div>}
-                {unparsed.length > 0 && <div style={{ fontSize: 10.5, color: "#F59E42", marginTop: 8, fontWeight: 600 }}>⚠ Neo couldn't read: "{unparsed.join('", "')}". Try a chart pattern ("cup and handle", "double bottom"), a level ("price above support"), or an indicator ("RSI crosses above 85").</div>}
-                <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, display: "flex", gap: 6 }}><Sparkles size={13} color="var(--primary)" style={{ flex: "0 0 auto", marginTop: 1 }} /> Neo interprets your words into the executable rules below on the <b style={{ margin: "0 3px" }}>{tf}</b> timeframe — it understands chart patterns (cup &amp; handle, double top/bottom, head &amp; shoulders, triangles, flags, wedges), support/resistance, RSI, MACD, EMA/SMA(n), Bollinger, ADX, CCI, VWAP, volume, price and candle O/H/L/C, with crosses-above/below and greater/less-than.</div>
+                {unparsed.length > 0 && <div style={{ fontSize: 10.5, color: "#F59E42", marginTop: 8, fontWeight: 600 }}>⚠ Neo couldn't read that part. Try describing an entry like a chart pattern, a support/resistance level, or an indicator condition.</div>}
+                <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, display: "flex", gap: 6 }}><Sparkles size={13} color="var(--primary)" style={{ flex: "0 0 auto", marginTop: 1 }} /> Neo turns your words into executable rules on the <b style={{ margin: "0 3px" }}>{tf}</b> timeframe.</div>
+                {/* Intelligent fallback: let Neo (AI) interpret anything the fast parser missed. */}
+                <button onClick={runAiInterpret} disabled={aiBusy} className="tap disp" style={{ marginTop: 10, width: "100%", border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 12, padding: 11, fontWeight: 800, fontSize: 12.5, display: "flex", gap: 6, alignItems: "center", justifyContent: "center", opacity: aiBusy ? 0.6 : 1 }}>
+                  <Sparkles size={14} /> {aiBusy ? "Neo is interpreting…" : "Interpret with Neo"}
+                </button>
+                {aiMsg && <div style={{ fontSize: 10.5, marginTop: 6, fontWeight: 600, color: aiMsg.ok ? "var(--up)" : "#F59E42" }}>{aiMsg.ok ? "✓ " : "⚠ "}{aiMsg.t}</div>}
               </>
             )}
 

@@ -1,6 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useContext } from "react";
 import { Minus, Plus } from "lucide-react";
 import { fmt } from "../../lib/format";
+
+/* Global buy-eligibility gate. Provider (in Matrix) supplies canBuy(sym) -> boolean.
+   When it returns false the whole buy control is hidden: a non-admin has no legal way to
+   trade that market (paper trading admin-disabled AND no broker connected for it). */
+export const BuyGateContext = React.createContext(null);
 
 /**
  * BuyButton — the ONE buy control, rendered identically on every card.
@@ -32,6 +37,7 @@ export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1,
   /* CRYPTO trades by AMOUNT (USD), not share quantity: you buy "$10 of BTC", and we convert
      amount → units at the live price (a small fill-price variation is expected and fine).
      Everything else trades by quantity/lots as before. */
+  const gate = useContext(BuyGateContext);
   const isCrypto = market === "Crypto";
   const step = isCrypto ? 10 : (lot || 1);        // crypto steps in $10, else by lot
   const [val, setVal] = useState(step);            // amount ($) for crypto, else quantity
@@ -55,6 +61,9 @@ export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1,
     onBuy(s, qty, { ...opts, amount: isCrypto ? amount : undefined });
     setVal(step);
   };
+
+  // Hidden entirely when the user can't legally buy this instrument's market.
+  if (gate && s && s.sym && !gate(s.sym)) return null;
 
   const stepBtn = {
     width: 22, height: 22, borderRadius: 6, border: "none", flex: "0 0 auto",
