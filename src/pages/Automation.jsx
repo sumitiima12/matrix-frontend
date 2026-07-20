@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { defOperands, chainCode, IND_CATALOG, TEMPLATES } from "../domain/strategyLang";
 import { backtest, parseRules } from "../domain/backtest";
 import { stratPerf } from "../domain/strategies";
-import { Activity, Bell, Bolt, Check, ChevronDown, ChevronUp, Copy, Globe, Pause, Pencil, Play, Plus, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
+import { Activity, Bell, Bolt, Check, ChevronDown, ChevronUp, Copy, Globe, ListChecks, Pause, Pencil, Play, Plus, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
 import { Area, AreaChart, Bar, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { BACKEND_URL } from "../config";
 import { chgColor, clamp, fmt, pct } from "../lib/format";
@@ -697,6 +697,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const [showBt, setShowBt] = useState(false);
   const [optLeg, setOptLeg] = useState({ enabled: false, expiry: "Current week", type: "CE", moneyness: "ATM", steps: 1, lots: 1 });
   const [btOpen, setBtOpen] = useState(null);
+  const [ledgerOpen, setLedgerOpen] = useState(null);   // strategy id whose trade ledger is open
   const [btTpl, setBtTpl] = useState(null);
   const [notifs, setNotifs] = useState([]);
   const [toast, setToast] = useState(null);
@@ -866,7 +867,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const toggleAlerts = (s) => { const willOn = !s.alerts; setStrats((p) => p.map((x) => x.id === s.id ? { ...x, alerts: willOn } : x)); if (willOn) fireAlert(s); };
   const updateStrat = (id, patch) => setStrats((p) => p.map((s) => s.id === id ? { ...s, ...patch } : s));
   const [editStrat, setEditStrat] = useState(null);
-  const TF_OPTS = ["3m", "5m", "10m", "15m", "30m", "1h", "1D"];
+  const TF_OPTS = ["3m", "5m", "15m", "30m", "1h", "4h", "1d", "1w", "1mo"];
 
   // dashboard aggregation — scoped to the selected market
   const amkt = market;
@@ -1025,6 +1026,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         <button onClick={() => loadForEdit(s)} className="tap" title="Edit this strategy's rules in the builder" style={{ border: "1px solid var(--line)", borderRadius: 11, background: "var(--surface)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 700, color: "var(--ink)" }}><Pencil size={13} /> Edit</button>
         <button onClick={() => toggleAlerts(s)} className="tap" title="Alert on entry/exit signal" style={{ border: "1px solid " + (s.alerts ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: s.alerts ? "var(--primary)" : "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: s.alerts ? "var(--on-primary)" : "var(--ink)" }}><Bell size={14} /></button>
         <button onClick={() => setBtOpen(btOpen === s.id ? null : s.id)} className="tap" style={{ border: "1px solid " + (btOpen === s.id ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: btOpen === s.id ? "var(--primary-soft)" : "var(--surface)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 700, color: btOpen === s.id ? "var(--primary)" : "var(--ink)" }}><Activity size={13} /> Test</button>
+        <button onClick={() => setLedgerOpen(ledgerOpen === s.id ? null : s.id)} className="tap" title="Every trade this strategy has taken" style={{ border: "1px solid " + (ledgerOpen === s.id ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: ledgerOpen === s.id ? "var(--primary-soft)" : "var(--surface)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 700, color: ledgerOpen === s.id ? "var(--primary)" : "var(--ink)" }}><ListChecks size={13} /> Trades</button>
         <button onClick={() => cloneStrategy(s)} className="tap" title="Clone into a new editable strategy" style={{ border: "1px solid var(--line)", borderRadius: 11, background: "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: "var(--ink)" }}><Copy size={14} /></button>
         <button onClick={() => (s.publicId ? unpublishOwn(s) : publishOwn(s))} className="tap" title={s.publicId ? "Remove from public" : "Make public"} style={{ border: "1px solid " + (s.publicId ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: s.publicId ? "var(--primary-soft)" : "var(--surface)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 700, color: s.publicId ? "var(--primary)" : "var(--ink)" }}><Globe size={13} /> {s.publicId ? "Public" : "Publish"}</button>
         <button onClick={() => toggleActive(s.id)} className="tap disp" style={{ flex: "1 1 100px", borderRadius: 11, background: s.active ? "var(--surface)" : "linear-gradient(120deg,var(--up),#0EA968)", color: s.active ? "var(--ink)" : "#fff", boxShadow: s.active ? "none" : "0 6px 16px rgba(16,185,129,.3)", padding: "7px 10px", display: "flex", gap: 5, alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800, border: s.active ? "1px solid var(--line)" : "none" }}>
@@ -1071,6 +1073,36 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           <button onClick={() => setEditStrat(null)} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--primary)", color: "#fff", border: "none", borderRadius: 11, padding: 10, fontWeight: 700, fontSize: 12.5 }}>Done</button>
         </div>
       )}
+      {ledgerOpen === s.id && (() => {
+        // Every trade this strategy took (matched by id or name), newest first. Realized P&L only
+        // for closed trades — no "missed P&L" estimate, per the product decision.
+        const rows = (trades || []).filter((t) => (t.strategyId === s.id || t.strategy === s.name)).sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
+        const mkt = (t) => marketOf(t.sym) || "IN";
+        return (
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+            <div style={{ fontSize: 11.5, fontWeight: 800, marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}><ListChecks size={13} /> List of trades ({rows.length})</div>
+            {rows.length === 0 ? (
+              <div style={{ fontSize: 11.5, color: "var(--muted)" }}>No trades yet — this strategy hasn't triggered.</div>
+            ) : (
+              <div style={{ display: "grid", gap: 6 }}>
+                {rows.slice(0, 40).map((t, i) => {
+                  const closed = t.exitAt != null && t.exit != null;
+                  const pnl = closed ? (t.exit - t.entry) * (t.qty || 1) : null;
+                  return (
+                    <div key={t.id || i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, padding: "7px 9px", background: "var(--elev)", borderRadius: 9 }}>
+                      <span style={{ fontWeight: 800, flex: "0 0 auto" }}>{t.sym}</span>
+                      <span style={{ color: "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(t.side || "BUY")} {t.qty || 1} @ {fmt(t.entry, mkt(t))}{closed ? ` → ${fmt(t.exit, mkt(t))}` : ""}</span>
+                      <span className="mono" style={{ marginLeft: "auto", fontWeight: 800, flex: "0 0 auto", color: closed ? chgColor(pnl) : "var(--muted)" }}>
+                        {closed ? `${pnl >= 0 ? "+" : ""}${fmt(pnl, mkt(t))}` : "open"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
       {btOpen === s.id && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
           <BacktestResult cfg={s.cfg || { mode: "plain" }} defaultSym={(s.symbols && s.symbols[0]) || undefined} />
@@ -1246,8 +1278,8 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
               <>
                 <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Timeframe</div>
                 <div className="hide-scroll" style={{ display: "flex", gap: 6, overflowX: "auto", marginBottom: 14 }}>
-                  {["3m", "5m", "10m", "15m", "30m", "1h", "1D"].map((x) => (
-                    <button key={x} onClick={() => setTf(x)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "7px 14px", fontSize: 12, fontWeight: 700, border: "1px solid " + (tf === x ? "var(--primary)" : "var(--line)"), background: tf === x ? "var(--primary)" : "var(--surface)", color: tf === x ? "var(--on-primary)" : "var(--ink)" }}>{x}</button>
+                  {[["3m", "3m"], ["5m", "5m"], ["15m", "15m"], ["30m", "30m"], ["1h", "1h"], ["4h", "4h"], ["1d", "1D"], ["1w", "1W"], ["1mo", "1M"]].map(([x, lbl]) => (
+                    <button key={x} onClick={() => setTf(x)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "7px 14px", fontSize: 12, fontWeight: 700, border: "1px solid " + (tf === x ? "var(--primary)" : "var(--line)"), background: tf === x ? "var(--primary)" : "var(--surface)", color: tf === x ? "var(--on-primary)" : "var(--ink)" }}>{lbl}</button>
                   ))}
                 </div>
                 <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Entry rules — in plain English</div>

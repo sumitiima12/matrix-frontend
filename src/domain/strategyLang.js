@@ -1,4 +1,4 @@
-import { SMAarr, EMAarr, RSIarr, MACDarr, BBarr, CCIarr, ATRarr, VWAParr, ADXarr, STarr, CF } from "../lib/series";
+import { SMAarr, EMAarr, RSIarr, MACDarr, BBarr, CCIarr, ATRarr, VWAParr, ADXarr, STarr, DMIarr, STOCHarr, CF } from "../lib/series";
 import { pivots, detectPatterns, PATTERN_KEYS } from "./patterns";
 
 /* Support / resistance as evaluable series: at each bar, the price of the most recent CONFIRMED
@@ -73,6 +73,8 @@ export function resolveOperand(op, defs, c, closes, vols, cache) {
         case "BB": { const b = BBarr(closes, len); series = b[attr || "middle"]; break; }
         case "KC": { const mid = EMAarr(closes, len), at = ATRarr(c, len); series = attr === "upper" ? mid.map((v, i) => v + 1.5 * at[i]) : attr === "lower" ? mid.map((v, i) => v - 1.5 * at[i]) : mid; break; }
         case "ADX": series = ADXarr(c, len); break;
+        case "DMI": { const dm = DMIarr(c, len); series = attr === "minus" ? dm.minus : attr === "adx" ? dm.adx : dm.plus; break; }
+        case "Stoch": { const st = STOCHarr(c, len, Number(d.smoothK) || 3, Number(d.smoothD) || 3); series = attr === "d" ? st.d : st.k; break; }
         case "Supertrend": { const st = STarr(c, len, Number(d.mult) || 3); series = attr === "dir" ? st.dir : st.line; break; }
         case "DMA": series = SMAarr(closes, len); break;
         case "Volume": series = vols; break;
@@ -143,6 +145,8 @@ export const IND_CATALOG = [
   { type: "ATR", label: "ATR", needsLen: true, attrs: [] },
   { type: "VWAP", label: "VWAP", needsLen: false, attrs: [] },
   { type: "ADX", label: "ADX", needsLen: true, attrs: [] },
+  { type: "DMI", label: "DMI (+DI / -DI / ADX)", needsLen: true, attrs: ["plus", "minus", "adx"] },
+  { type: "Stoch", label: "Stochastic (%K / %D)", needsLen: true, attrs: ["k", "d"] },
   { type: "Supertrend", label: "Supertrend", needsLen: true, attrs: ["line", "dir"] },
   { type: "DMA", label: "DMA (displaced MA)", needsLen: true, attrs: [] },
   { type: "Volume", label: "Volume", needsLen: false, attrs: [] },

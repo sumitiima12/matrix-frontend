@@ -33,10 +33,18 @@ export function parseScreen(text) {
     if ((mm = t.match(new RegExp(kw + "\\s*(?:>|greater than|more than|above|over)\\s*(\\d+\\.?\\d*)")))) { res.conds.push({ m: field, o: ">", v: +mm[1] }); res.note.push(`${kw.toUpperCase()} > ${mm[1]}`); }
     if ((mm = t.match(new RegExp(kw + "\\s*(?:<|less than|under|below)\\s*(\\d+\\.?\\d*)")))) { res.conds.push({ m: field, o: "<", v: +mm[1] }); res.note.push(`${kw.toUpperCase()} < ${mm[1]}`); }
   });
-  if ((m = t.match(/price\s*(?:>|above|over|more than)\s*(\d+\.?\d*)/))) { res.conds.push({ m: "price", o: ">", v: +m[1] }); res.note.push(`Price > ${m[1]}`); }
-  if ((m = t.match(/price\s*(?:<|below|under|less than)\s*(\d+\.?\d*)/))) { res.conds.push({ m: "price", o: "<", v: +m[1] }); res.note.push(`Price < ${m[1]}`); }
+  if ((m = t.match(/price\s*(?:>|above|over|more than)\s*(\d+\.?\d*)(?![\d.]|[\s-]?(?:day|dma|ema|sma))/))) { res.conds.push({ m: "price", o: ">", v: +m[1] }); res.note.push(`Price > ${m[1]}`); }
+  if ((m = t.match(/price\s*(?:<|below|under|less than)\s*(\d+\.?\d*)(?![\d.]|[\s-]?(?:day|dma|ema|sma))/))) { res.conds.push({ m: "price", o: "<", v: +m[1] }); res.note.push(`Price < ${m[1]}`); }
   if ((m = t.match(/(?:change|gain|up|return)\s*(?:>|above|over|more than)\s*(\d+\.?\d*)\s*%?/))) { res.conds.push({ m: "chg", o: ">", v: +m[1] }); res.note.push(`Change > ${m[1]}%`); }
   if ((/\bdma\b|\bsma\b|moving average/.test(t) && /50/.test(t) && /(100|200)/.test(t)) || /golden cross/.test(t)) { res.dma = true; res.note.push("50-DMA > 200-DMA"); }
+  // Trader vocabulary — the same words Neo understands in the strategy builder.
+  if (/oversold/.test(t)) { res.conds.push({ m: "rsi", o: "<", v: 30 }); res.note.push("RSI < 30 (oversold)"); }
+  if (/overbought/.test(t)) { res.conds.push({ m: "rsi", o: ">", v: 70 }); res.note.push("RSI > 70 (overbought)"); }
+  if (/death cross/.test(t)) { res.dmaBear = true; res.note.push("50-DMA < 200-DMA (death cross)"); }
+  if (/(?:price|trading)\s*(?:>|above|over)\s*(?:the\s*)?200[\s-]?(?:day|dma)/.test(t)) { res.conds.push({ m: "price", o: ">", rhs: "sma200" }); res.note.push("Price > 200-DMA"); }
+  if (/(?:price|trading)\s*(?:<|below|under)\s*(?:the\s*)?200[\s-]?(?:day|dma)/.test(t)) { res.conds.push({ m: "price", o: "<", rhs: "sma200" }); res.note.push("Price < 200-DMA"); }
+  if (/(?:price|trading)\s*(?:>|above|over)\s*(?:the\s*)?50[\s-]?(?:day|dma)/.test(t)) { res.conds.push({ m: "price", o: ">", rhs: "sma50" }); res.note.push("Price > 50-DMA"); }
+  if (/(?:price|trading)\s*(?:<|below|under)\s*(?:the\s*)?50[\s-]?(?:day|dma)/.test(t)) { res.conds.push({ m: "price", o: "<", rhs: "sma50" }); res.note.push("Price < 50-DMA"); }
   return res;
 }
 /**
@@ -64,6 +72,13 @@ export function matchScreen(list, res) {
   return list.filter((s) => {
     if (res.sectors.length && !res.sectors.some((sec) => (s.sector || "").toLowerCase().includes(sec))) return false;
     if (res.dma && !(s.sma50 > s.sma200)) return false;
-    return res.conds.every((c) => { const x = s[c.m]; if (x == null || isNaN(x)) return false; return c.o === ">" ? x > c.v : c.o === "<" ? x < c.v : c.o === ">=" ? x >= c.v : x <= c.v; });
+    if (res.dmaBear && !(s.sma50 < s.sma200)) return false;
+    return res.conds.every((c) => {
+      const x = s[c.m]; if (x == null || isNaN(x)) return false;
+      // A condition can compare a metric against a fixed value OR another indicator (c.rhs).
+      const y = c.rhs != null ? s[c.rhs] : c.v;
+      if (y == null || isNaN(y)) return false;
+      return c.o === ">" ? x > y : c.o === "<" ? x < y : c.o === ">=" ? x >= y : x <= y;
+    });
   });
 }

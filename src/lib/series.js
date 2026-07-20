@@ -39,6 +39,37 @@ export function ADXarr(c, p) {
   return EMAarr(dx, p);
 }
 
+/* DMI — the +DI / -DI lines plus ADX from the same Wilder machinery. Returns { plus, minus, adx }
+   so a rule can trade the +DI/-DI cross (trend direction) or gate on ADX (trend strength). */
+export function DMIarr(c, p) {
+  const n = c.length, pDM = Array(n).fill(0), mDM = Array(n).fill(0), tr = Array(n).fill(0);
+  for (let i = 1; i < n; i++) {
+    const up = c[i].h - c[i - 1].h, dn = c[i - 1].l - c[i].l;
+    pDM[i] = up > dn && up > 0 ? up : 0; mDM[i] = dn > up && dn > 0 ? dn : 0;
+    tr[i] = Math.max(c[i].h - c[i].l, Math.abs(c[i].h - c[i - 1].c), Math.abs(c[i].l - c[i - 1].c));
+  }
+  const atr = EMAarr(tr, p);
+  const plus = EMAarr(pDM, p).map((v, i) => 100 * v / (atr[i] || 1));
+  const minus = EMAarr(mDM, p).map((v, i) => 100 * v / (atr[i] || 1));
+  const dx = plus.map((v, i) => { const s = v + minus[i]; return s ? 100 * Math.abs(v - minus[i]) / s : 0; });
+  return { plus, minus, adx: EMAarr(dx, p) };
+}
+
+/* Stochastic oscillator. %K = smoothed position of close within the kLen high-low range;
+   %D = SMA of %K. Returns { k, d } in 0..100 (oversold < 20, overbought > 80). */
+export function STOCHarr(c, kLen = 14, kSmooth = 3, dSmooth = 3) {
+  const n = c.length, raw = Array(n).fill(NaN);
+  for (let i = 0; i < n; i++) {
+    if (i < kLen - 1) continue;
+    let hi = -Infinity, lo = Infinity;
+    for (let j = i - kLen + 1; j <= i; j++) { if (c[j].h > hi) hi = c[j].h; if (c[j].l < lo) lo = c[j].l; }
+    raw[i] = hi === lo ? 50 : 100 * (c[i].c - lo) / (hi - lo);
+  }
+  const k = SMAarr(raw.map((v) => (isNaN(v) ? 0 : v)), kSmooth).map((v, i) => (raw[i] == null || isNaN(raw[i]) ? NaN : v));
+  const d = SMAarr(k.map((v) => (isNaN(v) ? 0 : v)), dSmooth).map((v, i) => (isNaN(k[i]) ? NaN : v));
+  return { k, d };
+}
+
 /**
  * Supertrend — the classic ATR trailing-stop trend line.
  *

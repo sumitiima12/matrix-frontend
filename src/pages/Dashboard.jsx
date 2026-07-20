@@ -8,6 +8,8 @@ import { CUR, DAY, chgColor, clamp, compact, fmt, lsGet, lsSet, pct, timeAgo } f
 import { ALL, GLOBAL_MKTS, UNIVERSE, marketOf } from "../domain/universe";
 import { askMatrix, fetchNews, fetchNewsFeed } from "../domain/api";
 import AddBtn from "../components/common/AddBtn";
+import SectorHeatmap from "../components/common/SectorHeatmap";
+import EarningsSection from "../components/common/EarningsSection";
 import BuyButton from "../components/common/BuyButton";
 import TagRow from "../components/common/TagRow";
 import Change from "../components/common/Change";
@@ -982,11 +984,6 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
 
       {/* Matrix picks */}
       <Section title="Top Picks" icon={<Sparkles size={17} color="var(--primary-2)" />}>
-        {/* Timeframe + what each home section means, so Picks / Ideas / Trending aren't confused. */}
-        <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.5, marginBottom: 10 }}>
-          Ranked <b style={{ color: "var(--ink)" }}>daily</b> on real technicals (RSI + 50/200-DMA), targets from support/resistance &amp; ATR.
-          <br /><b style={{ color: "var(--ink)" }}>Picks</b>: the strongest buy setups right now · <b style={{ color: "var(--ink)" }}>Ideas</b>: community &amp; Neo trade ideas · <b style={{ color: "var(--ink)" }}>Trending</b>: names moving on live 5-min candles.
-        </div>
         {/* An empty carousel is a void the user has to interpret. Say what's happening:
             picks need real indicators (RSI, 50-DMA), and those arrive after the prices. */}
         {picks.length === 0 && (
@@ -1086,6 +1083,12 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
 
       {/* Market pulse strip — not for Commodity */}
       {market !== "Commodity" && <MarketPulseStrip market={market} list={list} onOpen={onOpen} liveTick={liveTick} />}
+
+      {/* Sector heatmap — live average move per sector (renders only where sectors exist) */}
+      <SectorHeatmap market={market} list={list} />
+
+      {/* Earnings — Recent & Upcoming (US calendar / India results; hides if no data) */}
+      <EarningsSection market={market} onOpen={(sym) => { const st = list.find((x) => x.sym === sym); if (st) onOpen(st); }} />
 
       {/* Trending — not for Commodity; F&O shows ATM options */}
       {market !== "Commodity" && (

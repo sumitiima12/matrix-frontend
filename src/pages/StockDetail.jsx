@@ -149,7 +149,6 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
   // Framework-based reads (Zerodha/Oliver TA + FA): a multi-factor technical read and a
   // ratio-by-ratio fundamental verdict, both derived purely from the real values on hand.
   const techRead = useMemo(() => technicalRead(s, techSignal(s)), [s]);
-  const fundRead = useMemo(() => fundamentalRead(fund && !fund.unavailable ? fund : null), [fund]);
   const TONE_C = { good: "var(--up)", bad: "var(--down)", warn: "var(--amber, #F59E42)", neutral: "var(--muted)" };
   /* No "Fundamentals" tab. Yahoo's quoteSummary — the only source we had for P/E,
      ROE, margins and quarterly revenue — refuses requests from datacenter IPs
@@ -161,6 +160,8 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
 
   // REAL fundamentals (Yahoo quoteSummary via backend). Crypto has none -> unavailable.
   const [fund, setFund] = useState(null);
+  // Framework fundamental read — declared AFTER `fund` exists (referencing it earlier is a TDZ crash).
+  const fundRead = useMemo(() => fundamentalRead(fund && !fund.unavailable ? fund : null), [fund]);
   useEffect(() => {
     let alive = true; setFund(null);
     if (market === "Crypto") { setFund({ unavailable: true }); return; }
@@ -359,6 +360,26 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+                {/* Peer comparison — competitors from the fundamentals source. Ratios can be sparse,
+                    so we show P/E only where real; the stock's own P/E leads for context. */}
+                {Array.isArray(fund.peers) && fund.peers.length > 0 && (
+                  <div style={{ marginTop: 14, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+                    <div className="disp" style={{ fontWeight: 800, fontSize: 12.5, marginBottom: 8 }}>Peers</div>
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <div style={{ display: "flex", gap: 8, fontSize: 10, color: "var(--muted)", fontWeight: 800 }}>
+                        <span style={{ flex: 1 }}>COMPANY</span><span style={{ flex: "0 0 54px", textAlign: "right" }}>P/E</span><span style={{ flex: "0 0 58px", textAlign: "right" }}>CHG</span>
+                      </div>
+                      {[{ name: fund.name + " (this)", pe: fund.peTrailing, chg: s.chg, self: true }, ...fund.peers].slice(0, 7).map((p, i) => (
+                        <div key={i} style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 11.5, fontWeight: p.self ? 800 : 500 }}>
+                          <span style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: p.self ? "var(--primary)" : "var(--ink)" }}>{p.name}</span>
+                          <span className="mono" style={{ flex: "0 0 54px", textAlign: "right" }}>{p.pe != null ? (+p.pe).toFixed(1) : "—"}</span>
+                          <span className="mono" style={{ flex: "0 0 58px", textAlign: "right", color: p.chg == null ? "var(--muted)" : p.chg >= 0 ? "var(--up)" : "var(--down)" }}>{p.chg == null ? "—" : (p.chg >= 0 ? "+" : "") + (+p.chg).toFixed(2) + "%"}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {fund.sectorPE != null && <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8 }}>Sector P/E: {(+fund.sectorPE).toFixed(1)}</div>}
                   </div>
                 )}
               </>

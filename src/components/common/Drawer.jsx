@@ -4,6 +4,8 @@ import { Activity, Building2, ChevronRight, Newspaper, Plus, X } from "lucide-re
 import { fmt } from "../../lib/format";
 import { marketOf } from "../../domain/universe";
 import { fetchNews, fetchFundamentals } from "../../domain/api";
+import { techSignal } from "../../domain/signals";
+import { technicalRead, fundamentalRead } from "../../domain/analysisFramework";
 import Change from "../../components/common/Change";
 import ProChart from "../../components/charts/ProChart";
 import VerdictTag from "../../components/common/VerdictTag";
@@ -96,25 +98,41 @@ export default function Drawer({ s, onClose, onDetails, onBuy }) {
             {news.title}
           </Block>
         )}
-        <Block title="Technical summary" icon={<Activity size={14} />}>
-          {s.rsi == null
-            ? "Waiting for live indicators."
-            : `RSI ${s.rsi} (${s.rsi > 70 ? "overbought" : s.rsi < 30 ? "oversold" : "neutral"}), price ${s.price > s.sma50 ? "above" : "below"} 50-DMA. Support ${fmt(s.support, market)} · Resistance ${fmt(s.resistance, market)}.`}
-        </Block>
-        {market !== "Crypto" && (
-          <Block title="Fundamental summary" icon={<Building2 size={14} />}>
-            {fund == null
-              ? "Loading fundamentals…"
-              : fund.unavailable
-                ? "Fundamentals aren’t available for this symbol right now."
-                : (() => {
-                    const p = (x) => (x == null ? "—" : x.toFixed(1));
-                    const pc = (x) => (x == null ? "—" : (x * 100).toFixed(1) + "%");
-                    const cr = fund.marketCap != null ? "₹" + (fund.marketCap / 1e7).toLocaleString("en-IN", { maximumFractionDigits: 0 }) + " Cr" : "—";
-                    return `P/E ${p(fund.peTrailing)} · P/B ${p(fund.pb)} · ROE ${pc(fund.roe)} · Net margin ${pc(fund.profitMargin)} · Div ${fund.dividendYield != null ? (fund.dividendYield * 100).toFixed(2) + "%" : "—"} · Mkt cap ${cr}${fund.sectorPE != null ? ` · Sector P/E ${(+fund.sectorPE).toFixed(1)}` : ""}.`;
-                  })()}
-          </Block>
-        )}
+        {/* Technical (left) and Fundamental (right), each as bullet points. */}
+        {(() => {
+          const TONE = { good: "var(--up)", bad: "var(--down)", warn: "var(--amber, #F59E42)", neutral: "var(--ink)" };
+          const tr = technicalRead(s, techSignal(s));
+          const fr = (market !== "Crypto" && fund && !fund.unavailable) ? fundamentalRead(fund) : null;
+          const Bullet = ({ k, v, tone }) => (
+            <div style={{ display: "flex", gap: 6, alignItems: "baseline", fontSize: 11, marginBottom: 5, lineHeight: 1.35 }}>
+              <span style={{ color: "var(--muted)", flex: "0 0 auto" }}>•</span>
+              <span style={{ color: "var(--muted)", flex: "0 0 auto" }}>{k}</span>
+              <span className="mono" style={{ fontWeight: 800, color: TONE[tone] || "var(--ink)", marginLeft: "auto" }}>{v}</span>
+            </div>
+          );
+          const Col = ({ title, icon, children }) => (
+            <div className="card" style={{ padding: 12, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 9, color: "var(--muted)", fontWeight: 800, fontSize: 11.5 }}>{icon}{title}</div>
+              {children}
+            </div>
+          );
+          return (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12, alignItems: "start" }}>
+              <Col title="Technical" icon={<Activity size={13} />}>
+                {tr ? tr.rows.map((r) => <Bullet key={r.k} k={r.k} v={r.v} tone={r.tone} />) : <div style={{ fontSize: 11, color: "var(--muted)" }}>Waiting for live indicators.</div>}
+              </Col>
+              <Col title="Fundamental" icon={<Building2 size={13} />}>
+                {market === "Crypto" ? <div style={{ fontSize: 11, color: "var(--muted)" }}>Not applicable to crypto.</div>
+                  : fund == null ? <div style={{ fontSize: 11, color: "var(--muted)" }}>Loading…</div>
+                  : fund.unavailable ? <div style={{ fontSize: 11, color: "var(--muted)" }}>Not available right now.</div>
+                  : fr ? (<>
+                      {fr.rows.map((r) => <Bullet key={r.k} k={r.k} v={r.v} tone={r.tone} />)}
+                      <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px solid var(--line)", fontSize: 10.5, fontWeight: 800 }}>{fr.verdict} · {fr.score}/100</div>
+                    </>) : <div style={{ fontSize: 11, color: "var(--muted)" }}>—</div>}
+              </Col>
+            </div>
+          );
+        })()}
 
         <div className="card" style={{ marginTop: 12, padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--bg)" }}>
           <div>

@@ -11,7 +11,7 @@
  */
 import { MATRIX_PERSONA, BACKEND_URL } from "../config";
 import { yahooSymbol, marketOf } from "./universe";
-import { getQuotes, getHistory, getNews, getIndicators, getIntraday, getFundamentals } from "../services/marketService";
+import { getQuotes, getHistory, getNews, getIndicators, getIntraday, getFundamentals, getEarnings } from "../services/marketService";
 import { ask as aiAsk, interpretScreen, interpretStrategy, marketBrief } from "../services/aiService";
 import { saveTrade, listTrades, register, login, changePin as _cp, verifyPin as _vp, forgotQuestion as _fq, forgotReset as _fr, getMySecurityQuestion as _gsq, setMySecurityQuestion as _ssq, checkUsername as _cu, setUsername as _su, setEmail as _se, listPublicStrategies as _lps, publishStrategy as _pub, unpublishStrategy as _unpub, listIdeas as _li, postIdea as _pi, deleteIdea as _di, reviewIdea as _ri, getAppSettings as _gas, saveAppSettings as _sas, deleteAccount as _dacc } from "../services/tradeService";
 import { isMarketOpen } from "../services/riskService";
@@ -27,6 +27,7 @@ export const aiMarketBrief = (facts) => marketBrief(facts);
 export const fetchHistory = (sym, tf) => getHistory(yahooSymbol(sym), tf);
 export const fetchNews = (sym) => getNews(yahooSymbol(sym));
 export const fetchFundamentals = (sym) => getFundamentals(yahooSymbol(sym));
+export const fetchEarnings = (market) => getEarnings(market);
 export const fetchIndicators = (syms) => getIndicators((syms || []).map(yahooSymbol));
 export const fetchIntraday = (syms) => getIntraday((syms || []).map(yahooSymbol));
 

@@ -71,6 +71,12 @@ export async function getFundamentals(ySym) {
 }
 
 /** Real headlines: [{ t, d, src, url }]. */
+/** Earnings calendar (recent + upcoming) for a market. Soft-fails to empty lists. */
+export async function getEarnings(market) {
+  try { const d = await get(`/api/earnings?market=${encodeURIComponent(market || "US")}`); return d || { recent: [], upcoming: [] }; }
+  catch { return { recent: [], upcoming: [] }; }
+}
+
 export async function getNews(ySym) {
   const d = await get(`/api/news?symbol=${encodeURIComponent(ySym)}`);
   return d ? (d.news || []) : null;

@@ -40,10 +40,12 @@ export default function Screener({ onOpen, market, list, watchlists, addToWatch,
      suggest prompts we know for a fact will work; suggesting something that also
      fails would be worse than saying nothing. */
   const SUGGESTIONS = [
-    "RSI > 60",
-    "RSI below 30",
-    "ADX > 25",
+    "oversold",
+    "overbought",
+    "golden cross",
+    "death cross",
     "price above 200-DMA",
+    "ADX > 25",
     "RSI > 60 and ADX > 25",
     "banking stocks with RSI > 55",
   ];
@@ -63,7 +65,7 @@ export default function Screener({ onOpen, market, list, watchlists, addToWatch,
     if (text.trim()) {
       setSelRec(null);
       const res = parseScreen(text);
-      if (res.sectors.length || res.caps.length || res.conds.length || res.dma) {
+      if (res.sectors.length || res.caps.length || res.conds.length || res.dma || res.dmaBear) {
         setParsedNote("Applied: " + res.note.join(" · "));
         setResults(matchScreen(list, res));
         return;
