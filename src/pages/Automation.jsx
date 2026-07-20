@@ -10,7 +10,7 @@ import { useBacktestStats } from "../hooks/useBacktestStats";
 import { SMAarr, EMAarr, RSIarr, MACDarr, BBarr, CCIarr, ATRarr, VWAParr, ADXarr, CF } from "../lib/series";
 import { ALL, UNIVERSE, marketOf } from "../domain/universe";
 import { apiListPublicStrategies, apiPublishStrategy, apiUnpublishStrategy, aiInterpretStrategyAI } from "../domain/api";
-import { humanizeStrategy, humanizeCond } from "../domain/strategyLang";
+import { humanizeStrategy, humanizeCond, PATTERN_EXPLAIN, patternsInConds } from "../domain/strategyLang";
 /* Neo's plain-English read-back of a set of conditions: "a Cup & Handle forms, and RSI is below 40". */
 const neoReads = (conds) => (conds || []).map((c, i) => `${i ? (c.gate === "OR" ? "or " : "and ") : ""}${humanizeCond(c)}`).join(", ");
 import { useCandles } from "../hooks/useCandles";
@@ -1312,6 +1312,11 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                 <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, margin: "14px 0 6px" }}>Exit rules — in plain English</div>
                 <textarea value={pExit} onChange={(e) => setPExit(e.target.value)} placeholder="e.g. Exit when price bounces off resistance, or when RSI crosses above 85." className="no-ring" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13, minHeight: 84, background: "var(--elev)", resize: "vertical", lineHeight: 1.5 }} />
                 {xParsed.conds.length > 0 && <div style={{ fontSize: 10.5, color: "var(--up)", marginTop: 6, fontWeight: 700, display: "flex", gap: 5 }}><Sparkles size={12} style={{ flex: "0 0 auto", marginTop: 1 }} /><span>Neo reads: exit when {neoReads(xParsed.conds)}.</span></div>}
+                {[...new Set([...patternsInConds(eParsed.conds), ...patternsInConds(xParsed.conds)])].filter((k) => PATTERN_EXPLAIN[k]).map((k) => (
+                  <div key={k} style={{ fontSize: 10, color: "var(--muted)", marginTop: 6, lineHeight: 1.5, background: "var(--elev)", border: "1px solid var(--line)", borderRadius: 10, padding: "8px 10px" }}>
+                    <b style={{ color: "var(--ink)" }}>How Neo detects a {k.replace(/-/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())}:</b> {PATTERN_EXPLAIN[k]}
+                  </div>
+                ))}
                 {unparsed.length > 0 && <div style={{ fontSize: 10.5, color: "#F59E42", marginTop: 8, fontWeight: 600 }}>⚠ Neo couldn't read that part. Try describing an entry like a chart pattern, a support/resistance level, or an indicator condition.</div>}
                 <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, display: "flex", gap: 6 }}><Sparkles size={13} color="var(--primary)" style={{ flex: "0 0 auto", marginTop: 1 }} /> Neo turns your words into executable rules on the <b style={{ margin: "0 3px" }}>{tf}</b> timeframe.</div>
                 {/* Intelligent fallback: let Neo (AI) interpret anything the fast parser missed. */}

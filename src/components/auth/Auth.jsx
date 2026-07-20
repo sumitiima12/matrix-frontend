@@ -8,6 +8,7 @@ import headerLogo from "../../assets/brand/header-logo.png";
 import headerLogoDark from "../../assets/brand/header-logo-dark.png";
 import splashLockup from "../../assets/brand/splash-m.png";
 import Wordmark from "../common/Wordmark";
+import { LegalOverlay } from "../common/LegalPages";
 import { brokerById, BROKERS } from "../../domain/brokers";
 
 /**
@@ -65,6 +66,8 @@ export function LoginScreen({ onAuthed, onGuest }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const [pending, setPending] = useState(false);   // signup done, awaiting admin approval
+  const [agreed, setAgreed] = useState(true);       // consent to Terms + Privacy, pre-selected
+  const [legalPage, setLegalPage] = useState(null); // "terms" | "privacy" overlay
   const validId = /^[A-Za-z][A-Za-z0-9_]{2,19}$/.test(userId);
   const emailOk = email === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const field = { width: "100%", background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.28)", borderRadius: 14, padding: "14px 16px", fontSize: 15, color: "#fff", outline: "none" };
@@ -74,6 +77,7 @@ export function LoginScreen({ onAuthed, onGuest }) {
   // Step 1 — number + PIN. Decide login vs sign-up from the server's answer.
   const submitAuth = async () => {
     if (mobile.length < 6 || pin.length < 4) { setErr("Enter your mobile number and a 4+ digit PIN."); return; }
+    if (!agreed) { setErr("Please accept the Terms of Use and Privacy Policy to continue."); return; }
     setErr(null); setBusy(true);
     const res = await apiLogin(mobile, pin);
     setBusy(false);
@@ -99,6 +103,7 @@ export function LoginScreen({ onAuthed, onGuest }) {
   return (
     <div className="mx" style={{ position: "fixed", inset: 0, zIndex: 100, background: "linear-gradient(165deg,#232327 0%,#161619 55%,#0C0C0E 100%)", display: "flex", flexDirection: "column", overflow: "auto" }}>
       <style>{`.lginput::placeholder{color:rgba(255,255,255,.55)}`}</style>
+      {legalPage && <LegalOverlay page={legalPage} onClose={() => setLegalPage(null)} />}
       <div style={{ position: "absolute", top: -80, right: -60, width: 280, height: 280, borderRadius: "50%", background: "radial-gradient(circle,rgba(255,255,255,.14),transparent 70%)", pointerEvents: "none" }} />
       <div style={{ position: "absolute", bottom: -100, left: -80, width: 320, height: 320, borderRadius: "50%", background: "radial-gradient(circle,rgba(200,200,210,.12),transparent 70%)", pointerEvents: "none" }} />
 
@@ -129,6 +134,14 @@ export function LoginScreen({ onAuthed, onGuest }) {
             {err && <div style={{ color: "#FFB3BE", fontSize: 12.5, fontWeight: 600, marginTop: 12 }}>{err}</div>}
 
             <button onClick={submitAuth} disabled={busy} className="tap disp" style={{ width: "100%", marginTop: 22, background: "#fff", color: "#141416", border: "none", borderRadius: 999, padding: 16, fontWeight: 800, fontSize: 15, letterSpacing: ".02em", opacity: busy ? 0.6 : 1 }}>{busy ? "PLEASE WAIT…" : "LOGIN / SIGN UP"}</button>
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 9, marginTop: 16, cursor: "pointer" }}>
+              <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} style={{ width: 17, height: 17, marginTop: 1, accentColor: "#fff", flex: "0 0 auto", cursor: "pointer" }} />
+              <span style={{ color: "rgba(255,255,255,.72)", fontSize: 12, lineHeight: 1.55 }}>
+                I agree to MatrixOne's{" "}
+                <span onClick={(e) => { e.preventDefault(); setLegalPage("terms"); }} style={{ color: "#fff", fontWeight: 700, textDecoration: "underline" }}>Terms of Use</span>{" "}and{" "}
+                <span onClick={(e) => { e.preventDefault(); setLegalPage("privacy"); }} style={{ color: "#fff", fontWeight: 700, textDecoration: "underline" }}>Privacy Policy</span>.
+              </span>
+            </label>
             {/* Guest access removed — every account must be approved by an admin before it can be used. */}
           </>
         ) : (

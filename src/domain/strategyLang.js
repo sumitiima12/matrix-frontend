@@ -321,6 +321,35 @@ export function humanizeCond(c) {
   return `${operandLabel(c.la)} ${opw} ${right}`;
 }
 
+/* Plain-English "how Neo detects this pattern" notes, keyed by canonical pattern key.
+   Shown under "Neo reads" so the user sees the actual geometric rule behind a pattern. */
+export const PATTERN_EXPLAIN = {
+  "double-bottom": "Two swing lows at roughly the same price (within ~2%), separated by a higher peak. Neo confirms it when price closes back above that middle peak — the breakout that completes the W.",
+  "double-top": "Two swing highs at about the same price with a valley between. Neo confirms it when price closes below that middle valley — the breakdown that completes the M.",
+  "cup-handle": "A rounded U-shaped base (the cup) followed by a small downward drift (the handle). Neo triggers when price breaks above the handle's high.",
+  "head-shoulders": "Three peaks — a higher middle 'head' between two lower 'shoulders'. Neo confirms on a close below the neckline joining the two intervening lows.",
+  "inv-head-shoulders": "Three troughs — a lower middle 'head' between two higher 'shoulders'. Neo confirms on a close above the neckline joining the two intervening highs.",
+  "asc-triangle": "A flat resistance line with rising lows beneath it. Neo triggers on a close above the flat top.",
+  "desc-triangle": "A flat support line with falling highs above it. Neo triggers on a close below the flat bottom.",
+  "sym-triangle": "Lower highs and higher lows converging to a point. Neo triggers on a close beyond whichever trendline breaks first.",
+  "bull-flag": "A sharp rally, then a slight downward-sloping consolidation. Neo triggers on a breakout above the flag's upper edge.",
+  "bear-flag": "A sharp drop, then a slight upward-sloping consolidation. Neo triggers on a breakdown below the flag's lower edge.",
+  "rising-wedge": "Higher highs and higher lows converging upward — usually bearish. Neo triggers on a close below the lower line.",
+  "falling-wedge": "Lower highs and lower lows converging downward — usually bullish. Neo triggers on a close above the upper line.",
+  "rectangle": "Price oscillating between a flat support and flat resistance. Neo triggers on a close beyond either edge.",
+};
+/* Which pattern keys appear in a set of conditions (for showing the explainer). */
+export function patternsInConds(conds) {
+  const keys = [];
+  for (const c of conds || []) {
+    if (typeof c.la === "string" && c.la.startsWith(PATTERN_OPERAND_PREFIX)) {
+      const k = c.la.slice(PATTERN_OPERAND_PREFIX.length);
+      if (!keys.includes(k)) keys.push(k);
+    }
+  }
+  return keys;
+}
+
 export function condCode(c) { return `${c.la} ${c.op} ${c.b}`; }
 export function chainCode(conds) { return conds.map((c, i) => `${i ? " " + (c.gate || "AND") + " " : ""}${condCode(c)}`).join(""); }
 

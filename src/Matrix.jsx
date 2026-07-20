@@ -918,7 +918,10 @@ function AppInner() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
               {/* Balance — in REAL mode this is your broker's actual cash (never the paper
-                  wallet), tinted red so real money is never mistaken for virtual capital. */}
+                  wallet), tinted red so real money is never mistaken for virtual capital.
+                  Hidden entirely when virtual trading is disabled for this market (non-admin):
+                  there is no paper wallet to show, so the pill would only mislead. */}
+              {!virtualBlocked(market) && (
               <button onClick={() => setWalletOpen(true)} aria-label={mode === "real" ? "Real balance" : "Virtual wallet"} className="tap pill gold-border" style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 11px", whiteSpace: "nowrap", flexShrink: 0, background: "transparent", cursor: "pointer", borderColor: mode === "real" ? "var(--down)" : undefined }}>
                 <Wallet size={15} color={mode === "real" ? "var(--down)" : "var(--gold)"} />
                 <span className="mono" style={{ fontSize: 11.5, fontWeight: 800, color: mode === "real" ? "var(--down)" : "var(--ink)" }}>
@@ -927,6 +930,7 @@ function AppInner() {
                     : compact(wallet)}
                 </span>
               </button>
+              )}
               {/* Activity log — recent actions & their outcomes (orders, rejects, connects). */}
               <button onClick={() => setActivityOpen(true)} aria-label="Activity" className="tap" style={{ position: "relative", border: "1px solid var(--line)", background: "transparent", borderRadius: 10, width: 34, height: 34, display: "grid", placeItems: "center", cursor: "pointer", flexShrink: 0 }}>
                 <Clock size={16} color="var(--muted)" />

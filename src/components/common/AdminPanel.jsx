@@ -51,6 +51,15 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
     } catch (e) { setErr(String(e.message || e)); }
     finally { setBusy(false); }
   };
+  const approve = async (phone, next) => {
+    setBusy(true);
+    try {
+      await adminApproveUser(phone, next, adminKey);
+      await refresh();
+      if (selected && selected.phone === phone) await openUser(phone);
+    } catch (e) { setErr(String(e.message || e)); }
+    finally { setBusy(false); }
+  };
 
   const wrap = { position: "fixed", inset: 0, background: "var(--bg)", zIndex: 3000, overflowY: "auto", padding: "18px 16px 40px" };
   const card = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 14, padding: 14, marginTop: 10 };
@@ -87,6 +96,27 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
                   </div>
                 )}
               </div>
+              {selected.user.approved === false && (
+                <button
+                  onClick={() => approve(selected.phone, true)}
+                  disabled={busy}
+                  className="tap disp"
+                  style={{ border: "none", borderRadius: 10, padding: "8px 14px", fontWeight: 800, fontSize: 12, cursor: "pointer", marginRight: 8, background: "var(--up)", color: "#fff", opacity: busy ? 0.6 : 1 }}
+                >
+                  Approve
+                </button>
+              )}
+              {selected.user.approved !== false && (
+                <button
+                  onClick={() => approve(selected.phone, false)}
+                  disabled={busy}
+                  className="tap disp"
+                  title="Revoke approval — user will need to be re-approved to log in"
+                  style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: 12, cursor: "pointer", marginRight: 8, background: "transparent", color: "var(--muted)", opacity: busy ? 0.6 : 1 }}
+                >
+                  Revoke
+                </button>
+              )}
               <button
                 onClick={() => toggleBlock(selected.phone, !selected.user.blocked)}
                 disabled={busy}
@@ -107,6 +137,9 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
             </div>
             {selected.user.blocked && (
               <div style={{ fontSize: 10.5, color: "var(--down)", fontWeight: 700, marginTop: 8 }}>This user is BLOCKED and cannot log in.</div>
+            )}
+            {selected.user.approved === false && (
+              <div style={{ fontSize: 10.5, color: "var(--down)", fontWeight: 700, marginTop: 6 }}>AWAITING APPROVAL — this user cannot log in until you tap Approve.</div>
             )}
           </div>
 
