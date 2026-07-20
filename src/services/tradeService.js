@@ -158,6 +158,39 @@ export async function deleteIdea(id) {
   } catch { return { ok: false }; }
 }
 
+/* Permanently delete the signed-in user's own account and all their data. */
+export async function deleteAccount() {
+  if (!BACKEND_URL) return { ok: false };
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/account/delete`, { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }) });
+    handle401(r.status);
+    return r.json().catch(() => ({ ok: false }));
+  } catch { return { ok: false }; }
+}
+
+/* ---- Global admin-controlled app settings (Real-mode + broker-connect gates) ---- */
+const DEFAULT_SETTINGS = { allowRealMode: false, allowBrokerConnect: { IN: false, US: false, Crypto: false, Commodity: false } };
+export async function getAppSettings() {
+  if (!BACKEND_URL) return DEFAULT_SETTINGS;
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/app-settings`);
+    const d = await r.json().catch(() => ({}));
+    return d.settings || DEFAULT_SETTINGS;
+  } catch { return DEFAULT_SETTINGS; }
+}
+export async function saveAppSettings(settings, adminKey) {
+  if (!BACKEND_URL) return { ok: false };
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/app-settings`, {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json", ...(adminKey ? { "X-Admin-Key": adminKey } : {}) }),
+      body: JSON.stringify({ settings }),
+    });
+    handle401(r.status);
+    return r.json().catch(() => ({ ok: false }));
+  } catch { return { ok: false }; }
+}
+
 /** Forgot-PIN step 1: fetch the user's security question. */
 export async function forgotQuestion(phone) {
   if (!BACKEND_URL) return null;

@@ -1,4 +1,4 @@
-import { resolveOperand, chainEval, parseClause, mapToken, detectOp } from "./strategyLang";
+import { resolveOperand, chainEval, parseClause, mapToken, detectOp, interpretText } from "./strategyLang";
 
 /**
  * Backtest engine — runs a strategy over REAL candles and reports win rate, P&L and drawdown.
@@ -43,17 +43,9 @@ export function backtest(cfg, c, startIdx = 1) {
   return { trades, eq, stats: { n: trades.length, wins, winRate: trades.length ? wins / trades.length * 100 : 0, totalRet, maxDD: maxDD * 100, bh, avg: trades.length ? trades.reduce((a, t) => a + t.ret, 0) / trades.length * 100 : 0 } };
 }
 
+/* Delegates to the shared interpreter (strategyLang.interpretText), which now also understands
+   chart patterns and support/resistance — so the plain-English builder and the screener speak
+   the same language. Kept as a named export for the existing callers. */
 export function parseRules(text) {
-  if (!text || !text.trim()) return { conds: [], defs: [], unparsed: [] };
-  const cleaned = text.replace(/^\s*(buy|sell|enter|exit|go long|short|when|if)\b[:,]?\s*/i, "");
-  const parts = cleaned.split(/\s+(and|or)\s+/i);
-  const conds = [], defs = [], unparsed = [];
-  for (let i = 0; i < parts.length; i += 2) {
-    const clause = parts[i];
-    const gate = i === 0 ? undefined : (parts[i - 1].toLowerCase() === "or" ? "OR" : "AND");
-    const p = parseClause(clause);
-    if (p) { if (gate) p.cond.gate = gate; conds.push(p.cond); p.defs.forEach((d) => { if (d && !defs.find((x) => x.name === d.name)) defs.push(d); }); }
-    else if (clause.trim()) unparsed.push(clause.trim());
-  }
-  return { conds, defs, unparsed };
+  return interpretText(text);
 }

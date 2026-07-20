@@ -13,7 +13,7 @@ import { MATRIX_PERSONA, BACKEND_URL } from "../config";
 import { yahooSymbol, marketOf } from "./universe";
 import { getQuotes, getHistory, getNews, getIndicators, getIntraday, getFundamentals } from "../services/marketService";
 import { ask as aiAsk, interpretScreen, interpretStrategy, marketBrief } from "../services/aiService";
-import { saveTrade, listTrades, register, login, changePin as _cp, verifyPin as _vp, forgotQuestion as _fq, forgotReset as _fr, getMySecurityQuestion as _gsq, setMySecurityQuestion as _ssq, checkUsername as _cu, setUsername as _su, setEmail as _se, listPublicStrategies as _lps, publishStrategy as _pub, unpublishStrategy as _unpub, listIdeas as _li, postIdea as _pi, deleteIdea as _di, reviewIdea as _ri } from "../services/tradeService";
+import { saveTrade, listTrades, register, login, changePin as _cp, verifyPin as _vp, forgotQuestion as _fq, forgotReset as _fr, getMySecurityQuestion as _gsq, setMySecurityQuestion as _ssq, checkUsername as _cu, setUsername as _su, setEmail as _se, listPublicStrategies as _lps, publishStrategy as _pub, unpublishStrategy as _unpub, listIdeas as _li, postIdea as _pi, deleteIdea as _di, reviewIdea as _ri, getAppSettings as _gas, saveAppSettings as _sas, deleteAccount as _dacc } from "../services/tradeService";
 import { isMarketOpen } from "../services/riskService";
 
 /* ----------------------------- AI ----------------------------- */
@@ -54,6 +54,9 @@ export const apiListIdeas = (filters) => _li(filters);
 export const apiPostIdea = (idea) => _pi(idea);
 export const apiDeleteIdea = (id) => _di(id);
 export const apiReviewIdea = (id, status, adminKey) => _ri(id, status, adminKey);
+export const apiGetAppSettings = () => _gas();
+export const apiSaveAppSettings = (settings, adminKey) => _sas(settings, adminKey);
+export const apiDeleteAccount = () => _dacc();
 export const apiForgotQuestion = (phone) => _fq(phone);
 export const apiForgotReset = (phone, answer, newPin) => _fr(phone, answer, newPin);
 export const apiGetSecurityQuestion = () => _gsq();

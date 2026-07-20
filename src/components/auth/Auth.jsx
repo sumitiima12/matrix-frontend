@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { } from "../../domain/universe";
 import { fmt, profileSummary } from "../../lib/format";
 import { Check, ChevronLeft, Clock, Copy, LogIn, LogOut, Sparkles, User } from "lucide-react";
@@ -376,7 +376,71 @@ function SecurityQuestionCard() {
   );
 }
 
-export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, onAdmin, isAdminUser = false, adminMode = false, onToggleAdminMode, portfolio = [], trades = [], deposits = [], market = "IN", onBroker, brokerName, onUsernameChanged, onEmailChanged, marketBrokers = {}, houseFeeds = {}, onDisconnectBroker }) {
+/* A small Yes/No pill switch used by the admin gates. */
+function YesNo({ on, onChange }) {
+  return (
+    <button
+      onClick={() => onChange(!on)}
+      aria-label={on ? "Yes" : "No"}
+      className="tap"
+      style={{ flex: "0 0 auto", width: 52, height: 30, borderRadius: 999, border: "none", cursor: "pointer", position: "relative", background: on ? "var(--up)" : "var(--line)", transition: "background .15s" }}
+    >
+      <span style={{ position: "absolute", top: 3, left: on ? 25 : 3, width: 24, height: 24, borderRadius: "50%", background: "#fff", transition: "left .15s", boxShadow: "0 1px 3px rgba(0,0,0,.3)" }} />
+    </button>
+  );
+}
+
+/* ADMIN GATES — two global switches the admin flips for the whole app:
+   (1) Allow users in Real mode, (2) Allow users to connect brokers, per market.
+   Both default OFF. Changes are saved to the server immediately (optimistic UI). */
+const GATE_MARKETS = [["IN", "Indian"], ["US", "US"], ["Crypto", "Crypto"], ["Commodity", "Commodity"]];
+function AdminGates({ settings, onSave }) {
+  const [local, setLocal] = useState(settings);
+  useEffect(() => { setLocal(settings); }, [settings]);
+  const [saving, setSaving] = useState(false);
+  const push = async (next) => {
+    setLocal(next);                 // optimistic
+    if (!onSave) return;
+    setSaving(true);
+    try { await onSave(next); } finally { setSaving(false); }
+  };
+  const setReal = (v) => push({ ...local, allowRealMode: v });
+  const setMkt = (m, v) => push({ ...local, allowBrokerConnect: { ...(local.allowBrokerConnect || {}), [m]: v } });
+  return (
+    <div className="card" style={{ padding: 14, marginBottom: 9, border: "1px solid var(--line)" }}>
+      <div className="disp" style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 2 }}>
+        User permissions {saving && <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600 }}>· saving…</span>}
+      </div>
+      <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 12, lineHeight: 1.45 }}>
+        Applies to all members. You (admin) are never restricted by these.
+      </div>
+
+      {/* 1. Real mode */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, paddingBottom: 12, borderBottom: "1px solid var(--line)" }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 12.5 }}>Allow users in Real Mode</div>
+          <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2, lineHeight: 1.4 }}>
+            {local.allowRealMode ? "Members can switch to Real and trade real money." : "Members see Virtual only — no Real toggle."}
+          </div>
+        </div>
+        <YesNo on={Boolean(local.allowRealMode)} onChange={setReal} />
+      </div>
+
+      {/* 2. Broker connect, per market */}
+      <div style={{ fontWeight: 700, fontSize: 12.5, marginTop: 12, marginBottom: 6 }}>Allow users to connect brokers</div>
+      {GATE_MARKETS.map(([m, label]) => (
+        <div key={m} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "7px 0" }}>
+          <div style={{ fontSize: 12, color: "var(--ink)" }}>{label}</div>
+          <YesNo on={Boolean(local.allowBrokerConnect && local.allowBrokerConnect[m])} onChange={(v) => setMkt(m, v)} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, onAdmin, isAdminUser = false, adminMode = false, onToggleAdminMode, portfolio = [], trades = [], deposits = [], market = "IN", onBroker, brokerName, onUsernameChanged, onEmailChanged, marketBrokers = {}, houseFeeds = {}, onDisconnectBroker, appSettings = null, onSaveAppSettings, onDeleteAccount }) {
+  const [confirmDel, setConfirmDel] = useState(false);
+  const [delBusy, setDelBusy] = useState(false);
   const [uidEdit, setUidEdit] = useState(false);
   const [uidVal, setUidVal] = useState("");
   const [uidBusy, setUidBusy] = useState(false);
@@ -640,6 +704,12 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
             </div>
           </div>
         )}
+
+        {/* ADMIN CONTROLS — global gates the admin flips for ALL users. Only visible in admin mode. */}
+        {auth && isAdminUser && adminMode && appSettings && (
+          <AdminGates settings={appSettings} onSave={onSaveAppSettings} />
+        )}
+
         {auth && onAdmin && (
           <button onClick={() => { onAdmin(); }} className="tap card" style={{ width: "100%", textAlign: "left", padding: "13px 15px", marginBottom: 9, border: "1px solid var(--line)", background: "transparent", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>
             Admin console
@@ -650,7 +720,40 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
         ) : (
           <button onClick={() => { onClose && onClose(); onLogin && onLogin(); }} className="tap disp" style={{ width: "100%", margin: "16px 0 8px", background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 14, padding: 12, fontWeight: 800, fontSize: 13.5, display: "flex", gap: 7, alignItems: "center", justifyContent: "center" }}><LogIn size={16} /> Log in / Register</button>
         )}
+
+        {/* Delete account — a plain text option under Log out; the destructive confirm is a drawer. */}
+        {auth && (
+          <button onClick={() => setConfirmDel(true)} className="tap" style={{ width: "100%", background: "transparent", color: "var(--muted)", border: "none", padding: "6px 0 2px", fontSize: 12, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>
+            Delete account
+          </button>
+        )}
       </div>
+
+      {/* Confirmation drawer — deleting is irreversible, so it's a deliberate two-step. */}
+      {confirmDel && (
+        <>
+          <div onClick={() => !delBusy && setConfirmDel(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", zIndex: 300 }} />
+          <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--surface)", borderRadius: "22px 22px 0 0", zIndex: 301, padding: "22px 20px 28px", boxShadow: "0 -16px 44px rgba(0,0,0,.35)" }}>
+            <div style={{ width: 40, height: 40, borderRadius: 12, background: "var(--down-soft, rgba(239,68,68,.12))", display: "grid", placeItems: "center", marginBottom: 12 }}>
+              <LogOut size={20} color="var(--down)" />
+            </div>
+            <div className="disp" style={{ fontWeight: 800, fontSize: 18 }}>Delete your account?</div>
+            <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 8, lineHeight: 1.55 }}>
+              This is permanent and cannot be undone. <b style={{ color: "var(--ink)" }}>All your trades, strategies, ideas, saved data and connected brokers will be erased.</b> You'll be signed out immediately.
+            </div>
+            <button
+              onClick={async () => { setDelBusy(true); try { await (onDeleteAccount && onDeleteAccount()); } finally { setDelBusy(false); setConfirmDel(false); } }}
+              disabled={delBusy}
+              className="tap disp"
+              style={{ width: "100%", marginTop: 18, background: "var(--down)", color: "#fff", border: "none", borderRadius: 14, padding: 13, fontWeight: 800, fontSize: 14, cursor: "pointer", opacity: delBusy ? 0.6 : 1 }}>
+              {delBusy ? "Deleting…" : "Yes, delete my account"}
+            </button>
+            <button onClick={() => setConfirmDel(false)} disabled={delBusy} className="tap disp" style={{ width: "100%", marginTop: 10, background: "var(--elev)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 14, padding: 13, fontWeight: 800, fontSize: 14, cursor: "pointer" }}>
+              Cancel
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

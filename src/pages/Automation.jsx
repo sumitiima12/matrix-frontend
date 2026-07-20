@@ -9,8 +9,10 @@ import { chgColor, clamp, fmt, pct } from "../lib/format";
 import { useBacktestStats } from "../hooks/useBacktestStats";
 import { SMAarr, EMAarr, RSIarr, MACDarr, BBarr, CCIarr, ATRarr, VWAParr, ADXarr, CF } from "../lib/series";
 import { ALL, UNIVERSE, marketOf } from "../domain/universe";
-import { aiInterpretStrategy, apiListPublicStrategies, apiPublishStrategy, apiUnpublishStrategy } from "../domain/api";
-import { humanizeStrategy } from "../domain/strategyLang";
+import { apiListPublicStrategies, apiPublishStrategy, apiUnpublishStrategy } from "../domain/api";
+import { humanizeStrategy, humanizeCond } from "../domain/strategyLang";
+/* Neo's plain-English read-back of a set of conditions: "a Cup & Handle forms, and RSI is below 40". */
+const neoReads = (conds) => (conds || []).map((c, i) => `${i ? (c.gate === "OR" ? "or " : "and ") : ""}${humanizeCond(c)}`).join(", ");
 import { useCandles } from "../hooks/useCandles";
 import OptionLeg from "../components/common/OptionLeg";
 import MultiSelect from "../components/common/MultiSelect";
@@ -264,9 +266,15 @@ function CondBuilder2({ label, conds, setConds, operands }) {
   const upd = (i, k, v) => setConds((p) => p.map((c, j) => j === i ? { ...c, [k]: v } : c));
   const add = () => setConds((p) => [...p, { la: operands[0] || "Price", op: "<", bType: "num", b: "30", gate: "AND" }]);
   const del = (i) => setConds((p) => p.filter((_, j) => j !== i).map((c, j) => { if (j === 0) { const { gate, ...rest } = c; return rest; } return c; }));
+  // "Entry signal — combine indicators…" → bold heading + muted hint after the dash.
+  const [heading, ...restLabel] = String(label).split("—");
+  const hint = restLabel.join("—").trim();
   return (
     <div>
-      <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 8 }}>{label}</div>
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 15, color: "var(--text)", fontWeight: 800, letterSpacing: -0.2 }}>{heading.trim()}</div>
+        {hint && <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 600, marginTop: 2 }}>{hint}</div>}
+      </div>
       {conds.map((c, i) => (
         <div key={i} style={{ marginBottom: 4 }}>
           {i > 0 && (
@@ -682,15 +690,6 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   ), [market]);
   const [pEntry, setPEntry] = useState("Buy when EMA 9 crosses above EMA 21 and RSI is above 55.");
   const [pExit, setPExit] = useState("Exit when RSI crosses above 85 or MACD histogram becomes negative or MACD line crosses below MACD signal line.");
-  const [aiStrat, setAiStrat] = useState(null); const [aiStratBusy, setAiStratBusy] = useState(false);
-  const aiInterpret = async () => {
-    setAiStratBusy(true); setAiStrat(null);
-    const out = await aiInterpretStrategy(`ENTRY: ${pEntry}\nEXIT: ${pExit}`);
-    setAiStratBusy(false);
-    if (out) { setAiStrat(out); const sm = out.match(/STOP:\s*(\d+)/i); const tm = out.match(/TARGET:\s*(\d+)/i); if (sm) setSl(sm[1]); if (tm) setTp(tm[1]); }
-    else setAiStrat("Couldn't reach Neo — the backend needs an AI key set.");
-  };
-
   const [stratName, setStratName] = useState("");
   const [editingId, setEditingId] = useState(null);       // when set, Save updates this strategy in place
   const [selectedTpl, setSelectedTpl] = useState(null);   // highlighted Strategy Idea (tap toggles)
@@ -1241,7 +1240,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
               <>
                 <CondBuilder2 label="Entry signal — combine indicators with AND / OR" conds={entryConds} setConds={setEntryConds} operands={operands} />
                 <div className="silver-line" style={{ margin: "16px 0" }} />
-                <CondBuilder2 label="Exit signal" conds={exitConds} setConds={setExitConds} operands={operands} />
+                <CondBuilder2 label="Exit signal — when to close the position" conds={exitConds} setConds={setExitConds} operands={operands} />
               </>
             ) : (
               <>
@@ -1252,15 +1251,13 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                   ))}
                 </div>
                 <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Entry rules — in plain English</div>
-                <textarea value={pEntry} onChange={(e) => setPEntry(e.target.value)} placeholder="e.g. Buy when EMA 9 crosses above EMA 21 and RSI is above 55." className="no-ring" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13, minHeight: 84, background: "var(--elev)", resize: "vertical", lineHeight: 1.5 }} />
-                {eParsed.conds.length > 0 && <div style={{ fontSize: 10.5, color: "var(--up)", marginTop: 6, fontWeight: 700 }}>✓ Parsed: {chainCode(eParsed.conds)}</div>}
+                <textarea value={pEntry} onChange={(e) => setPEntry(e.target.value)} placeholder="e.g. Buy when a cup and handle forms — or: Buy when price bounces off support and RSI is above 55." className="no-ring" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13, minHeight: 84, background: "var(--elev)", resize: "vertical", lineHeight: 1.5 }} />
+                {eParsed.conds.length > 0 && <div style={{ fontSize: 10.5, color: "var(--up)", marginTop: 6, fontWeight: 700, display: "flex", gap: 5 }}><Sparkles size={12} style={{ flex: "0 0 auto", marginTop: 1 }} /><span>Neo reads: buy when {neoReads(eParsed.conds)}.</span></div>}
                 <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, margin: "14px 0 6px" }}>Exit rules — in plain English</div>
-                <textarea value={pExit} onChange={(e) => setPExit(e.target.value)} placeholder="e.g. Exit when RSI crosses above 85 or MACD histogram becomes negative or MACD line crosses below MACD signal line." className="no-ring" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13, minHeight: 84, background: "var(--elev)", resize: "vertical", lineHeight: 1.5 }} />
-                {xParsed.conds.length > 0 && <div style={{ fontSize: 10.5, color: "var(--up)", marginTop: 6, fontWeight: 700 }}>✓ Parsed: {chainCode(xParsed.conds)}</div>}
-                {unparsed.length > 0 && <div style={{ fontSize: 10.5, color: "#F59E42", marginTop: 8, fontWeight: 600 }}>⚠ Couldn't parse: "{unparsed.join('", "')}". Try phrasing like "RSI crosses above 85" or "EMA 9 crosses above SMA 39" — or let AI interpret it below.</div>}
-                <button onClick={aiInterpret} disabled={aiStratBusy} className="tap disp" style={{ marginTop: 10, background: "var(--primary-soft)", color: "var(--primary)", border: "1px solid var(--primary)", borderRadius: 12, padding: "9px 14px", fontWeight: 800, fontSize: 12, display: "inline-flex", gap: 6, alignItems: "center", opacity: aiStratBusy ? 0.6 : 1 }}><Sparkles size={14} /> {aiStratBusy ? "Neo is reading…" : "Interpret with Neo"}</button>
-                {aiStrat && <div className="card" style={{ marginTop: 10, padding: 12, background: "var(--elev)", fontSize: 12, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{aiStrat}</div>}
-                <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, display: "flex", gap: 6 }}><Sparkles size={13} color="var(--primary)" style={{ flex: "0 0 auto", marginTop: 1 }} /> Matrix converts your text into the executable code below on the <b style={{ margin: "0 3px" }}>{tf}</b> timeframe — recognises RSI, MACD (line/signal/histogram), EMA/SMA(n), Bollinger bands, ADX, CCI, VWAP, volume, price, with crosses-above/below, greater/less-than and becomes-positive/negative.</div>
+                <textarea value={pExit} onChange={(e) => setPExit(e.target.value)} placeholder="e.g. Exit when price bounces off resistance, or when RSI crosses above 85." className="no-ring" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13, minHeight: 84, background: "var(--elev)", resize: "vertical", lineHeight: 1.5 }} />
+                {xParsed.conds.length > 0 && <div style={{ fontSize: 10.5, color: "var(--up)", marginTop: 6, fontWeight: 700, display: "flex", gap: 5 }}><Sparkles size={12} style={{ flex: "0 0 auto", marginTop: 1 }} /><span>Neo reads: exit when {neoReads(xParsed.conds)}.</span></div>}
+                {unparsed.length > 0 && <div style={{ fontSize: 10.5, color: "#F59E42", marginTop: 8, fontWeight: 600 }}>⚠ Neo couldn't read: "{unparsed.join('", "')}". Try a chart pattern ("cup and handle", "double bottom"), a level ("price above support"), or an indicator ("RSI crosses above 85").</div>}
+                <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, display: "flex", gap: 6 }}><Sparkles size={13} color="var(--primary)" style={{ flex: "0 0 auto", marginTop: 1 }} /> Neo interprets your words into the executable rules below on the <b style={{ margin: "0 3px" }}>{tf}</b> timeframe — it understands chart patterns (cup &amp; handle, double top/bottom, head &amp; shoulders, triangles, flags, wedges), support/resistance, RSI, MACD, EMA/SMA(n), Bollinger, ADX, CCI, VWAP, volume, price and candle O/H/L/C, with crosses-above/below and greater/less-than.</div>
               </>
             )}
 

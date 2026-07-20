@@ -7,6 +7,8 @@ import { BACKEND_URL } from "../config";
 import { clamp, compact, fmt, timeAgo } from "../lib/format";
 import { marketOf } from "../domain/universe";
 import { techSignal, techStrength } from "../domain/signals";
+import { fundamentalRead, technicalRead } from "../domain/analysisFramework";
+import { detectPattern, patternLine } from "../domain/patterns";
 import { strengthFromCandles, STRENGTH_TFS } from "../domain/strength";
 import { fetchHistory, fetchNews, fetchFundamentals } from "../domain/api";
 import { analyzeStock } from "../services/aiService";
@@ -142,6 +144,13 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
     return liveCandles && liveCandles.length ? liveCandles.slice(-n).map((c, i) => ({ ...c, i: i + 1 })) : [];
   }, [tf, liveCandles]);
   const data = useMemo(() => (liveCandles || []).slice(-tf).map((c, i) => ({ i, p: c.c })), [liveCandles, tf]);
+  // Real chart-pattern recognition from the live candles (Double Bottom, Bull Flag, H&S, …).
+  const pattern = useMemo(() => detectPattern(liveCandles), [liveCandles]);
+  // Framework-based reads (Zerodha/Oliver TA + FA): a multi-factor technical read and a
+  // ratio-by-ratio fundamental verdict, both derived purely from the real values on hand.
+  const techRead = useMemo(() => technicalRead(s, techSignal(s)), [s]);
+  const fundRead = useMemo(() => fundamentalRead(fund && !fund.unavailable ? fund : null), [fund]);
+  const TONE_C = { good: "var(--up)", bad: "var(--down)", warn: "var(--amber, #F59E42)", neutral: "var(--muted)" };
   /* No "Fundamentals" tab. Yahoo's quoteSummary — the only source we had for P/E,
      ROE, margins and quarterly revenue — refuses requests from datacenter IPs
      (verified: "yahoo: auth failed" from Render). No data source, no feature.
@@ -274,6 +283,19 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
           <p style={{ fontSize: 13.5, lineHeight: 1.6, marginTop: 8, marginBottom: 0 }}>
             {s.rsi == null ? "Live technicals are still loading for this symbol." : <>Technically, RSI is <b>{s.rsi}</b> with price {s.sma50 != null ? (s.price > s.sma50 ? "above" : "below") : "—"} the 50-DMA{s.sma50 != null && s.sma200 != null ? (s.sma50 > s.sma200 ? " and a bullish 50/200 structure" : " and a bearish 50/200 structure") : ""}.</>}
           </p>
+          {pattern && <p style={{ fontSize: 12.5, fontWeight: 700, margin: "6px 0 0", color: pattern.dir === "bull" ? "var(--up)" : pattern.dir === "bear" ? "var(--down)" : "var(--muted)" }}>◆ {patternLine(pattern, (v) => fmt(v, market))}</p>}
+          {/* Framework technical read — trend → momentum → volume → levels, each interpreted. */}
+          {techRead && techRead.rows.length > 0 && (
+            <div style={{ marginTop: 12, display: "grid", gap: 7 }}>
+              {techRead.rows.map((r) => (
+                <div key={r.k} style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 12 }}>
+                  <span style={{ flex: "0 0 76px", color: "var(--muted)", fontWeight: 700 }}>{r.k}</span>
+                  <span className="mono" style={{ flex: "0 0 auto", fontWeight: 800, color: TONE_C[r.tone] }}>{r.v}</span>
+                  <span style={{ color: "var(--ink)", lineHeight: 1.4 }}>{r.read}</span>
+                </div>
+              ))}
+            </div>
+          )}
           <button onClick={askDeep} disabled={deepBusy} className="tap disp glow" style={{ width: "100%", marginTop: 14, background: "linear-gradient(120deg,var(--primary),var(--primary-2))", color: "#fff", border: "none", borderRadius: 14, padding: 12, fontWeight: 700, fontSize: 13.5, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", opacity: deepBusy ? 0.7 : 1 }}>
             <Sparkles size={16} /> {deepBusy ? "Generating deep analysis…" : "Deep Analysis"}
           </button>
@@ -320,6 +342,24 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
                 </div>
                 {(fund.sector || fund.industry) && (
                   <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 10 }}>{[fund.sector, fund.industry].filter(Boolean).join(" · ")}</div>
+                )}
+                {/* Framework fundamental read — verdict + a plain-English interpretation of each ratio. */}
+                {fundRead && (
+                  <div style={{ marginTop: 14, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                      <span className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{fundRead.verdict}</span>
+                      <span style={{ fontSize: 10.5, fontWeight: 800, color: fundRead.score >= 55 ? "var(--up)" : fundRead.score >= 40 ? "var(--amber, #F59E42)" : "var(--down)", background: "var(--elev)", borderRadius: 20, padding: "2px 9px" }}>{fundRead.score}/100</span>
+                    </div>
+                    <div style={{ display: "grid", gap: 7 }}>
+                      {fundRead.rows.map((r) => (
+                        <div key={r.k} style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 12 }}>
+                          <span style={{ flex: "0 0 96px", color: "var(--muted)", fontWeight: 700 }}>{r.k}</span>
+                          <span className="mono" style={{ flex: "0 0 auto", fontWeight: 800, color: TONE_C[r.tone] }}>{r.v}</span>
+                          <span style={{ color: "var(--ink)", lineHeight: 1.4 }}>{r.read}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </>
             )}

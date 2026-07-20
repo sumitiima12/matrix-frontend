@@ -982,6 +982,11 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
 
       {/* Matrix picks */}
       <Section title="Top Picks" icon={<Sparkles size={17} color="var(--primary-2)" />}>
+        {/* Timeframe + what each home section means, so Picks / Ideas / Trending aren't confused. */}
+        <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.5, marginBottom: 10 }}>
+          Ranked <b style={{ color: "var(--ink)" }}>daily</b> on real technicals (RSI + 50/200-DMA), targets from support/resistance &amp; ATR.
+          <br /><b style={{ color: "var(--ink)" }}>Picks</b>: the strongest buy setups right now · <b style={{ color: "var(--ink)" }}>Ideas</b>: community &amp; Neo trade ideas · <b style={{ color: "var(--ink)" }}>Trending</b>: names moving on live 5-min candles.
+        </div>
         {/* An empty carousel is a void the user has to interpret. Say what's happening:
             picks need real indicators (RSI, 50-DMA), and those arrive after the prices. */}
         {picks.length === 0 && (
@@ -1008,12 +1013,18 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     Breakout, Volume Spike and so on, each true and each backed by a
                     number. "Why?" opens the full evidence + verdict. */}
                 <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "nowrap", alignItems: "center", overflow: "hidden" }}>
-                  {computeTags(s.under ? { ...s, sym: s.under } : s).slice(0, 3).map((t) => (
-                    <span key={t.id} className="pill" title={t.evidence}
-                      style={{ fontSize: 10, fontWeight: 800, background: "var(--primary-soft)", color: "var(--primary)", padding: "3px 9px", whiteSpace: "nowrap", flex: "0 0 auto" }}>
-                      {t.label}
-                    </span>
-                  ))}
+                  {(() => {
+                    // Every Pick is, by construction, a bullish setup — so if the tag engine returns
+                    // nothing yet, show a "Bullish" chip rather than a bare card. Real tags win when present.
+                    const ts = computeTags(s.under ? { ...s, sym: s.under } : s).slice(0, 3);
+                    const shown = ts.length ? ts : [{ id: "bull", label: "Bullish setup", evidence: s.pickReason || "Qualified on real technicals" }];
+                    return shown.map((t) => (
+                      <span key={t.id} className="pill" title={t.evidence}
+                        style={{ fontSize: 10, fontWeight: 800, background: "var(--up-soft, var(--primary-soft))", color: "var(--up, var(--primary))", padding: "3px 9px", whiteSpace: "nowrap", flex: "0 0 auto" }}>
+                        {t.label}
+                      </span>
+                    ));
+                  })()}
                 </div>
                 <div style={{ marginTop: 10, paddingTop: 12, borderTop: "1px solid var(--line)", fontSize: 12, color: "var(--ink-soft, var(--ink))", lineHeight: 1.5, display: "flex", gap: 6 }}>
                   <Sparkles size={14} color="var(--primary)" style={{ flex: "0 0 auto", marginTop: 2 }} /><span style={{ display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{s.pickReason || ""}</span>

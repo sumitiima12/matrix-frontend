@@ -1,4 +1,42 @@
 import { SMAarr, EMAarr, RSIarr, MACDarr, BBarr, CCIarr, ATRarr, VWAParr, ADXarr, STarr, CF } from "../lib/series";
+import { pivots, detectPatterns, PATTERN_KEYS } from "./patterns";
+
+/* Support / resistance as evaluable series: at each bar, the price of the most recent CONFIRMED
+   swing low (support) / swing high (resistance) at or before that bar. Falls back to a rolling
+   extreme early on, before any pivot exists, so the operand is never NaN for the whole window. */
+function srSeries(c, kind) {
+  const pv = pivots(c, 3);
+  const wantT = kind === "support" ? "L" : "H";
+  const out = new Array(c.length).fill(NaN);
+  let last = NaN, pi = 0;
+  for (let i = 0; i < c.length; i++) {
+    while (pi < pv.length && pv[pi].i <= i) { if (pv[pi].t === wantT) last = pv[pi].p; pi++; }
+    if (!isNaN(last)) { out[i] = last; continue; }
+    // No pivot yet — use the running extreme of the window seen so far.
+    let ext = kind === "support" ? Infinity : -Infinity;
+    for (let j = 0; j <= i; j++) ext = kind === "support" ? Math.min(ext, c[j].l) : Math.max(ext, c[j].h);
+    out[i] = ext;
+  }
+  return out;
+}
+
+/* Chart-pattern condition series: 1 on bars where a pattern of `key` is present (from its
+   confirmation bar, held for a short window so the entry rule has time to fire), else 0. */
+function patternSeries(c, key, within = 3) {
+  const s = new Array(c.length).fill(0);
+  const pats = detectPatterns(c).filter((p) => p.key === key);
+  for (const p of pats) for (let j = p.at; j <= Math.min(c.length - 1, p.at + within); j++) s[j] = 1;
+  return s;
+}
+/* Map a plain-English pattern phrase to its canonical key, or null. Longest phrase wins so
+   "inverse head and shoulders" beats "head and shoulders". */
+export function patternKeyFromText(text) {
+  const t = String(text || "").toLowerCase();
+  const phrases = Object.keys(PATTERN_KEYS).sort((a, b) => b.length - a.length);
+  for (const ph of phrases) if (t.includes(ph)) return PATTERN_KEYS[ph];
+  return null;
+}
+export const PATTERN_OPERAND_PREFIX = "PAT:";
 /**
  * domain/strategyLang.js — the strategy rule language.
  *
@@ -15,6 +53,9 @@ export function resolveOperand(op, defs, c, closes, vols, cache) {
   if (op !== "" && !isNaN(Number(op))) { const n = Number(op); series = closes.map(() => n); }
   else if (op === "Price") series = closes;
   else if (op === "Volume") series = vols;
+  else if (op === "Support") series = srSeries(c, "support");
+  else if (op === "Resistance") series = srSeries(c, "resistance");
+  else if (op.startsWith(PATTERN_OPERAND_PREFIX)) series = patternSeries(c, op.slice(PATTERN_OPERAND_PREFIX.length));
   else {
     const [nm, attr] = op.split(".");
     const d = (defs || []).find((x) => x.name === nm);
@@ -153,10 +194,12 @@ export function mapToken(tok) {
   if (/cci/.test(t)) return { operand: "CCI", def: { type: "CCI", len: "20", name: "CCI" } };
   if (/vwap/.test(t)) return { operand: "VWAP", def: { type: "VWAP", len: "", name: "VWAP" } };
   if (/volume/.test(t)) return { operand: "Volume", def: { type: "Volume", len: "", name: "Volume" } };
+  if (/resistance/.test(t)) return { operand: "Resistance", def: null };
+  if (/support/.test(t)) return { operand: "Support", def: null };
   if (/price|ltp|spot/.test(t)) return { operand: "Price", def: null };
   return null;
 }
-export const TOKEN_RE = /macd\s*hist\w*|macd\s*signal\w*|signal\s*line|macd\s*line|macd|\d+\s*[- ]?\s*ema|ema\s*\(?\s*\d*\s*\)?|\d+\s*[- ]?\s*sma|sma\s*\(?\s*\d*\s*\)?|upper\s*band|lower\s*band|middle\s*band|bollinger\s*\w*|\brsi\b|\badx\b|\bcci\b|\bvwap\b|\bvolume\b|\bprice\b|\bclose\b|\bopen\b|\bhigh\b|\blow\b|\bltp\b/gi;
+export const TOKEN_RE = /macd\s*hist\w*|macd\s*signal\w*|signal\s*line|macd\s*line|macd|\d+\s*[- ]?\s*ema|ema\s*\(?\s*\d*\s*\)?|\d+\s*[- ]?\s*sma|sma\s*\(?\s*\d*\s*\)?|upper\s*band|lower\s*band|middle\s*band|bollinger\s*\w*|\brsi\b|\badx\b|\bcci\b|\bvwap\b|\bvolume\b|\bresistance\b|\bsupport\b|\bprice\b|\bclose\b|\bopen\b|\bhigh\b|\blow\b|\bltp\b/gi;
 export function detectOp(clause) {
   const c = clause.toLowerCase();
   if (/cross(es|ing)?\s*(above|over)/.test(c)) return { op: "crosses_above" };
@@ -181,6 +224,97 @@ export function parseClause(clause) {
   else { const nums = clause.match(/-?\d+(\.\d+)?/g); b = nums ? nums[nums.length - 1] : "0"; bType = "num"; }
   return { cond: { la: left.operand, op: opi.op, b, bType }, defs: [left.def, rdef].filter(Boolean) };
 }
+/* ── THE INTERPRETER (Neo) ──────────────────────────────────────────────────────────────
+   One place that turns a plain-English line into executable conditions. Handles, in order:
+     1. Named chart patterns ("cup and handle", "double bottom", …) -> a pattern condition
+        the engine checks with the real detector. Stripped BEFORE the and/or split so the
+        "and" inside "cup AND handle" doesn't get treated as a logical connective.
+     2. support / resistance, VWAP, candle O/H/L/C, indicators, numbers -> operand conditions.
+   Used by the strategy builder (Automate) AND the screener, so both read the same language. */
+/* Compound trading phrases that don't fit the "operand op operand" grammar — mapped whole to
+   the conditions (and indicators) a trader means by them. Extends what Neo understands beyond
+   raw indicator names to the vocabulary people actually use. */
+const PHRASE_RULES = [
+  { re: /golden\s*cross/i, cond: { la: "EMA50", op: "crosses_above", b: "EMA200", bType: "ind" }, defs: [{ type: "EMA", len: "50", name: "EMA50" }, { type: "EMA", len: "200", name: "EMA200" }] },
+  { re: /death\s*cross/i, cond: { la: "EMA50", op: "crosses_below", b: "EMA200", bType: "ind" }, defs: [{ type: "EMA", len: "50", name: "EMA50" }, { type: "EMA", len: "200", name: "EMA200" }] },
+  { re: /oversold/i, cond: { la: "RSI", op: "<", b: "30", bType: "num" }, defs: [{ type: "RSI", len: "14", name: "RSI" }] },
+  { re: /overbought/i, cond: { la: "RSI", op: ">", b: "70", bType: "num" }, defs: [{ type: "RSI", len: "14", name: "RSI" }] },
+  { re: /macd\s*(turns?|crosses?|goes?)?\s*(bullish|positive)/i, cond: { la: "MACD.line", op: "crosses_above", b: "MACD.signal", bType: "ind" }, defs: [{ type: "MACD", len: "", name: "MACD" }] },
+  { re: /macd\s*(turns?|crosses?|goes?)?\s*(bearish|negative)/i, cond: { la: "MACD.line", op: "crosses_below", b: "MACD.signal", bType: "ind" }, defs: [{ type: "MACD", len: "", name: "MACD" }] },
+  { re: /golden\s*pocket|bounces?\s*off\s*support|holds?\s*support/i, cond: { la: "Price", op: ">", b: "Support", bType: "ind" }, defs: [] },
+  { re: /rejected?\s*(at|from)\s*resistance|fails?\s*at\s*resistance/i, cond: { la: "Price", op: "<", b: "Resistance", bType: "ind" }, defs: [] },
+];
+
+export function interpretText(text) {
+  const conds = [], defs = [], unparsed = [];
+  if (!text || !text.trim()) return { conds, defs, unparsed };
+  let work = String(text);
+  const pushDefs = (ds) => (ds || []).forEach((d) => { if (d && !defs.find((x) => x.name === d.name)) defs.push(d); });
+
+  // 0. Compound phrases (golden cross, oversold, MACD turns bullish, bounce off support…).
+  for (const pr of PHRASE_RULES) {
+    if (pr.re.test(work)) {
+      const c = { ...pr.cond, gate: conds.length ? "AND" : undefined };
+      if (!conds.find((x) => x.la === c.la && x.b === c.b && x.op === c.op)) { conds.push(c); pushDefs(pr.defs); }
+      work = work.replace(pr.re, " ");
+    }
+  }
+
+  // 1. Chart-pattern phrases anywhere in the line.
+  const phrases = Object.keys(PATTERN_KEYS).sort((a, b) => b.length - a.length);
+  for (const ph of phrases) {
+    const re = new RegExp(ph.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "ig");
+    if (re.test(work)) {
+      const key = PATTERN_KEYS[ph];
+      const la = PATTERN_OPERAND_PREFIX + key;
+      if (!conds.find((cd) => cd.la === la)) {
+        conds.push({ la, op: ">", b: "0", bType: "num", gate: conds.length ? "AND" : undefined });
+      }
+      work = work.replace(re, " ");   // remove so the and/or splitter ignores it
+    }
+  }
+
+  // 2. The remaining text: operand op operand/number, chained with AND / OR.
+  const cleaned = work.replace(/^\s*(buy|sell|enter|exit|go long|short|when|if)\b[:,]?\s*/i, "").trim();
+  if (cleaned) {
+    const parts = cleaned.split(/\s+(and|or)\s+/i);
+    for (let i = 0; i < parts.length; i += 2) {
+      const clause = parts[i];
+      if (!clause || !clause.trim()) continue;
+      const gate = (i > 0 && parts[i - 1] && parts[i - 1].toLowerCase() === "or") ? "OR" : (conds.length || i > 0) ? "AND" : undefined;
+      const p = parseClause(clause);
+      if (p) { if (gate) p.cond.gate = gate; conds.push(p.cond); p.defs.forEach((d) => { if (d && !defs.find((x) => x.name === d.name)) defs.push(d); }); }
+      else unparsed.push(clause.trim());
+    }
+  }
+  // Drop clauses that are only filler left over after a phrase/pattern was consumed ("when price",
+  // "on", "then") — they aren't real unparsed conditions and shouldn't raise a warning.
+  const FILLER = /^(?:when|then|if|on|at|in|a|an|the|is|are|was|be|it|its|and|or|buy|sell|enter|exit|go|long|short|price|of|to|from|for|with|that|this|now)$/i;
+  const cleanUnparsed = unparsed.filter((u) => u.split(/\s+/).some((w) => w && !FILLER.test(w)));
+  return { conds, defs, unparsed: cleanUnparsed };
+}
+
+/* Human phrase for a single operand, so a condition preview reads like English. */
+export function operandLabel(op) {
+  if (typeof op === "string" && op.startsWith(PATTERN_OPERAND_PREFIX)) {
+    const key = op.slice(PATTERN_OPERAND_PREFIX.length);
+    const ph = Object.keys(PATTERN_KEYS).find((k) => PATTERN_KEYS[k] === key);
+    return ph ? ph.replace(/\b\w/g, (m) => m.toUpperCase()) : key;
+  }
+  if (op === "Support") return "support"; if (op === "Resistance") return "resistance";
+  if (op === "Price") return "price"; if (op === "Volume") return "volume";
+  return op;
+}
+/* Render a condition as a sentence — pattern conditions read as "a Cup & Handle forms". */
+export function humanizeCond(c) {
+  if (typeof c.la === "string" && c.la.startsWith(PATTERN_OPERAND_PREFIX)) {
+    return `a ${operandLabel(c.la)} forms`;
+  }
+  const opw = { ">": "is above", "<": "is below", ">=": "is at/above", "<=": "is at/below", "==": "equals", crosses_above: "crosses above", crosses_below: "crosses below" }[c.op] || c.op;
+  const right = c.bType === "num" ? c.b : operandLabel(c.b);
+  return `${operandLabel(c.la)} ${opw} ${right}`;
+}
+
 export function condCode(c) { return `${c.la} ${c.op} ${c.b}`; }
 export function chainCode(conds) { return conds.map((c, i) => `${i ? " " + (c.gate || "AND") + " " : ""}${condCode(c)}`).join(""); }
 

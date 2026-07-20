@@ -33,8 +33,15 @@ export const BROKERS = [
     realtime: true,
     oi: true,
     depth: true,
-    adminOnly: true,   // FYERS is the server-side house price feed (admin's app) — not a per-user connect
-    note: "FYERS API v3. Powers the built-in Indian price feed for all users (configured on the server).",
+    /* BRING-YOUR-OWN-APP + OAuth. The user pastes their OWN FYERS API app id/secret, then logs
+       in on FYERS — so live prices and trades run on THEIR account, not a shared one. */
+    byoaOAuth: true,
+    fields: [
+      { key: "appId", label: "App ID", type: "text", hint: "Your FYERS app's App ID (e.g. ABCD1234-100), from myapi.fyers.in → create app" },
+      { key: "secret", label: "Secret ID", type: "password", hint: "The app's Secret ID, shown when you create the app" },
+      { key: "pin", label: "Trading PIN (optional)", type: "password", hint: "Optional. Lets Matrix auto-refresh your daily token so you stay connected ~15 days instead of logging in every morning." },
+    ],
+    note: "Connect your OWN FYERS account. Create an API app at myapi.fyers.in, whitelist the IP shown below, set its redirect URL, then log in with FYERS. Live NSE quotes; trades go to your account.",
     docs: "https://myapi.fyers.in/docsv3",
   },
   {

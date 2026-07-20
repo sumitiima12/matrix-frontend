@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Check, Link2, Search, X, AlertTriangle, ExternalLink } from "lucide-react";
 import { BROKERS } from "../../domain/brokers";
-import { brokerStatus, brokerLoginUrl } from "../../services/brokerService";
+import { brokerStatus, brokerLoginUrl, saveBrokerAppCreds } from "../../services/brokerService";
 
 /**
  * BrokerSheet — connect a real broker.
@@ -35,7 +35,19 @@ const TONE = {
  * crypto. No single broker covers all three, so a one-at-a-time model could never give you
  * a fully live portfolio. Connecting a second broker no longer evicts the first.
  */
-export default function BrokerSheet({ userId, connectedIds = [], marketMap = {}, onDisconnect, onClose, onConnect, marketFilter = null, isAdmin = false }) {
+/* Map a broker's market tags to the 4 gate markets the admin controls (F&O rides on Indian). */
+function gateMarketsFor(b) {
+  const out = new Set();
+  (b.markets || []).forEach((m) => {
+    if (m === "IN" || m === "FNO") out.add("IN");
+    else if (m === "US") out.add("US");
+    else if (m === "Crypto") out.add("Crypto");
+    else if (m === "Commodity") out.add("Commodity");
+  });
+  return [...out];
+}
+
+export default function BrokerSheet({ userId, connectedIds = [], marketMap = {}, onDisconnect, onClose, onConnect, marketFilter = null, isAdmin = false, canConnectMarket = () => true }) {
   const connectedId = connectedIds[0] || null;   // back-compat for the copy below
   const [q, setQ] = useState("");
   const [server, setServer] = useState(null);
@@ -44,10 +56,14 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
   const [err, setErr] = useState(null);
   const [credFor, setCredFor] = useState(null);   // broker id whose credential form is open
   const [creds, setCreds] = useState({});
+  // The static egress IP the user whitelists in their own broker app (from the server).
+  const [staticIp, setStaticIp] = useState(null);
+  // The redirect URL they must register in their broker app — the exact URL we send them back to.
+  const redirectUrl = typeof window !== "undefined" ? window.location.origin + window.location.pathname : "";
 
   useEffect(() => {
     brokerStatus(userId)
-      .then((d) => { setServer(d); setStatusErr(null); })
+      .then((d) => { setServer(d); setStatusErr(null); if (d && d.staticIp) setStaticIp(d.staticIp); })
       .catch((e) => { setServer(null); setStatusErr(String(e.message || e)); });
   }, []);
 
@@ -78,10 +94,28 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
     }
   };
 
+  /* BRING-YOUR-OWN-APP + OAuth (FYERS): save the user's own app id/secret on the server,
+     THEN send them to the broker's login page. Two steps behind one button. */
+  const submitByoa = async (b) => {
+    const appId = String(creds.appId || "").trim();
+    const secret = String(creds.secret || "").trim();
+    if (!appId || !secret) { setErr("Enter your App ID and Secret ID."); return; }
+    setErr(null);
+    setBusy(b.id);
+    try {
+      await saveBrokerAppCreds(b.id, appId, secret, String(creds.pin || "").trim());
+      const url = await brokerLoginUrl(b.id, redirectUrl, userId);
+      window.location.href = url;      // the broker's own login — we never see the password
+    } catch (e) {
+      setErr(String(e.message || e));
+      setBusy(null);
+    }
+  };
+
   const start = async (b) => {
     setErr(null);
-    // Bring-your-own-credential brokers open an inline form instead of redirecting.
-    if (b.userCreds) { setCredFor((cur) => (cur === b.id ? null : b.id)); setCreds({}); return; }
+    // Bring-your-own-app OR bring-your-own-credential brokers open an inline form first.
+    if (b.userCreds || b.byoaOAuth) { setCredFor((cur) => (cur === b.id ? null : b.id)); setCreds({}); return; }
     setBusy(b.id);
     try {
       /* Delta has no login page. It authenticates with API keys held on the SERVER and
@@ -186,7 +220,14 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
         {shown.map((b) => {
           const isConnected = connectedIds.includes(b.id);
           const configured = Boolean(server && server.brokers && server.brokers[b.id] && server.brokers[b.id].configured);
-          const canConnect = b.status === "ready" && configured;
+          // Bring-your-own-app / bring-your-own-credential brokers don't need SERVER keys — the
+          // user supplies them inline — so they're connectable regardless of `configured`.
+          const selfServe = b.byoaOAuth || b.userCreds;
+          // Admin gate: connectable only if the admin allows broker-connect for a market this
+          // broker serves (admins pass through — canConnectMarket returns true for them).
+          const gm = marketFilter ? [marketFilter] : gateMarketsFor(b);
+          const marketAllowed = gm.some((m) => canConnectMarket(m));
+          const canConnect = b.status === "ready" && (configured || selfServe) && marketAllowed;
           const tone = TONE[b.status] || TONE.none;
 
           const stateLabel = isConnected ? "Connected"
@@ -232,9 +273,26 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
 
               <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>{b.note}</div>
 
-              {/* Credential entry for bring-your-own-token brokers (Dhan, IND Money, Angel One, Groww). */}
+              {/* Credential entry for bring-your-own-token brokers (Dhan, IND Money, Angel One, Groww)
+                  and bring-your-own-app + OAuth brokers (FYERS). */}
               {credFor === b.id && !isConnected && (
                 <div style={{ marginTop: 12, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+                  {/* BYOA setup: what to configure in the user's own broker app before connecting. */}
+                  {b.byoaOAuth && (
+                    <div style={{ marginBottom: 12, padding: 11, borderRadius: 11, background: "var(--elev)" }}>
+                      <div style={{ fontSize: 10.5, fontWeight: 800, color: "var(--ink)", marginBottom: 7 }}>
+                        In your FYERS app (myapi.fyers.in), set these:
+                      </div>
+                      <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, marginBottom: 3 }}>REDIRECT URL</div>
+                      <div style={{ fontSize: 11, fontFamily: "monospace", wordBreak: "break-all", color: "var(--ink)", background: "var(--surface)", borderRadius: 8, padding: "6px 8px", marginBottom: 8 }}>
+                        {redirectUrl}
+                      </div>
+                      <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, marginBottom: 3 }}>WHITELIST THIS IP</div>
+                      <div style={{ fontSize: 11.5, fontFamily: "monospace", color: "var(--ink)", background: "var(--surface)", borderRadius: 8, padding: "6px 8px" }}>
+                        {staticIp || "— (set BROKER_STATIC_IP on the server)"}
+                      </div>
+                    </div>
+                  )}
                   {(b.fields || []).map((f) => (
                     <div key={f.key} style={{ marginBottom: 10 }}>
                       <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>{f.label.toUpperCase()}</div>
@@ -250,16 +308,22 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
                       {f.hint && <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 3, lineHeight: 1.4 }}>{f.hint}</div>}
                     </div>
                   ))}
-                  <button onClick={() => submitCreds(b)} disabled={busy === b.id} className="tap disp"
+                  <button onClick={() => (b.byoaOAuth ? submitByoa(b) : submitCreds(b))} disabled={busy === b.id} className="tap disp"
                     style={{ width: "100%", marginTop: 4, border: "none", background: "var(--ink)", color: "var(--surface)", borderRadius: 10, padding: 11, fontWeight: 800, fontSize: 12.5, cursor: "pointer", opacity: busy === b.id ? 0.5 : 1 }}>
-                    {busy === b.id ? "Connecting…" : `Connect ${b.name}`}
+                    {busy === b.id ? (b.byoaOAuth ? "Saving…" : "Connecting…") : (b.byoaOAuth ? `Save & log in to ${b.name}` : `Connect ${b.name}`)}
                   </button>
                 </div>
               )}
 
-              {b.status === "ready" && server && !configured && (
+              {b.status === "ready" && server && !configured && !selfServe && marketAllowed && (
                 <div style={{ fontSize: 10.5, color: "var(--amber)", marginTop: 6, fontWeight: 600, lineHeight: 1.45 }}>
                   Add this broker's API key and secret to the server's environment variables, then redeploy.
+                </div>
+              )}
+
+              {!isConnected && !marketAllowed && (
+                <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 6, fontWeight: 600, lineHeight: 1.45 }}>
+                  Connecting a broker for this market is currently turned off by the admin.
                 </div>
               )}
 

@@ -146,10 +146,34 @@ export async function brokerStatus(userId) {
   return get(`/api/broker/status${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`);
 }
 
-/** Step 1: the broker's own login page. We never see the user's password. */
-export async function brokerLoginUrl(broker, redirect) {
-  const d = await get(`/api/broker/login-url?broker=${broker}&redirect=${encodeURIComponent(redirect || "")}`);
+/** Step 1: the broker's own login page. We never see the user's password.
+    userId is passed so the server resolves THIS user's bring-your-own app (BYOA) credentials. */
+export async function brokerLoginUrl(broker, redirect, userId) {
+  const d = await get(
+    `/api/broker/login-url?broker=${broker}&redirect=${encodeURIComponent(redirect || "")}${userId ? `&userId=${encodeURIComponent(userId)}` : ""}`,
+    { ...tokenHdr(), ...(userId ? { "X-User-Id": String(userId) } : {}) }
+  );
   return d.url;
+}
+
+/** BRING-YOUR-OWN-APP: save the user's own API app credentials (app id + secret + optional
+    PIN for daily auto-refresh) on the server, encrypted. Returns { ok, staticIp } so the UI
+    can show which IP to whitelist. Must be authed — the secret is bound to the verified user. */
+export async function saveBrokerAppCreds(broker, appId, secret, pin) {
+  if (!BACKEND_URL) throw new Error("no-backend");
+  const r = await fetch(`${BACKEND_URL}/api/broker/app-creds`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...tokenHdr() },
+    body: JSON.stringify({ broker, appId, secret, pin: pin || undefined }),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+  return d;
+}
+
+/** Setup info the user needs to register their own broker app: the static IP to whitelist. */
+export async function brokerConnectInfo() {
+  try { return await get("/api/broker/connect-info"); } catch { return {}; }
 }
 
 /** Step 2: the SERVER exchanges the request token and keeps the access token.

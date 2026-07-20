@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useMemo, useRef, useEffect, Suspense } from "react";
-import { fetchIndicators, fetchTrades, marketOpen, postTrade, resolveExitFromCandles, fetchLiveQuotes } from "./domain/api";
+import { fetchIndicators, fetchTrades, marketOpen, postTrade, resolveExitFromCandles, fetchLiveQuotes, apiGetAppSettings, apiSaveAppSettings, apiDeleteAccount } from "./domain/api";
 import {
   Search, User, Wallet, Home, Repeat, Lightbulb, Bot, Bolt, Briefcase,
   Star, TrendingUp, TrendingDown, X, ChevronRight, Send, Plus, Trash2,
@@ -735,6 +735,21 @@ function AppInner() {
   const effAdmin = isAdminUser && adminMode;               // gates every admin-only affordance
   const [adminOpen, setAdminOpen] = useState(false);
   const [adminKey, setAdminKey] = useState("");
+  /* GLOBAL admin-controlled gates: may members use Real mode / connect brokers per market.
+     Default locked (No/No) until an admin turns them on. Loaded once; refreshed after a save. */
+  const [appSettings, setAppSettings] = useState(null);
+  useEffect(() => { let alive = true; apiGetAppSettings().then((s) => { if (alive) setAppSettings(s); }); return () => { alive = false; }; }, []);
+  const saveAppSettings = useCallback(async (next) => {
+    setAppSettings(next);                                   // optimistic
+    try { const r = await apiSaveAppSettings(next, adminKey); if (r && r.settings) setAppSettings(r.settings); }
+    catch { /* keep optimistic value; a reload re-syncs */ }
+  }, [adminKey]);
+  // What THIS user may do, given the gates (admins are never restricted).
+  const canRealMode = effAdmin || Boolean(appSettings && appSettings.allowRealMode);
+  const canConnectMarket = useCallback((mkt) => effAdmin || Boolean(appSettings && appSettings.allowBrokerConnect && appSettings.allowBrokerConnect[mkt]), [effAdmin, appSettings]);
+  /* If a member is (or was) in Real mode but the admin has turned Real off, snap them back to
+     Virtual — a stored "real" preference must not override a live admin lock. */
+  useEffect(() => { if (appSettings && !canRealMode && mode === "real") setMode("virtual"); }, [appSettings, canRealMode, mode, setMode]);
   /* Open the admin console: prompt for the key, verify with the backend (which checks the
      key AND that this userId is an admin), and only then mount the panel. The key lives in
      memory for the session only. */
@@ -947,19 +962,22 @@ function AppInner() {
               </span>
             )}
 
-            {/* VIRTUAL / REAL. Red when armed — this one spends real money. */}
-            <Toggle
-              on={mode === "real"}
-              offLabel="VIRTUAL"
-              onLabel="REAL"
-              onColor="var(--down)"
-              label="Virtual or Real trading"
-              onChange={(next) => {
-                if (!next) { setMode("virtual"); return; }        // leaving Real is always free
-                if (!brokerLive) { setBrokerOpen(true); return; } // no broker, no Real
-                setConfirmReal(true);                              // entering Real needs a yes
-              }}
-            />
+            {/* VIRTUAL / REAL. Red when armed — this one spends real money. Hidden entirely for
+                members when the admin hasn't allowed Real mode: no toggle, no way to switch. */}
+            {canRealMode && (
+              <Toggle
+                on={mode === "real"}
+                offLabel="VIRTUAL"
+                onLabel="REAL"
+                onColor="var(--down)"
+                label="Virtual or Real trading"
+                onChange={(next) => {
+                  if (!next) { setMode("virtual"); return; }        // leaving Real is always free
+                  if (!brokerLive) { setBrokerOpen(true); return; } // no broker, no Real
+                  setConfirmReal(true);                              // entering Real needs a yes
+                }}
+              />
+            )}
 
             <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 9 }}>
               {(brokerTick || liveAt) && (
@@ -1151,6 +1169,7 @@ function AppInner() {
             marketMap={brokerMarketMap}
             marketFilter={brokerMktFilter}
             isAdmin={effAdmin}
+            canConnectMarket={canConnectMarket}
             onDisconnect={(bid) => { disconnectBroker(bid); setBuyToast({ t: "Broker disconnected — that market falls back to delayed prices" }); }}
             onClose={() => { setBrokerOpen(false); setBrokerMktFilter(null); }}
             onConnect={async (id, token, extra, mkt) => {
@@ -1196,7 +1215,7 @@ function AppInner() {
           <SearchOverlay onClose={() => setSearch(false)} onOpen={openStock} />
         </ErrorBoundary>
       )}
-      {showProfile && <ProfileSheet onAdmin={effAdmin ? openAdmin : undefined} isAdminUser={isAdminUser} adminMode={adminMode} onToggleAdminMode={() => setAdminMode((v) => !v)} onBroker={openBrokers} brokerName={liveBroker ? liveBroker.name : null} profile={profile} walletMap={walletMap} portfolio={portfolio} trades={trades} deposits={deposits} market={market} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={() => { doLogout(); setGuest(false); setProfile(null); setOnboardSkipped(false); setAuthed(false); setLoginOpen(false); }} onPersonalise={() => setRepersonalise(true)} onUsernameChanged={(u) => onAuthed({ ...auth, username: u })} onEmailChanged={(em) => onAuthed({ ...auth, email: em })} marketBrokers={brokerMarketMap} houseFeeds={houseFeeds} onDisconnectBroker={(bid) => { disconnectBroker(bid); setBuyToast({ t: "Broker disconnected" }); }} />}
+      {showProfile && <ProfileSheet onAdmin={effAdmin ? openAdmin : undefined} isAdminUser={isAdminUser} adminMode={adminMode} onToggleAdminMode={() => setAdminMode((v) => !v)} onBroker={openBrokers} brokerName={liveBroker ? liveBroker.name : null} profile={profile} walletMap={walletMap} portfolio={portfolio} trades={trades} deposits={deposits} market={market} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={() => { doLogout(); setGuest(false); setProfile(null); setOnboardSkipped(false); setAuthed(false); setLoginOpen(false); }} onPersonalise={() => setRepersonalise(true)} onUsernameChanged={(u) => onAuthed({ ...auth, username: u })} onEmailChanged={(em) => onAuthed({ ...auth, email: em })} marketBrokers={brokerMarketMap} houseFeeds={houseFeeds} onDisconnectBroker={(bid) => { disconnectBroker(bid); setBuyToast({ t: "Broker disconnected" }); }} appSettings={appSettings} onSaveAppSettings={saveAppSettings} onDeleteAccount={async () => { try { await apiDeleteAccount(); } catch { /* proceed to sign out regardless */ } setShowProfile(false); doLogout(); setGuest(false); setProfile(null); setOnboardSkipped(false); setAuthed(false); setBuyToast({ t: "Your account and all data have been deleted." }); }} />}
       {adminOpen && <AdminPanel userId={userId} adminKey={adminKey} onClose={() => setAdminOpen(false) /* keep key in memory so admin actions (idea approval) work this session */} />}
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} onAuthed={onAuthed} />}
       {histOpen && (
