@@ -67,7 +67,6 @@ export function LoginScreen({ onAuthed, onGuest }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const [pending, setPending] = useState(false);   // signup done, awaiting admin approval
-  const [agreed, setAgreed] = useState(true);       // consent to Terms + Privacy, pre-selected
   const [legalPage, setLegalPage] = useState(null); // "terms" | "privacy" overlay
   const validId = /^[A-Za-z][A-Za-z0-9_]{2,19}$/.test(userId);
   const emailOk = email === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -78,7 +77,6 @@ export function LoginScreen({ onAuthed, onGuest }) {
   // Step 1 — number + PIN. Decide login vs sign-up from the server's answer.
   const submitAuth = async () => {
     if (mobile.length < 6 || pin.length < 4) { setErr("Enter your mobile number and a 4+ digit PIN."); return; }
-    if (!agreed) { setErr("Please accept the Terms of Use and Privacy Policy to continue."); return; }
     setErr(null); setBusy(true);
     const res = await apiLogin(mobile, pin);
     setBusy(false);
@@ -136,14 +134,11 @@ export function LoginScreen({ onAuthed, onGuest }) {
             {err && <div style={{ color: "#FFB3BE", fontSize: 12.5, fontWeight: 600, marginTop: 12 }}>{err}</div>}
 
             <button onClick={submitAuth} disabled={busy} className="tap disp" style={{ width: "100%", marginTop: 22, background: "#fff", color: "#141416", border: "none", borderRadius: 999, padding: 16, fontWeight: 800, fontSize: 15, letterSpacing: ".02em", opacity: busy ? 0.6 : 1 }}>{busy ? "PLEASE WAIT…" : "LOGIN / SIGN UP"}</button>
-            <label style={{ display: "flex", alignItems: "flex-start", gap: 9, marginTop: 16, cursor: "pointer" }}>
-              <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} style={{ width: 17, height: 17, marginTop: 1, accentColor: "#fff", flex: "0 0 auto", cursor: "pointer" }} />
-              <span style={{ color: "rgba(255,255,255,.72)", fontSize: 12, lineHeight: 1.55 }}>
-                I agree to MatrixOne's{" "}
-                <span onClick={(e) => { e.preventDefault(); setLegalPage("terms"); }} style={{ color: "#fff", fontWeight: 700, textDecoration: "underline" }}>Terms of Use</span>{" "}and{" "}
-                <span onClick={(e) => { e.preventDefault(); setLegalPage("privacy"); }} style={{ color: "#fff", fontWeight: 700, textDecoration: "underline" }}>Privacy Policy</span>.
-              </span>
-            </label>
+            <div style={{ color: "rgba(255,255,255,.62)", fontSize: 11.5, lineHeight: 1.55, marginTop: 16, textAlign: "center" }}>
+              By continuing, you confirm that you are above 18 years of age, and you agree to MatrixOne's{" "}
+              <span onClick={() => setLegalPage("terms")} className="tap" style={{ color: "#fff", fontWeight: 700, textDecoration: "underline", cursor: "pointer" }}>Terms of Use</span>{" "}and{" "}
+              <span onClick={() => setLegalPage("privacy")} className="tap" style={{ color: "#fff", fontWeight: 700, textDecoration: "underline", cursor: "pointer" }}>Privacy Policy</span>.
+            </div>
             {/* Guest access removed — every account must be approved by an admin before it can be used. */}
           </>
         ) : (
@@ -606,16 +601,28 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
         </div>
         <EquityCurve market={curveMkt} portfolio={portfolio} trades={trades} deposits={deposits} wallet={walletMap[curveMkt] ?? 0} />
 
-        {/* wallets — every market */}
-        <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, margin: "18px 2px 8px" }}>VIRTUAL WALLETS</div>
-        <div className="card" style={{ padding: "4px 14px", background: "var(--bg)" }}>
-          {WMKTS.map(([k, l], i) => (
-            <div key={k} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 0", borderBottom: i < WMKTS.length - 1 ? "1px solid var(--line)" : "none" }}>
-              <span style={{ fontSize: 13, fontWeight: 600 }}>{l}</span>
-              <span className="mono" style={{ fontWeight: 800, fontSize: 14 }}>{fmt(walletMap[k] ?? 0, k)}</span>
-            </div>
-          ))}
-        </div>
+        {/* wallets — only markets where virtual trading is available to this user.
+            Indian (IN / F&O / Commodity) and Global (US / Crypto) are each admin-gated; a
+            non-admin never sees a paper-wallet balance for a market they cannot paper-trade. */}
+        {(() => {
+          const av = (appSettings && appSettings.allowVirtual) || { IN: false, Global: false };
+          const effAdmin = isAdminUser && adminMode;
+          const rows = WMKTS.filter(([k]) => effAdmin || av[(k === "IN" || k === "FNO") ? "IN" : "Global"]);
+          if (rows.length === 0) return null;
+          return (
+            <>
+              <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, margin: "18px 2px 8px" }}>VIRTUAL WALLETS</div>
+              <div className="card" style={{ padding: "4px 14px", background: "var(--bg)" }}>
+                {rows.map(([k, l], i) => (
+                  <div key={k} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 0", borderBottom: i < rows.length - 1 ? "1px solid var(--line)" : "none" }}>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>{l}</span>
+                    <span className="mono" style={{ fontWeight: 800, fontSize: 14 }}>{fmt(walletMap[k] ?? 0, k)}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          );
+        })()}
 
         <button onClick={() => { onClose && onClose(); onTradeHistory && onTradeHistory(); }} className="tap disp" style={{ width: "100%", marginTop: 14, background: "var(--primary)", color: "var(--on-primary)", border: "none", borderRadius: 14, padding: 13, fontWeight: 800, fontSize: 13.5, display: "flex", gap: 7, alignItems: "center", justifyContent: "center" }}><Clock size={16} /> Trade history</button>
 
