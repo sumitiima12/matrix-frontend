@@ -47,6 +47,11 @@ function mockFor(pathname, url) {
   if (pathname.endsWith("/api/trades")) return { trades: [] };
   if (pathname.endsWith("/api/autoexit") || pathname.endsWith("/api/autobuy")) return { positions: [], strategies: [], engineLive: false };
   if (pathname.endsWith("/api/state")) return { state: null };
+  // Predefined, already-approved test account — login/register always succeed with a token so
+  // the suite lands on the dashboard past the (real) admin-approval gate.
+  if (pathname.endsWith("/api/login") || pathname.endsWith("/api/register")) {
+    return { ok: true, userId: "9990000000", name: "E2E Tester", username: "e2e", email: null, token: "e2e.test.token", createdAt: Date.now() };
+  }
   // Any write (order, session, etc.) — acknowledge without doing anything real.
   return { ok: true };
 }
@@ -56,14 +61,22 @@ function mockFor(pathname, url) {
 // "Skip", "Maybe later", etc. if present, a couple of times.
 export async function enterApp(page) {
   await page.goto("/");
-  const dismissals = [/Continue as guest/i, /^Skip$/i, /Maybe later/i, /Not now/i, /Later/i];
+  // Log in with the predefined test account (the stubbed /api/login always returns a token).
+  const pinField = page.getByPlaceholder(/PIN/i).first();
+  if (await pinField.count().catch(() => 0)) {
+    try {
+      await page.locator("input").first().fill("9990000000");   // mobile
+      await pinField.fill("1234");
+      await page.getByText(/LOGIN \/ SIGN UP/i).first().click();
+      await page.waitForTimeout(700);
+    } catch { /* fall through to dismissals */ }
+  }
+  // Dismiss any onboarding / prompt sheets that follow login.
   for (let pass = 0; pass < 3; pass++) {
     let acted = false;
-    for (const re of dismissals) {
+    for (const re of [/^Skip$/i, /Maybe later/i, /Not now/i, /Later/i, /Got it/i]) {
       const el = page.getByText(re).first();
-      if (await el.count().catch(() => 0)) {
-        try { await el.click({ timeout: 2500 }); acted = true; await page.waitForTimeout(250); } catch {}
-      }
+      if (await el.count().catch(() => 0)) { try { await el.click({ timeout: 1500 }); acted = true; await page.waitForTimeout(250); } catch {} }
     }
     if (!acted) break;
   }

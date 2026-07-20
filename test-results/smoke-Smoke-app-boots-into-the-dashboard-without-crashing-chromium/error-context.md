@@ -35,36 +35,32 @@ Call log:
 - button "Skip"
 - button "Continue"
 - text: Matrix One
-- button "Virtual wallet":
-  - img
-  - text: 10.00 L
 - button "Activity":
   - img
 - img
-- text: Account LIVE (15m DELAY) 12:24 PM
+- text: Account LIVE (15m DELAY) 07:07 PM
 - switch "Dark mode"
 - img
 - img
 - text: Search any stock, crypto or commodity…
-- button "🇮🇳 Indian"
 - button "🇺🇸 US"
 - button "₿ Crypto"
 - button "🪙 Commodity"
 - text: NIFTY 50 — SENSEX — BANK NIFTY — S&P 500 — NASDAQ — DOW — BTC ▲2.10% ETH — GOLD — CRUDE —
 - button "Total"
 - button "Smart Auto-Buy"
-- text: Virtual · 🇮🇳 Indian · current value My Portfolio
+- text: Virtual · 🇺🇸 US · current value My Portfolio
 - img
-- text: ₹0 Returns % +0.0% Net returns +₹0 0 open 0 auto-buy No holdings yet — buy your first stock in Virtual Trade.
+- text: $0 Returns % +0.0% Net returns +$0 0 open 0 auto-buy No holdings yet — buy your first stock in Virtual Trade.
 - img
 - text: Top Picks Waiting on real indicators — picks are ranked on RSI and the 50-DMA, so they appear once the data lands.
 - img
 - text: Market updates
 - paragraph: Live market data is still loading.
 - img
-- text: Ideas No ideas for this market right now — check back later or switch markets. INDIA VIX +% NIFTY 50 ▲ +% 🔥 Hot Stocks TCS -0.4%
+- text: Ideas No ideas for this market right now — check back later or switch markets. VIX +% S&P 500 ▲ +% 🔥 Hot Stocks AAPL +0.5%
 - img
-- text: Earnings · results
+- text: Earnings calendar
 - button "Upcoming (1)"
 - button "Recent (1)"
 - text: AAPL Est. EPS 1.50 Jul 23
@@ -114,13 +110,9 @@ Call log:
 - text: Top gainers & losers
 - button "Gainers"
 - button "Losers"
-- text: RELIANCE Reliance Industries ₹2,900
+- text: AAPL Apple $230
 - img
-- text: +1.20% INFY Infosys ₹1,600
-- img
-- text: +0.80% TCS Tata Consultancy Services ₹3,800
-- img
-- text: "-0.40%"
+- text: +0.50%
 - img
 - text: In the news RELIANCE.NS Reliance posts record quarter Test · 0m ago
 - button "Read more":

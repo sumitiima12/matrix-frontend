@@ -166,7 +166,7 @@ export function LoginScreen({ onAuthed, onGuest }) {
         )}
       </div>
 
-      <div style={{ textAlign: "center", color: "rgba(255,255,255,.55)", fontSize: 10.5, padding: "0 30px 26px", position: "relative" }}>Educational research, not investment advice.</div>
+      <div style={{ textAlign: "center", color: "rgba(255,255,255,.55)", fontSize: 10.5, lineHeight: 1.5, padding: "0 30px 26px", position: "relative" }}>MatrixOne is a personal project for research and educational purposes only. It is not for commercial use and does not offer investment advice.</div>
     </div>
   );
 }
