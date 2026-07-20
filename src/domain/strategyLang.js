@@ -1,4 +1,4 @@
-import { SMAarr, EMAarr, RSIarr, MACDarr, BBarr, CCIarr, ATRarr, VWAParr, ADXarr, STarr, DMIarr, STOCHarr, CF } from "../lib/series";
+import { SMAarr, EMAarr, RSIarr, MACDarr, BBarr, CCIarr, ATRarr, VWAParr, ADXarr, STarr, DMIarr, STOCHarr, CF, ROLLavg, ROLLmedian } from "../lib/series";
 import { pivots, detectPatterns, PATTERN_KEYS } from "./patterns";
 
 /* Support / resistance as evaluable series: at each bar, the price of the most recent CONFIRMED
@@ -69,15 +69,15 @@ export function resolveOperand(op, defs, c, closes, vols, cache) {
         case "CCI": series = CCIarr(c, len); break;
         case "ATR": series = ATRarr(c, len); break;
         case "VWAP": series = VWAParr(c); break;
-        case "MACD": { const m = MACDarr(closes); series = m[attr || "line"]; break; }
-        case "BB": { const b = BBarr(closes, len); series = b[attr || "middle"]; break; }
+        case "MACD": { const m = MACDarr(closes, d.fast, d.slow, d.signal); series = m[attr || "line"]; break; }
+        case "BB": { const b = BBarr(closes, len, d.mult); series = b[attr || "middle"]; break; }
         case "KC": { const mid = EMAarr(closes, len), at = ATRarr(c, len); series = attr === "upper" ? mid.map((v, i) => v + 1.5 * at[i]) : attr === "lower" ? mid.map((v, i) => v - 1.5 * at[i]) : mid; break; }
         case "ADX": series = ADXarr(c, len); break;
         case "DMI": { const dm = DMIarr(c, len); series = attr === "minus" ? dm.minus : attr === "adx" ? dm.adx : dm.plus; break; }
         case "Stoch": { const st = STOCHarr(c, len, Number(d.smoothK) || 3, Number(d.smoothD) || 3); series = attr === "d" ? st.d : st.k; break; }
         case "Supertrend": { const st = STarr(c, len, Number(d.mult) || 3); series = attr === "dir" ? st.dir : st.line; break; }
         case "DMA": series = SMAarr(closes, len); break;
-        case "Volume": series = vols; break;
+        case "Volume": { const mode = d.mode || "raw"; series = mode === "avg" ? ROLLavg(vols, len) : mode === "median" ? ROLLmedian(vols, len) : vols; break; }
         case "CurrentCandle": case "CurrentDay": { const f = CF[attr] || "c"; series = c.map((x) => x[f]); break; }
         case "PrevCandle": case "PrevDay": { const f = CF[attr] || "c"; series = c.map((x, i) => i > 0 ? c[i - 1][f] : NaN); break; }
         case "LastNCandles": { const f = CF[attr] || "c"; series = attr === "high" ? rollExt(c, len, "h", true) : attr === "low" ? rollExt(c, len, "l", false) : c.map((x, i) => (i - len + 1 >= 0 ? c[i - len + 1][f] : x[f])); break; }

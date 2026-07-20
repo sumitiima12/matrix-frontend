@@ -239,25 +239,65 @@ function TemplateCard({ t, onActivate, onToggleBt, btActive, onLoad, selected = 
   );
 }
 
+// Extra editable parameters per indicator type (beyond length + timeframe). e.g. MACD's
+// fast/slow/signal (default 12/26/9), Bollinger's std-dev multiplier, Stochastic's smoothing.
+const IND_PARAMS = {
+  MACD: [["fast", "Fast", "12"], ["slow", "Slow", "26"], ["signal", "Signal", "9"]],
+  BB: [["mult", "Std Dev", "2"]],
+  KC: [["mult", "Multiplier", "1.5"]],
+  Stoch: [["smoothK", "Smooth %K", "3"], ["smoothD", "Smooth %D", "3"]],
+  Supertrend: [["mult", "Multiplier", "3"]],
+};
 function IndicatorDefs({ defs, setDefs }) {
+  const [openId, setOpenId] = useState(null);   // which indicator's settings panel is expanded
   const upd = (id, k, v) => setDefs((p) => p.map((d) => d.id === id ? { ...d, [k]: v } : d));
   const add = () => setDefs((p) => [...p, { id: Date.now(), type: "EMA", len: "20", tf: "1D", name: "IND" + (p.length + 1) }]);
   return (
     <div>
+      <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 10, lineHeight: 1.5, background: "var(--elev)", border: "1px solid var(--line)", borderRadius: 10, padding: "8px 10px" }}>
+        You don't need to add <b>Price</b> and <b>Volume</b> as indicators — they're already available to use in Step 2. (Add a Volume indicator here only if you want its <b>average</b> or <b>median</b>.)
+      </div>
       {defs.map((d) => {
         const cat = IND_CATALOG.find((c) => c.type === d.type) || {};
+        const params = IND_PARAMS[d.type] || [];
+        const hasSettings = params.length > 0 || d.type === "Volume";
+        const open = openId === d.id;
         return (
-          <div key={d.id} style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "nowrap", marginBottom: 8 }}>
-            <select aria-label="Select option" value={d.type} onChange={(e) => upd(d.id, "type", e.target.value)} style={{ ...selStyle, flex: "1 1 0", minWidth: 0, padding: "9px 4px" }}>{IND_CATALOG.map((c) => <option key={c.type} value={c.type}>{c.label}</option>)}</select>
-            <input value={cat.needsLen ? d.len : "—"} onChange={(e) => upd(d.id, "len", e.target.value)} disabled={!cat.needsLen} placeholder="len" className="no-ring mono" style={{ ...selStyle, flex: "0 0 40px", minWidth: 0, textAlign: "center", padding: "9px 2px", opacity: cat.needsLen ? 1 : 0.4 }} />
-            <select aria-label="Select option" value={d.tf} onChange={(e) => upd(d.id, "tf", e.target.value)} style={{ ...selStyle, flex: "0 0 56px", minWidth: 0, padding: "9px 2px" }}>{TFS.map((t) => <option key={t}>{t}</option>)}</select>
-            <input value={d.name} onChange={(e) => upd(d.id, "name", e.target.value)} placeholder="name" className="no-ring disp" style={{ ...selStyle, flex: "1 1 0", minWidth: 0, fontWeight: 700, padding: "9px 6px" }} />
-            <button onClick={() => setDefs((p) => p.filter((x) => x.id !== d.id))} className="tap" style={{ border: "none", background: "transparent", flex: "0 0 auto", padding: 2 }}><Trash2 size={15} color="var(--down)" /></button>
+          <div key={d.id} style={{ marginBottom: 8 }}>
+            <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "nowrap" }}>
+              <select aria-label="Indicator" value={d.type} onChange={(e) => upd(d.id, "type", e.target.value)} style={{ ...selStyle, flex: "1 1 0", minWidth: 0, padding: "9px 4px" }}>{IND_CATALOG.map((c) => <option key={c.type} value={c.type}>{c.label}</option>)}</select>
+              <input value={cat.needsLen ? d.len : "—"} onChange={(e) => upd(d.id, "len", e.target.value.replace(/[^0-9]/g, ""))} disabled={!cat.needsLen} placeholder="len" className="no-ring mono" style={{ ...selStyle, flex: "0 0 40px", minWidth: 0, textAlign: "center", padding: "9px 2px", opacity: cat.needsLen ? 1 : 0.4 }} />
+              <select aria-label="Timeframe" value={d.tf} onChange={(e) => upd(d.id, "tf", e.target.value)} style={{ ...selStyle, flex: "0 0 56px", minWidth: 0, padding: "9px 2px" }}>{TFS.map((t) => <option key={t}>{t}</option>)}</select>
+              <input value={d.name} onChange={(e) => upd(d.id, "name", e.target.value)} placeholder="name" className="no-ring disp" style={{ ...selStyle, flex: "1 1 0", minWidth: 0, fontWeight: 700, padding: "9px 6px" }} />
+              <button onClick={() => setOpenId(open ? null : d.id)} title="Indicator settings" className="tap" style={{ border: "1px solid " + (open ? "var(--primary)" : "var(--line)"), background: open ? "var(--primary-soft)" : "transparent", color: open ? "var(--primary)" : hasSettings ? "var(--ink)" : "var(--muted)", borderRadius: 8, flex: "0 0 auto", width: 30, height: 30, display: "grid", placeItems: "center" }}><SlidersHorizontal size={13} /></button>
+              <button onClick={() => setDefs((p) => p.filter((x) => x.id !== d.id))} className="tap" style={{ border: "none", background: "transparent", flex: "0 0 auto", padding: 2 }}><Trash2 size={15} color="var(--down)" /></button>
+            </div>
+            {open && (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6, padding: "10px 11px", background: "var(--elev)", border: "1px solid var(--line)", borderRadius: 10 }}>
+                {params.length === 0 && d.type !== "Volume" && <div style={{ fontSize: 10.5, color: "var(--muted)" }}>Uses the length and timeframe above. No extra settings.</div>}
+                {params.map(([k, label, def]) => (
+                  <label key={k} style={{ flex: "0 0 auto" }}>
+                    <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 800, marginBottom: 3 }}>{label.toUpperCase()}</div>
+                    <input value={d[k] != null && d[k] !== "" ? d[k] : def} onChange={(e) => upd(d.id, k, e.target.value.replace(/[^0-9.]/g, ""))} className="no-ring mono" style={{ ...selStyle, width: 66, textAlign: "center", padding: "8px 4px" }} />
+                  </label>
+                ))}
+                {d.type === "Volume" && (
+                  <label style={{ flex: "0 0 auto" }}>
+                    <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 800, marginBottom: 3 }}>MEASURE</div>
+                    <select value={d.mode || "avg"} onChange={(e) => upd(d.id, "mode", e.target.value)} style={{ ...selStyle, minWidth: 110, padding: "8px 6px" }}>
+                      <option value="avg">Average (over len)</option>
+                      <option value="median">Median (over len)</option>
+                      <option value="raw">Raw volume</option>
+                    </select>
+                  </label>
+                )}
+              </div>
+            )}
           </div>
         );
       })}
       <button onClick={add} className="tap" style={{ marginTop: 4, border: "1px dashed var(--line)", background: "transparent", borderRadius: 12, padding: "8px 12px", fontSize: 12, fontWeight: 700, color: "var(--primary)", display: "flex", gap: 5, alignItems: "center" }}><Plus size={14} /> Add indicator</button>
-      <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8 }}>Tip: name them (e.g. EMA1, MACD1). Only these appear in your signals below.</div>
+      <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8 }}>Tip: name them (e.g. EMA1, MACD1) and tap ⚙ to change length, timeframe or settings (MACD 12/26/9 → any). Only these appear in your signals below.</div>
     </div>
   );
 }
