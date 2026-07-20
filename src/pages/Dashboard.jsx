@@ -664,6 +664,8 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           sym: h.sym, qty: h.qty,
           buy: (h.avg != null ? h.avg : (h.value != null && h.qty ? h.value / h.qty : 0)),
           price: (h.value != null && h.qty ? h.value / h.qty : (h.price != null ? h.price : null)),
+          margin: h.margin != null ? h.margin : null,   // real capital deployed (leveraged venues)
+          pnl: h.pnl != null ? h.pnl : null,             // broker's real unrealised P&L
           date: h.entryAt || (Date.now() - 30 * 864e5),
         }))
     : (portfolio || []).filter((h) => inMarket(h.sym, h.market));
@@ -684,6 +686,20 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const net = unrealised;
   const retPct = dash.inv ? (net / dash.inv) * 100 : 0;
   const annPct = dash.inv ? (dash.annNum / dash.inv) * 100 : 0;
+
+  /* LEVERAGED real venues (Delta): the position notional (mark × size) shown above is 20–25× the
+     capital actually at stake, so "value $195k / invested $193k" is misleading on a ~$200 account.
+     When the broker reports real margin + equity, show THOSE instead: value = margin + unrealised
+     P&L (your real equity in the trade), invested = margin, P&L = the broker's own unrealised P&L. */
+  const isLeveraged = !!(realPortfolio && realPortfolio.leveraged);
+  const realMargin = holds.reduce((a, h) => a + (h.margin || 0), 0);
+  const realPnl = holds.reduce((a, h) => a + (h.pnl || 0), 0);
+  const dashVal = (isReal && isLeveraged && realMargin > 0) ? realMargin + realPnl : dash.val;
+  const dashInv = (isReal && isLeveraged && realMargin > 0) ? realMargin : dash.inv;
+  const dashNet = (isReal && isLeveraged && realMargin > 0) ? realPnl : net;
+  const dashRet = dashInv ? (dashNet / dashInv) * 100 : retPct;
+  const realCash = (realPortfolio && realPortfolio.cash != null) ? realPortfolio.cash : null;
+  const realEquity = (realPortfolio && realPortfolio.equity != null) ? realPortfolio.equity : null;
 
   // Auto-Buy Matrix's picks — for the market selected at the top; each market keeps its own on/off.
   // The on/off map is LIFTED to the app (persisted server-side) when provided, so it survives reloads.
@@ -827,14 +843,17 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           {dashView === "total" ? (
             <div onClick={onGoPortfolio} className="tap">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 12, opacity: .85 }}>{isReal ? "Real" : "Virtual"} · {MKT_LABEL[market]} · current value</span>
+                <span style={{ fontSize: 12, opacity: .85 }}>{isReal ? "Real" : "Virtual"} · {MKT_LABEL[market]} · {isReal && isLeveraged ? "margin deployed" : "current value"}</span>
                 <span className="pill" style={{ fontSize: 11, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "4px 10px", display: "flex", alignItems: "center", gap: 4 }}>My Portfolio <ChevronRight size={13} /></span>
               </div>
-              <div className="mono" style={{ fontWeight: 800, fontSize: 27, marginTop: 2 }}>{isReal ? money1(dash.val) : fmt(dash.val, market)}</div>
+              <div className="mono" style={{ fontWeight: 800, fontSize: 27, marginTop: 2 }}>{isReal ? money1(dashVal) : fmt(dashVal, market)}</div>
               <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
-                <DashStat k="Returns %" v={(retPct >= 0 ? "+" : "") + retPct.toFixed(1) + "%"} pos={retPct >= 0} />
-                <DashStat k="Net returns" v={(net >= 0 ? "+" : "") + (isReal ? money1(net) : fmt(net, market))} pos={net >= 0} />
+                <DashStat k="Returns %" v={(dashRet >= 0 ? "+" : "") + dashRet.toFixed(1) + "%"} pos={dashRet >= 0} />
+                <DashStat k="Net returns" v={(dashNet >= 0 ? "+" : "") + (isReal ? money1(dashNet) : fmt(dashNet, market))} pos={dashNet >= 0} />
+                {isReal && isLeveraged && realEquity != null && <DashStat k="Account equity" v={money1(realEquity)} pos={realEquity >= 0} />}
+                {isReal && realCash != null && <DashStat k="Available cash" v={money1(realCash)} pos />}
               </div>
+              {isReal && isLeveraged && <div style={{ fontSize: 10.5, opacity: .75, marginTop: 8 }}>Real capital at risk (margin), not the leveraged position size.</div>}
               {/* At-a-glance counts — holdings, auto-buy positions, and any rejects for THIS market. */}
               <div style={{ display: "flex", gap: 14, marginTop: 12, fontSize: 12, opacity: .9, flexWrap: "wrap" }}>
                 <span><b style={{ fontWeight: 800 }}>{holds.length}</b> <span style={{ opacity: .7 }}>open</span></span>

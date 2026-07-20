@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { defOperands, chainCode, IND_CATALOG, TEMPLATES } from "../domain/strategyLang";
+import { defOperands, chainCode, IND_CATALOG, TEMPLATES, detectTf } from "../domain/strategyLang";
 import { backtest, parseRules } from "../domain/backtest";
 import { stratPerf } from "../domain/strategies";
 import { Activity, Bell, Bolt, Check, ChevronDown, ChevronUp, Copy, Globe, ListChecks, Pause, Pencil, Play, Plus, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
@@ -324,31 +324,30 @@ function CondBuilder2({ label, conds, setConds, operands }) {
               ))}
             </div>
           )}
-          <div className="hide-scroll" style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "nowrap", overflowX: "auto", background: "var(--bg)", borderRadius: 12, padding: 8 }}>
-            <select aria-label="Select option" value={c.la} onChange={(e) => upd(i, "la", e.target.value)} style={{ ...selStyle, flex: "0 0 116px" }}>{operands.map((o) => <option key={o}>{o}</option>)}</select>
-            <select aria-label="Select option" value={c.op} onChange={(e) => upd(i, "op", e.target.value)} style={{ ...selStyle, flex: "0 0 104px" }}>{OPSET.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+          {/* One line, NO horizontal scroll — the operand/operator/value selects shrink to share
+              the width (min-width:0 lets them ellipsize) while the type toggle and the delete
+              button stay pinned and always visible, so you never scroll to reach delete. */}
+          <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "nowrap", background: "var(--bg)", borderRadius: 12, padding: 6 }}>
+            <select aria-label="Left operand" value={c.la} onChange={(e) => upd(i, "la", e.target.value)} style={{ ...selStyle, flex: "1 1 0", minWidth: 0, padding: "8px 4px" }}>{operands.map((o) => <option key={o}>{o}</option>)}</select>
+            <select aria-label="Operator" value={c.op} onChange={(e) => upd(i, "op", e.target.value)} style={{ ...selStyle, flex: "1 1 0", minWidth: 0, padding: "8px 4px" }}>{OPSET.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
             <div className="pill" style={{ display: "flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 2, flex: "0 0 auto" }}>
               {[["ind", "Ind"], ["num", "#"]].map(([k, l]) => (
-                <button key={k} onClick={() => upd(i, "bType", k)} className="pill tap" style={{ fontSize: 10.5, fontWeight: 800, padding: "4px 9px", border: "none", background: c.bType === k ? "var(--primary)" : "transparent", color: c.bType === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
+                <button key={k} onClick={() => upd(i, "bType", k)} className="pill tap" style={{ fontSize: 10, fontWeight: 800, padding: "4px 7px", border: "none", background: c.bType === k ? "var(--primary)" : "transparent", color: c.bType === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
               ))}
             </div>
             {c.bType === "ind"
-              ? <select aria-label="Select option" value={c.b} onChange={(e) => upd(i, "b", e.target.value)} style={{ ...selStyle, flex: "0 0 116px" }}>{operands.map((o) => <option key={o}>{o}</option>)}</select>
-              : <input value={c.b} onChange={(e) => upd(i, "b", e.target.value)} className="no-ring mono" style={{ ...selStyle, flex: "0 0 72px", textAlign: "center" }} />}
+              ? <select aria-label="Right operand" value={c.b} onChange={(e) => upd(i, "b", e.target.value)} style={{ ...selStyle, flex: "1 1 0", minWidth: 0, padding: "8px 4px" }}>{operands.map((o) => <option key={o}>{o}</option>)}</select>
+              : <input value={c.b} onChange={(e) => upd(i, "b", e.target.value)} className="no-ring mono" style={{ ...selStyle, flex: "1 1 44px", minWidth: 0, textAlign: "center", padding: "8px 4px" }} />}
             {/* The "within N bars" operators need their N. Shown only when relevant. */}
             {(c.op === "crossed_above_within" || c.op === "crossed_below_within") && (
-              <div className="pill" style={{ display: "flex", alignItems: "center", gap: 4, background: "var(--elev)", border: "1px solid var(--line)", padding: "3px 7px" }}>
-                <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>within</span>
-                <input
-                  value={c.n == null ? 3 : c.n}
-                  onChange={(e) => upd(i, "n", e.target.value.replace(/[^0-9]/g, "") || "1")}
-                  className="no-ring mono"
-                  style={{ width: 26, textAlign: "center", border: "none", background: "transparent", color: "var(--ink)", fontWeight: 800, fontSize: 11.5 }}
-                />
-                <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>bars</span>
-              </div>
+              <input aria-label="within N bars" title="within N bars"
+                value={c.n == null ? 3 : c.n}
+                onChange={(e) => upd(i, "n", e.target.value.replace(/[^0-9]/g, "") || "1")}
+                className="no-ring mono"
+                style={{ flex: "0 0 30px", width: 30, textAlign: "center", border: "1px solid var(--line)", borderRadius: 8, background: "var(--elev)", color: "var(--ink)", fontWeight: 800, fontSize: 11.5, padding: "8px 2px" }}
+              />
             )}
-            <button onClick={() => del(i)} disabled={conds.length === 1} className="tap" style={{ border: "none", background: "transparent", opacity: conds.length === 1 ? 0.3 : 1 }}><Trash2 size={15} color="var(--down)" /></button>
+            <button onClick={() => del(i)} disabled={conds.length === 1} className="tap" style={{ flex: "0 0 auto", border: "none", background: "transparent", padding: 2, opacity: conds.length === 1 ? 0.3 : 1 }}><Trash2 size={15} color="var(--down)" /></button>
           </div>
         </div>
       ))}
@@ -618,6 +617,10 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
     setBusy(false); refresh();
   };
   const ccy = market === "Crypto" || market === "US" ? "$" : "₹";
+  /* Newest ENTRY SIGNAL first — a strategy that just filled/fired sits at the top. Fall back
+     through the timestamps the server may carry so ordering is stable even for older rows. */
+  const sigAt = (s) => s.filledAt || s.lastFillAt || s.lastEntryAt || s.lastSignalAt || s.entryAt || s.updatedAt || s.createdAt || 0;
+  const liveSorted = [...live].sort((a, b) => sigAt(b) - sigAt(a));
   return (
     <div className="card" style={{ padding: 14, marginBottom: 12, border: "1px solid var(--down)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
@@ -628,7 +631,16 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
           : <span className="pill" style={{ marginLeft: "auto", fontSize: 9, fontWeight: 800, padding: "3px 8px", background: data.engineLive ? "var(--down-soft)" : "var(--elev)", color: data.engineLive ? "var(--down)" : "var(--muted)" }}>{data.engineLive ? "TRADING LIVE" : "DRY-RUN"}</span>}
       </div>
       {!data.engineLive && <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 8, lineHeight: 1.5 }}>{isAdmin ? "Dry-run — logs entries but places no real orders. Tap the badge above to go live." : "Engine is in dry-run — logs entries but places no real orders yet."}</div>}
-      <CollapsibleList items={live} render={(s) => (
+      <CollapsibleList items={liveSorted} initial={5} reverse={false} render={(s) => {
+        /* A position is only REALLY open when the broker actually FILLED the order. An order can
+           be accepted then rejected (e.g. insufficient balance) — in that case there is no position
+           and so no P&L. We show live P&L (and % return) ONLY when truly filled; otherwise P&L is 0
+           and the row shows the real order status instead of a phantom number. */
+        const filled = s.lastOrderStatus === "filled" && s.inPosition;
+        const pnl = filled ? (s.livePnl || 0) : 0;
+        const retPct = filled && s.notional ? (pnl / s.notional) * 100 : null;
+        const placed = ["pending", "open", "accepted", "working"].includes(s.lastOrderStatus);
+        return (
         <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: "1px solid var(--line)" }}>
           <div style={{ minWidth: 0 }}>
             <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{s.name || s.symbol} {s.status === "paused" && <span style={{ color: "var(--muted)", fontWeight: 700 }}>· paused</span>}</div>
@@ -636,38 +648,47 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
             <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>{ccy}{s.notional} / trade · {s.tp ? `TP ${s.tp}% ` : ""}{s.sl ? `SL ${s.sl}%` : ""}</div>
             {/* Order status of the last attempt — a rejected order shows WHY (e.g. insufficient
                 balance), so it's never mistaken for a silent no-op. */}
-            {s.lastOrderStatus === "rejected" && s.lastError && (
-              <div style={{ fontSize: 10, color: "var(--down)", fontWeight: 700, marginTop: 3, lineHeight: 1.4 }}>⚠ Last order rejected — {s.lastError}</div>
+            {s.lastOrderStatus === "rejected" && (
+              <div style={{ fontSize: 10, color: "var(--down)", fontWeight: 700, marginTop: 3, lineHeight: 1.4 }}>⚠ Order rejected{s.lastError ? ` — ${s.lastError}` : " — not filled"}</div>
             )}
-            {s.lastOrderStatus === "partial" && s.lastError && (
-              <div style={{ fontSize: 10, color: "#B87514", fontWeight: 700, marginTop: 3 }}>◑ {s.lastError}</div>
+            {s.lastOrderStatus === "partial" && (
+              <div style={{ fontSize: 10, color: "#B87514", fontWeight: 700, marginTop: 3 }}>◑ Partially filled{s.lastError ? ` — ${s.lastError}` : ""}</div>
             )}
-            {s.lastOrderStatus === "filled" && s.inPosition && (
+            {filled && (
               <div style={{ fontSize: 9.5, color: "var(--up)", fontWeight: 700, marginTop: 3 }}>● Filled — position open</div>
+            )}
+            {!filled && placed && (
+              <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700, marginTop: 3 }}>◔ Order placed — awaiting fill</div>
             )}
           </div>
           <div style={{ marginLeft: "auto", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-            {s.inPosition
-              ? <div className="mono" style={{ fontSize: 12, fontWeight: 800, color: (s.livePnl || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{(s.livePnl || 0) >= 0 ? "+" : ""}{ccy}{Math.abs(s.livePnl || 0).toFixed(2)}</div>
+            {filled
+              ? <div style={{ textAlign: "right" }}>
+                  <div className="mono" style={{ fontSize: 12, fontWeight: 800, color: pnl >= 0 ? "var(--up)" : "var(--down)" }}>{pnl >= 0 ? "+" : ""}{ccy}{Math.abs(pnl).toFixed(2)}</div>
+                  {retPct != null && <div className="mono" style={{ fontSize: 9.5, fontWeight: 700, color: pnl >= 0 ? "var(--up)" : "var(--down)" }}>{retPct >= 0 ? "+" : ""}{retPct.toFixed(2)}%</div>}
+                </div>
               : s.lastOrderStatus === "rejected"
-                ? <div style={{ fontSize: 9.5, color: "var(--down)", fontWeight: 800 }}>rejected</div>
-                : <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }} title="Buys automatically when your entry rule fires on live candles.">waiting for entry</div>}
+                ? <div style={{ textAlign: "right" }}><div style={{ fontSize: 9.5, color: "var(--down)", fontWeight: 800 }}>rejected</div><div className="mono" style={{ fontSize: 10.5, fontWeight: 800, color: "var(--muted)" }}>{ccy}0.00</div></div>
+                : placed
+                  ? <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>awaiting fill</div>
+                  : <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }} title="Buys automatically when your entry rule fires on live candles.">waiting for entry</div>}
             <div style={{ display: "flex", gap: 6 }}>
               <button onClick={() => doPause(s)} className="tap" style={{ border: "1px solid " + (s.status === "active" ? "var(--line)" : "var(--up)"), background: s.status === "active" ? "transparent" : "var(--up-soft)", color: s.status === "active" ? "var(--muted)" : "var(--up)", borderRadius: 8, padding: "3px 9px", fontSize: 10, fontWeight: 800 }}>{s.status === "active" ? "❚❚ Pause" : "▶ Start"}</button>
               <button onClick={() => doCancel(s)} className="tap" style={{ border: "1px solid var(--down)", background: "transparent", color: "var(--down)", borderRadius: 8, padding: "3px 8px", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 2 }}><X size={10} /> Stop</button>
             </div>
           </div>
         </div>
-      )} />
+        );
+      }} />
     </div>
   );
 }
 
 /* Renders a list of deployed strategies newest-first, collapsed to the latest few with a
    "Show all" toggle so a long deployment history doesn't fill the whole screen. */
-function CollapsibleList({ items, render, initial = 3 }) {
+function CollapsibleList({ items, render, initial = 3, reverse = true }) {
   const [open, setOpen] = useState(false);
-  const ordered = [...items].reverse();
+  const ordered = reverse ? [...items].reverse() : [...items];
   const shown = open ? ordered : ordered.slice(0, initial);
   return (
     <>
@@ -809,6 +830,13 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   // Plain-English → executable rules
   const eParsed = useMemo(() => parseRules(pEntry), [pEntry]);
   const xParsed = useMemo(() => parseRules(pExit), [pExit]);
+  /* If the prose names a timeframe ("3 mins", "1 hour", "daily"), adopt it as the strategy tf so
+     "MACD 3,10,16 (3 mins)" actually runs on 3m instead of the 5m default. */
+  useEffect(() => {
+    const d = detectTf(pEntry) || detectTf(pExit);
+    if (d && d !== tf) setTf(d);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pEntry, pExit]);
   /* AI interpretation — the intelligent path. When the fast local parser can't fully read a
      prompt, Neo (LLM) converts it to structured rules, which we load into the visual builder. */
   const [aiBusy, setAiBusy] = useState(false);
@@ -839,14 +867,21 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     : { mode: "builder", tf, defs: plainDefs.map((d) => ({ ...d, tf })), entry: eParsed.conds, exit: xParsed.conds, sl, tp };
   const condStr = (c) => `${c.la} ${c.op} ${c.b}`;
   const chain = (conds) => conds.map((c, i) => `${i ? " " + (c.gate || "AND") + " " : ""}${condStr(c)}`).join("");
-  const defLines = defs.map((d) => {
+  /* Render an indicator's ACTUAL settings so the code preview shows what Neo understood:
+     MACD(3,10,16, tf=3m), BB(length=20, mult=2, …), RSI(length=21, …). Without this the params a
+     user typed in brackets were captured but invisible, so it looked like they'd been ignored. */
+  const indSig = (d, itf) => {
     const cat = IND_CATALOG.find((c) => c.type === d.type);
     const args = [];
-    if (cat?.needsLen && d.len) args.push(`length=${d.len}`);
-    args.push(`tf=${d.tf}`);
+    if (d.type === "MACD") { if (d.fast || d.slow || d.signal) args.push(`${d.fast || 12},${d.slow || 26},${d.signal || 9}`); }
+    else if ((cat ? cat.needsLen : d.len) && d.len) args.push(`length=${d.len}`);
+    if (d.type === "BB" && d.mult) args.push(`mult=${d.mult}`);
+    if (d.type === "Stoch") { if (d.smoothK) args.push(`smoothK=${d.smoothK}`); if (d.smoothD) args.push(`smoothD=${d.smoothD}`); }
+    if (itf) args.push(`tf=${itf}`);
     return `${d.name} = ${d.type}(${args.join(", ")})`;
-  }).join("\n");
-  const plainDefLines = plainDefs.map((d) => `${d.name} = ${d.type}(${d.len ? "length=" + d.len + ", " : ""}tf=${tf})`).join("\n");
+  };
+  const defLines = defs.map((d) => indSig(d, d.tf)).join("\n");
+  const plainDefLines = plainDefs.map((d) => indSig(d, tf)).join("\n");
   const unparsed = [...eParsed.unparsed, ...xParsed.unparsed];
   const code = mode === "builder"
     ? `# Indicators\n${defLines}\n\n# Entry\nif ${chain(entryConds)}:\n    enter_trade(stop_loss=${sl}%, take_profit=${tp}%)\n\n# Exit\nif ${chain(exitConds)}:\n    exit_trade()`
@@ -962,6 +997,18 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     // and carry the per-trade size chosen on the card.
     ? { ...s, active: !s.active, ...(relSym && !s.active ? { symbols: [relSym] } : {}), ...(size != null && !s.active ? { qty: size, cap: size } : {}) }
     : s));
+  /* MARKET-AWARE activation for shared PREMIUM strategies. `active` is a single flag, and a
+     premium strategy carries a symbol from just one market. Activating it on the Indian tab used
+     to leave it pointing at its crypto seed symbol, so it showed "Activated" in Premium but landed
+     under Crypto's Active list, never IN/US. This deploys it ON THE CURRENT MARKET: activating
+     (re)assigns this market's symbol so it always surfaces under this market's Deployed → Active.
+     A second tap while it's active HERE deactivates it. */
+  const activeInMarket = (s) => s.active && (!(s.symbols && s.symbols[0]) || marketOf(s.symbols[0]) === market);
+  const togglePremiumHere = (id, relSym, size) => setStrats((p) => p.map((s) => {
+    if (s.id !== id) return s;
+    if (activeInMarket(s)) return { ...s, active: false };
+    return { ...s, active: true, ...(relSym ? { symbols: [relSym] } : {}), ...(size != null ? { qty: size, cap: size } : {}) };
+  }));
   const toggleAlerts = (s) => { const willOn = !s.alerts; setStrats((p) => p.map((x) => x.id === s.id ? { ...x, alerts: willOn } : x)); if (willOn) fireAlert(s); };
   const updateStrat = (id, patch) => setStrats((p) => p.map((s) => s.id === id ? { ...s, ...patch } : s));
   const [editStrat, setEditStrat] = useState(null);
@@ -1130,13 +1177,14 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         <button onClick={() => toggleActive(s.id)} className="tap disp" style={{ flex: "1 1 100px", borderRadius: 11, background: s.active ? "var(--surface)" : "linear-gradient(120deg,var(--up),#0EA968)", color: s.active ? "var(--ink)" : "#fff", boxShadow: s.active ? "none" : "0 6px 16px rgba(16,185,129,.3)", padding: "7px 10px", display: "flex", gap: 5, alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800, border: s.active ? "1px solid var(--line)" : "none" }}>
           {s.active ? <><Pause size={13} /> Deactivate</> : <><Play size={13} /> Activate</>}
         </button>
-        {/* Real-money auto-buy: only offered for the user's OWN strategies. Once armed it shows a
-            non-clickable "Real Live" badge so it can't be armed twice. */}
-        {isArmedReal(s)
+        {/* Real-money auto-buy: REAL mode only, and only for the user's OWN strategies. Once armed
+            it shows a non-clickable "Real Live" badge so it can't be armed twice. In Virtual mode
+            this is hidden entirely — paper strategies never place real orders. */}
+        {appMode === "real" && (isArmedReal(s)
           ? <span className="pill" title="This strategy is live on your broker" style={{ border: "1px solid var(--down)", borderRadius: 11, background: "var(--down-soft)", color: "var(--down)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 800, cursor: "default" }}><Bolt size={13} /> ● Real Live</span>
-          : <button onClick={() => { const opening = liveStrat !== s.id; setLiveStrat(opening ? s.id : null); setLiveMsg(null); if (opening) setLiveAmt(String(s.qty != null ? s.qty : (market === "Crypto" ? 200 : 1))); }} className="tap disp" title="Trade this strategy with real money" style={{ border: "1px solid var(--down)", borderRadius: 11, background: liveStrat === s.id ? "var(--down-soft)" : "var(--surface)", color: "var(--down)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 800 }}><Bolt size={13} /> Go Live</button>}
+          : <button onClick={() => { const opening = liveStrat !== s.id; setLiveStrat(opening ? s.id : null); setLiveMsg(null); if (opening) setLiveAmt(String(s.qty != null ? s.qty : (market === "Crypto" ? 200 : 1))); }} className="tap disp" title="Trade this strategy with real money" style={{ border: "1px solid var(--down)", borderRadius: 11, background: liveStrat === s.id ? "var(--down-soft)" : "var(--surface)", color: "var(--down)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 800 }}><Bolt size={13} /> Go Live</button>)}
       </div>
-      {liveStrat === s.id && !isArmedReal(s) && (
+      {appMode === "real" && liveStrat === s.id && !isArmedReal(s) && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
           <div style={{ fontSize: 11.5, color: "var(--down)", fontWeight: 800, marginBottom: 6 }}>⚠ Real-money auto-buy</div>
           <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.5, marginBottom: 10 }}>
@@ -1224,7 +1272,11 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       {/* Virtual Live Deployed — the paper-mode twin of "Live Real Deployed": every ACTIVE
           paper strategy for this market, with its simulated P&L. VIRTUAL mode only. */}
       {appMode !== "real" && (() => {
-        const vd = strats.filter((s) => s.active && inMkt(s)).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
+        /* Latest ENTRY first: a strategy that just opened a paper trade sits at the top. */
+        const lastEntry = (s) => (trades || []).reduce((mx, t) => ((t.strategyId === s.id || t.strategy === s.name) && (t.entryAt || 0) > mx ? t.entryAt : mx), 0);
+        const vd = strats.filter((s) => s.active && inMkt(s))
+          .map((s) => ({ s, p: stratPerf(s, trades, dashRange), e: lastEntry(s) }))
+          .sort((a, b) => b.e - a.e);
         if (!vd.length) return null;
         return (
           <div className="card" style={{ padding: 14, marginTop: 12, border: "1px solid var(--primary)" }}>
@@ -1233,7 +1285,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
               <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>Virtual Live Deployed</div>
               <span className="pill" style={{ marginLeft: "auto", fontSize: 9, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: "var(--muted)" }}>PAPER</span>
             </div>
-            {vd.map(({ s, p }) => (
+            <CollapsibleList items={vd} initial={5} reverse={false} render={({ s, p }) => (
               <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: "1px solid var(--line)" }}>
                 <div style={{ minWidth: 0 }}>
                   <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{s.name || (s.symbols && s.symbols[0]) || "Strategy"}</div>
@@ -1242,10 +1294,12 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                 </div>
                 <div style={{ marginLeft: "auto", textAlign: "right" }}>
                   <div className="mono" style={{ fontSize: 12.5, fontWeight: 800, color: chgColor(p.pnl) }}>{p.trades ? (p.pnl >= 0 ? "+" : "") + fmt(p.pnl, market) : "—"}</div>
-                  <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>{p.trades ? "paper P&L" : "waiting for signal"}</div>
+                  {p.trades && p.retPct != null
+                    ? <div className="mono" style={{ fontSize: 9.5, fontWeight: 700, color: chgColor(p.retPct) }}>{p.retPct >= 0 ? "+" : ""}{p.retPct.toFixed(2)}%</div>
+                    : <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>{p.trades ? "paper P&L" : "waiting for signal"}</div>}
                 </div>
               </div>
-            ))}
+            )} />
           </div>
         );
       })()}
@@ -1517,7 +1571,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           </div>
           {premiumStrats.length === 0
             ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No premium strategies available.</div>
-            : premiumStrats.map((s) => <PremiumStrategyCard key={s.id} s={s} active={s.active} market={market} onToggle={(rs) => toggleActive(s.id, rs)} onEdit={isAdmin ? loadForEdit : undefined} />)}
+            : premiumStrats.map((s) => <PremiumStrategyCard key={s.id} s={s} active={activeInMarket(s)} market={market} onToggle={(rs, size) => togglePremiumHere(s.id, rs, size)} onEdit={isAdmin ? loadForEdit : undefined} />)}
         </>
       ) : topTab === "public" ? (
         <>

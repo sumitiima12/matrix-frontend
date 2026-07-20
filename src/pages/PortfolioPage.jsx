@@ -291,9 +291,14 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
 
     const hold = (realPortfolio && realPortfolio.holdings) || [];
     const cash = realPortfolio ? realPortfolio.cash : null;
-    const invested = hold.reduce((a, h) => a + (h.avg != null && h.qty ? h.avg * h.qty : 0), 0);
-    const value = hold.reduce((a, h) => a + (h.value != null ? h.value : 0), 0);
     const pnl = hold.reduce((a, h) => a + (h.pnl != null ? h.pnl : 0), 0);
+    /* On a LEVERAGED venue (Delta) the position notional is 20–25× the real capital, so we show
+       the actual margin deployed instead: invested = margin, holdings value = margin + P&L. */
+    const leveraged = !!(realPortfolio && realPortfolio.leveraged);
+    const marginSum = hold.reduce((a, h) => a + (h.margin != null ? h.margin : 0), 0);
+    const invested = (leveraged && marginSum > 0) ? marginSum : hold.reduce((a, h) => a + (h.avg != null && h.qty ? h.avg * h.qty : 0), 0);
+    const value = (leveraged && marginSum > 0) ? marginSum + pnl : hold.reduce((a, h) => a + (h.value != null ? h.value : 0), 0);
+    const equity = (realPortfolio && realPortfolio.equity != null) ? realPortfolio.equity : null;
 
     /* Health from real holdings — only the components FYERS data can honestly support. */
     const realHealth = (() => {
@@ -327,15 +332,21 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
         </div>
 
         <div className="card" style={{ padding: 15 }}>
-          <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>Holdings value</div>
+          <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>{leveraged ? "Holdings value (real margin)" : "Holdings value"}</div>
           <div className="mono" style={{ fontSize: 26, fontWeight: 800, marginTop: 3 }}>
             {value ? ccy + value.toLocaleString(loc, { maximumFractionDigits: 2 }) : "—"}
           </div>
           <div style={{ display: "flex", gap: 18, marginTop: 12, flexWrap: "wrap" }}>
             <div>
-              <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>Invested</div>
+              <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>{leveraged ? "Margin deployed" : "Invested"}</div>
               <div className="mono" style={{ fontSize: 13, fontWeight: 800 }}>{invested ? ccy + invested.toLocaleString(loc, { maximumFractionDigits: 0 }) : "—"}</div>
             </div>
+            {leveraged && equity != null && (
+              <div>
+                <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>Account equity</div>
+                <div className="mono" style={{ fontSize: 13, fontWeight: 800 }}>{ccy + equity.toLocaleString(loc, { maximumFractionDigits: 0 })}</div>
+              </div>
+            )}
             <div>
               <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>P&L</div>
               <div className="mono" style={{ fontSize: 13, fontWeight: 800, color: pnl > 0 ? "var(--up)" : pnl < 0 ? "var(--down)" : "var(--ink)" }}>

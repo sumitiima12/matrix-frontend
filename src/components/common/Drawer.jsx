@@ -132,7 +132,7 @@ export default function Drawer({ s, onClose, onDetails, onBuy, canBuy }) {
           );
           return (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12, alignItems: "stretch" }}>
-              <Col title="Technicals" icon={<Activity size={13} />}>
+              <Col title={<>Technicals <span style={{ fontWeight: 600, color: "var(--muted)", fontSize: 9.5, letterSpacing: 0.2 }}>· Daily (1D)</span></>} icon={<Activity size={13} />}>
                 {tr ? (<>
                     {tr.rows.map((r) => <Bullet key={r.k} k={r.k} v={r.v} tone={r.tone} />)}
                     <Meter label={tr.grade} score={tr.score} />

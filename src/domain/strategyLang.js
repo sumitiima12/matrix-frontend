@@ -28,6 +28,80 @@ function patternSeries(c, key, within = 3) {
   for (const p of pats) for (let j = p.at; j <= Math.min(c.length - 1, p.at + within); j++) s[j] = 1;
   return s;
 }
+/* ── CANDLESTICK PATTERNS ────────────────────────────────────────────────────────────────
+   Single/two/three-candle formations a trader names directly — DOJI, hammer, engulfing, etc.
+   Separate from the multi-bar CHART patterns above (double bottom, cup & handle). Operand form
+   is "CDL:<key>" and, like chart patterns, it's 1 on the bar the formation completes.        */
+export const CANDLE_OPERAND_PREFIX = "CDL:";
+/* Phrase -> key. Longest phrase must be tried first ("inverted hammer" before "hammer"). */
+export const CANDLE_KEYS = {
+  "bullish engulfing": "bull-engulfing",
+  "bearish engulfing": "bear-engulfing",
+  "engulfing candle": "bull-engulfing",
+  "engulfing": "bull-engulfing",
+  "inverted hammer": "inverted-hammer",
+  "inverse hammer": "inverted-hammer",
+  "shooting star": "shooting-star",
+  "hanging man": "hanging-man",
+  "morning star": "morning-star",
+  "evening star": "evening-star",
+  "spinning top": "spinning-top",
+  "marubozu": "marubozu",
+  "hammer": "hammer",
+  "doji": "doji",
+};
+export const CANDLE_LABEL = {
+  "bull-engulfing": "Bullish Engulfing", "bear-engulfing": "Bearish Engulfing",
+  "inverted-hammer": "Inverted Hammer", "shooting-star": "Shooting Star",
+  "hanging-man": "Hanging Man", "morning-star": "Morning Star", "evening-star": "Evening Star",
+  "spinning-top": "Spinning Top", "marubozu": "Marubozu", "hammer": "Hammer", "doji": "Doji",
+};
+/* 1 on bars where the named candlestick completes, else 0. Geometry only — o/h/l/c per candle. */
+export function candleSeries(c, key) {
+  const s = new Array(c.length).fill(0);
+  const body = (x) => Math.abs(x.c - x.o);
+  const rng = (x) => (x.h - x.l) || 1e-9;
+  const upW = (x) => x.h - Math.max(x.o, x.c);
+  const loW = (x) => Math.min(x.o, x.c) - x.l;
+  const green = (x) => x.c > x.o, red = (x) => x.c < x.o;
+  for (let i = 0; i < c.length; i++) {
+    const x = c[i], p = i > 0 ? c[i - 1] : null, p2 = i > 1 ? c[i - 2] : null;
+    const b = body(x), r = rng(x); let hit = false;
+    switch (key) {
+      case "doji": hit = b <= 0.1 * r; break;
+      case "hammer": hit = b > 0 && b <= 0.4 * r && loW(x) >= 2 * b && upW(x) <= b; break;
+      case "hanging-man": hit = b > 0 && b <= 0.4 * r && loW(x) >= 2 * b && upW(x) <= b && !!p && green(p); break;
+      case "inverted-hammer": hit = b > 0 && b <= 0.4 * r && upW(x) >= 2 * b && loW(x) <= b; break;
+      case "shooting-star": hit = b > 0 && b <= 0.4 * r && upW(x) >= 2 * b && loW(x) <= b && !!p && green(p); break;
+      case "marubozu": hit = b >= 0.9 * r; break;
+      case "spinning-top": hit = b <= 0.35 * r && upW(x) >= b && loW(x) >= b; break;
+      case "bull-engulfing": hit = !!p && red(p) && green(x) && x.o <= p.c && x.c >= p.o && b > body(p); break;
+      case "bear-engulfing": hit = !!p && green(p) && red(x) && x.o >= p.c && x.c <= p.o && b > body(p); break;
+      case "morning-star": hit = !!p2 && !!p && red(p2) && body(p) <= 0.4 * rng(p) && green(x) && x.c >= (p2.o + p2.c) / 2; break;
+      case "evening-star": hit = !!p2 && !!p && green(p2) && body(p) <= 0.4 * rng(p) && red(x) && x.c <= (p2.o + p2.c) / 2; break;
+      default: hit = false;
+    }
+    if (hit) s[i] = 1;
+  }
+  return s;
+}
+/* Timeframe written in the prose — "3 mins" / "3m" / "5 minute" / "1 hour" / "daily" — mapped to
+   the app's tf tokens (3m, 1h, 1D…). Returns null when the text names no timeframe. */
+export function detectTf(text) {
+  const t = String(text || "").toLowerCase();
+  let m;
+  if ((m = t.match(/(\d+)\s*(?:m\b|min\b|mins\b|minute|minutes)/))) return m[1] + "m";
+  if ((m = t.match(/(\d+)\s*(?:h\b|hr\b|hrs\b|hour|hours)/))) return m[1] + "h";
+  if (/\b(?:daily|end\s*of\s*day|eod|day\s*chart)\b/.test(t)) return "1D";
+  if (/\b(?:weekly|week\s*chart)\b/.test(t)) return "1W";
+  if ((m = t.match(/(\d+)\s*(?:d\b|day|days)/))) return m[1] === "1" ? "1D" : m[1] + "D";
+  return null;
+}
+/* MACD(fast,slow,signal) and BB(length,mult) carry their bracket/number params onto the def so
+   "MACD(3,10,16)" or "RSI 21" actually change the calculation instead of using defaults. */
+function macdDef(nums) { const d = { type: "MACD", len: "", name: "MACD" }; if (nums && nums.length >= 3) { d.fast = nums[0]; d.slow = nums[1]; d.signal = nums[2]; } return d; }
+function bbDef(nums) { const d = { type: "BB", len: String((nums && nums[0]) || 20), name: "BB" }; if (nums && nums[1]) d.mult = nums[1]; return d; }
+
 /* Map a plain-English pattern phrase to its canonical key, or null. Longest phrase wins so
    "inverse head and shoulders" beats "head and shoulders". */
 export function patternKeyFromText(text) {
@@ -56,6 +130,7 @@ export function resolveOperand(op, defs, c, closes, vols, cache) {
   else if (op === "Support") series = srSeries(c, "support");
   else if (op === "Resistance") series = srSeries(c, "resistance");
   else if (op.startsWith(PATTERN_OPERAND_PREFIX)) series = patternSeries(c, op.slice(PATTERN_OPERAND_PREFIX.length));
+  else if (op.startsWith(CANDLE_OPERAND_PREFIX)) series = candleSeries(c, op.slice(CANDLE_OPERAND_PREFIX.length));
   else {
     const [nm, attr] = op.split(".");
     const d = (defs || []).find((x) => x.name === nm);
@@ -177,9 +252,13 @@ export const BB_DEF = { type: "BB", len: "20", name: "BB" };
 export const CC_DEF = { type: "CurrentCandle", len: "", name: "CC" };   // this candle's O/H/L/C
 export function mapToken(tok) {
   const t = tok.toLowerCase();
-  if (/hist/.test(t)) return { operand: "MACD.hist", def: MACD_DEF };
-  if (/signal/.test(t)) return { operand: "MACD.signal", def: MACD_DEF };
-  if (/macd/.test(t)) return { operand: "MACD.line", def: MACD_DEF };
+  // Any bare numbers in the token are the indicator's PARAMS — "MACD(3,10,16)" -> [3,10,16],
+  // "RSI 21" / "RSI(21)" -> [21], "BB(20,2)" -> [20,2]. This is how Neo reads a setting change
+  // written in brackets, instead of always using the defaults.
+  const nums = (t.match(/\d+/g) || []).map(Number);
+  if (/hist/.test(t)) return { operand: "MACD.hist", def: macdDef(nums) };
+  if (/signal/.test(t)) return { operand: "MACD.signal", def: macdDef(nums) };
+  if (/macd/.test(t)) return { operand: "MACD.line", def: macdDef(nums) };
   // Candle O/H/L/C — must be checked BEFORE the generic price/close catch, and each maps to
   // the real candle field so "close > open" means a green candle (not the old bug where
   // "open" was dropped and it collapsed to "price > 0").
@@ -190,12 +269,12 @@ export function mapToken(tok) {
   let m;
   if ((m = t.match(/(\d+)\s*[- ]?\s*ema|ema\s*\(?\s*(\d+)?/))) { const len = m[1] || m[2] || "20"; return { operand: "EMA" + len, def: { type: "EMA", len, name: "EMA" + len } }; }
   if ((m = t.match(/(\d+)\s*[- ]?\s*sma|sma\s*\(?\s*(\d+)?/))) { const len = m[1] || m[2] || "50"; return { operand: "SMA" + len, def: { type: "SMA", len, name: "SMA" + len } }; }
-  if (/upper/.test(t)) return { operand: "BB.upper", def: BB_DEF };
-  if (/lower/.test(t)) return { operand: "BB.lower", def: BB_DEF };
-  if (/middle|bollinger|\bbb\b/.test(t)) return { operand: "BB.middle", def: BB_DEF };
-  if (/rsi/.test(t)) return { operand: "RSI", def: { type: "RSI", len: "14", name: "RSI" } };
-  if (/adx/.test(t)) return { operand: "ADX", def: { type: "ADX", len: "14", name: "ADX" } };
-  if (/cci/.test(t)) return { operand: "CCI", def: { type: "CCI", len: "20", name: "CCI" } };
+  if (/upper/.test(t)) return { operand: "BB.upper", def: bbDef(nums) };
+  if (/lower/.test(t)) return { operand: "BB.lower", def: bbDef(nums) };
+  if (/middle|bollinger|\bbb\b/.test(t)) return { operand: "BB.middle", def: bbDef(nums) };
+  if (/rsi/.test(t)) return { operand: "RSI", def: { type: "RSI", len: String(nums[0] || 14), name: "RSI" } };
+  if (/adx/.test(t)) return { operand: "ADX", def: { type: "ADX", len: String(nums[0] || 14), name: "ADX" } };
+  if (/cci/.test(t)) return { operand: "CCI", def: { type: "CCI", len: String(nums[0] || 20), name: "CCI" } };
   if (/vwap/.test(t)) return { operand: "VWAP", def: { type: "VWAP", len: "", name: "VWAP" } };
   if (/volume/.test(t)) return { operand: "Volume", def: { type: "Volume", len: "", name: "Volume" } };
   if (/resistance/.test(t)) return { operand: "Resistance", def: null };
@@ -203,7 +282,7 @@ export function mapToken(tok) {
   if (/price|ltp|spot/.test(t)) return { operand: "Price", def: null };
   return null;
 }
-export const TOKEN_RE = /macd\s*hist\w*|macd\s*signal\w*|signal\s*line|macd\s*line|macd|\d+\s*[- ]?\s*ema|ema\s*\(?\s*\d*\s*\)?|\d+\s*[- ]?\s*sma|sma\s*\(?\s*\d*\s*\)?|upper\s*band|lower\s*band|middle\s*band|bollinger\s*\w*|\brsi\b|\badx\b|\bcci\b|\bvwap\b|\bvolume\b|\bresistance\b|\bsupport\b|\bprice\b|\bclose\b|\bopen\b|\bhigh\b|\blow\b|\bltp\b/gi;
+export const TOKEN_RE = /macd\s*hist\w*|macd\s*signal\w*|signal\s*line|\bsignal\b|macd\s*line|macd\s*\(?\s*\d+\s*[,/ ]\s*\d+\s*[,/ ]\s*\d+\s*\)?|macd|\d+\s*[- ]?\s*ema|ema\s*\(?\s*\d*\s*\)?|\d+\s*[- ]?\s*sma|sma\s*\(?\s*\d*\s*\)?|upper\s*band|lower\s*band|middle\s*band|bollinger(?:\s*bands?)?\s*\(?\s*\d*\s*,?\s*\d*\s*\)?|\bbb\b\s*\(?\s*\d+\s*,?\s*\d*\s*\)?|rsi\s*\(?\s*\d*\s*\)?|adx\s*\(?\s*\d*\s*\)?|cci\s*\(?\s*\d*\s*\)?|\bvwap\b|\bvolume\b|\bresistance\b|\bsupport\b|\bprice\b|\bclose\b|\bopen\b|\bhigh\b|\blow\b|\bltp\b/gi;
 export function detectOp(clause) {
   const c = clause.toLowerCase();
   if (/cross(es|ing)?\s*(above|over)/.test(c)) return { op: "crosses_above" };
@@ -245,6 +324,10 @@ const PHRASE_RULES = [
   { re: /overbought/i, cond: { la: "RSI", op: ">", b: "70", bType: "num" }, defs: [{ type: "RSI", len: "14", name: "RSI" }] },
   { re: /macd\s*(turns?|crosses?|goes?)?\s*(bullish|positive)/i, cond: { la: "MACD.line", op: "crosses_above", b: "MACD.signal", bType: "ind" }, defs: [{ type: "MACD", len: "", name: "MACD" }] },
   { re: /macd\s*(turns?|crosses?|goes?)?\s*(bearish|negative)/i, cond: { la: "MACD.line", op: "crosses_below", b: "MACD.signal", bType: "ind" }, defs: [{ type: "MACD", len: "", name: "MACD" }] },
+  /* Green / red candle, exactly as the user defines them: green = Close > Open, red = Close < Open.
+     Placed here so "green candle" is understood as a whole phrase before the word-by-word parser. */
+  { re: /green\s*candle|bullish\s*candle|candle\s*(is\s*)?green/i, cond: { la: "CC.close", op: ">", b: "CC.open", bType: "ind" }, defs: [CC_DEF] },
+  { re: /red\s*candle|bearish\s*candle|candle\s*(is\s*)?red/i, cond: { la: "CC.close", op: "<", b: "CC.open", bType: "ind" }, defs: [CC_DEF] },
   { re: /(?:bounce|bounces|bouncing|bounced|rebound|rebounds|rebounding|reversal|reverses|holds?|holding|respect(?:s|ing)?|defend(?:s|ing)?|support)\s*(?:from|off|at|of|near|the)?\s*support|near\s*support|at\s*support|off\s*support/i, cond: { la: "Price", op: ">", b: "Support", bType: "ind" }, defs: [] },
   { re: /(?:reject|rejected|rejects|rejecting|fail|fails|failing|failed|reverses?|resistance)\s*(?:at|from|off|near|the)?\s*resistance|near\s*resistance|at\s*resistance|hits?\s*resistance/i, cond: { la: "Price", op: "<", b: "Resistance", bType: "ind" }, defs: [] },
   { re: /break(?:s|ing|out)?\s*(?:above|over|through|past)?\s*resistance|breakout/i, cond: { la: "Price", op: "crosses_above", b: "Resistance", bType: "ind" }, defs: [] },
@@ -280,6 +363,21 @@ export function interpretText(text) {
     }
   }
 
+  // 1b. Candlestick patterns by NAME (doji, hammer, inverted hammer, engulfing…). Longest phrase
+  //     first so "inverted hammer" isn't eaten by "hammer". Each becomes a CDL: condition the
+  //     engine checks with the real candlestick detector.
+  const candlePhrases = Object.keys(CANDLE_KEYS).sort((a, b) => b.length - a.length);
+  for (const ph of candlePhrases) {
+    const re = new RegExp("\\b" + ph.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "ig");
+    if (re.test(work)) {
+      const la = CANDLE_OPERAND_PREFIX + CANDLE_KEYS[ph];
+      if (!conds.find((cd) => cd.la === la)) {
+        conds.push({ la, op: ">", b: "0", bType: "num", gate: conds.length ? "AND" : undefined });
+      }
+      work = work.replace(re, " ");
+    }
+  }
+
   // 2. The remaining text: operand op operand/number, chained with AND / OR.
   const cleaned = work.replace(/^\s*(buy|sell|enter|exit|go long|short|when|if)\b[:,]?\s*/i, "").trim();
   if (cleaned) {
@@ -295,7 +393,7 @@ export function interpretText(text) {
   }
   // Drop clauses that are only filler left over after a phrase/pattern was consumed ("when price",
   // "on", "then") — they aren't real unparsed conditions and shouldn't raise a warning.
-  const FILLER = /^(?:when|then|if|on|at|in|a|an|the|is|are|was|be|it|its|and|or|buy|sell|enter|exit|go|long|short|price|of|to|from|for|with|that|this|now)$/i;
+  const FILLER = /^(?:when|then|if|on|at|in|a|an|the|is|are|was|be|it|its|and|or|buy|sell|enter|exit|go|long|short|price|of|to|from|for|with|that|this|now|forms?|forming|appears?|appearing|shows?|showing|candle|candles|candlestick|pattern|patterns|signal|line|band|near)$/i;
   const cleanUnparsed = unparsed.filter((u) => u.split(/\s+/).some((w) => w && !FILLER.test(w)));
   return { conds, defs, unparsed: cleanUnparsed };
 }
@@ -307,6 +405,10 @@ export function operandLabel(op) {
     const ph = Object.keys(PATTERN_KEYS).find((k) => PATTERN_KEYS[k] === key);
     return ph ? ph.replace(/\b\w/g, (m) => m.toUpperCase()) : key;
   }
+  if (typeof op === "string" && op.startsWith(CANDLE_OPERAND_PREFIX)) {
+    const key = op.slice(CANDLE_OPERAND_PREFIX.length);
+    return CANDLE_LABEL[key] || key;
+  }
   if (op === "Support") return "support"; if (op === "Resistance") return "resistance";
   if (op === "Price") return "price"; if (op === "Volume") return "volume";
   return op;
@@ -315,6 +417,9 @@ export function operandLabel(op) {
 export function humanizeCond(c) {
   if (typeof c.la === "string" && c.la.startsWith(PATTERN_OPERAND_PREFIX)) {
     return `a ${operandLabel(c.la)} forms`;
+  }
+  if (typeof c.la === "string" && c.la.startsWith(CANDLE_OPERAND_PREFIX)) {
+    return `a ${operandLabel(c.la)} candle forms`;
   }
   const opw = { ">": "is above", "<": "is below", ">=": "is at/above", "<=": "is at/below", "==": "equals", crosses_above: "crosses above", crosses_below: "crosses below" }[c.op] || c.op;
   const right = c.bType === "num" ? c.b : operandLabel(c.b);

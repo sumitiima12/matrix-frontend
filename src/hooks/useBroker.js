@@ -5,7 +5,7 @@ import { brokerById } from "../domain/brokers";
 import {
   loadSessions, saveSession, clearSession, BROKER_MARKETS,
   brokerSession, brokerQuotes, brokerLogout, brokerPortfolio,
-  loadBrokerPref, setBrokerPref, resumeBroker,
+  loadBrokerPref, setBrokerPref, resumeBroker, brokerStatus,
 } from "../services/brokerService";
 
 /**
@@ -108,6 +108,25 @@ export function useBroker({ onTick, userId, intervalMs = 2000 } = {}) {
     setReal(null);
     setError(null);
   }, [sessions, userId]);
+
+  /* AUTO-RESUME across devices. Broker CREDENTIALS live on the server (encrypted, per-user), but
+     the session HANDLE is saved per-device. So logging in on mobile after connecting on a laptop
+     showed "not connected". On login we ask the server which brokers it holds creds for and
+     re-establish those sessions here — no manual reconnect on the new device. */
+  useEffect(() => {
+    if (!userId) return undefined;
+    let alive = true;
+    brokerStatus(userId).then((d) => {
+      if (!alive || !d || !d.brokers) return;
+      Object.entries(d.brokers).forEach(([id, info]) => {
+        if (info && info.hasCreds && !sessions[id]) {
+          resumeBroker(id, userId).then((s) => { if (s && alive) setSessions((p) => (p[s.broker] ? p : { ...p, [s.broker]: s })); }).catch(() => {});
+        }
+      });
+    }).catch(() => {});
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   /* Live quote polling. */
   useEffect(() => {
