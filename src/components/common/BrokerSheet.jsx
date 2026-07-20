@@ -253,11 +253,14 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
 
           const stateLabel = isConnected ? "Connected"
             : canConnect ? "Ready to connect"
+            : !marketAllowed ? "Turned off by admin"
+            : selfServe ? "Enter your keys to connect"      // BYOA — no server keys needed
             : b.status === "ready" && server ? "Keys not set on server"
             : b.status === "ready" ? tone.label
             : tone.label;
 
           const stateColor = isConnected || canConnect ? "var(--up)"
+            : !marketAllowed ? "var(--muted)"
             : b.status === "ready" && server ? "var(--amber)"
             : tone.c;
 
