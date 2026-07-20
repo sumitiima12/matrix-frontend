@@ -72,12 +72,15 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
     let list = BROKERS;
     // Server-side house feeds (FYERS, Delta) aren't per-user connects — hide unless admin.
     if (!isAdmin) list = list.filter((b) => !b.adminOnly);
+    // A non-admin only sees brokers for markets the admin has ENABLED broker-connect on. If only
+    // Crypto is enabled, only crypto brokers appear — no dead "turned off" cards for other markets.
+    if (!isAdmin) list = list.filter((b) => gateMarketsFor(b).some((m) => canConnectMarket(m)));
     // Only show brokers that actually serve the market we're connecting for.
     if (marketFilter) list = list.filter((b) => (b.markets || []).includes(marketFilter));
     if (t) list = list.filter((b) => b.name.toLowerCase().includes(t));
     const rank = { ready: 0, gateway: 1, none: 2 };
     return [...list].sort((a, b) => rank[a.status] - rank[b.status]);
-  }, [q, marketFilter, isAdmin]);
+  }, [q, marketFilter, isAdmin, canConnectMarket]);
 
   const submitCreds = async (b) => {
     const missing = (b.fields || []).filter((f) => !String(creds[f.key] || "").trim());
@@ -179,7 +182,7 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
         {/* WHICH MARKET IS COVERED BY WHAT. This is the whole point of multi-broker: you can
             see at a glance that Indian is live on FYERS while US has nothing connected. */}
         <div style={{ display: "flex", gap: 7, marginTop: 12 }}>
-          {[["IN", "Indian"], ["US", "US"], ["Crypto", "Crypto"]].map(([m, label]) => {
+          {[["IN", "Indian"], ["US", "US"], ["Crypto", "Crypto"]].filter(([m]) => isAdmin || canConnectMarket(m)).map(([m, label]) => {
             const bid = marketMap[m];
             const meta = bid ? BROKERS.find((x) => x.id === bid) : null;
             return (

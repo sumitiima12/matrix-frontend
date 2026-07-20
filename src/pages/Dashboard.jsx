@@ -199,7 +199,7 @@ function LiveNewsStrip({ symbols = [], onOpen, onBuy, list = [], market = "IN" }
     setItems([]);
     if (!BACKEND_URL || !symbols.length) { setLoading(false); return undefined; }
 
-    fetchNewsFeed(symbols.slice(0, 12))
+    fetchNewsFeed(symbols.slice(0, 30))
       .then((n) => { if (!stop) { setItems(n); setLoading(false); } })
       .catch(() => { if (!stop) setLoading(false); });
 
@@ -345,7 +345,7 @@ function LiveNewsStrip({ symbols = [], onOpen, onBuy, list = [], market = "IN" }
  */
 function NewsReadMore({ sym, stock, feed = [], market = "IN", onOpen, onBuy, onClose }) {
   const [idx, setIdx] = useState(0);
-  const cutoff = Date.now() - 7 * 24 * 3600 * 1000;
+  const cutoff = Date.now() - 15 * 24 * 3600 * 1000;
   const articles = feed
     .filter((n) => n.sym === sym && (!n.d || +new Date(n.d) >= cutoff))
     .sort((a, b) => (+new Date(b.d || 0)) - (+new Date(a.d || 0)));
@@ -370,7 +370,7 @@ function NewsReadMore({ sym, stock, feed = [], market = "IN", onOpen, onBuy, onC
           </button>
         </div>
         <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginTop: 4 }}>
-          {articles.length ? `${articles.length} ${articles.length === 1 ? "story" : "stories"} · last 7 days` : "No stories in the last 7 days"}
+          {articles.length ? `${articles.length} ${articles.length === 1 ? "story" : "stories"} · last 15 days` : "No stories in the last 15 days"}
         </div>
 
         {cur && (
@@ -636,7 +636,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
      LOOKED ranked. An ordering that pretends to mean something is worse than an
      obvious one that doesn't. */
   // News is for tradable stocks only — never indices (NIFTY 50, SENSEX, BANK NIFTY, …).
-  const inNews = list.filter((s) => !s.isIndex).slice(0, 12);
+  const inNews = list.filter((s) => !s.isIndex).slice(0, 30);
   const smart = list.filter((s) => s.inst);
   const trendingView = trending;
 
