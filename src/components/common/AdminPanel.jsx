@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { adminListUsers, adminGetUser, adminSetBlocked, adminResetPin } from "../../services/adminService";
-import { adminPendingUsers, adminApproveUser, adminDeleteUser } from "../../services/tradeService";
+import { adminListUsers, adminGetUser, adminSetBlocked, adminResetPin, adminPendingUsers, adminApproveUser, adminDeleteUser } from "../../services/adminService";
 import { apiListIdeas, apiReviewIdea } from "../../domain/api";
 import { tradesToCSV, downloadCSV, tradeFilename } from "../../lib/csv";
 
@@ -54,7 +53,7 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
   const approve = async (phone, next) => {
     setBusy(true);
     try {
-      await adminApproveUser(phone, next, adminKey);
+      await adminApproveUser(userId, adminKey, phone, next);
       await refresh();
       if (selected && selected.phone === phone) await openUser(phone);
     } catch (e) { setErr(String(e.message || e)); }
@@ -64,7 +63,7 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
     if (typeof window !== "undefined" && !window.confirm(`Permanently delete ${label || phone} and ALL their data? This cannot be undone.`)) return;
     setBusy(true);
     try {
-      const r = await adminDeleteUser(phone, adminKey);
+      const r = await adminDeleteUser(userId, adminKey, phone);
       if (r && r.error) { setErr(r.error); return; }
       setSelected(null);
       await refresh();
@@ -204,7 +203,7 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
           {section === "ideas" ? (
             <IdeasModeration adminKey={adminKey} card={card} />
           ) : section === "pending" ? (
-            <PendingUsers adminKey={adminKey} card={card} />
+            <PendingUsers userId={userId} adminKey={adminKey} card={card} />
           ) : (
           <>
           <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 4 }}>
@@ -233,18 +232,21 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
 }
 
 /* Signup approval queue: every account awaiting admin activation, with Approve / Reject. */
-function PendingUsers({ adminKey, card }) {
+function PendingUsers({ userId, adminKey, card }) {
   const [list, setList] = useState(null);
   const [busy, setBusy] = useState("");
-  const refresh = () => adminPendingUsers(adminKey).then((d) => setList(Array.isArray(d.users) ? d.users : []));
+  const [err, setErr] = useState(null);
+  const refresh = () => adminPendingUsers(userId, adminKey).then((users) => { setList(Array.isArray(users) ? users : []); setErr(null); }).catch((e) => { setErr(String(e.message || e)); setList([]); });
   useEffect(() => { refresh(); /* eslint-disable-next-line */ }, []);
   const act = async (phone, approved) => {
     setBusy(phone);
-    try { await adminApproveUser(phone, approved, adminKey); await refresh(); }
+    try { await adminApproveUser(userId, adminKey, phone, approved); await refresh(); }
+    catch (e) { setErr(String(e.message || e)); }
     finally { setBusy(""); }
   };
   return (
     <div>
+      {err && <div style={{ ...card, borderColor: "var(--down)", color: "var(--down)", fontSize: 12 }}>{err}</div>}
       <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 8 }}>
         {list == null ? "Loading…" : list.length ? `${list.length} awaiting approval` : ""}
       </div>

@@ -60,6 +60,39 @@ export async function adminSetBlocked(userId, key, phone, blocked) {
   return d;
 }
 
+/** Accounts awaiting approval. */
+export async function adminPendingUsers(userId, key) {
+  if (!BACKEND_URL) return [];
+  const r = await fetch(`${BACKEND_URL}/api/admin/pending-users`, { headers: headers(userId, key) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || `admin ${r.status}`);
+  return d.users || [];
+}
+
+/** Approve (activate) or revoke a signup. */
+export async function adminApproveUser(userId, key, phone, approved) {
+  const r = await fetch(`${BACKEND_URL}/api/admin/approve`, {
+    method: "POST",
+    headers: headers(userId, key),
+    body: JSON.stringify({ phone, approved }),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || `admin ${r.status}`);
+  return d;
+}
+
+/** Permanently delete any account by phone. */
+export async function adminDeleteUser(userId, key, phone) {
+  const r = await fetch(`${BACKEND_URL}/api/admin/delete-user`, {
+    method: "POST",
+    headers: headers(userId, key),
+    body: JSON.stringify({ phone }),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || `admin ${r.status}`);
+  return d;
+}
+
 /** Admin backstop: reset a user's PIN to a new value. */
 export async function adminResetPin(userId, key, phone, newPin) {
   const r = await fetch(`${BACKEND_URL}/api/admin/reset-pin`, {
