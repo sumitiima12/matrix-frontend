@@ -809,7 +809,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const [toast, setToast] = useState(null);
   const [dashBy, setDashBy] = useState("All");
   const [dashOpen, setDashOpen] = useState(false);          // collapsed by default (P&L only)
-  const [dashPreset, setDashPreset] = useState("12m");
+  const [dashPreset, setDashPreset] = useState("12m");   // default Last 12 months (label now shown even when collapsed)
   const [dashFrom, setDashFrom] = useState("");             // custom range (yyyy-mm-dd)
   const [dashTo, setDashTo] = useState("");
   const dashRange = useMemo(() => {
@@ -1309,8 +1309,9 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       {appMode !== "real" && (() => {
         /* Latest ENTRY first: a strategy that just opened a paper trade sits at the top. */
         const lastEntry = (s) => (trades || []).reduce((mx, t) => ((t.strategyId === s.id || t.strategy === s.name) && (t.entryAt || 0) > mx ? t.entryAt : mx), 0);
+        const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a ? a.price : null; };
         const vd = strats.filter((s) => s.active && inMkt(s))
-          .map((s) => ({ s, p: stratPerf(s, trades, dashRange), e: lastEntry(s) }))
+          .map((s) => ({ s, p: stratPerf(s, trades, dashRange, priceOf), e: lastEntry(s) }))
           .sort((a, b) => b.e - a.e);
         if (!vd.length) return null;
         return (
@@ -1325,13 +1326,14 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                 <div style={{ minWidth: 0 }}>
                   <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{s.name || (s.symbols && s.symbols[0]) || "Strategy"}</div>
                   <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600, marginTop: 1 }}>{(s.symbols || []).join(", ") || "—"} · by {s.by}</div>
-                  <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>{p.trades} trades · {p.trades ? (p.wins / p.trades * 100).toFixed(0) : 0}% win</div>
+                  <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>{p.positions} position{p.positions === 1 ? "" : "s"}{p.open ? ` · ${p.open} open` : ""}{p.winRate != null ? ` · ${p.winRate.toFixed(0)}% win` : ""}</div>
                 </div>
                 <div style={{ marginLeft: "auto", textAlign: "right" }}>
-                  <div className="mono" style={{ fontSize: 12.5, fontWeight: 800, color: chgColor(p.pnl) }}>{p.trades ? (p.pnl >= 0 ? "+" : "") + fmt(p.pnl, market) : "—"}</div>
-                  {p.trades && p.retPct != null
-                    ? <div className="mono" style={{ fontSize: 9.5, fontWeight: 700, color: chgColor(p.retPct) }}>{p.retPct >= 0 ? "+" : ""}{p.retPct.toFixed(2)}%</div>
-                    : <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>{p.trades ? "paper P&L" : "waiting for signal"}</div>}
+                  {/* Show combined realised + unrealised P&L whenever the strategy holds ANY position. */}
+                  <div className="mono" style={{ fontSize: 12.5, fontWeight: 800, color: chgColor(p.pnl) }}>{p.positions && p.pnl != null ? (p.pnl >= 0 ? "+" : "") + fmt(p.pnl, market) : "—"}</div>
+                  {p.positions && p.pnl != null
+                    ? <div className="mono" style={{ fontSize: 9.5, fontWeight: 700, color: chgColor(p.retPct) }}>{p.open ? "incl. live" : (p.retPct >= 0 ? "+" : "") + (p.retPct || 0).toFixed(2) + "%"}</div>
+                    : <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>waiting for signal</div>}
                 </div>
               </div>
             )} />
@@ -1343,7 +1345,11 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       <div className="card glow metal" style={{ marginTop: 18, padding: 18, border: "none", background: "var(--feature-grad)", color: "#fff" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <div style={{ minWidth: 0 }}>
-            <div className="disp" style={{ fontWeight: 700, fontSize: 13, opacity: .9 }}>Automation P&amp;L</div>
+            <div className="disp" style={{ fontWeight: 700, fontSize: 13, opacity: .9, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              Automation P&amp;L
+              {/* Period label shown even when collapsed, so the P&L number is never ambiguous. */}
+              <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "2px 8px", background: "rgba(255,255,255,.14)", color: "#fff", letterSpacing: ".02em" }}>{(DASH_PRESETS.find(([v]) => v === dashPreset) || [null, "Last 12 months"])[1]}</span>
+            </div>
             <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 3, color: agg.pnl >= 0 ? "#9CFFD6" : "#FFB3BE" }}>{agg.pnl >= 0 ? "+" : ""}{fmt(agg.pnl, "IN")}</div>
           </div>
           <button onClick={() => setDashOpen((v) => !v)} className="tap" title={dashOpen ? "Collapse" : "Expand"} style={{ flex: "0 0 auto", display: "grid", placeItems: "center", border: "1px solid rgba(255,255,255,.28)", background: "rgba(255,255,255,.1)", color: "#fff", borderRadius: 10, padding: "7px" }}>
