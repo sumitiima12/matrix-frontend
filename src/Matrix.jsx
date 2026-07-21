@@ -917,7 +917,7 @@ function AppInner() {
     return arr;
   }, [market, profile]);
 
-  const nav = [["home", Home, "Home"], ["ideas", Lightbulb, "Ideas"], ["portfolio", Briefcase, "Portfolio"], ["automation", Bolt, "Auto"], ["ask", NeoIcon, "Neo"], ["watchlist", Star, "Watch"]];
+  const nav = [["home", Home, "Home"], ["ideas", Lightbulb, "Ideas"], ["portfolio", Briefcase, "Portfolio"], ["orders", Clock, "Orders"], ["automation", Bolt, "Auto"], ["ask", NeoIcon, "Neo"], ["watchlist", Star, "Watch"]];
 
   return (
     <BuyGateContext.Provider value={canBuy}>
@@ -1122,7 +1122,7 @@ function AppInner() {
       {!detail && !onboarding && !drawer && !confirmOrder && !walletOpen && !brokerOpen && !search && !showProfile && (
         <div className="glass" style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--header-bg)", borderTop: "1px solid var(--line)", borderRadius: "22px 22px 0 0", boxShadow: "0 -10px 34px rgba(40,10,80,.3)", display: "flex", padding: "11px 6px 16px", zIndex: 100 }}>
           {nav.map(([k, Icon, label]) => (
-            <button key={k} onClick={() => { setTab(k); setTradePreset(null); }} className="tap" style={{ flex: 1, border: "none", background: "transparent", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "6px 2px", minHeight: 52, color: tab === k ? "var(--primary)" : "var(--muted)" }}>
+            <button key={k} onClick={() => { if (k === "orders") { setHistOpen(true); return; } setTab(k); setTradePreset(null); }} className="tap" style={{ flex: 1, border: "none", background: "transparent", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "6px 2px", minHeight: 52, color: (k === "orders" ? histOpen : tab === k) ? "var(--primary)" : "var(--muted)" }}>
               <Icon size={20} fill={k === "watchlist" && tab === k ? "var(--primary)" : "none"} />
               <span style={{ fontSize: 9.5, fontWeight: 700 }}>{label}</span>
             </button>
@@ -1284,7 +1284,7 @@ function AppInner() {
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} onAuthed={onAuthed} />}
       {histOpen && (
         <Suspense fallback={<div style={{ position: "fixed", inset: 0, zIndex: 150, display: "grid", placeItems: "center", background: "rgba(0,0,0,.4)", color: "#fff", fontSize: 13 }}>Loading…</div>}>
-          <TradeHistory userId={userId} trades={trades} onClose={() => setHistOpen(false)} />
+          <TradeHistory userId={userId} trades={trades} market={market} mode={mode} onClose={() => setHistOpen(false)} />
         </Suspense>
       )}
       {buyToast && (

@@ -49,13 +49,17 @@ function JournalPanel({ trades = [] }) {
   );
 }
 
-export default function TradeHistory({ userId, trades, onClose }) {
+export default function TradeHistory({ userId, trades, onClose, market = null, mode = null }) {
   const RANGES = [["today", "Today"], ["7", "7d"], ["30", "30d"], ["90", "90d"], ["365", "1y"], ["all", "All"]];
   const MKTS = [["all", "All markets"], ["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["Commodity", "🪙 Commodity"]];
+  const REALS = [["all", "All"], ["real", "Real"], ["virtual", "Virtual"]];
   const [range, setRange] = useState("30");
   const [dFrom, setDFrom] = useState("");     // yyyy-mm-dd, custom range
   const [dTo, setDTo] = useState("");
-  const [mkt, setMkt] = useState("all");
+  // Opened from the bottom bar: default to the CURRENT market and the CURRENT mode (real/virtual),
+  // so the Orders button shows exactly what you're looking at — still switchable via the chips.
+  const [mkt, setMkt] = useState(market || "all");
+  const [realF, setRealF] = useState(mode === "real" ? "real" : mode === "virtual" ? "virtual" : "all");
   const [remote, setRemote] = useState(null);
   const [fSym, setFSym] = useState([]);
   const [fType, setFType] = useState([]);
@@ -112,6 +116,7 @@ export default function TradeHistory({ userId, trades, onClose }) {
   const exitOf = (t) => (t.open ? "Open" : (t.exitType || "Manual"));
   const rows = src
     .filter((t) => (mkt === "all" ? true : (t.market || "IN") === mkt))
+    .filter((t) => (realF === "all" ? true : realF === "real" ? !!t.real : !t.real))
     .filter((t) => (fSym.length ? fSym.includes(t.sym) : true))
     .filter((t) => (fType.length ? fType.includes(t.tradeType || "Manual") : true))
     .filter((t) => (fExit.length ? fExit.includes(exitOf(t)) : true))
@@ -173,8 +178,15 @@ export default function TradeHistory({ userId, trades, onClose }) {
 
       {view === "history" && (
         <>
+      {/* Real / Virtual selector — real orders are journalled with real:true; paper ones aren't. */}
+      <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "10px 16px 0" }}>
+        {REALS.map(([k, l]) => (
+          <button key={k} onClick={() => setRealF(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "6px 14px", fontSize: 12, fontWeight: 800, whiteSpace: "nowrap", border: "1px solid " + (realF === k ? "var(--primary)" : "var(--line)"), background: realF === k ? "var(--primary)" : "var(--surface)", color: realF === k ? "var(--on-primary)" : (k === "real" ? "var(--down)" : "var(--ink)") }}>{l}</button>
+        ))}
+      </div>
+
       {/* market selector */}
-      <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "10px 16px 4px" }}>
+      <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "8px 16px 4px" }}>
         {MKTS.map(([k, l]) => (
           <button key={k} onClick={() => setMkt(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "7px 13px", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", border: "1px solid " + (mkt === k ? "var(--primary)" : "var(--line)"), background: mkt === k ? "var(--primary)" : "var(--surface)", color: mkt === k ? "var(--on-primary)" : "var(--ink)" }}>{l}</button>
         ))}

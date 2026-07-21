@@ -790,7 +790,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const [selectedTpl, setSelectedTpl] = useState(null);   // highlighted Strategy Idea (tap toggles)
   const [showBuilder, setShowBuilder] = useState(true);   // create-strategy panel open by default
   const [showBt, setShowBt] = useState(false);
-  const [optLeg, setOptLeg] = useState({ enabled: false, expiry: "Current week", type: "CE", moneyness: "ATM", steps: 1, lots: 1 });
+  const [optLeg, setOptLeg] = useState({ enabled: false, expiry: "Current week", legs: [{ side: "BUY", type: "CE", mny: "ATM", lots: 1 }] });
   const [btOpen, setBtOpen] = useState(null);
   const [ledgerOpen, setLedgerOpen] = useState(null);   // strategy id whose trade ledger is open
   const [btTpl, setBtTpl] = useState(null);
@@ -1379,6 +1379,15 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           <div className="card" style={{ marginTop: 16, padding: 16 }}>
             <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Strategy name{editingId ? " · editing" : ""}</div>
             <input value={stratName} onChange={(e) => setStratName(e.target.value)} placeholder="e.g. My Nifty swing setup" className="no-ring disp" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }} />
+
+            {/* Deploy on — symbol, right under the name; then the Stock / Option toggle above Step 1. */}
+            <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, margin: "14px 0 6px" }}>Deploy on — symbol</div>
+            <select value={deploySyms[0] || ""} onChange={(e) => setDeploySyms(e.target.value ? [e.target.value] : [])} aria-label="Deploy symbol" style={{ ...selStyle, width: "100%" }}>
+              <option value="">Choose a symbol…</option>
+              {DEPLOY_OPTIONS.map((sy) => <option key={sy} value={sy}>{sy}</option>)}
+            </select>
+            <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 6 }}>The strategy runs on this instrument.</div>
+            <OptionLeg symbols={deploySyms.length ? deploySyms : ["NIFTY50"]} value={optLeg} onChange={setOptLeg} />
           </div>
 
           {mode === "builder" && (
@@ -1503,14 +1512,6 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
               <NumF label="Max re-entries" v={maxReentries} set={(x) => setMaxReentries(String(x).replace(/[^0-9]/g, ""))} />
             </div>
 
-            <div style={{ marginTop: 14 }}>
-              <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Deploy on — symbol</div>
-              <select value={deploySyms[0] || ""} onChange={(e) => setDeploySyms(e.target.value ? [e.target.value] : [])} aria-label="Deploy symbol" style={{ ...selStyle, width: "100%" }}>
-                <option value="">Choose a symbol…</option>
-                {DEPLOY_OPTIONS.map((sy) => <option key={sy} value={sy}>{sy}</option>)}
-              </select>
-              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 6 }}>The strategy runs on this instrument.</div>
-            </div>
             <pre className="mono" style={{ fontSize: 11, background: "#0E0E18", color: "#C9D2FF", border: "1px solid #2A2A3D", borderRadius: 12, padding: 13, marginTop: 14, whiteSpace: "pre-wrap", lineHeight: 1.55, overflowX: "auto" }}>{code}</pre>
 
             <button onClick={() => setShowBt((v) => !v)} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 14, padding: 12, fontWeight: 700, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}><Activity size={16} color="var(--primary)" /> {showBt ? "Hide backtest" : "Backtest this strategy"}</button>
@@ -1519,9 +1520,6 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                 <BacktestResult cfg={cfg} />
               </div>
             )}
-
-            {/* OPTION LEG — trade the option instead of the stock when this fires. */}
-            <OptionLeg symbols={deploySyms.length ? deploySyms : ["NIFTY50"]} value={optLeg} onChange={setOptLeg} />
 
             {/* Save */}
             <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
