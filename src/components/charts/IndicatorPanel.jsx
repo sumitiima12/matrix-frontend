@@ -17,6 +17,8 @@ export default function IndicatorPanel({
   showRsi, setShowRsi, rsiN = 14, setRsiN,
   showAdx, setShowAdx, adxN = 14, setAdxN,
   showStoch, setShowStoch, stochN = 14, setStochN,
+  showAtr, setShowAtr, atrN = 14, setAtrN,
+  showSd, setShowSd, sdN = 20, setSdN,
   showVol, setShowVol,
   ctype, setCtype,
 }) {
@@ -29,14 +31,19 @@ export default function IndicatorPanel({
 
   const updateOverlay = (i, patch) => setOverlays((p) => p.map((o, j) => (j === i ? { ...o, ...patch } : o)));
   const removeOverlay = (i) => setOverlays((p) => p.filter((_, j) => j !== i));
+  // Which overlay types take a length/lookback input (the rest derive everything from OHLC).
+  const HAS_LEN = new Set(["ema", "sma", "bb", "keltner", "fib"]);
+  const DEFAULT_LEN = { ema: 21, sma: 20, bb: 20, keltner: 20, fib: 90 };
+
   const addOverlay = () => {
     const used = new Set(overlays.map((o) => o.color));
     const color = OVERLAY_COLORS.find((c) => !used.has(c)) || OVERLAY_COLORS[overlays.length % OVERLAY_COLORS.length];
-    if (addType === "vwap") { setOverlays((p) => [...p, { type: "vwap", color }]); return; }
-    setOverlays((p) => [...p, { type: addType, n: int(addLen), color, ...(addType === "bb" ? { mult: 2 } : {}) }]);
+    if (!HAS_LEN.has(addType)) { setOverlays((p) => [...p, { type: addType, color }]); return; }
+    const n = int(addLen) || DEFAULT_LEN[addType] || 20;
+    setOverlays((p) => [...p, { type: addType, n, color, ...(addType === "bb" || addType === "keltner" ? { mult: 2 } : {}) }]);
   };
 
-  const TYPE_LABEL = { ema: "EMA", sma: "SMA", bb: "BB", vwap: "VWAP" };
+  const TYPE_LABEL = { ema: "EMA", sma: "SMA", bb: "Bollinger", keltner: "Keltner", vwap: "VWAP", cpr: "CPR", pivots: "Pivots", ichimoku: "Ichimoku", fib: "Fibonacci" };
 
   /* PORTAL to <body>. The details page slides up inside a CSS-transformed container, and a
      position:fixed child of a transformed ancestor is positioned relative to THAT ancestor, not
@@ -78,14 +85,19 @@ export default function IndicatorPanel({
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderBottom: "1px solid var(--line)" }}>
               <span style={{ width: 10, height: 10, borderRadius: 3, background: o.color, flex: "0 0 auto" }} />
               <select value={o.type} onChange={(e) => updateOverlay(i, { type: e.target.value })}
-                style={{ ...numStyle, width: 74, fontWeight: 800 }}>
+                style={{ ...numStyle, width: 92, fontWeight: 800 }}>
                 <option value="ema">EMA</option>
                 <option value="sma">SMA</option>
-                <option value="bb">BB</option>
+                <option value="bb">Bollinger</option>
+                <option value="keltner">Keltner</option>
                 <option value="vwap">VWAP</option>
+                <option value="cpr">CPR</option>
+                <option value="pivots">Pivots</option>
+                <option value="ichimoku">Ichimoku</option>
+                <option value="fib">Fibonacci</option>
               </select>
-              {o.type !== "vwap" && <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>length</span>}
-              {o.type !== "vwap" && <input value={o.n} inputMode="numeric" onChange={(e) => updateOverlay(i, { n: int(e.target.value) })} className="no-ring mono" style={numStyle} />}
+              {HAS_LEN.has(o.type) && <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>{o.type === "fib" ? "look" : "length"}</span>}
+              {HAS_LEN.has(o.type) && <input value={o.n} inputMode="numeric" onChange={(e) => updateOverlay(i, { n: int(e.target.value) })} className="no-ring mono" style={numStyle} />}
               {o.type === "bb" && (<>
                 <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>×</span>
                 <input value={o.mult == null ? 2 : o.mult} inputMode="decimal" onChange={(e) => updateOverlay(i, { mult: Math.max(0.1, parseFloat(e.target.value.replace(/[^0-9.]/g, "")) || 2) })} className="no-ring mono" style={{ ...numStyle, width: 44 }} />
@@ -95,13 +107,18 @@ export default function IndicatorPanel({
           ))}
           {/* Add a new overlay at any length. */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
-            <select value={addType} onChange={(e) => setAddType(e.target.value)} style={{ ...numStyle, width: 78, fontWeight: 800 }}>
+            <select value={addType} onChange={(e) => setAddType(e.target.value)} style={{ ...numStyle, width: 96, fontWeight: 800 }}>
               <option value="ema">EMA</option>
               <option value="sma">SMA</option>
               <option value="bb">Bollinger</option>
+              <option value="keltner">Keltner</option>
               <option value="vwap">VWAP</option>
+              <option value="cpr">CPR</option>
+              <option value="pivots">Pivots</option>
+              <option value="ichimoku">Ichimoku</option>
+              <option value="fib">Fibonacci</option>
             </select>
-            {addType !== "vwap" && <input value={addLen} inputMode="numeric" onChange={(e) => setAddLen(e.target.value.replace(/[^0-9]/g, ""))} placeholder="length" className="no-ring mono" style={numStyle} />}
+            {HAS_LEN.has(addType) && <input value={addLen} inputMode="numeric" onChange={(e) => setAddLen(e.target.value.replace(/[^0-9]/g, ""))} placeholder={addType === "fib" ? "look" : "length"} className="no-ring mono" style={numStyle} />}
             <button onClick={addOverlay} className="tap disp" style={{ display: "flex", alignItems: "center", gap: 5, border: "1px dashed var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 10, padding: "7px 12px", fontSize: 12, fontWeight: 800 }}>
               <Plus size={14} /> Add {TYPE_LABEL[addType] || ""}
             </button>
@@ -157,6 +174,32 @@ export default function IndicatorPanel({
                 <div style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: "auto" }}>
                   <span style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>length</span>
                   <input value={stochN} inputMode="numeric" onChange={(e) => setStochN(int(e.target.value, 2))} className="no-ring mono" style={{ ...numStyle, width: 44 }} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {setShowAtr && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: "1px solid var(--line)" }}>
+              <Box checked={showAtr} onClick={() => setShowAtr(!showAtr)} />
+              <span style={{ fontSize: 13.5, fontWeight: 700, flex: "0 0 auto" }}>ATR</span>
+              {showAtr && setAtrN && (
+                <div style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: "auto" }}>
+                  <span style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>length</span>
+                  <input value={atrN} inputMode="numeric" onChange={(e) => setAtrN(int(e.target.value, 2))} className="no-ring mono" style={{ ...numStyle, width: 44 }} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {setShowSd && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: "1px solid var(--line)" }}>
+              <Box checked={showSd} onClick={() => setShowSd(!showSd)} />
+              <span style={{ fontSize: 13.5, fontWeight: 700, flex: "0 0 auto" }}>Std deviation</span>
+              {showSd && setSdN && (
+                <div style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: "auto" }}>
+                  <span style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>length</span>
+                  <input value={sdN} inputMode="numeric" onChange={(e) => setSdN(int(e.target.value, 2))} className="no-ring mono" style={{ ...numStyle, width: 44 }} />
                 </div>
               )}
             </div>

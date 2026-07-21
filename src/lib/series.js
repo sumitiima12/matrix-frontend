@@ -30,6 +30,16 @@ export function CCIarr(c, p) { const tp = c.map((x) => (x.h + x.l + x.c) / 3); c
 export function ATRarr(c, p) { const tr = c.map((x, i) => i === 0 ? x.h - x.l : Math.max(x.h - x.l, Math.abs(x.h - c[i - 1].c), Math.abs(x.l - c[i - 1].c))); return EMAarr(tr, p); }
 
 export function VWAParr(c) { let pv = 0, vv = 0; return c.map((x) => { const tp = (x.h + x.l + x.c) / 3, v = x.v || 1; pv += tp * v; vv += v; return pv / vv; }); }
+/* Rolling population standard deviation of a value series. */
+export function STDDEVarr(a, p) { const out = Array(a.length).fill(NaN); for (let i = p - 1; i < a.length; i++) { let m = 0; for (let j = i - p + 1; j <= i; j++) m += a[j]; m /= p; let s = 0; for (let j = i - p + 1; j <= i; j++) s += (a[j] - m) ** 2; out[i] = Math.sqrt(s / p); } return out; }
+/* Central Pivot Range from each bar's PRIOR bar: { pivot, bc, tc }. */
+export function CPRarr(c) { const pivot = Array(c.length).fill(NaN), bc = Array(c.length).fill(NaN), tc = Array(c.length).fill(NaN); for (let i = 1; i < c.length; i++) { const p = c[i - 1], pv = (p.h + p.l + p.c) / 3, b = (p.h + p.l) / 2; pivot[i] = pv; bc[i] = b; tc[i] = pv + (pv - b); } return { pivot, bc, tc }; }
+/* Standard floor-trader pivots from each bar's PRIOR bar: { p, r1, r2, s1, s2 }. */
+export function PIVOTarr(c) { const P = Array(c.length).fill(NaN), r1 = Array(c.length).fill(NaN), r2 = Array(c.length).fill(NaN), s1 = Array(c.length).fill(NaN), s2 = Array(c.length).fill(NaN); for (let i = 1; i < c.length; i++) { const p = c[i - 1], pv = (p.h + p.l + p.c) / 3, rng = p.h - p.l; P[i] = pv; r1[i] = 2 * pv - p.l; s1[i] = 2 * pv - p.h; r2[i] = pv + rng; s2[i] = pv - rng; } return { p: P, r1, r2, s1, s2 }; }
+/* Ichimoku lines (no forward displacement): tenkan(9), kijun(26), spanA, spanB(52). */
+export function ICHIarr(c, conv = 9, base = 26, spanBp = 52) { const mid = (n, i) => { if (i < n - 1) return NaN; let hh = -Infinity, ll = Infinity; for (let j = i - n + 1; j <= i; j++) { if (c[j].h > hh) hh = c[j].h; if (c[j].l < ll) ll = c[j].l; } return (hh + ll) / 2; }; const tenkan = [], kijun = [], spanA = [], spanB = []; for (let i = 0; i < c.length; i++) { const t = mid(conv, i), k = mid(base, i), b = mid(spanBp, i); tenkan[i] = t; kijun[i] = k; spanB[i] = b; spanA[i] = (isNaN(t) || isNaN(k)) ? NaN : (t + k) / 2; } return { tenkan, kijun, spanA, spanB }; }
+/* Fibonacci retracement level (constant) for `ratio` over the swing high/low of the last `look` bars. */
+export function FIBarr(c, look = 90, ratio = 0.618) { const seg = c.slice(Math.max(0, c.length - look)); if (!seg.length) return c.map(() => NaN); const hi = Math.max(...seg.map((x) => x.h)), lo = Math.min(...seg.map((x) => x.l)); const lvl = hi - (hi - lo) * ratio; return c.map(() => lvl); }
 
 export function ADXarr(c, p) {
   const n = c.length, pDM = Array(n).fill(0), mDM = Array(n).fill(0), tr = Array(n).fill(0);

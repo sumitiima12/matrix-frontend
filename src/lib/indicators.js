@@ -151,6 +151,100 @@ export function stochSeries(candles, n = 14, d = 3) {
   return { k: rawK, d: dOut };
 }
 
+/** Wilder ATR (Average True Range) aligned to input. Sub-panel + used by Keltner. */
+export function atrSeries(candles, n = 14) {
+  const len = candles.length;
+  const out = new Array(len).fill(null);
+  if (len < n + 1) return out;
+  const tr = new Array(len).fill(0);
+  for (let i = 1; i < len; i++) {
+    const h = candles[i].h, l = candles[i].l, pc = candles[i - 1].c;
+    tr[i] = Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc));
+  }
+  let atr = 0;
+  for (let i = 1; i <= n; i++) atr += tr[i];
+  atr /= n;
+  out[n] = atr;
+  for (let i = n + 1; i < len; i++) { atr = (atr * (n - 1) + tr[i]) / n; out[i] = atr; }
+  return out;
+}
+
+/** Rolling standard deviation of a value series (population). Sub-panel. */
+export function stdDevSeries(vals, n = 20) {
+  const out = new Array(vals.length).fill(null);
+  for (let i = n - 1; i < vals.length; i++) {
+    const w = vals.slice(i - n + 1, i + 1);
+    const m = w.reduce((a, b) => a + b, 0) / n;
+    out[i] = Math.sqrt(w.reduce((a, b) => a + (b - m) ** 2, 0) / n);
+  }
+  return out;
+}
+
+/** Keltner Channel: EMA midline with ATR-scaled bands. Overlay {mid, up, lo}. */
+export function keltnerSeries(candles, n = 20, mult = 2, atrN = 10) {
+  const closes = candles.map((c) => c.c);
+  const mid = emaSeries(closes, n);
+  const atr = atrSeries(candles, atrN);
+  const up = mid.map((m, i) => (m != null && atr[i] != null ? m + mult * atr[i] : null));
+  const lo = mid.map((m, i) => (m != null && atr[i] != null ? m - mult * atr[i] : null));
+  return { mid, up, lo };
+}
+
+/** Central Pivot Range from each bar's PRIOR bar (daily CPR on a daily chart). Aligned step lines.
+   pivot=(H+L+C)/3, BC=(H+L)/2, TC=pivot+(pivot-BC). */
+export function cprSeries(candles) {
+  const len = candles.length;
+  const pivot = new Array(len).fill(null), bc = new Array(len).fill(null), tc = new Array(len).fill(null);
+  for (let i = 1; i < len; i++) {
+    const p = candles[i - 1];
+    const pv = (p.h + p.l + p.c) / 3, b = (p.h + p.l) / 2;
+    pivot[i] = pv; bc[i] = b; tc[i] = pv + (pv - b);
+  }
+  return { pivot, bc, tc };
+}
+
+/** Standard floor-trader pivot points from each bar's PRIOR bar. Aligned step lines. */
+export function pivotSeries(candles) {
+  const len = candles.length;
+  const P = new Array(len).fill(null), R1 = new Array(len).fill(null), R2 = new Array(len).fill(null);
+  const S1 = new Array(len).fill(null), S2 = new Array(len).fill(null);
+  for (let i = 1; i < len; i++) {
+    const p = candles[i - 1], pv = (p.h + p.l + p.c) / 3, rng = p.h - p.l;
+    P[i] = pv; R1[i] = 2 * pv - p.l; S1[i] = 2 * pv - p.h; R2[i] = pv + rng; S2[i] = pv - rng;
+  }
+  return { P, R1, R2, S1, S2 };
+}
+
+/** Ichimoku lines (no forward displacement — aligned so they slice cleanly with the candles):
+   Tenkan(9), Kijun(26), Senkou A ((Tenkan+Kijun)/2), Senkou B(52). */
+export function ichimokuSeries(candles, conv = 9, base = 26, spanB = 52) {
+  const len = candles.length;
+  const midOf = (n, i) => {
+    if (i < n - 1) return null;
+    let hh = -Infinity, ll = Infinity;
+    for (let j = i - n + 1; j <= i; j++) { if (candles[j].h > hh) hh = candles[j].h; if (candles[j].l < ll) ll = candles[j].l; }
+    return (hh + ll) / 2;
+  };
+  const tenkan = new Array(len).fill(null), kijun = new Array(len).fill(null);
+  const senkouA = new Array(len).fill(null), senkouB = new Array(len).fill(null);
+  for (let i = 0; i < len; i++) {
+    tenkan[i] = midOf(conv, i); kijun[i] = midOf(base, i); senkouB[i] = midOf(spanB, i);
+    senkouA[i] = tenkan[i] != null && kijun[i] != null ? (tenkan[i] + kijun[i]) / 2 : null;
+  }
+  return { tenkan, kijun, senkouA, senkouB };
+}
+
+/** Fibonacci retracement levels from the swing high/low over the last `look` bars. Each level is a
+   constant array (flat horizontal line across the window). Ratios: 0/23.6/38.2/50/61.8/78.6/100. */
+export function fibSeries(candles, look = 90) {
+  const len = candles.length;
+  const seg = candles.slice(Math.max(0, len - look));
+  if (!seg.length) return [];
+  const hi = Math.max(...seg.map((c) => c.h)), lo = Math.min(...seg.map((c) => c.l));
+  const ratios = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+  return ratios.map((r) => ({ ratio: r, price: hi - (hi - lo) * r, vals: new Array(len).fill(hi - (hi - lo) * r) }));
+}
+
 /** Heikin-Ashi candles from real OHLC. Each HA candle smooths the trend:
       haClose = (o+h+l+c)/4 ; haOpen = (prevHaOpen + prevHaClose)/2 (seed (o+c)/2)
       haHigh  = max(h, haOpen, haClose) ; haLow = min(l, haOpen, haClose)

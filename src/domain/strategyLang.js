@@ -1,4 +1,4 @@
-import { SMAarr, EMAarr, RSIarr, MACDarr, BBarr, CCIarr, ATRarr, VWAParr, ADXarr, STarr, DMIarr, STOCHarr, CF, ROLLavg, ROLLmedian } from "../lib/series";
+import { SMAarr, EMAarr, RSIarr, MACDarr, BBarr, CCIarr, ATRarr, VWAParr, ADXarr, STarr, DMIarr, STOCHarr, STDDEVarr, CPRarr, PIVOTarr, ICHIarr, FIBarr, CF, ROLLavg, ROLLmedian } from "../lib/series";
 import { pivots, detectPatterns, PATTERN_KEYS } from "./patterns";
 
 /* Support / resistance as evaluable series: at each bar, the price of the most recent CONFIRMED
@@ -35,6 +35,10 @@ function patternSeries(c, key, within = 3) {
 export const CANDLE_OPERAND_PREFIX = "CDL:";
 /* Phrase -> key. Longest phrase must be tried first ("inverted hammer" before "hammer"). */
 export const CANDLE_KEYS = {
+  "three white soldiers": "three-white-soldiers",
+  "3 white soldiers": "three-white-soldiers",
+  "three black crows": "three-black-crows",
+  "3 black crows": "three-black-crows",
   "bullish engulfing": "bull-engulfing",
   "bearish engulfing": "bear-engulfing",
   "engulfing candle": "bull-engulfing",
@@ -51,6 +55,7 @@ export const CANDLE_KEYS = {
   "doji": "doji",
 };
 export const CANDLE_LABEL = {
+  "three-white-soldiers": "Three White Soldiers", "three-black-crows": "Three Black Crows",
   "bull-engulfing": "Bullish Engulfing", "bear-engulfing": "Bearish Engulfing",
   "inverted-hammer": "Inverted Hammer", "shooting-star": "Shooting Star",
   "hanging-man": "Hanging Man", "morning-star": "Morning Star", "evening-star": "Evening Star",
@@ -79,6 +84,15 @@ export function candleSeries(c, key) {
       case "bear-engulfing": hit = !!p && green(p) && red(x) && x.o >= p.c && x.c <= p.o && b > body(p); break;
       case "morning-star": hit = !!p2 && !!p && red(p2) && body(p) <= 0.4 * rng(p) && green(x) && x.c >= (p2.o + p2.c) / 2; break;
       case "evening-star": hit = !!p2 && !!p && green(p2) && body(p) <= 0.4 * rng(p) && red(x) && x.c <= (p2.o + p2.c) / 2; break;
+      // Three consecutive strong green candles, each closing and opening higher (opens inside the
+      // prior body) with small upper wicks — a sustained-buying reversal/continuation signal.
+      case "three-white-soldiers": hit = !!p2 && !!p && green(p2) && green(p) && green(x)
+        && x.c > p.c && p.c > p2.c && x.o > p.o && p.o > p2.o && x.o < p.c && p.o < p2.c
+        && body(x) >= 0.5 * rng(x) && body(p) >= 0.5 * rng(p); break;
+      // Three consecutive strong red candles, each closing and opening lower — sustained selling.
+      case "three-black-crows": hit = !!p2 && !!p && red(p2) && red(p) && red(x)
+        && x.c < p.c && p.c < p2.c && x.o < p.o && p.o < p2.o && x.o > p.c && p.o > p2.c
+        && body(x) >= 0.5 * rng(x) && body(p) >= 0.5 * rng(p); break;
       default: hit = false;
     }
     if (hit) s[i] = 1;
@@ -175,6 +189,11 @@ export function resolveOperand(op, defs, c, closes, vols, cache) {
         case "DMI": { const dm = DMIarr(c, len); series = attr === "minus" ? dm.minus : attr === "adx" ? dm.adx : dm.plus; break; }
         case "Stoch": { const st = STOCHarr(c, len, Number(d.smoothK) || 3, Number(d.smoothD) || 3); series = attr === "d" ? st.d : st.k; break; }
         case "Supertrend": { const st = STarr(c, len, Number(d.mult) || 3); series = attr === "dir" ? st.dir : st.line; break; }
+        case "StdDev": series = STDDEVarr(closes, len); break;
+        case "CPR": { const cp = CPRarr(c); series = attr === "bc" ? cp.bc : attr === "tc" ? cp.tc : cp.pivot; break; }
+        case "Pivots": { const pv = PIVOTarr(c); series = attr === "r1" ? pv.r1 : attr === "r2" ? pv.r2 : attr === "s1" ? pv.s1 : attr === "s2" ? pv.s2 : pv.p; break; }
+        case "Ichimoku": { const ic = ICHIarr(c); series = attr === "kijun" ? ic.kijun : attr === "spanA" ? ic.spanA : attr === "spanB" ? ic.spanB : ic.tenkan; break; }
+        case "Fib": { const rt = { r236: 0.236, r382: 0.382, r500: 0.5, r618: 0.618, r786: 0.786 }[attr] ?? 0.5; series = FIBarr(c, len || 90, rt); break; }
         case "DMA": series = SMAarr(closes, len); break;
         case "Volume": { const mode = d.mode || "raw"; series = mode === "avg" ? ROLLavg(vols, len) : mode === "median" ? ROLLmedian(vols, len) : vols; break; }
         case "CurrentCandle": case "CurrentDay": { const f = CF[attr] || "c"; series = c.map((x) => x[f]); break; }
@@ -242,6 +261,11 @@ export const IND_CATALOG = [
   { type: "BB", label: "Bollinger Band", needsLen: true, attrs: ["upper", "middle", "lower"] },
   { type: "KC", label: "Keltner Channel", needsLen: true, attrs: ["upper", "middle", "lower"] },
   { type: "ATR", label: "ATR", needsLen: true, attrs: [] },
+  { type: "StdDev", label: "Standard deviation", needsLen: true, attrs: [] },
+  { type: "CPR", label: "Central Pivot Range", needsLen: false, attrs: ["pivot", "bc", "tc"] },
+  { type: "Pivots", label: "Pivot Points (standard)", needsLen: false, attrs: ["pivot", "r1", "r2", "s1", "s2"] },
+  { type: "Ichimoku", label: "Ichimoku Cloud", needsLen: false, attrs: ["tenkan", "kijun", "spanA", "spanB"] },
+  { type: "Fib", label: "Fibonacci retracement", needsLen: true, attrs: ["r236", "r382", "r500", "r618", "r786"] },
   { type: "VWAP", label: "VWAP", needsLen: false, attrs: [] },
   { type: "ADX", label: "ADX", needsLen: true, attrs: [] },
   { type: "DMI", label: "DMI (+DI / -DI / ADX)", needsLen: true, attrs: ["plus", "minus", "adx"] },
@@ -352,8 +376,11 @@ const PHRASE_RULES = [
      Placed here so "green candle" is understood as a whole phrase before the word-by-word parser. */
   { re: /green\s*candle|bullish\s*candle|candle\s*(is\s*)?green/i, cond: { la: "CC.close", op: ">", b: "CC.open", bType: "ind" }, defs: [CC_DEF] },
   { re: /red\s*candle|bearish\s*candle|candle\s*(is\s*)?red/i, cond: { la: "CC.close", op: "<", b: "CC.open", bType: "ind" }, defs: [CC_DEF] },
-  { re: /(?:bounce|bounces|bouncing|bounced|rebound|rebounds|rebounding|reversal|reverses|holds?|holding|respect(?:s|ing)?|defend(?:s|ing)?|support)\s*(?:from|off|at|of|near|the)?\s*support|near\s*support|at\s*support|off\s*support/i, cond: { la: "Price", op: ">", b: "Support", bType: "ind" }, defs: [] },
-  { re: /(?:reject|rejected|rejects|rejecting|fail|fails|failing|failed|reverses?|resistance)\s*(?:at|from|off|near|the)?\s*resistance|near\s*resistance|at\s*resistance|hits?\s*resistance/i, cond: { la: "Price", op: "<", b: "Resistance", bType: "ind" }, defs: [] },
+  /* Connector allows MULTIPLE words ("bounces OFF FROM support") — the old single-word optional
+     group failed on "off from". Requires a bounce/hold verb OR a near/at/off/from prefix so it
+     doesn't swallow "breaks below support" (that still routes to the breakdown rule below). */
+  { re: /(?:bounce|bounces|bouncing|bounced|rebound|rebounds|rebounding|reversal|reverses|holds?|holding|respect(?:s|ing)?|defend(?:s|ing)?)(?:\s+(?:from|off|at|of|near|the))*\s+support|(?:near|at|off|from)\s+support/i, cond: { la: "Price", op: ">", b: "Support", bType: "ind" }, defs: [] },
+  { re: /(?:reject|rejected|rejects|rejecting|fail|fails|failing|failed|reverses?)(?:\s+(?:at|from|off|near|the))*\s+resistance|(?:near|at|off|from)\s+resistance|hits?\s+resistance/i, cond: { la: "Price", op: "<", b: "Resistance", bType: "ind" }, defs: [] },
   { re: /break(?:s|ing|out)?\s*(?:above|over|through|past)?\s*resistance|breakout/i, cond: { la: "Price", op: "crosses_above", b: "Resistance", bType: "ind" }, defs: [] },
   { re: /break(?:s|ing|down)?\s*(?:below|under|through)?\s*support|breakdown/i, cond: { la: "Price", op: "crosses_below", b: "Support", bType: "ind" }, defs: [] },
 ];

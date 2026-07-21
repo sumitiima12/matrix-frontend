@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCandles } from "../../hooks/useCandles";
-import { smaSeries, emaSeries, bollingerSeries, macdSeries, rsiSeries, heikinAshiSeries, vwapSeries, adxSeries, stochSeries, OVERLAYS, OVERLAY_COLORS } from "../../lib/indicators";
+import { smaSeries, emaSeries, bollingerSeries, macdSeries, rsiSeries, heikinAshiSeries, vwapSeries, adxSeries, stochSeries, atrSeries, stdDevSeries, keltnerSeries, cprSeries, pivotSeries, ichimokuSeries, fibSeries, OVERLAYS, OVERLAY_COLORS } from "../../lib/indicators";
 import { lsGet, lsSet } from "../../lib/format";
 import ChartToolbar from "./ChartToolbar";
 import IndicatorPanel from "./IndicatorPanel";
@@ -34,6 +34,8 @@ const DEFAULT_PREFS = {
   rsi: false, rsiN: 14,
   adx: false, adxN: 14,
   stoch: false, stochN: 14,
+  atr: false, atrN: 14,
+  sd: false, sdN: 20,
   vol: false, ctype: "candle",
 };
 /* Read prefs, migrating the OLD format (active: ["ema21", …]) to the new spec model. */
@@ -49,6 +51,8 @@ function readPrefs() {
   if (p.rsiN == null) p.rsiN = 14;
   if (p.adxN == null) p.adxN = 14;
   if (p.stochN == null) p.stochN = 14;
+  if (p.atrN == null) p.atrN = 14;
+  if (p.sdN == null) p.sdN = 20;
   return p;
 }
 
@@ -102,12 +106,16 @@ export default function ProChart({ sym, defaultTf = "1d", height = 240 }) {
   const [adxN, setAdxN] = useState(saved.adxN);
   const [showStoch, setShowStoch] = useState(saved.stoch);
   const [stochN, setStochN] = useState(saved.stochN);
+  const [showAtr, setShowAtr] = useState(saved.atr);
+  const [atrN, setAtrN] = useState(saved.atrN);
+  const [showSd, setShowSd] = useState(saved.sd);
+  const [sdN, setSdN] = useState(saved.sdN);
   const [showVol, setShowVol] = useState(saved.vol);
   const [picker, setPicker] = useState(false);
 
   useEffect(() => {
-    lsSet(PREF_KEY, { overlays, macd: showMacd, macdP, rsi: showRsi, rsiN, adx: showAdx, adxN, stoch: showStoch, stochN, vol: showVol, ctype });
-  }, [overlays, showMacd, macdP, showRsi, rsiN, showAdx, adxN, showStoch, stochN, showVol, ctype]);
+    lsSet(PREF_KEY, { overlays, macd: showMacd, macdP, rsi: showRsi, rsiN, adx: showAdx, adxN, stoch: showStoch, stochN, atr: showAtr, atrN, sd: showSd, sdN, vol: showVol, ctype });
+  }, [overlays, showMacd, macdP, showRsi, rsiN, showAdx, adxN, showStoch, stochN, showAtr, atrN, showSd, sdN, showVol, ctype]);
 
   const { data, loading, error } = useCandles(sym, tf);
   const closes = useMemo(() => (data ? data.map((c) => c.c) : []), [data]);
@@ -185,6 +193,32 @@ export default function ProChart({ sym, defaultTf = "1d", height = 240 }) {
         out.push({ id: key + "u", color: o.color, label: `BB ${n} up`, vals: b.up, dash: "3 3" });
         out.push({ id: key + "m", color: o.color, label: `BB ${n} mid`, vals: b.mid });
         out.push({ id: key + "l", color: o.color, label: `BB ${n} low`, vals: b.lo, dash: "3 3" });
+      } else if (o.type === "keltner") {
+        const k = keltnerSeries(data || [], n, Number(o.mult) || 2);
+        out.push({ id: key + "u", color: o.color, label: `Keltner up`, vals: k.up, dash: "4 3" });
+        out.push({ id: key + "m", color: o.color, label: `Keltner mid`, vals: k.mid });
+        out.push({ id: key + "l", color: o.color, label: `Keltner low`, vals: k.lo, dash: "4 3" });
+      } else if (o.type === "cpr") {
+        const c = cprSeries(data || []);
+        out.push({ id: `cpr_tc_${i}`, color: o.color, label: "CPR TC", vals: c.tc, dash: "2 3" });
+        out.push({ id: `cpr_p_${i}`, color: o.color, label: "CPR pivot", vals: c.pivot });
+        out.push({ id: `cpr_bc_${i}`, color: o.color, label: "CPR BC", vals: c.bc, dash: "2 3" });
+      } else if (o.type === "pivots") {
+        const p = pivotSeries(data || []);
+        out.push({ id: `pv_r2_${i}`, color: o.color, label: "R2", vals: p.R2, dash: "2 3" });
+        out.push({ id: `pv_r1_${i}`, color: o.color, label: "R1", vals: p.R1, dash: "2 3" });
+        out.push({ id: `pv_p_${i}`, color: o.color, label: "Pivot", vals: p.P });
+        out.push({ id: `pv_s1_${i}`, color: o.color, label: "S1", vals: p.S1, dash: "2 3" });
+        out.push({ id: `pv_s2_${i}`, color: o.color, label: "S2", vals: p.S2, dash: "2 3" });
+      } else if (o.type === "ichimoku") {
+        const ich = ichimokuSeries(data || []);
+        out.push({ id: `ich_t_${i}`, color: "#EF4444", label: "Tenkan", vals: ich.tenkan });
+        out.push({ id: `ich_k_${i}`, color: "#3B82F6", label: "Kijun", vals: ich.kijun });
+        out.push({ id: `ich_a_${i}`, color: "#10B981", label: "Senkou A", vals: ich.senkouA, dash: "3 3" });
+        out.push({ id: `ich_b_${i}`, color: "#F59E0B", label: "Senkou B", vals: ich.senkouB, dash: "3 3" });
+      } else if (o.type === "fib") {
+        const fib = fibSeries(data || [], Number(o.n) || 90);
+        fib.forEach((lv, j) => out.push({ id: `fib_${i}_${j}`, color: o.color, label: `Fib ${(lv.ratio * 100).toFixed(1)}%`, vals: lv.vals, dash: j === 0 || j === fib.length - 1 ? undefined : "2 4" }));
       }
     });
     return out;
@@ -194,11 +228,13 @@ export default function ProChart({ sym, defaultTf = "1d", height = 240 }) {
   const rsiFull = useMemo(() => (showRsi && closes.length ? rsiSeries(closes, Math.max(2, Number(rsiN) || 14)) : null), [closes, showRsi, rsiN]);
   const adxFull = useMemo(() => (showAdx && data ? adxSeries(data, Math.max(2, Number(adxN) || 14)) : null), [data, showAdx, adxN]);
   const stochFull = useMemo(() => (showStoch && data ? stochSeries(data, Math.max(2, Number(stochN) || 14)) : null), [data, showStoch, stochN]);
+  const atrFull = useMemo(() => (showAtr && data ? atrSeries(data, Math.max(2, Number(atrN) || 14)) : null), [data, showAtr, atrN]);
+  const sdFull = useMemo(() => (showSd && closes.length ? stdDevSeries(closes, Math.max(2, Number(sdN) || 20)) : null), [closes, showSd, sdN]);
   // Heikin-Ashi candles (computed on FULL history so the smoothing recursion is correct, then
   // sliced to the window just like the real candles). Only when that candle type is selected.
   const haFull = useMemo(() => (ctype === "heikin" && data ? heikinAshiSeries(data) : null), [data, ctype]);
 
-  const activeCount = overlays.length + (showMacd ? 1 : 0) + (showRsi ? 1 : 0) + (showAdx ? 1 : 0) + (showStoch ? 1 : 0) + (showVol ? 1 : 0);
+  const activeCount = overlays.length + (showMacd ? 1 : 0) + (showRsi ? 1 : 0) + (showAdx ? 1 : 0) + (showStoch ? 1 : 0) + (showAtr ? 1 : 0) + (showSd ? 1 : 0) + (showVol ? 1 : 0);
 
   const toolbar = (
     <ChartToolbar
@@ -210,7 +246,7 @@ export default function ProChart({ sym, defaultTf = "1d", height = 240 }) {
   );
 
   if (loading) {
-    return <div>{toolbar}<div style={{ height, display: "grid", placeItems: "center", color: "var(--muted)", fontSize: 12 }}>Loading real candles…</div></div>;
+    return <div>{toolbar}<div style={{ height, display: "grid", placeItems: "center", color: "var(--muted)", fontSize: 12 }}>Bringing it up…</div></div>;
   }
   if (!data || data.length < 3 || !view) {
     return (
@@ -455,6 +491,26 @@ export default function ProChart({ sym, defaultTf = "1d", height = 240 }) {
         );
       })()}
 
+      {(atrFull || sdFull) && [["ATR", atrFull, atrN], ["Std dev", sdFull, sdN]].filter(([, f]) => f).map(([label, arr, len]) => {
+        const vals = sliceOf(arr);
+        const hs = vals.filter((v) => v != null && !Number.isNaN(v));
+        if (!hs.length) return null;
+        const HH = 60, mx = Math.max(...hs), mn = Math.min(...hs), rng = (mx - mn) || 1;
+        const y = (v) => HH - 4 - ((v - mn) / rng) * (HH - 8);
+        const cur = atCursor(arr);
+        return (
+          <div key={label} style={{ marginTop: 12 }}>
+            <div style={{ display: "flex", gap: 8, fontSize: 10, color: "var(--muted)", fontWeight: 700, marginBottom: 3 }}>
+              <span>{label} {len}</span>
+              <span className="mono" style={{ color: "var(--ink)" }}>{cur == null ? "—" : fmtPrice(cur)}</span>
+            </div>
+            <svg viewBox={`0 0 ${W} ${HH}`} width="100%" height={HH}>
+              <polyline points={poly(vals, y)} fill="none" stroke="var(--primary)" strokeWidth="1.5" />
+            </svg>
+          </div>
+        );
+      })}
+
       {showVol && (() => {
         const vols = vis.map((d) => d.v || 0);
         const maxV = Math.max(...vols, 1);
@@ -491,6 +547,8 @@ export default function ProChart({ sym, defaultTf = "1d", height = 240 }) {
           showRsi={showRsi} setShowRsi={setShowRsi} rsiN={rsiN} setRsiN={setRsiN}
           showAdx={showAdx} setShowAdx={setShowAdx} adxN={adxN} setAdxN={setAdxN}
           showStoch={showStoch} setShowStoch={setShowStoch} stochN={stochN} setStochN={setStochN}
+          showAtr={showAtr} setShowAtr={setShowAtr} atrN={atrN} setAtrN={setAtrN}
+          showSd={showSd} setShowSd={setShowSd} sdN={sdN} setSdN={setSdN}
           showVol={showVol} setShowVol={setShowVol}
           onClose={() => setPicker(false)}
         />
