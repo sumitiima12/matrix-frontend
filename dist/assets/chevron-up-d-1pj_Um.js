@@ -1,4 +1,4 @@
-import{z as o}from"./index-DWGQShCc.js";/**
+import{z as o}from"./index-fHcssDG4.js";/**
  * @license lucide-react v0.383.0 - ISC
  *
  * This source code is licensed under the ISC license.
@@ -8,4 +8,4 @@ import{z as o}from"./index-DWGQShCc.js";/**
  *
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
- */const r=o("ChevronUp",[["path",{d:"m18 15-6-6-6 6",key:"153udz"}]]);export{r as C,n as a};
+ */const r=o("ChevronUp",[["path",{d:"m18 15-6-6-6 6",key:"153udz"}]]);export{n as C,r as a};
