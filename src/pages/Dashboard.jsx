@@ -571,7 +571,7 @@ function TrendingRow({ s, market, onOpen, onBuy, onWhy }) {
   );
 }
 
-export default function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, onAutoBuy, mode, watch, toggleWatch, profile, portfolio = [], realPortfolio = [], onRefreshReal, wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [], liveTick = 0, onWhy, autoOnMap: autoOnMapProp, setAutoOnMap: setAutoOnMapProp, hideDash = false }) {
+export default function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, onAutoBuy, mode, watch, toggleWatch, profile, portfolio = [], realPortfolio = [], onRefreshReal, wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [], liveTick = 0, onWhy, autoOnMap: autoOnMapProp, setAutoOnMap: setAutoOnMapProp, deployCapMap: deployCapMapProp, setDeployCapMap: setDeployCapMapProp, hideDash = false }) {
   const [glMode, setGlMode] = useState("Gainers");
   // Picks refresh ONCE AN HOUR (not on every tick) so they don't churn.
   const [pickHour, setPickHour] = useState(() => Math.floor(Date.now() / 3600000));
@@ -709,10 +709,14 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const setAutoOnMap = setAutoOnMapProp || setAutoOnMapLocal;
   /* Capital-to-deploy is PER MARKET and persisted, so it survives logout/login and each
      market keeps its own (a $ amount for US/Crypto, ₹ for Indian). */
-  const [deployCapMap, setDeployCapMap] = useState(() => { const v = lsGet("mx_deploy_capital", {}); return (v && typeof v === "object") ? v : {}; });
+  /* Capital is LIFTED to the app root (server-persisted) when provided, so it survives reloads and
+     other devices instead of reverting; falls back to local state for guests. */
+  const [deployCapMapLocal, setDeployCapMapLocal] = useState(() => { const v = lsGet("mx_deploy_capital", {}); return (v && typeof v === "object") ? v : {}; });
+  const deployCapMap = deployCapMapProp || deployCapMapLocal;
+  const setDeployCapRaw = setDeployCapMapProp || setDeployCapMapLocal;
   const capDefault = (m) => (m === "US" || m === "Crypto") ? "1000" : "100000";
   const deployCapital = deployCapMap[market] != null ? deployCapMap[market] : capDefault(market);
-  const setDeployCapital = (v) => { setDeployCapMap((prev) => { const next = { ...prev, [market]: v }; lsSet("mx_deploy_capital", next); return next; }); };
+  const setDeployCapital = (v) => setDeployCapRaw((prev) => { const next = { ...(prev || {}), [market]: v }; lsSet("mx_deploy_capital", next); return next; });
   /* An explicit Save: you type into a draft, then tap Save to commit (and persist) it. The
      "Capital" figure only updates on Save, so it's clear what's applied vs being typed. */
   const [capDraft, setCapDraft] = useState(deployCapital);
@@ -781,7 +785,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       (onAutoBuy || onBuy)(inst, t.qty, { tp: t.tpPct, sl: t.slPct, tradeType: "Auto Buy", product: prodCode });
     });
     lsSet(key, true);
-  }, [autoOn, market]);
+    // `autoTrades.length` is in the deps so this fires the moment the day's picks finish loading —
+    // without it, turning Auto-Buy on before prices arrived left the effect never re-running, so
+    // nothing was ever placed (0 trades). The once-per-day key still prevents a second placement.
+  }, [autoOn, market, autoTrades.length]);
   const setOv = (t, field, val) => setAutoOverrides((o) => { const cur = o[t.sym] || { tp: t.tpPct, sl: t.slPct }; return { ...o, [t.sym]: { ...cur, [field]: val === "" ? cur[field] : +val } }; });
   // period stats (shown regardless of on/off)
   const bizDaysThisMonth = () => { const now = new Date(); let c = 0; for (let d = 1; d <= now.getDate(); d++) { const wd = new Date(now.getFullYear(), now.getMonth(), d).getDay(); if (wd >= 1 && wd <= 5) c++; } return c; };

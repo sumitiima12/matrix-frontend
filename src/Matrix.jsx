@@ -268,6 +268,10 @@ function AppInner() {
      every reload) and persisted with the rest of the app state — server-side for logged-in
      users, so it survives closing the app. */
   const [autoOnMap, setAutoOnMap] = useState({ IN: false, US: false, Crypto: false, Commodity: false, FNO: false });
+  /* Per-market Smart Auto-Buy capital — lifted here and persisted with the app state (server-side
+     for logged-in users) so it survives reloads and other devices, instead of quietly reverting
+     to the default. Seeded from the old localStorage key for a smooth migration. */
+  const [deployCapMap, setDeployCapMap] = useState(() => { const v = lsGet("mx_deploy_capital", {}); return (v && typeof v === "object") ? v : {}; });
   const [remoteHydrated, setRemoteHydrated] = useState(false);   // has the server copy loaded?
   const stateSaveTimer = useRef(null);
   /* Server-side house price feeds (FYERS for Indian equities, Delta for crypto) — reported by
@@ -708,6 +712,7 @@ function AppInner() {
       // Fresh sign-ups skip onboarding; everyone else uses their saved flag.
       setOnboardSkipped(freshSignup ? true : !!(s && s.onboardSkipped));
       setAutoOnMap((s && s.autoOnMap) || { IN: false, US: false, Crypto: false, Commodity: false, FNO: false });
+      if (s && s.deployCapMap && typeof s.deployCapMap === "object") setDeployCapMap(s.deployCapMap);
     };
     const local = lsGet("mx_state_" + userId, null);
     apply(local);
@@ -736,13 +741,13 @@ function AppInner() {
   // has loaded, so we never overwrite the server with empty local state on first paint.
   useEffect(() => {
     if (hydratedUser !== userId) return;
-    const snap = { portfolio, walletMap, watchlists, profile, onboardSkipped, deposits, strats, autoOnMap };
+    const snap = { portfolio, walletMap, watchlists, profile, onboardSkipped, deposits, strats, autoOnMap, deployCapMap };
     lsSet("mx_state_" + userId, snap);
     if (BACKEND_URL && auth && getAuthToken() && remoteHydrated) {
       clearTimeout(stateSaveTimer.current);
       stateSaveTimer.current = setTimeout(() => { apiSaveState(userId, snap).catch(() => {}); }, 1200);
     }
-  }, [portfolio, walletMap, watchlists, profile, onboardSkipped, deposits, strats, autoOnMap, hydratedUser, userId, remoteHydrated, auth]);
+  }, [portfolio, walletMap, watchlists, profile, onboardSkipped, deposits, strats, autoOnMap, deployCapMap, hydratedUser, userId, remoteHydrated, auth]);
   useEffect(() => { if (hydratedUser === userId) lsSet("mx_trades_" + userId, trades); }, [trades, hydratedUser, userId]);
   const [drawer, setDrawer] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -1078,7 +1083,7 @@ function AppInner() {
             <DetailPage s={detail} onBack={() => setDetail(null)} watched={watch.includes(detail.sym)} toggleWatch={toggleWatch} onTrade={goTrade} onBuy={buyStock} canBuy={canBuy} />
           ) : (
             <>
-              {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} onAutoBuy={autoBuyNow} mode={mode} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} canBuy={canBuy} hideDash={(market === "IN" || market === "Commodity") && virtualBlocked(market)} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} realPortfolio={realPortfolio} onRefreshReal={() => refreshPortfolio(market)} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} trades={trades} liveTick={liveTick} onWhy={openWhy} autoOnMap={autoOnMap} setAutoOnMap={setAutoOnMap} />}
+              {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} onAutoBuy={autoBuyNow} mode={mode} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} canBuy={canBuy} hideDash={(market === "IN" || market === "Commodity") && virtualBlocked(market)} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} realPortfolio={realPortfolio} onRefreshReal={() => refreshPortfolio(market)} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} trades={trades} liveTick={liveTick} onWhy={openWhy} autoOnMap={autoOnMap} setAutoOnMap={setAutoOnMap} deployCapMap={deployCapMap} setDeployCapMap={setDeployCapMap} />}
               {tab === "trade" && <TradeView walletMap={walletMap} adjustWallet={adjustWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} recordTrade={recordTrade} />}
               {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} canBuy={canBuy} market={market} onWhy={openWhy} me={auth ? (auth.username || null) : null} isAdmin={effAdmin} adminKey={adminKey} signupAt={auth ? (auth.createdAt || null) : null} />}
               {tab === "automation" && <Automation market={market} appMode={mode} onRecord={recordTrade} trades={trades} strats={strats} setStrats={setStrats} onExitAll={exitAllStrategies} me={auth ? (auth.username || null) : null} isAdmin={effAdmin} userId={userId} brokerFor={brokerFor} adminKey={adminKey} />}
