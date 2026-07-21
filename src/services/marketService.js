@@ -12,7 +12,14 @@ import { BACKEND_URL, TF_YF } from "../config";
 
 const get = async (path) => {
   if (!BACKEND_URL) return null;
-  const r = await fetch(`${BACKEND_URL}${path}`);
+  // Attach the logged-in user's token when present. Market data is public, but the server uses the
+  // identity to decide whether to serve the OWNER's licensed FYERS feed (owner only) vs Yahoo.
+  let headers;
+  try {
+    const tok = typeof localStorage !== "undefined" && localStorage.getItem("mx_token");
+    if (tok) headers = { Authorization: `Bearer ${tok}` };
+  } catch { /* ignore */ }
+  const r = await fetch(`${BACKEND_URL}${path}`, headers ? { headers } : undefined);
   if (!r.ok) throw new Error(`${path} -> ${r.status}`);
   return r.json();
 };
