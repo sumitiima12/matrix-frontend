@@ -25,7 +25,7 @@ import { registerAutoBuy, loadAutoBuys, pauseAutoBuy, cancelAutoBuy, setAutoBuyL
  */
 
 
-function BacktestResult({ cfg, defaultSym }) {
+function BacktestResult({ cfg, defaultSym, blocked = false, onConnect }) {
   // Default to the symbol the strategy is ACTIVATED on. Backtesting a NIFTY50
   // strategy against RELIANCE by default tests something you never deployed.
   const [sym, setSym] = useState(defaultSym || "RELIANCE");
@@ -78,6 +78,25 @@ function BacktestResult({ cfg, defaultSym }) {
   );
 
   const bars = covered ? covered.inWindow : 0;
+  // COMPLIANCE GATE: backtesting Indian stocks needs REAL history, which we can only serve a user
+  // from THEIR OWN connected broker (we can't redistribute anyone else's feed). No broker -> nudge.
+  if (blocked) {
+    return (
+      <div className="card" style={{ padding: 16, textAlign: "center", background: "var(--primary-soft)", border: "1px dashed var(--primary)", margin: "6px 0" }}>
+        <div style={{ fontSize: 22, marginBottom: 6 }}>🔒</div>
+        <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>Connect your broker to backtest</div>
+        <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 6, lineHeight: 1.55 }}>
+          Backtesting runs on real market history. To stay compliant we can only use <b>your own broker's</b> data —
+          connect FYERS (or your broker) to unlock backtesting on real Indian candles.
+        </div>
+        {onConnect && (
+          <button onClick={onConnect} className="tap disp" style={{ marginTop: 12, border: "none", background: "var(--primary)", color: "var(--on-primary)", borderRadius: 12, padding: "10px 18px", fontWeight: 800, fontSize: 13 }}>
+            Connect broker
+          </button>
+        )}
+      </div>
+    );
+  }
   // No cfg at all -> the template lookup missed. Say so; do not throw a white screen.
   if (!cfg) {
     return <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>This strategy has no runnable configuration to backtest.</div>;
@@ -421,7 +440,7 @@ function DeploySizeField({ market, value, onChange }) {
   );
 }
 
-function SampleStrategyCard({ s, onActivate, onClone, onEdit, market = "IN" }) {
+function SampleStrategyCard({ s, onActivate, onClone, onEdit, market = "IN", canBacktest = true, onConnect }) {
   const { loading, stats } = useBacktestStats(s);
   const [bt, setBt] = useState(false);
   const [size, setSize] = useState(market === "Crypto" ? 200 : 1);
@@ -504,7 +523,7 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, market = "IN" }) {
 
       {bt && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-          <BacktestResult cfg={s.cfg} defaultSym={(s.symbols && s.symbols[0]) || undefined} />
+          <BacktestResult cfg={s.cfg} defaultSym={(s.symbols && s.symbols[0]) || undefined} blocked={!canBacktest} onConnect={onConnect} />
         </div>
       )}
     </div>
@@ -514,7 +533,7 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, market = "IN" }) {
 /* Premium strategy card — locked. Shows only the name + a short description, with a
    backtest and an activate toggle. No rules are revealed and it cannot be edited or
    copied as a template. */
-function PremiumStrategyCard({ s, active, onToggle, onEdit, market = "IN" }) {
+function PremiumStrategyCard({ s, active, onToggle, onEdit, market = "IN", canBacktest = true, onConnect }) {
   const { loading, stats } = useBacktestStats(s);
   const [bt, setBt] = useState(false);
   const [size, setSize] = useState(market === "Crypto" ? 200 : 1);
@@ -580,7 +599,7 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, market = "IN" }) {
 
       {bt && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-          <BacktestResult cfg={s.cfg} defaultSym={relSym || undefined} />
+          <BacktestResult cfg={s.cfg} defaultSym={relSym || undefined} blocked={!canBacktest} onConnect={onConnect} />
         </div>
       )}
     </div>
@@ -713,7 +732,12 @@ function CollapsibleList({ items, render, initial = 3, reverse = true }) {
   );
 }
 
-export default function Automation({ market = "IN", appMode = "virtual", onRecord, trades = [], strats = [], setStrats, onExitAll, me = null, isAdmin = false, userId = null, brokerFor = null, adminKey = "" }) {
+export default function Automation({ market = "IN", appMode = "virtual", onRecord, trades = [], strats = [], setStrats, onExitAll, me = null, isAdmin = false, userId = null, brokerFor = null, adminKey = "", onConnectBroker = null }) {
+  /* Backtesting Indian stocks needs real history, which — for compliance — can only come from the
+     user's OWN connected broker (or the owner's house feed). Crypto (Delta) and US (Yahoo) have
+     usable public/delayed feeds, so those don't require a broker. */
+  const INDIAN_MKT = ["IN", "FNO", "Commodity"];
+  const canBacktest = !INDIAN_MKT.includes(market) || isAdmin || (typeof brokerFor === "function" && !!brokerFor(market));
   // Which strategy is being armed for real-money auto-buy, and the form for it.
   const [liveStrat, setLiveStrat] = useState(null);
   const [liveAmt, setLiveAmt] = useState("");
@@ -1291,7 +1315,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       })()}
       {btOpen === s.id && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-          <BacktestResult cfg={s.cfg || { mode: "plain" }} defaultSym={(s.symbols && s.symbols[0]) || undefined} />
+          <BacktestResult cfg={s.cfg || { mode: "plain" }} defaultSym={(s.symbols && s.symbols[0]) || undefined} blocked={!canBacktest} onConnect={onConnectBroker} />
         </div>
       )}
     </div>
@@ -1463,7 +1487,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                     <span className="disp" style={{ fontWeight: 700, fontSize: 13.5 }}>Backtest · {btTpl} <span style={{ color: "var(--muted)", fontWeight: 600, fontSize: 11 }}>· pick a stock or index</span></span>
                     <X size={18} className="tap" color="var(--muted)" onClick={() => setBtTpl(null)} />
                   </div>
-                  <BacktestResult cfg={(TEMPLATES.find((x) => x.name === btTpl) || {}).cfg} defaultSym={DEPLOY_OPTIONS[0]} />
+                  <BacktestResult cfg={(TEMPLATES.find((x) => x.name === btTpl) || {}).cfg} defaultSym={DEPLOY_OPTIONS[0]} blocked={!canBacktest} onConnect={onConnectBroker} />
                 </div>
               )}
 
@@ -1570,7 +1594,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             <button onClick={() => setShowBt((v) => !v)} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 14, padding: 12, fontWeight: 700, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}><Activity size={16} color="var(--primary)" /> {showBt ? "Hide backtest" : "Backtest this strategy"}</button>
             {showBt && (
               <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
-                <BacktestResult cfg={cfg} />
+                <BacktestResult cfg={cfg} blocked={!canBacktest} onConnect={onConnectBroker} />
               </div>
             )}
 
@@ -1614,7 +1638,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       {topTab === "sample" ? (
         sampleStrats.length === 0
           ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No sample strategies for this market.</div>
-          : sampleStrats.map(({ s }) => <SampleStrategyCard key={s.id} s={s} market={market} onActivate={useTemplateStrategy} onClone={cloneStrategy} onEdit={isAdmin ? loadForEdit : undefined} />)
+          : sampleStrats.map(({ s }) => <SampleStrategyCard key={s.id} s={s} market={market} onActivate={useTemplateStrategy} onClone={cloneStrategy} onEdit={isAdmin ? loadForEdit : undefined} canBacktest={canBacktest} onConnect={onConnectBroker} />)
       ) : topTab === "premium" ? (
         <>
           <div style={{ fontSize: 11.5, color: "var(--muted)", margin: "0 2px 4px", lineHeight: 1.5 }}>
@@ -1622,7 +1646,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           </div>
           {premiumStrats.length === 0
             ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No premium strategies available.</div>
-            : premiumStrats.map((s) => <PremiumStrategyCard key={s.id} s={s} active={activeInMarket(s)} market={market} onToggle={(rs, size) => togglePremiumHere(s.id, rs, size)} onEdit={isAdmin ? loadForEdit : undefined} />)}
+            : premiumStrats.map((s) => <PremiumStrategyCard key={s.id} s={s} active={activeInMarket(s)} market={market} onToggle={(rs, size) => togglePremiumHere(s.id, rs, size)} onEdit={isAdmin ? loadForEdit : undefined} canBacktest={canBacktest} onConnect={onConnectBroker} />)}
         </>
       ) : topTab === "public" ? (
         <>
@@ -1658,7 +1682,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                   </div>
                   {btOpen === ps.id && (
                     <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-                      <BacktestResult cfg={ps.data || ps.cfg} defaultSym={(ps.symbols && ps.symbols[0]) || undefined} />
+                      <BacktestResult cfg={ps.data || ps.cfg} defaultSym={(ps.symbols && ps.symbols[0]) || undefined} blocked={!canBacktest} onConnect={onConnectBroker} />
                     </div>
                   )}
                 </div>
