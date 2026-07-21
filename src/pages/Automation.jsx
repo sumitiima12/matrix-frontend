@@ -1064,6 +1064,15 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     setToast(`"${s.name}" removed from public.`);
     if (topTab === "public") refreshPublic();
   };
+  /* Delete a strategy (admin action on premium/sample/others' public, or your own). Removes it
+     locally and, if it was public, unpublishes it too. */
+  const deleteStrategy = async (s) => {
+    if (typeof window !== "undefined" && !window.confirm(`Delete "${s.name || "this strategy"}"?`)) return;
+    if (s.publicId) { try { await apiUnpublishStrategy(s.publicId); } catch { /* ignore */ } }
+    setStrats((p) => p.filter((x) => x.id !== s.id));
+    setToast(`"${s.name || "Strategy"}" deleted.`);
+    if (topTab === "public") refreshPublic();
+  };
   // Clone a public strategy into "My strategies" (editable, inactive).
   const clonePublic = (ps) => {
     const id = "c" + Date.now();
@@ -1109,6 +1118,15 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     </div>
   );
   const StrategyCard = ({ s, p }) => {
+    /* PERMISSIONS. Non-admins can only Edit/Clone/Publish their OWN strategies. Admins can also
+       manage premium/sample and other people's public strategies (publish/unpublish/delete/clone). */
+    const own = s.by === creator;
+    const sampleOrPremium = s.premium || s.by === "Matrix";
+    const canEdit = own || isAdmin;
+    const canClone = own || isAdmin;
+    const showPublishToggle = own || (isAdmin && sampleOrPremium);   // publish/unpublish
+    const showUnpublishOnly = isAdmin && !own && !sampleOrPremium && !!s.publicId;  // admin: unpublish others' public
+    const canDelete = isAdmin && !own;
     /* Open positions this strategy opened but hasn't exited yet -> "Entry triggered" + live P&L. */
     const openTrades = (trades || []).filter((t) => (t.strategyId === s.id || t.strategy === s.name) && t.entryAt != null && t.exitAt == null);
     const entryTriggered = openTrades.length > 0;
@@ -1178,13 +1196,18 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         </div>
       )}
       <div style={{ display: "flex", gap: 7, marginTop: 12, flexWrap: "wrap" }}>
-        <button onClick={() => setEditStrat(editStrat === s.id ? null : s.id)} className="tap" title="Edit symbols & timeframe" style={{ border: "1px solid " + (editStrat === s.id ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: editStrat === s.id ? "var(--primary-soft)" : "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: editStrat === s.id ? "var(--primary)" : "var(--ink)" }}><SlidersHorizontal size={14} /></button>
-        <button onClick={() => loadForEdit(s)} className="tap" title="Edit this strategy's rules in the builder" style={{ border: "1px solid var(--line)", borderRadius: 11, background: "var(--surface)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 700, color: "var(--ink)" }}><Pencil size={13} /> Edit</button>
+        {canEdit && <button onClick={() => setEditStrat(editStrat === s.id ? null : s.id)} className="tap" title="Edit symbols & timeframe" style={{ border: "1px solid " + (editStrat === s.id ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: editStrat === s.id ? "var(--primary-soft)" : "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: editStrat === s.id ? "var(--primary)" : "var(--ink)" }}><SlidersHorizontal size={14} /></button>}
+        {canEdit && <button onClick={() => loadForEdit(s)} className="tap" title="Edit this strategy's rules in the builder" style={{ border: "1px solid var(--line)", borderRadius: 11, background: "var(--surface)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 700, color: "var(--ink)" }}><Pencil size={13} /> Edit</button>}
         <button onClick={() => toggleAlerts(s)} className="tap" title="Alert on entry/exit signal" style={{ border: "1px solid " + (s.alerts ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: s.alerts ? "var(--primary)" : "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: s.alerts ? "var(--on-primary)" : "var(--ink)" }}><Bell size={14} /></button>
         <button onClick={() => setBtOpen(btOpen === s.id ? null : s.id)} className="tap" style={{ border: "1px solid " + (btOpen === s.id ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: btOpen === s.id ? "var(--primary-soft)" : "var(--surface)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 700, color: btOpen === s.id ? "var(--primary)" : "var(--ink)" }}><Activity size={13} /> Test</button>
         <button onClick={() => setLedgerOpen(ledgerOpen === s.id ? null : s.id)} className="tap" title="Every trade this strategy has taken" style={{ border: "1px solid " + (ledgerOpen === s.id ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: ledgerOpen === s.id ? "var(--primary-soft)" : "var(--surface)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 700, color: ledgerOpen === s.id ? "var(--primary)" : "var(--ink)" }}><ListChecks size={13} /> Trades</button>
-        <button onClick={() => cloneStrategy(s)} className="tap" title="Clone into a new editable strategy" style={{ border: "1px solid var(--line)", borderRadius: 11, background: "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: "var(--ink)" }}><Copy size={14} /></button>
-        <button onClick={() => (s.publicId ? unpublishOwn(s) : publishOwn(s))} className="tap" title={s.publicId ? "Remove from public" : "Make public"} style={{ border: "1px solid " + (s.publicId ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: s.publicId ? "var(--primary-soft)" : "var(--surface)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 700, color: s.publicId ? "var(--primary)" : "var(--ink)" }}><Globe size={13} /> {s.publicId ? "Public" : "Publish"}</button>
+        {canClone && <button onClick={() => cloneStrategy(s)} className="tap" title="Clone into a new editable strategy" style={{ border: "1px solid var(--line)", borderRadius: 11, background: "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: "var(--ink)" }}><Copy size={14} /></button>}
+        {showPublishToggle
+          ? <button onClick={() => (s.publicId ? unpublishOwn(s) : publishOwn(s))} className="tap" title={s.publicId ? "Remove from public" : "Make public"} style={{ border: "1px solid " + (s.publicId ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: s.publicId ? "var(--primary-soft)" : "var(--surface)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 700, color: s.publicId ? "var(--primary)" : "var(--ink)" }}><Globe size={13} /> {s.publicId ? "Public" : "Publish"}</button>
+          : showUnpublishOnly
+            ? <button onClick={() => unpublishOwn(s)} className="tap" title="Remove from public" style={{ border: "1px solid var(--primary)", borderRadius: 11, background: "var(--primary-soft)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 700, color: "var(--primary)" }}><Globe size={13} /> Unpublish</button>
+            : null}
+        {canDelete && <button onClick={() => deleteStrategy(s)} className="tap" title="Delete strategy" style={{ border: "1px solid var(--down)", borderRadius: 11, background: "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: "var(--down)" }}><Trash2 size={14} /></button>}
         <button onClick={() => toggleActive(s.id)} className="tap disp" style={{ flex: "1 1 100px", borderRadius: 11, background: s.active ? "var(--surface)" : "linear-gradient(120deg,var(--up),#0EA968)", color: s.active ? "var(--ink)" : "#fff", boxShadow: s.active ? "none" : "0 6px 16px rgba(16,185,129,.3)", padding: "7px 10px", display: "flex", gap: 5, alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800, border: s.active ? "1px solid var(--line)" : "none" }}>
           {s.active ? <><Pause size={13} /> Deactivate</> : <><Play size={13} /> Activate</>}
         </button>

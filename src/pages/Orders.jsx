@@ -54,12 +54,11 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
   const MKTS = [["all", "All markets"], ["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["Commodity", "🪙 Commodity"]];
   const REALS = [["all", "All"], ["real", "Real"], ["virtual", "Virtual"]];
   const STATUSES = [["all", "All status"], ["open", "Open"], ["closed", "Closed"], ["rejected", "Rejected"]];
-  const [range, setRange] = useState("30");
+  const [range, setRange] = useState("today");   // default to Today
   const [dFrom, setDFrom] = useState("");     // yyyy-mm-dd, custom range
   const [dTo, setDTo] = useState("");
-  // Opened from the bottom bar: default to the CURRENT market and the CURRENT mode (real/virtual),
-  // so the Orders button shows exactly what you're looking at — still switchable via the chips.
-  const [mkt, setMkt] = useState(market || "all");
+  // Default to Crypto (where most activity is) and the current mode; still switchable via the chips.
+  const [mkt, setMkt] = useState("Crypto");
   const [realF, setRealF] = useState(mode === "real" ? "real" : mode === "virtual" ? "virtual" : "all");
   const [fStatus, setFStatus] = useState("all");   // all | open | closed | rejected
   const [remote, setRemote] = useState(null);

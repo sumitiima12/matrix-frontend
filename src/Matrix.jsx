@@ -957,7 +957,9 @@ function AppInner() {
                 <Wallet size={15} color={mode === "real" ? "var(--down)" : "var(--gold)"} />
                 <span className="mono" style={{ fontSize: 11.5, fontWeight: 800, color: mode === "real" ? "var(--down)" : "var(--ink)" }}>
                   {mode === "real"
-                    ? ((realPortfolio && realPortfolio.cash != null) ? ((market === "Crypto" || market === "US") ? "$" : "₹") + Number(realPortfolio.cash).toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: Math.abs(Number(realPortfolio.cash)) < 1 ? 4 : 1 }) : "Real")
+                    ? ((brokerFor(market) && realPortfolio && realPortfolio.cash != null)
+                        ? ((market === "Crypto" || market === "US") ? "$" : "₹") + Number(realPortfolio.cash).toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: Math.abs(Number(realPortfolio.cash)) < 1 ? 4 : 1 })
+                        : "—")   /* no broker for THIS market -> no real cash; never fall back to the paper/other-market balance */
                     : compact(wallet)}
                 </span>
               </button>
