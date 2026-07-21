@@ -484,9 +484,11 @@ function AdminGates({ settings, onSave }) {
   );
 }
 
-export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, onAdmin, isAdminUser = false, adminMode = false, onToggleAdminMode, portfolio = [], trades = [], deposits = [], market = "IN", onBroker, brokerName, onUsernameChanged, onEmailChanged, marketBrokers = {}, houseFeeds = {}, onDisconnectBroker, appSettings = null, onSaveAppSettings, onDeleteAccount }) {
+export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, onAdmin, isAdminUser = false, adminMode = false, onToggleAdminMode, portfolio = [], trades = [], deposits = [], market = "IN", onBroker, brokerName, onUsernameChanged, onEmailChanged, marketBrokers = {}, houseFeeds = {}, onDisconnectBroker, appSettings = null, onSaveAppSettings, onDeleteAccount, onClearVirtual }) {
   const [confirmDel, setConfirmDel] = useState(false);
   const [delBusy, setDelBusy] = useState(false);
+  const [clearBusy, setClearBusy] = useState(false);
+  const [clearMsg, setClearMsg] = useState("");
   const [uidEdit, setUidEdit] = useState(false);
   const [uidVal, setUidVal] = useState("");
   const [uidBusy, setUidBusy] = useState(false);
@@ -778,6 +780,25 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
         ) : (
           <button onClick={() => { onClose && onClose(); onLogin && onLogin(); }} className="tap disp" style={{ width: "100%", margin: "16px 0 8px", background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 14, padding: 12, fontWeight: 800, fontSize: 13.5, display: "flex", gap: 7, alignItems: "center", justifyContent: "center" }}><LogIn size={16} /> Log in / Register</button>
         )}
+
+        {/* Clear virtual trades — wipes ALL paper trades across every market (real trades untouched).
+            A one-tap confirm since it only affects simulated data, not money or the account. */}
+        {auth && onClearVirtual && (
+          <button
+            onClick={async () => {
+              if (clearBusy) return;
+              if (typeof window !== "undefined" && !window.confirm("Delete ALL your virtual (paper) trades across every market? Real broker trades are not affected. This cannot be undone.")) return;
+              setClearBusy(true); setClearMsg("");
+              try { const r = await onClearVirtual(); setClearMsg(r && r.removed != null ? `Cleared ${r.removed} virtual trade${r.removed === 1 ? "" : "s"}.` : "Virtual trades cleared."); }
+              catch { setClearMsg("Couldn't clear — try again."); }
+              finally { setClearBusy(false); }
+            }}
+            className="tap card"
+            style={{ width: "100%", textAlign: "left", padding: "13px 15px", marginTop: 9, marginBottom: 4, border: "1px solid var(--line)", background: "transparent", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>
+            {clearBusy ? "Clearing virtual trades…" : "Clear all virtual trades"}
+          </button>
+        )}
+        {clearMsg && <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 6 }}>{clearMsg}</div>}
 
         {/* Delete account — a plain text option under Log out; the destructive confirm is a drawer. */}
         {auth && (

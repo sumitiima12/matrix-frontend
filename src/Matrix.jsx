@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useMemo, useRef, useEffect, Suspense } from "react";
-import { fetchIndicators, fetchTrades, marketOpen, postTrade, resolveExitFromCandles, fetchLiveQuotes, apiGetAppSettings, apiSaveAppSettings, apiDeleteAccount } from "./domain/api";
+import { fetchIndicators, fetchTrades, marketOpen, postTrade, resolveExitFromCandles, fetchLiveQuotes, apiGetAppSettings, apiSaveAppSettings, apiDeleteAccount, clearVirtualTrades } from "./domain/api";
 import {
   Search, User, Wallet, Home, Repeat, Lightbulb, Bot, Bolt, Briefcase,
   Star, TrendingUp, TrendingDown, X, ChevronRight, Send, Plus, Trash2,
@@ -1165,7 +1165,7 @@ function AppInner() {
                 style={{ flex: 1.3, border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 12, padding: 13, fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>
                 Stay in Virtual
               </button>
-              <button onClick={() => { setMode("real"); setConfirmReal(false); setBuyToast({ t: "Real mode — orders now go to your broker", e: true }); }} className="tap disp"
+              <button onClick={() => { setMode("real"); setConfirmReal(false); setBuyToast({ t: "Real mode — orders now go to your broker" }); }} className="tap disp"
                 style={{ flex: 1, border: "none", background: "var(--down)", color: "#fff", borderRadius: 12, padding: 13, fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>
                 Use Real
               </button>
@@ -1283,7 +1283,7 @@ function AppInner() {
           <SearchOverlay onClose={() => setSearch(false)} onOpen={openStock} />
         </ErrorBoundary>
       )}
-      {showProfile && <ProfileSheet onAdmin={effAdmin ? openAdmin : undefined} isAdminUser={isAdminUser} adminMode={adminMode} onToggleAdminMode={() => setAdminMode((v) => !v)} onBroker={openBrokers} brokerName={liveBroker ? liveBroker.name : null} profile={profile} walletMap={walletMap} portfolio={portfolio} trades={trades} deposits={deposits} market={market} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={() => { doLogout(); setGuest(false); setProfile(null); setOnboardSkipped(false); setAuthed(false); setLoginOpen(false); }} onPersonalise={() => setRepersonalise(true)} onUsernameChanged={(u) => onAuthed({ ...auth, username: u })} onEmailChanged={(em) => onAuthed({ ...auth, email: em })} marketBrokers={brokerMarketMap} houseFeeds={houseFeeds} onDisconnectBroker={(bid) => { disconnectBroker(bid); setBuyToast({ t: "Broker disconnected" }); }} appSettings={appSettings} onSaveAppSettings={saveAppSettings} onDeleteAccount={async () => { try { await apiDeleteAccount(); } catch { /* proceed to sign out regardless */ } setShowProfile(false); doLogout(); setGuest(false); setProfile(null); setOnboardSkipped(false); setAuthed(false); setBuyToast({ t: "Your account and all data have been deleted." }); }} />}
+      {showProfile && <ProfileSheet onAdmin={effAdmin ? openAdmin : undefined} isAdminUser={isAdminUser} adminMode={adminMode} onToggleAdminMode={() => setAdminMode((v) => !v)} onBroker={openBrokers} brokerName={liveBroker ? liveBroker.name : null} profile={profile} walletMap={walletMap} portfolio={portfolio} trades={trades} deposits={deposits} market={market} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={() => { doLogout(); setGuest(false); setProfile(null); setOnboardSkipped(false); setAuthed(false); setLoginOpen(false); }} onPersonalise={() => setRepersonalise(true)} onUsernameChanged={(u) => onAuthed({ ...auth, username: u })} onEmailChanged={(em) => onAuthed({ ...auth, email: em })} marketBrokers={brokerMarketMap} houseFeeds={houseFeeds} onDisconnectBroker={(bid) => { disconnectBroker(bid); setBuyToast({ t: "Broker disconnected" }); }} appSettings={appSettings} onSaveAppSettings={saveAppSettings} onDeleteAccount={async () => { try { await apiDeleteAccount(); } catch { /* proceed to sign out regardless */ } setShowProfile(false); doLogout(); setGuest(false); setProfile(null); setOnboardSkipped(false); setAuthed(false); setBuyToast({ t: "Your account and all data have been deleted." }); }} onClearVirtual={async () => { const r = await clearVirtualTrades(); setTrades((prev) => { const kept = (prev || []).filter((t) => t.real === true); try { lsSet("mx_trades_" + userId, kept); } catch (e) { /* cache best-effort */ } return kept; }); setBuyToast({ t: "Virtual trades cleared." }); return r; }} />}
       {adminOpen && <AdminPanel userId={userId} adminKey={adminKey} onClose={() => setAdminOpen(false) /* keep key in memory so admin actions (idea approval) work this session */} />}
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} onAuthed={onAuthed} />}
       {histOpen && (

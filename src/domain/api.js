@@ -13,7 +13,7 @@ import { MATRIX_PERSONA, BACKEND_URL } from "../config";
 import { yahooSymbol, marketOf } from "./universe";
 import { getQuotes, getHistory, getNews, getIndicators, getIntraday, getFundamentals, getEarnings } from "../services/marketService";
 import { ask as aiAsk, interpretScreen, interpretStrategy, interpretStrategyAI, marketBrief } from "../services/aiService";
-import { saveTrade, listTrades, register, login, changePin as _cp, verifyPin as _vp, forgotQuestion as _fq, forgotReset as _fr, getMySecurityQuestion as _gsq, setMySecurityQuestion as _ssq, checkUsername as _cu, setUsername as _su, setEmail as _se, listPublicStrategies as _lps, publishStrategy as _pub, unpublishStrategy as _unpub, listIdeas as _li, postIdea as _pi, deleteIdea as _di, reviewIdea as _ri, getAppSettings as _gas, saveAppSettings as _sas, deleteAccount as _dacc } from "../services/tradeService";
+import { saveTrade, listTrades, clearVirtualTrades as _cvt, register, login, changePin as _cp, verifyPin as _vp, forgotQuestion as _fq, forgotReset as _fr, getMySecurityQuestion as _gsq, setMySecurityQuestion as _ssq, checkUsername as _cu, setUsername as _su, setEmail as _se, listPublicStrategies as _lps, publishStrategy as _pub, unpublishStrategy as _unpub, listIdeas as _li, postIdea as _pi, deleteIdea as _di, reviewIdea as _ri, getAppSettings as _gas, saveAppSettings as _sas, deleteAccount as _dacc } from "../services/tradeService";
 import { isMarketOpen } from "../services/riskService";
 import { setCommodityCurrency } from "../lib/format";
 
@@ -78,6 +78,7 @@ export async function fetchLiveQuotes(appSyms) {
 /* ------------------------ Trades & auth ------------------------ */
 export const postTrade = (userId, trade) => saveTrade(userId, trade);
 export const fetchTrades = (userId, from, to) => listTrades(userId, from, to);
+export const clearVirtualTrades = () => _cvt();
 export const apiRegister = (phone, pin, name, secQuestion, secAnswer, username, referralCode, email) => register(phone, pin, name, secQuestion, secAnswer, username, referralCode, email);
 export const apiCheckUsername = (u) => _cu(u);
 export const apiSetUsername = (username) => _su(username);

@@ -66,6 +66,12 @@ export async function listTrades(userId, from, to) {
   } catch { return null; }
 }
 
+/** Delete ALL of the caller's virtual (paper) trades across every market. Real trades are kept. */
+export async function clearVirtualTrades() {
+  if (!BACKEND_URL) return null;
+  try { return await post("/api/trades/clear-virtual", {}); } catch { return null; }
+}
+
 export async function register(phone, pin, name, secQuestion, secAnswer, username, referralCode, email) {
   const d = await post("/api/register", { phone, pin, name, secQuestion, secAnswer, username, referralCode, email }, false);
   if (d && d.token) setAuthToken(d.token);

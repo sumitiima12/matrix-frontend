@@ -865,18 +865,19 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       (isReal ? !!t.real : !t.real) &&
       t.status !== "rejected" && t.entry != null &&
       stampT(t) >= totFrom);
-    let pnl = 0, invested = 0, open = 0, byType = { Manual: 0, "Auto Buy": 0, Automate: 0 };
+    let pnl = 0, invested = 0, open = 0, closedN = 0, wins = 0, byType = { Manual: 0, "Auto Buy": 0, Automate: 0 };
     for (const t of rows) {
       const closed = t.exitAt != null && t.exit != null;
       const last = (ALL.find((a) => a.sym === t.sym) || {}).price;
       const cur = closed ? t.exit : (last != null ? last : t.entry);
       const p = (cur - t.entry) * (t.qty || 1);
       pnl += p; invested += t.entry * (t.qty || 1);
-      if (!closed) open++;
+      if (!closed) open++; else { closedN++; if (p > 0) wins++; }
       const key = t.tradeType === "Auto Buy" ? "Auto Buy" : t.tradeType === "Automate" ? "Automate" : "Manual";
       byType[key] += p;
     }
-    return { pnl: +pnl.toFixed(2), invested: +invested.toFixed(2), count: rows.length, open, byType, retPct: invested ? (pnl / invested) * 100 : 0 };
+    // Win rate is over CLOSED trades only (an open position hasn't won or lost yet).
+    return { pnl: +pnl.toFixed(2), invested: +invested.toFixed(2), count: rows.length, open, closedN, wins, winRate: closedN ? (wins / closedN) * 100 : null, byType, retPct: invested ? (pnl / invested) * 100 : 0 };
   }, [trades, market, isReal, totFrom]);
   const totLabel = totPeriod === "today" ? "today" : totPeriod === "month" ? "this month" : "all time";
 
@@ -929,6 +930,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     <>
                       <DashStat k={`P&L · ${totLabel}`} v={(totalStats.pnl >= 0 ? "+" : "") + (isReal ? money1(totalStats.pnl) : fmt(totalStats.pnl, market))} pos={totalStats.pnl >= 0} />
                       <DashStat k="Returns %" v={(totalStats.retPct >= 0 ? "+" : "") + totalStats.retPct.toFixed(1) + "%"} pos={totalStats.retPct >= 0} />
+                      <DashStat k="Win rate" v={totalStats.winRate == null ? "—" : totalStats.winRate.toFixed(0) + "%"} pos={(totalStats.winRate || 0) >= 50} />
                       <DashStat k="Holdings value" v={isReal ? money1(dashVal) : fmt(dashVal, market)} pos={dashNet >= 0} />
                     </>
                   )}

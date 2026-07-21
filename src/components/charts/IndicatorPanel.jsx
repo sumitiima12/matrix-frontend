@@ -180,7 +180,13 @@ export default function IndicatorPanel({
       </div>
     </div>
   );
-  return typeof document !== "undefined" ? createPortal(sheet, document.body) : sheet;
+  // Portal into the THEMED wrapper (.theme-light / .theme-dark), not <body>: the theme's CSS
+  // variables (--surface, --ink, …) are defined on that element, so portalling to body stripped the
+  // panel's background and left it transparent over the chart. The themed wrapper sits above the
+  // transformed sheet/detail containers, so we still escape the transform that caused the grey.
+  if (typeof document === "undefined") return sheet;
+  const target = document.querySelector(".theme-light, .theme-dark") || document.body;
+  return createPortal(sheet, target);
 }
 
 function Box({ checked, onClick }) {
