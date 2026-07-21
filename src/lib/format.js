@@ -4,12 +4,25 @@
 export const CUR = { IN: "₹", US: "$", Crypto: "$", Commodity: "$" };
 export const MKT_LABEL = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", Commodity: "🪙 Commodity", FNO: "⚡ F&O" };
 
+/* Commodity currency is not fixed: by default it's COMEX/NYMEX in USD, but when the backend is
+   serving MCX quotes (INR) the whole commodity book flips to rupees. The feed is deployment-wide
+   consistent, so a single flag set from the quote stream keeps every call site correct without
+   threading a currency arg through hundreds of fmt() calls. */
+let _commodityINR = false;
+export function setCommodityCurrency(code) {
+  const inr = String(code || "").toUpperCase() === "INR";
+  _commodityINR = inr;
+  CUR.Commodity = inr ? "₹" : "$";
+}
+export const commodityIsINR = () => _commodityINR;
+
 export function fmt(n, market = "IN") {
   const c = CUR[market] || "₹";
   if (n == null || isNaN(n)) return "—";
   const a = Math.abs(n);
   const digits = a === 0 ? 2 : a < 0.001 ? 8 : a < 1 ? 4 : 2;
-  const grouped = Number(n).toLocaleString(market === "IN" ? "en-IN" : "en-US", { maximumFractionDigits: digits });
+  const inGrouping = market === "IN" || (market === "Commodity" && _commodityINR);
+  const grouped = Number(n).toLocaleString(inGrouping ? "en-IN" : "en-US", { maximumFractionDigits: digits });
   return c + grouped;
 }
 

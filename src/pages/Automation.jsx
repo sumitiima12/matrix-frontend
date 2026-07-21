@@ -1126,7 +1126,8 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     const canClone = own || isAdmin;
     const showPublishToggle = own || (isAdmin && sampleOrPremium);   // publish/unpublish
     const showUnpublishOnly = isAdmin && !own && !sampleOrPremium && !!s.publicId;  // admin: unpublish others' public
-    const canDelete = isAdmin && !own;
+    // Owners can delete their OWN strategy; admins can delete anyone's (premium/sample + others' public).
+    const canDelete = own || isAdmin;
     /* Open positions this strategy opened but hasn't exited yet -> "Entry triggered" + live P&L. */
     const openTrades = (trades || []).filter((t) => (t.strategyId === s.id || t.strategy === s.name) && t.entryAt != null && t.exitAt == null);
     const entryTriggered = openTrades.length > 0;

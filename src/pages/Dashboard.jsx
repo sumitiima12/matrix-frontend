@@ -738,6 +738,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const [capSaved, setCapSaved] = useState(false);
   useEffect(() => { setCapDraft(deployCapMap[market] != null ? deployCapMap[market] : capDefault(market)); /* eslint-disable-next-line */ }, [market]);
   const [plPeriod, setPlPeriod] = useState("today");
+  const [totPeriod, setTotPeriod] = useState("today");   // Total-card timeframe (default Today)
   /* Product type — PER MARKET, persisted. "Intraday" = auto-square-off (MIS/INTRADAY);
      "NRML" = carry-forward / delivery (CNC on equity). Only meaningful for Indian markets;
      crypto/US ignore it. Default to NRML so positions aren't force-closed at 3:20pm. */
@@ -845,6 +846,40 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const autoWinRate = closedRows.length ? closedRows.filter((t) => t.realPnl > 0).length / closedRows.length * 100 : 0;
   const periodLabel = plPeriod === "today" ? "today" : plPeriod === "month" ? "this month" : "last 12 months";
 
+  /* TOTAL card P&L across ALL THREE trade types — manual + Smart Auto-Buy + Automate — for the
+     selected market, mode and timeframe. This is why "Total ₹0" could sit beside a non-zero
+     Auto-Buy figure: the old Total counted only unrealised P&L on current holdings and ignored the
+     trade journal entirely. Now closed trades contribute realised P&L and open ones live
+     unrealised P&L, exactly like the Auto-Buy stats, but for every trade type. */
+  const totFrom = useMemo(() => {
+    const d = new Date();
+    if (totPeriod === "today") { d.setHours(0, 0, 0, 0); return d.getTime(); }
+    if (totPeriod === "month") { d.setDate(1); d.setHours(0, 0, 0, 0); return d.getTime(); }
+    return 0;                                       // lifetime
+  }, [totPeriod]);
+  const totalStats = useMemo(() => {
+    // A trade is dated by its EXIT if closed, else its ENTRY (an open position is "current").
+    const stampT = (t) => (t.exitAt || t.entryAt || 0);
+    const rows = (trades || []).filter((t) =>
+      inMarket(t.sym, t.market) &&
+      (isReal ? !!t.real : !t.real) &&
+      t.status !== "rejected" && t.entry != null &&
+      stampT(t) >= totFrom);
+    let pnl = 0, invested = 0, open = 0, byType = { Manual: 0, "Auto Buy": 0, Automate: 0 };
+    for (const t of rows) {
+      const closed = t.exitAt != null && t.exit != null;
+      const last = (ALL.find((a) => a.sym === t.sym) || {}).price;
+      const cur = closed ? t.exit : (last != null ? last : t.entry);
+      const p = (cur - t.entry) * (t.qty || 1);
+      pnl += p; invested += t.entry * (t.qty || 1);
+      if (!closed) open++;
+      const key = t.tradeType === "Auto Buy" ? "Auto Buy" : t.tradeType === "Automate" ? "Automate" : "Manual";
+      byType[key] += p;
+    }
+    return { pnl: +pnl.toFixed(2), invested: +invested.toFixed(2), count: rows.length, open, byType, retPct: invested ? (pnl / invested) * 100 : 0 };
+  }, [trades, market, isReal, totFrom]);
+  const totLabel = totPeriod === "today" ? "today" : totPeriod === "month" ? "this month" : "all time";
+
   return (
     <div className="home-metal">
       {/* Global markets live strip */}
@@ -866,26 +901,56 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           </div>
 
           {dashView === "total" ? (
-            <div onClick={onGoPortfolio} className="tap">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 12, opacity: .85 }}>{isReal ? "Real" : "Virtual"} · {MKT_LABEL[market]} · {isReal && isLeveraged ? "margin deployed" : "current value"}</span>
-                <span className="pill" style={{ fontSize: 11, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "4px 10px", display: "flex", alignItems: "center", gap: 4 }}>My Portfolio <ChevronRight size={13} /></span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {/* Total-card timeframe — like Smart Auto-Buy, default Today. */}
+                  <div className="pill" style={{ display: "inline-flex", background: "rgba(0,0,0,.28)", padding: 2 }}>
+                    {[["today", "Today"], ["month", "Month"], ["lifetime", "All"]].map(([k, l]) => (
+                      <button key={k} onClick={(e) => { e.stopPropagation(); setTotPeriod(k); }} className="pill tap disp" style={{ padding: "5px 10px", fontSize: 10, fontWeight: 800, border: "none", background: totPeriod === k ? "#fff" : "transparent", color: totPeriod === k ? "#141416" : "rgba(255,255,255,.8)" }}>{l}</button>
+                    ))}
+                  </div>
+                  <span onClick={onGoPortfolio} className="pill tap" style={{ fontSize: 11, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "4px 10px", display: "flex", alignItems: "center", gap: 4 }}>Portfolio <ChevronRight size={13} /></span>
+                </div>
               </div>
-              <div className="mono" style={{ fontWeight: 800, fontSize: 27, marginTop: 2 }}>{isReal ? money1(dashVal) : fmt(dashVal, market)}</div>
-              <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
-                <DashStat k="Returns %" v={(dashRet >= 0 ? "+" : "") + dashRet.toFixed(1) + "%"} pos={dashRet >= 0} />
-                <DashStat k="Net returns" v={(dashNet >= 0 ? "+" : "") + (isReal ? money1(dashNet) : fmt(dashNet, market))} pos={dashNet >= 0} />
-                {isReal && isLeveraged && realEquity != null && <DashStat k="Account equity" v={money1(realEquity)} pos={realEquity >= 0} />}
-                {isReal && realCash != null && <DashStat k="Available cash" v={money1(realCash)} pos />}
+              <div onClick={onGoPortfolio} className="tap" style={{ marginTop: 2 }}>
+                <div className="mono" style={{ fontWeight: 800, fontSize: 27 }}>{isReal ? money1(dashVal) : fmt(dashVal, market)}</div>
+                <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
+                  {/* P&L across ALL trade types (manual + auto-buy + automate) for the chosen period.
+                      For leveraged real venues the broker's own equity/P&L stays authoritative. */}
+                  {isReal && isLeveraged ? (
+                    <>
+                      <DashStat k="Returns %" v={(dashRet >= 0 ? "+" : "") + dashRet.toFixed(1) + "%"} pos={dashRet >= 0} />
+                      <DashStat k="Net returns" v={(dashNet >= 0 ? "+" : "") + money1(dashNet)} pos={dashNet >= 0} />
+                      {realEquity != null && <DashStat k="Account equity" v={money1(realEquity)} pos={realEquity >= 0} />}
+                    </>
+                  ) : (
+                    <>
+                      <DashStat k={`P&L · ${totLabel}`} v={(totalStats.pnl >= 0 ? "+" : "") + (isReal ? money1(totalStats.pnl) : fmt(totalStats.pnl, market))} pos={totalStats.pnl >= 0} />
+                      <DashStat k="Returns %" v={(totalStats.retPct >= 0 ? "+" : "") + totalStats.retPct.toFixed(1) + "%"} pos={totalStats.retPct >= 0} />
+                      <DashStat k="Holdings value" v={isReal ? money1(dashVal) : fmt(dashVal, market)} pos={dashNet >= 0} />
+                    </>
+                  )}
+                  {isReal && realCash != null && <DashStat k="Available cash" v={money1(realCash)} pos />}
+                </div>
+                {isReal && isLeveraged && <div style={{ fontSize: 10.5, opacity: .75, marginTop: 8 }}>Real capital at risk (margin), not the leveraged position size.</div>}
+                {/* Per-type P&L breakdown so the three sources are visible at a glance. */}
+                {!(isReal && isLeveraged) && (
+                  <div style={{ display: "flex", gap: 14, marginTop: 12, fontSize: 11.5, opacity: .9, flexWrap: "wrap" }}>
+                    <span>Manual <b style={{ fontWeight: 800, color: totalStats.byType.Manual >= 0 ? "#8EE6B0" : "#FFB3BE" }}>{(totalStats.byType.Manual >= 0 ? "+" : "") + (isReal ? money1(totalStats.byType.Manual) : fmt(totalStats.byType.Manual, market))}</b></span>
+                    <span>Auto-Buy <b style={{ fontWeight: 800, color: totalStats.byType["Auto Buy"] >= 0 ? "#8EE6B0" : "#FFB3BE" }}>{(totalStats.byType["Auto Buy"] >= 0 ? "+" : "") + (isReal ? money1(totalStats.byType["Auto Buy"]) : fmt(totalStats.byType["Auto Buy"], market))}</b></span>
+                    <span>Automate <b style={{ fontWeight: 800, color: totalStats.byType.Automate >= 0 ? "#8EE6B0" : "#FFB3BE" }}>{(totalStats.byType.Automate >= 0 ? "+" : "") + (isReal ? money1(totalStats.byType.Automate) : fmt(totalStats.byType.Automate, market))}</b></span>
+                  </div>
+                )}
+                {/* At-a-glance counts — holdings, auto-buy positions, and any rejects for THIS market. */}
+                <div style={{ display: "flex", gap: 14, marginTop: 10, fontSize: 12, opacity: .9, flexWrap: "wrap" }}>
+                  <span><b style={{ fontWeight: 800 }}>{totalStats.count}</b> <span style={{ opacity: .7 }}>trades</span></span>
+                  <span><b style={{ fontWeight: 800 }}>{holds.length}</b> <span style={{ opacity: .7 }}>open</span></span>
+                  {autoRows.some((r) => r.rejected) && <span style={{ color: "#FFB3BE" }}><b style={{ fontWeight: 800 }}>{autoRows.filter((r) => r.rejected).length}</b> rejected</span>}
+                </div>
+                {totalStats.count === 0 && <div style={{ fontSize: 11.5, opacity: .8, marginTop: 10 }}>No {isReal ? "real" : "virtual"} trades {totLabel} in {MKT_LABEL[market]}.</div>}
               </div>
-              {isReal && isLeveraged && <div style={{ fontSize: 10.5, opacity: .75, marginTop: 8 }}>Real capital at risk (margin), not the leveraged position size.</div>}
-              {/* At-a-glance counts — holdings, auto-buy positions, and any rejects for THIS market. */}
-              <div style={{ display: "flex", gap: 14, marginTop: 12, fontSize: 12, opacity: .9, flexWrap: "wrap" }}>
-                <span><b style={{ fontWeight: 800 }}>{holds.length}</b> <span style={{ opacity: .7 }}>open</span></span>
-                <span><b style={{ fontWeight: 800 }}>{filledRows.length}</b> <span style={{ opacity: .7 }}>auto-buy</span></span>
-                {autoRows.some((r) => r.rejected) && <span style={{ color: "#FFB3BE" }}><b style={{ fontWeight: 800 }}>{autoRows.filter((r) => r.rejected).length}</b> rejected</span>}
-              </div>
-              {portfolio.length === 0 && !isReal && <div style={{ fontSize: 11.5, opacity: .8, marginTop: 10 }}>No holdings yet — buy your first stock in Virtual Trade.</div>}
             </div>
           ) : (
             <div>

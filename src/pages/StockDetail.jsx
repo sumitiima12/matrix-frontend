@@ -5,6 +5,7 @@ import NeoIcon from "../components/common/NeoIcon";
 import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { BACKEND_URL } from "../config";
 import { clamp, compact, fmt, timeAgo } from "../lib/format";
+import { NEWS_CATS, newsCatOf } from "../lib/newsCategory";
 import { marketOf } from "../domain/universe";
 import { techSignal, techStrength } from "../domain/signals";
 import { fundamentalRead, technicalRead } from "../domain/analysisFramework";
@@ -84,22 +85,6 @@ function CandleChart({ data, market }) {
       )}
     </div>
   );
-}
-
-/* News topic tabs for the details page. Headlines from /api/news carry no category field, so we
-   classify each title by keyword into a small, familiar set (mirrors the homepage's tag tabs).
-   Order matters — the first matching bucket wins, most-specific first. */
-const NEWS_CATS = ["Earnings", "Analyst", "Deals", "Product", "Markets"];
-const NEWS_CAT_RULES = [
-  ["Earnings", /\b(earning|revenue|profit|loss|quarter|q[1-4]\b|results?|guidance|eps|margin|dividend|forecast)/i],
-  ["Analyst", /\b(analyst|rating|upgrade|downgrade|price target|outperform|overweight|underweight|reiterate|buy rating|sell rating|initiat)/i],
-  ["Deals", /\b(acqui|merger|buyout|stake|deal|ipo|takeover|raise[sd]?|funding|invest(ment|s|ed)?|partnership|joint venture)/i],
-  ["Product", /\b(launch|unveil|release[sd]?|product|feature|rollout|debut|introduc|expands?|new (model|service|app))/i],
-];
-function newsCatOf(title) {
-  const t = String(title || "");
-  for (const [cat, re] of NEWS_CAT_RULES) if (re.test(t)) return cat;
-  return "Markets";
 }
 
 export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, onBuy, canBuy }) {

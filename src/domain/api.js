@@ -15,6 +15,7 @@ import { getQuotes, getHistory, getNews, getIndicators, getIntraday, getFundamen
 import { ask as aiAsk, interpretScreen, interpretStrategy, interpretStrategyAI, marketBrief } from "../services/aiService";
 import { saveTrade, listTrades, register, login, changePin as _cp, verifyPin as _vp, forgotQuestion as _fq, forgotReset as _fr, getMySecurityQuestion as _gsq, setMySecurityQuestion as _ssq, checkUsername as _cu, setUsername as _su, setEmail as _se, listPublicStrategies as _lps, publishStrategy as _pub, unpublishStrategy as _unpub, listIdeas as _li, postIdea as _pi, deleteIdea as _di, reviewIdea as _ri, getAppSettings as _gas, saveAppSettings as _sas, deleteAccount as _dacc } from "../services/tradeService";
 import { isMarketOpen } from "../services/riskService";
+import { setCommodityCurrency } from "../lib/format";
 
 /* ----------------------------- AI ----------------------------- */
 export const askMatrix = (messages, system = MATRIX_PERSONA, maxTokens = 1000) =>
@@ -66,6 +67,10 @@ export const fetchIntraday = (syms) => getIntraday((syms || []).map(yahooSymbol)
 export async function fetchLiveQuotes(appSyms) {
   const rows = await getQuotes((appSyms || []).map(yahooSymbol));
   if (!rows) return null;
+  // If the backend is serving MCX commodity quotes, they come back in INR (src "fyers-mcx"). Flip
+  // the whole commodity book to rupees so every price/label renders ₹ instead of $. Deployment-wide
+  // consistent, so one signal is enough; absence of any such quote leaves it on COMEX/USD.
+  if (rows.some((r) => r && r.src === "fyers-mcx")) setCommodityCurrency("INR");
   const back = new Map((appSyms || []).map((s) => [yahooSymbol(s), s]));
   return rows.map((r) => ({ ...r, sym: back.get(r.sym) || r.sym })).filter((r) => r.price != null);
 }
