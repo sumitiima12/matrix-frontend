@@ -265,7 +265,7 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
           {/* Full interactive chart (same engine as the quick drawer): timeframe pills, candle /
               Heikin-Ashi / line, the ƒx indicator picker (EMA/SMA/Bollinger + MACD/RSI/Volume),
               pinch-zoom and pan. */}
-          <ProChart sym={s.sym} defaultTf={market === "Crypto" ? "1h" : "1d"} height={244} />
+          <ProChart sym={s.sym} defaultTf="1h" height={244} />
         </div>
         <div className="card" style={{ marginTop: 12, padding: 16, background: "linear-gradient(160deg,var(--primary-soft),var(--surface))" }}>
           <div className="disp" style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Sparkles size={16} color="var(--primary)" /> Analysis</div>

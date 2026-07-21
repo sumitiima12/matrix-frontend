@@ -92,7 +92,7 @@ const fmtPrice = (v) => {
   return v.toFixed(3);
 };
 
-export default function ProChart({ sym, defaultTf = "1d", height = 240 }) {
+export default function ProChart({ sym, defaultTf = "1h", height = 240 }) {
   const saved = useMemo(() => readPrefs(), []);
 
   const [tf, setTf] = useState(defaultTf);

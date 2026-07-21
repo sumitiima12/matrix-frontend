@@ -33,8 +33,10 @@ export const BROKERS = [
     realtime: true,
     oi: true,
     depth: true,
-    /* BRING-YOUR-OWN-APP + OAuth. The user pastes their OWN FYERS API app id/secret, then logs
-       in on FYERS — so live prices and trades run on THEIR account, not a shared one. */
+    /* SHARED-APP OAuth: the user just taps "Log in with FYERS" and authorises Matrix's own FYERS
+       app — no App ID/Secret needed. Their token (and trades) are still THEIRS; Matrix's app is
+       only the OAuth client. `byoaOAuth` stays as the "use my own app" advanced path. */
+    sharedOAuth: true,
     byoaOAuth: true,
     fields: [
       { key: "appId", label: "App ID", type: "text", hint: "Your FYERS app's App ID (e.g. ABCD1234-100), from myapi.fyers.in → create app" },

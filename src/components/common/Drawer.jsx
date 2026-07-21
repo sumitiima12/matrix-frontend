@@ -91,7 +91,7 @@ export default function Drawer({ s, onClose, onDetails, onBuy, canBuy }) {
         </div>
         <div style={{ marginTop: 10 }}>
           <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, marginBottom: 4 }}>Price action · candles</div>
-          <ProChart sym={s.sym} defaultTf={market === "Crypto" ? "1h" : "1d"} height={250} />
+          <ProChart sym={s.sym} defaultTf="1h" height={250} />
         </div>
 
         {news && (

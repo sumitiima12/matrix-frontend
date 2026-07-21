@@ -25,19 +25,31 @@ import { registerAutoBuy, loadAutoBuys, pauseAutoBuy, cancelAutoBuy, setAutoBuyL
  */
 
 
-function BacktestResult({ cfg, defaultSym, blocked = false, onConnect }) {
+/* A human "5 days" / "6 months" label from the stats the headline backtest returns. */
+function btPeriodStr(stats) {
+  const p = stats && stats.period;
+  if (!p) return "the available history";
+  return `${p.n} ${p.unit}${p.n === 1 ? "" : "s"}`;
+}
+
+function BacktestResult({ cfg, defaultSym, blocked = false, onConnect, defaultTf = "5m" }) {
   // Default to the symbol the strategy is ACTIVATED on. Backtesting a NIFTY50
   // strategy against RELIANCE by default tests something you never deployed.
   const [sym, setSym] = useState(defaultSym || "RELIANCE");
   useEffect(() => { if (defaultSym) setSym(defaultSym); }, [defaultSym]);
   const iso = (d) => new Date(d).toISOString().slice(0, 10);
-  const [from, setFrom] = useState(iso(Date.now() - 180 * 864e5));
+  // How far back real candles actually EXIST at each timeframe — intraday history is short, so the
+  // backtest window defaults to this. Otherwise picking "5 min" leaves a 6-month window almost empty.
+  const TF_LOOKBACK = { "1m": 1, "3m": 1, "5m": 5, "15m": 30, "30m": 30, "1h": 90, "4h": 180, "1d": 365 };
+  const [tf, setTf] = useState(defaultTf);
+  const [from, setFrom] = useState(iso(Date.now() - (TF_LOOKBACK[defaultTf] || 180) * 864e5));
   const [to, setTo] = useState(iso(Date.now()));
-  const [preset, setPreset] = useState("6m");
-  const [tf, setTf] = useState("1d");
+  const [preset, setPreset] = useState("auto");
   const BT_TF = [["1m", "1 min"], ["3m", "3 min"], ["5m", "5 min"], ["15m", "15 min"], ["30m", "30 min"], ["1h", "1 hour"], ["4h", "4 hours"], ["1d", "1 day"]];
   const PRESETS = { "1m": 30, "3m": 90, "6m": 180, "1y": 365, "2y": 730 };
   const applyPreset = (k) => { setPreset(k); if (k !== "custom") { setFrom(iso(Date.now() - PRESETS[k] * 864e5)); setTo(iso(Date.now())); } };
+  // Switching timeframe snaps the window to the span that timeframe can actually cover.
+  const changeTf = (k) => { setTf(k); setPreset("auto"); setFrom(iso(Date.now() - (TF_LOOKBACK[k] || 180) * 864e5)); setTo(iso(Date.now())); };
   const stock = ALL.find((a) => a.sym === sym) || ALL[0];
   /* THE DATE RANGE USED TO BE DECORATIVE.
      It computed `bars` = the number of DAYS between From and To, then sliced that many
@@ -146,7 +158,7 @@ function BacktestResult({ cfg, defaultSym, blocked = false, onConnect }) {
         <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, marginBottom: 3 }}>Candle timeframe</div>
         <div className="hide-scroll" style={{ display: "flex", gap: 6, overflowX: "auto", marginBottom: 10 }}>
           {BT_TF.map(([k, l]) => (
-            <button key={k} onClick={() => setTf(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "6px 11px", fontSize: 11, fontWeight: 700, border: "1px solid " + (tf === k ? "var(--primary)" : "var(--line)"), background: tf === k ? "var(--primary)" : "var(--surface)", color: tf === k ? "var(--on-primary)" : "var(--ink)" }}>{l}</button>
+            <button key={k} onClick={() => changeTf(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "6px 11px", fontSize: 11, fontWeight: 700, border: "1px solid " + (tf === k ? "var(--primary)" : "var(--line)"), background: tf === k ? "var(--primary)" : "var(--surface)", color: tf === k ? "var(--on-primary)" : "var(--ink)" }}>{l}</button>
           ))}
         </div>
         <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, marginBottom: 3 }}>Range</div>
@@ -470,7 +482,7 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, market = "IN", can
         <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 12 }}>Data currently unavailable</div>
       ) : stats.trades === 0 ? (
         <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 12 }}>
-          This strategy did not trigger a single trade in the last {stats.months} month{stats.months === 1 ? "" : "s"}. That is a real result, not missing data.
+          This strategy did not trigger a single trade over {btPeriodStr(stats)} of {stats.tf || "5m"} candles. That is a real result, not missing data.
         </div>
       ) : (
         <>
@@ -481,8 +493,8 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, market = "IN", can
             <Stat k="RETURN" v={pct(stats.retPct, 1)} c={chgColor(stats.retPct)} />
           </div>
           <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.45 }}>
-            Backtested on the last {stats.months} month{stats.months === 1 ? "" : "s"} of real daily candles across {stats.symbols} symbol{stats.symbols === 1 ? "" : "s"}.
-            {stats.months < 6 && " Only 1 month of history was available, so this is a thin sample — treat it as weak evidence."}
+            Backtested on {btPeriodStr(stats)} of real {stats.tf || "5m"} candles across {stats.symbols} symbol{stats.symbols === 1 ? "" : "s"}.
+            {stats.trades < 10 && " That is a thin sample — treat it as weak evidence."}
             {" "}A backtest is scored with hindsight; it is not a forecast.
           </div>
         </>
@@ -523,7 +535,7 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, market = "IN", can
 
       {bt && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-          <BacktestResult cfg={s.cfg} defaultSym={(s.symbols && s.symbols[0]) || undefined} blocked={!canBacktest} onConnect={onConnect} />
+          <BacktestResult cfg={s.cfg} defaultSym={(s.symbols && s.symbols[0]) || undefined} defaultTf={s.tf || "5m"} blocked={!canBacktest} onConnect={onConnect} />
         </div>
       )}
     </div>
@@ -599,7 +611,7 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, market = "IN", canBa
 
       {bt && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-          <BacktestResult cfg={s.cfg} defaultSym={relSym || undefined} blocked={!canBacktest} onConnect={onConnect} />
+          <BacktestResult cfg={s.cfg} defaultSym={relSym || undefined} defaultTf={s.tf || "5m"} blocked={!canBacktest} onConnect={onConnect} />
         </div>
       )}
     </div>
@@ -1315,7 +1327,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       })()}
       {btOpen === s.id && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-          <BacktestResult cfg={s.cfg || { mode: "plain" }} defaultSym={(s.symbols && s.symbols[0]) || undefined} blocked={!canBacktest} onConnect={onConnectBroker} />
+          <BacktestResult cfg={s.cfg || { mode: "plain" }} defaultSym={(s.symbols && s.symbols[0]) || undefined} defaultTf={s.tf || "5m"} blocked={!canBacktest} onConnect={onConnectBroker} />
         </div>
       )}
     </div>
