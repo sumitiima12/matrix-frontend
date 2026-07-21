@@ -98,6 +98,9 @@ export function heikinAshiSeries(candles) {
   return out;
 }
 
+/** Palette for user-added overlays (each new indicator gets the next distinct colour). */
+export const OVERLAY_COLORS = ["#EF4444", "#8B5CF6", "#0EA5E9", "#F59E0B", "#10B981", "#EC4899", "#6366F1", "#F97316", "#14B8A6", "#A855F7"];
+
 /** Chart overlay registry — adding an indicator is one entry, not new chart code. */
 export const OVERLAYS = [
   { id: "ema9",   label: "EMA 9",   kind: "ema", n: 9,   color: "#F59E0B" },

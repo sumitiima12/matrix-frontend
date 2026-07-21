@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCandles } from "../../hooks/useCandles";
-import { smaSeries, emaSeries, bollingerSeries, macdSeries, rsiSeries, heikinAshiSeries, OVERLAYS } from "../../lib/indicators";
+import { smaSeries, emaSeries, bollingerSeries, macdSeries, rsiSeries, heikinAshiSeries, OVERLAYS, OVERLAY_COLORS } from "../../lib/indicators";
 import { lsGet, lsSet } from "../../lib/format";
 import ChartToolbar from "./ChartToolbar";
 import IndicatorPanel from "./IndicatorPanel";
@@ -26,7 +26,27 @@ import IndicatorPanel from "./IndicatorPanel";
  */
 
 const PREF_KEY = "mx_chart_prefs";
-const DEFAULT_PREFS = { active: ["ema21", "ema50"], macd: false, rsi: false, vol: false, ctype: "candle" };
+/* Overlays are now editable SPECS ({type,n,color}) instead of fixed preset ids, so a user can set
+   an EMA to any length (like Automate's ⚙). MACD/RSI carry their own params too. */
+const DEFAULT_PREFS = {
+  overlays: [{ type: "ema", n: 21, color: "#EF4444" }, { type: "ema", n: 50, color: "#8B5CF6" }],
+  macd: false, macdP: { fast: 12, slow: 26, signal: 9 },
+  rsi: false, rsiN: 14,
+  vol: false, ctype: "candle",
+};
+/* Read prefs, migrating the OLD format (active: ["ema21", …]) to the new spec model. */
+function readPrefs() {
+  const raw = lsGet(PREF_KEY, {}) || {};
+  const p = { ...DEFAULT_PREFS, ...raw };
+  if (!Array.isArray(p.overlays)) {
+    const ids = Array.isArray(raw.active) ? raw.active : [];
+    const migrated = ids.map((id) => { const o = OVERLAYS.find((x) => x.id === id); return o ? { type: o.kind, n: o.n, color: o.color } : null; }).filter(Boolean);
+    p.overlays = migrated.length ? migrated : DEFAULT_PREFS.overlays;
+  }
+  if (!p.macdP) p.macdP = { ...DEFAULT_PREFS.macdP };
+  if (p.rsiN == null) p.rsiN = 14;
+  return p;
+}
 
 const MIN_BARS = 15;      // furthest you can zoom in
 const AXIS_W = 52;        // right-hand price gutter
@@ -65,19 +85,21 @@ const fmtPrice = (v) => {
 };
 
 export default function ProChart({ sym, defaultTf = "1d", height = 240 }) {
-  const saved = useMemo(() => ({ ...DEFAULT_PREFS, ...(lsGet(PREF_KEY, {}) || {}) }), []);
+  const saved = useMemo(() => readPrefs(), []);
 
   const [tf, setTf] = useState(defaultTf);
   const [ctype, setCtype] = useState(saved.ctype);
-  const [active, setActive] = useState(saved.active);
+  const [overlays, setOverlays] = useState(saved.overlays);
   const [showMacd, setShowMacd] = useState(saved.macd);
+  const [macdP, setMacdP] = useState(saved.macdP);
   const [showRsi, setShowRsi] = useState(saved.rsi);
+  const [rsiN, setRsiN] = useState(saved.rsiN);
   const [showVol, setShowVol] = useState(saved.vol);
   const [picker, setPicker] = useState(false);
 
   useEffect(() => {
-    lsSet(PREF_KEY, { active, macd: showMacd, rsi: showRsi, vol: showVol, ctype });
-  }, [active, showMacd, showRsi, showVol, ctype]);
+    lsSet(PREF_KEY, { overlays, macd: showMacd, macdP, rsi: showRsi, rsiN, vol: showVol, ctype });
+  }, [overlays, showMacd, macdP, showRsi, rsiN, showVol, ctype]);
 
   const { data, loading, error } = useCandles(sym, tf);
   const closes = useMemo(() => (data ? data.map((c) => c.c) : []), [data]);
@@ -144,29 +166,28 @@ export default function ProChart({ sym, defaultTf = "1d", height = 240 }) {
   const linesFull = useMemo(() => {
     if (!closes.length) return [];
     const out = [];
-    active.forEach((id) => {
-      const o = OVERLAYS.find((x) => x.id === id);
-      if (!o) return;
-      if (o.kind === "ema") out.push({ id, color: o.color, label: o.label, vals: emaSeries(closes, o.n) });
-      else if (o.kind === "sma") out.push({ id, color: o.color, label: o.label, vals: smaSeries(closes, o.n) });
-      else if (o.kind === "bb") {
-        const b = bollingerSeries(closes, o.n, 2);
-        out.push({ id: id + "u", color: o.color, label: "BB upper", vals: b.up, dash: "3 3" });
-        out.push({ id: id + "m", color: o.color, label: "BB mid", vals: b.mid });
-        out.push({ id: id + "l", color: o.color, label: "BB lower", vals: b.lo, dash: "3 3" });
+    overlays.forEach((o, i) => {
+      const n = Math.max(1, Number(o.n) || 1);
+      const key = `${o.type}${n}_${i}`;
+      if (o.type === "ema") out.push({ id: key, color: o.color, label: `EMA ${n}`, vals: emaSeries(closes, n) });
+      else if (o.type === "sma") out.push({ id: key, color: o.color, label: `SMA ${n}`, vals: smaSeries(closes, n) });
+      else if (o.type === "bb") {
+        const b = bollingerSeries(closes, n, Number(o.mult) || 2);
+        out.push({ id: key + "u", color: o.color, label: `BB ${n} up`, vals: b.up, dash: "3 3" });
+        out.push({ id: key + "m", color: o.color, label: `BB ${n} mid`, vals: b.mid });
+        out.push({ id: key + "l", color: o.color, label: `BB ${n} low`, vals: b.lo, dash: "3 3" });
       }
     });
     return out;
-  }, [closes, active]);
+  }, [closes, overlays]);
 
-  const macdFull = useMemo(() => (showMacd && closes.length ? macdSeries(closes) : null), [closes, showMacd]);
-  const rsiFull = useMemo(() => (showRsi && closes.length ? rsiSeries(closes) : null), [closes, showRsi]);
+  const macdFull = useMemo(() => (showMacd && closes.length ? macdSeries(closes, Number(macdP.fast) || 12, Number(macdP.slow) || 26, Number(macdP.signal) || 9) : null), [closes, showMacd, macdP]);
+  const rsiFull = useMemo(() => (showRsi && closes.length ? rsiSeries(closes, Math.max(2, Number(rsiN) || 14)) : null), [closes, showRsi, rsiN]);
   // Heikin-Ashi candles (computed on FULL history so the smoothing recursion is correct, then
   // sliced to the window just like the real candles). Only when that candle type is selected.
   const haFull = useMemo(() => (ctype === "heikin" && data ? heikinAshiSeries(data) : null), [data, ctype]);
 
-  const toggle = (id) => setActive((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
-  const activeCount = active.length + (showMacd ? 1 : 0) + (showRsi ? 1 : 0) + (showVol ? 1 : 0);
+  const activeCount = overlays.length + (showMacd ? 1 : 0) + (showRsi ? 1 : 0) + (showVol ? 1 : 0);
 
   const toolbar = (
     <ChartToolbar
@@ -348,7 +369,7 @@ export default function ProChart({ sym, defaultTf = "1d", height = 240 }) {
         return (
           <div style={{ marginTop: 12 }}>
             <div style={{ display: "flex", gap: 8, fontSize: 10, color: "var(--muted)", fontWeight: 700, marginBottom: 3 }}>
-              <span>RSI 14</span>
+              <span>RSI {rsiN}</span>
               <span className="mono" style={{ color: cur == null ? "var(--muted)" : cur >= 70 ? "var(--down)" : cur <= 30 ? "var(--up)" : "var(--ink)" }}>
                 {cur == null ? "—" : cur.toFixed(1)}
               </span>
@@ -396,10 +417,10 @@ export default function ProChart({ sym, defaultTf = "1d", height = 240 }) {
 
       {picker && (
         <IndicatorPanel
-          active={active} toggle={toggle}
+          overlays={overlays} setOverlays={setOverlays}
           ctype={ctype} setCtype={setCtype}
-          showMacd={showMacd} setShowMacd={setShowMacd}
-          showRsi={showRsi} setShowRsi={setShowRsi}
+          showMacd={showMacd} setShowMacd={setShowMacd} macdP={macdP} setMacdP={setMacdP}
+          showRsi={showRsi} setShowRsi={setShowRsi} rsiN={rsiN} setRsiN={setRsiN}
           showVol={showVol} setShowVol={setShowVol}
           onClose={() => setPicker(false)}
         />
