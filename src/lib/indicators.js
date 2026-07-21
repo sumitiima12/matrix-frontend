@@ -79,6 +79,78 @@ export function rsiSeries(vals, n = 14) {
   return out;
 }
 
+/** VWAP overlay. Cumulative volume-weighted average of the typical price (h+l+c)/3.
+   Aligned to input; skips bars with no volume so it degrades gracefully to a running mean. */
+export function vwapSeries(candles) {
+  const out = new Array(candles.length).fill(null);
+  let pv = 0, vol = 0;
+  for (let i = 0; i < candles.length; i++) {
+    const c = candles[i];
+    const tp = (c.h + c.l + c.c) / 3;
+    const v = c.v > 0 ? c.v : 0;
+    pv += tp * (v || 1); vol += (v || 1);
+    out[i] = vol ? pv / vol : tp;
+  }
+  return out;
+}
+
+/** Wilder ADX (trend strength, 0–100) with +DI / −DI. Sub-panel indicator. */
+export function adxSeries(candles, n = 14) {
+  const len = candles.length;
+  const adx = new Array(len).fill(null);
+  const pdi = new Array(len).fill(null);
+  const mdi = new Array(len).fill(null);
+  if (len < n + 1) return { adx, pdi, mdi };
+  const tr = new Array(len).fill(0), pDM = new Array(len).fill(0), mDM = new Array(len).fill(0);
+  for (let i = 1; i < len; i++) {
+    const h = candles[i].h, l = candles[i].l, pc = candles[i - 1].c, ph = candles[i - 1].h, pl = candles[i - 1].l;
+    tr[i] = Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc));
+    const up = h - ph, dn = pl - l;
+    pDM[i] = up > dn && up > 0 ? up : 0;
+    mDM[i] = dn > up && dn > 0 ? dn : 0;
+  }
+  let atr = 0, sP = 0, sM = 0;
+  for (let i = 1; i <= n; i++) { atr += tr[i]; sP += pDM[i]; sM += mDM[i]; }
+  const dxArr = [];
+  const calcDx = (i) => {
+    const p = atr ? (100 * sP) / atr : 0;
+    const m = atr ? (100 * sM) / atr : 0;
+    pdi[i] = p; mdi[i] = m;
+    const sum = p + m;
+    return sum ? (100 * Math.abs(p - m)) / sum : 0;
+  };
+  dxArr.push(calcDx(n));
+  for (let i = n + 1; i < len; i++) {
+    atr = atr - atr / n + tr[i];
+    sP = sP - sP / n + pDM[i];
+    sM = sM - sM / n + mDM[i];
+    dxArr.push(calcDx(i));
+    if (dxArr.length === n) {
+      adx[i] = dxArr.reduce((a, b) => a + b, 0) / n;
+    } else if (dxArr.length > n) {
+      adx[i] = (adx[i - 1] * (n - 1) + dxArr[dxArr.length - 1]) / n;
+    }
+  }
+  return { adx, pdi, mdi };
+}
+
+/** Stochastic oscillator %K (fast) smoothed to %D. Sub-panel indicator, 0–100. */
+export function stochSeries(candles, n = 14, d = 3) {
+  const len = candles.length;
+  const rawK = new Array(len).fill(null);
+  for (let i = n - 1; i < len; i++) {
+    let hh = -Infinity, ll = Infinity;
+    for (let j = i - n + 1; j <= i; j++) { if (candles[j].h > hh) hh = candles[j].h; if (candles[j].l < ll) ll = candles[j].l; }
+    rawK[i] = hh === ll ? 50 : (100 * (candles[i].c - ll)) / (hh - ll);
+  }
+  const kComp = rawK.filter((v) => v != null);
+  const dComp = smaSeries(kComp, d);
+  const dOut = new Array(len).fill(null);
+  let p = 0;
+  for (let i = 0; i < len; i++) { if (rawK[i] != null) { dOut[i] = dComp[p]; p++; } }
+  return { k: rawK, d: dOut };
+}
+
 /** Heikin-Ashi candles from real OHLC. Each HA candle smooths the trend:
       haClose = (o+h+l+c)/4 ; haOpen = (prevHaOpen + prevHaClose)/2 (seed (o+c)/2)
       haHigh  = max(h, haOpen, haClose) ; haLow = min(l, haOpen, haClose)

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCandles } from "../../hooks/useCandles";
-import { smaSeries, emaSeries, bollingerSeries, macdSeries, rsiSeries, heikinAshiSeries, OVERLAYS, OVERLAY_COLORS } from "../../lib/indicators";
+import { smaSeries, emaSeries, bollingerSeries, macdSeries, rsiSeries, heikinAshiSeries, vwapSeries, adxSeries, stochSeries, OVERLAYS, OVERLAY_COLORS } from "../../lib/indicators";
 import { lsGet, lsSet } from "../../lib/format";
 import ChartToolbar from "./ChartToolbar";
 import IndicatorPanel from "./IndicatorPanel";
@@ -32,6 +32,8 @@ const DEFAULT_PREFS = {
   overlays: [{ type: "ema", n: 21, color: "#EF4444" }, { type: "ema", n: 50, color: "#8B5CF6" }],
   macd: false, macdP: { fast: 12, slow: 26, signal: 9 },
   rsi: false, rsiN: 14,
+  adx: false, adxN: 14,
+  stoch: false, stochN: 14,
   vol: false, ctype: "candle",
 };
 /* Read prefs, migrating the OLD format (active: ["ema21", …]) to the new spec model. */
@@ -45,6 +47,8 @@ function readPrefs() {
   }
   if (!p.macdP) p.macdP = { ...DEFAULT_PREFS.macdP };
   if (p.rsiN == null) p.rsiN = 14;
+  if (p.adxN == null) p.adxN = 14;
+  if (p.stochN == null) p.stochN = 14;
   return p;
 }
 
@@ -94,12 +98,16 @@ export default function ProChart({ sym, defaultTf = "1d", height = 240 }) {
   const [macdP, setMacdP] = useState(saved.macdP);
   const [showRsi, setShowRsi] = useState(saved.rsi);
   const [rsiN, setRsiN] = useState(saved.rsiN);
+  const [showAdx, setShowAdx] = useState(saved.adx);
+  const [adxN, setAdxN] = useState(saved.adxN);
+  const [showStoch, setShowStoch] = useState(saved.stoch);
+  const [stochN, setStochN] = useState(saved.stochN);
   const [showVol, setShowVol] = useState(saved.vol);
   const [picker, setPicker] = useState(false);
 
   useEffect(() => {
-    lsSet(PREF_KEY, { overlays, macd: showMacd, macdP, rsi: showRsi, rsiN, vol: showVol, ctype });
-  }, [overlays, showMacd, macdP, showRsi, rsiN, showVol, ctype]);
+    lsSet(PREF_KEY, { overlays, macd: showMacd, macdP, rsi: showRsi, rsiN, adx: showAdx, adxN, stoch: showStoch, stochN, vol: showVol, ctype });
+  }, [overlays, showMacd, macdP, showRsi, rsiN, showAdx, adxN, showStoch, stochN, showVol, ctype]);
 
   const { data, loading, error } = useCandles(sym, tf);
   const closes = useMemo(() => (data ? data.map((c) => c.c) : []), [data]);
@@ -171,6 +179,7 @@ export default function ProChart({ sym, defaultTf = "1d", height = 240 }) {
       const key = `${o.type}${n}_${i}`;
       if (o.type === "ema") out.push({ id: key, color: o.color, label: `EMA ${n}`, vals: emaSeries(closes, n) });
       else if (o.type === "sma") out.push({ id: key, color: o.color, label: `SMA ${n}`, vals: smaSeries(closes, n) });
+      else if (o.type === "vwap") out.push({ id: `vwap_${i}`, color: o.color, label: "VWAP", vals: vwapSeries(data || []) });
       else if (o.type === "bb") {
         const b = bollingerSeries(closes, n, Number(o.mult) || 2);
         out.push({ id: key + "u", color: o.color, label: `BB ${n} up`, vals: b.up, dash: "3 3" });
@@ -179,15 +188,17 @@ export default function ProChart({ sym, defaultTf = "1d", height = 240 }) {
       }
     });
     return out;
-  }, [closes, overlays]);
+  }, [closes, overlays, data]);
 
   const macdFull = useMemo(() => (showMacd && closes.length ? macdSeries(closes, Number(macdP.fast) || 12, Number(macdP.slow) || 26, Number(macdP.signal) || 9) : null), [closes, showMacd, macdP]);
   const rsiFull = useMemo(() => (showRsi && closes.length ? rsiSeries(closes, Math.max(2, Number(rsiN) || 14)) : null), [closes, showRsi, rsiN]);
+  const adxFull = useMemo(() => (showAdx && data ? adxSeries(data, Math.max(2, Number(adxN) || 14)) : null), [data, showAdx, adxN]);
+  const stochFull = useMemo(() => (showStoch && data ? stochSeries(data, Math.max(2, Number(stochN) || 14)) : null), [data, showStoch, stochN]);
   // Heikin-Ashi candles (computed on FULL history so the smoothing recursion is correct, then
   // sliced to the window just like the real candles). Only when that candle type is selected.
   const haFull = useMemo(() => (ctype === "heikin" && data ? heikinAshiSeries(data) : null), [data, ctype]);
 
-  const activeCount = overlays.length + (showMacd ? 1 : 0) + (showRsi ? 1 : 0) + (showVol ? 1 : 0);
+  const activeCount = overlays.length + (showMacd ? 1 : 0) + (showRsi ? 1 : 0) + (showAdx ? 1 : 0) + (showStoch ? 1 : 0) + (showVol ? 1 : 0);
 
   const toolbar = (
     <ChartToolbar
@@ -387,6 +398,63 @@ export default function ProChart({ sym, defaultTf = "1d", height = 240 }) {
         );
       })()}
 
+      {adxFull && (() => {
+        const av = sliceOf(adxFull.adx);
+        const pv = sliceOf(adxFull.pdi);
+        const mv = sliceOf(adxFull.mdi);
+        if (!av.some((v) => v != null)) return null;
+        const HH = 66;
+        const y = (v) => HH - 4 - (Math.min(100, v) / 100) * (HH - 8);
+        const cur = atCursor(adxFull.adx);
+        return (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ display: "flex", gap: 9, fontSize: 10, color: "var(--muted)", fontWeight: 700, marginBottom: 3, flexWrap: "wrap" }}>
+              <span>ADX {adxN} <span className="mono" style={{ color: cur == null ? "var(--muted)" : cur >= 25 ? "var(--primary)" : "var(--ink)" }}>{cur == null ? "—" : cur.toFixed(1)}</span></span>
+              <span>+DI <span className="mono" style={{ color: "var(--up)" }}>{atCursor(adxFull.pdi) == null ? "—" : atCursor(adxFull.pdi).toFixed(1)}</span></span>
+              <span>−DI <span className="mono" style={{ color: "var(--down)" }}>{atCursor(adxFull.mdi) == null ? "—" : atCursor(adxFull.mdi).toFixed(1)}</span></span>
+            </div>
+            <svg viewBox={`0 0 ${W} ${HH}`} width="100%" height={HH}>
+              {[25, 50].map((l) => (
+                <g key={l}>
+                  <line x1="0" y1={y(l)} x2={plotW} y2={y(l)} stroke="var(--line)" strokeWidth="0.6" strokeDasharray="3 3" opacity="0.7" />
+                  <text x={plotW + 6} y={y(l) + 3} fontSize="9" fill="var(--muted)" fontWeight="600">{l}</text>
+                </g>
+              ))}
+              <polyline points={poly(pv, y)} fill="none" stroke="var(--up)" strokeWidth="1.2" opacity="0.8" />
+              <polyline points={poly(mv, y)} fill="none" stroke="var(--down)" strokeWidth="1.2" opacity="0.8" />
+              <polyline points={poly(av, y)} fill="none" stroke="var(--primary)" strokeWidth="1.6" />
+            </svg>
+          </div>
+        );
+      })()}
+
+      {stochFull && (() => {
+        const kv = sliceOf(stochFull.k);
+        const dv = sliceOf(stochFull.d);
+        if (!kv.some((v) => v != null)) return null;
+        const HH = 66;
+        const y = (v) => HH - 4 - (v / 100) * (HH - 8);
+        const cur = atCursor(stochFull.k);
+        return (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ display: "flex", gap: 9, fontSize: 10, color: "var(--muted)", fontWeight: 700, marginBottom: 3 }}>
+              <span>Stoch {stochN} %K <span className="mono" style={{ color: cur == null ? "var(--muted)" : cur >= 80 ? "var(--down)" : cur <= 20 ? "var(--up)" : "var(--ink)" }}>{cur == null ? "—" : cur.toFixed(1)}</span></span>
+              <span>%D <span className="mono" style={{ color: "var(--amber)" }}>{atCursor(stochFull.d) == null ? "—" : atCursor(stochFull.d).toFixed(1)}</span></span>
+            </div>
+            <svg viewBox={`0 0 ${W} ${HH}`} width="100%" height={HH}>
+              {[20, 50, 80].map((l) => (
+                <g key={l}>
+                  <line x1="0" y1={y(l)} x2={plotW} y2={y(l)} stroke="var(--line)" strokeWidth="0.6" strokeDasharray={l === 50 ? undefined : "3 3"} opacity="0.7" />
+                  <text x={plotW + 6} y={y(l) + 3} fontSize="9" fill="var(--muted)" fontWeight="600">{l}</text>
+                </g>
+              ))}
+              <polyline points={poly(kv, y)} fill="none" stroke="var(--primary)" strokeWidth="1.5" />
+              <polyline points={poly(dv, y)} fill="none" stroke="var(--amber)" strokeWidth="1.3" />
+            </svg>
+          </div>
+        );
+      })()}
+
       {showVol && (() => {
         const vols = vis.map((d) => d.v || 0);
         const maxV = Math.max(...vols, 1);
@@ -421,6 +489,8 @@ export default function ProChart({ sym, defaultTf = "1d", height = 240 }) {
           ctype={ctype} setCtype={setCtype}
           showMacd={showMacd} setShowMacd={setShowMacd} macdP={macdP} setMacdP={setMacdP}
           showRsi={showRsi} setShowRsi={setShowRsi} rsiN={rsiN} setRsiN={setRsiN}
+          showAdx={showAdx} setShowAdx={setShowAdx} adxN={adxN} setAdxN={setAdxN}
+          showStoch={showStoch} setShowStoch={setShowStoch} stochN={stochN} setStochN={setStochN}
           showVol={showVol} setShowVol={setShowVol}
           onClose={() => setPicker(false)}
         />

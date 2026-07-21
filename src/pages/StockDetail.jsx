@@ -86,6 +86,22 @@ function CandleChart({ data, market }) {
   );
 }
 
+/* News topic tabs for the details page. Headlines from /api/news carry no category field, so we
+   classify each title by keyword into a small, familiar set (mirrors the homepage's tag tabs).
+   Order matters — the first matching bucket wins, most-specific first. */
+const NEWS_CATS = ["Earnings", "Analyst", "Deals", "Product", "Markets"];
+const NEWS_CAT_RULES = [
+  ["Earnings", /\b(earning|revenue|profit|loss|quarter|q[1-4]\b|results?|guidance|eps|margin|dividend|forecast)/i],
+  ["Analyst", /\b(analyst|rating|upgrade|downgrade|price target|outperform|overweight|underweight|reiterate|buy rating|sell rating|initiat)/i],
+  ["Deals", /\b(acqui|merger|buyout|stake|deal|ipo|takeover|raise[sd]?|funding|invest(ment|s|ed)?|partnership|joint venture)/i],
+  ["Product", /\b(launch|unveil|release[sd]?|product|feature|rollout|debut|introduc|expands?|new (model|service|app))/i],
+];
+function newsCatOf(title) {
+  const t = String(title || "");
+  for (const [cat, re] of NEWS_CAT_RULES) if (re.test(t)) return cat;
+  return "Markets";
+}
+
 export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, onBuy, canBuy }) {
   const showBuy = !canBuy || canBuy(s.sym);
   const market = marketOf(s.sym);
@@ -112,6 +128,7 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
   const [tfStrength, setTfStrength] = useState(null);
   const [tfLoading, setTfLoading] = useState(false);
   const [liveNews, setLiveNews] = useState(null);
+  const [newsCat, setNewsCat] = useState("All");
 
   /* Pull the candles for whichever timeframe is selected and recompute the indicators from
      them. "1d" is excluded — it uses the verdict's own score, so the gauge and the
@@ -436,20 +453,45 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
         </Pop>
       </div>
 
-      {/* NEWS — real headlines only (Yahoo / NewsAPI via the backend). */}
+      {/* NEWS — real headlines only (Yahoo / NewsAPI via the backend), grouped into topic tabs. */}
       <div data-sec="news" ref={(el) => (refs.current.news = el)} style={secStyle}>
         <Pop>
           <Heading icon={<Newspaper size={18} color="var(--primary)" />}>News</Heading>
-          {liveNews && liveNews.length ? liveNews.map((n, i) => (
-            <a key={i} href={n.url || undefined} target="_blank" rel="noreferrer" className="card" style={{ display: "block", padding: 14, marginBottom: 10, textDecoration: "none", color: "inherit" }}>
-              <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 4 }}>{timeAgo(n.d)}{n.src ? " · " + n.src : ""}</div>
-              <div style={{ fontSize: 13.5, fontWeight: 600, lineHeight: 1.5 }}>{n.t}</div>
-            </a>
-          )) : (
-            <div className="card" style={{ padding: 18, textAlign: "center", color: "var(--muted)", fontSize: 12.5 }}>
-              {BACKEND_URL ? "No recent headlines for this symbol." : "Connect the backend to load live headlines."}
-            </div>
-          )}
+          {(() => {
+            const items = liveNews || [];
+            if (!items.length) {
+              return (
+                <div className="card" style={{ padding: 18, textAlign: "center", color: "var(--muted)", fontSize: 12.5 }}>
+                  {BACKEND_URL ? "No recent headlines for this symbol." : "Connect the backend to load live headlines."}
+                </div>
+              );
+            }
+            // Which categories actually appear in this symbol's headlines (tabs only for those).
+            const cats = ["All", ...NEWS_CATS.filter((c) => items.some((n) => newsCatOf(n.t) === c))];
+            const active = cats.includes(newsCat) ? newsCat : "All";
+            const shownNews = active === "All" ? items : items.filter((n) => newsCatOf(n.t) === active);
+            return (
+              <>
+                {cats.length > 2 && (
+                  <div className="hide-scroll" style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 10 }}>
+                    {cats.map((c) => (
+                      <button key={c} onClick={() => setNewsCat(c)} className="pill tap disp"
+                        style={{ flex: "0 0 auto", padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer",
+                          border: "1px solid " + (active === c ? "var(--primary)" : "var(--line)"),
+                          background: active === c ? "var(--primary)" : "var(--surface)",
+                          color: active === c ? "var(--on-primary)" : "var(--ink)" }}>{c}</button>
+                    ))}
+                  </div>
+                )}
+                {shownNews.map((n, i) => (
+                  <a key={i} href={n.url || undefined} target="_blank" rel="noreferrer" className="card" style={{ display: "block", padding: 14, marginBottom: 10, textDecoration: "none", color: "inherit" }}>
+                    <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 4 }}>{timeAgo(n.d)}{n.src ? " · " + n.src : ""}</div>
+                    <div style={{ fontSize: 13.5, fontWeight: 600, lineHeight: 1.5 }}>{n.t}</div>
+                  </a>
+                ))}
+              </>
+            );
+          })()}
         </Pop>
       </div>
 

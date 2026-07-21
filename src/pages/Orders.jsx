@@ -49,7 +49,7 @@ function JournalPanel({ trades = [] }) {
   );
 }
 
-export default function TradeHistory({ userId, trades, onClose, market = null, mode = null }) {
+export default function TradeHistory({ userId, trades, onClose, market = null, mode = null, heldSyms = null }) {
   const RANGES = [["today", "Today"], ["7", "7d"], ["30", "30d"], ["90", "90d"], ["365", "1y"], ["all", "All"]];
   const MKTS = [["all", "All markets"], ["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["Commodity", "🪙 Commodity"]];
   const REALS = [["all", "All"], ["real", "Real"], ["virtual", "Virtual"]];
@@ -99,9 +99,20 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
   // or never-filled order (e.g. "amount too small") has no entry and is NOT an open position — it
   // was showing as "Exit: Open" and looking like a holding that the portfolio didn't have.
   const isRejected = (t) => t.status === "rejected" || t.rejectReason != null || (t.real && t.entry == null && t.exitAt == null);
-  const isOpen = (t) => !isRejected(t) && t.entry != null && (t.exitAt == null || t.exit == null || t.exitType === "Open");
+  /* RECONCILE WITH THE BROKER. A real position the journal still calls "open" but the broker no
+     longer holds was closed on the exchange (bracket SL/TP hit, or closed outside the app) and the
+     exit event never reached us — this is exactly the DOGE case: "Exit: Open" in history, absent
+     from the portfolio. We only reconcile when we have authoritative holdings for that trade's OWN
+     market (heldSyms is the active market's book), so a crypto position is never "closed" by an
+     Indian holdings snapshot. */
+  const heldSet = heldSyms && heldSyms.length != null ? new Set(heldSyms) : null;
+  const reconciledClosed = (t) => t.real && heldSet && market && t.market === market && t.entry != null && !heldSet.has(t.sym);
+  const isOpen = (t) => !isRejected(t) && !reconciledClosed(t) && t.entry != null && (t.exitAt == null || t.exit == null || t.exitType === "Open");
   // Live P&L for still-open positions, using the current price.
   const withPnl = (t) => {
+    if (reconciledClosed(t) && !isRejected(t) && (t.exitAt == null || t.exitType === "Open")) {
+      return { ...t, livePnl: t.pnl || 0, open: false, reconciled: true };
+    }
     if (!isOpen(t)) return { ...t, livePnl: t.pnl || 0, open: false };
     const s = ALL.find((a) => a.sym === t.sym);
     const cur = s ? s.price : t.entry;
@@ -118,7 +129,7 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
   const allSyms = [...new Set(src.map((t) => t.sym))].sort();
   const TYPES = ["Manual", "Automate", "Auto Buy"];
   const EXITS = ["Manual", "Exit trigger", "Stop loss", "Trailing stop", "Open"];
-  const exitOf = (t) => (isRejected(t) ? "Rejected" : t.open ? "Open" : (t.exitType || "Manual"));
+  const exitOf = (t) => (isRejected(t) ? "Rejected" : t.open ? "Open" : t.reconciled ? "Closed" : (t.exitType || "Manual"));
   const rows = src
     .filter((t) => (mkt === "all" ? true : (t.market || "IN") === mkt))
     .filter((t) => (realF === "all" ? true : realF === "real" ? !!t.real : !t.real))
@@ -293,7 +304,7 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
               <div style={{ textAlign: "right" }}>
                 <div style={{ color: "var(--muted)", fontSize: 9.5 }}>{t.open ? "Current" : "Exit"}</div>
                 <div className="mono" style={{ fontWeight: 700 }}>{fmt(t.open ? t.cur : t.exit, t.market || "IN")}</div>
-                <div style={{ color: "var(--muted)", fontSize: 9.5 }}>{t.open ? "position open" : dt(t.exitAt)}</div>
+                <div style={{ color: "var(--muted)", fontSize: 9.5 }}>{t.open ? "position open" : t.reconciled ? "closed on broker" : dt(t.exitAt)}</div>
               </div>
             </div>
           </div>

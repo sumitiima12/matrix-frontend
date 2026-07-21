@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import { Check, Plus, Trash2 } from "lucide-react";
 import { OVERLAY_COLORS } from "../../lib/indicators";
 
@@ -14,6 +15,8 @@ export default function IndicatorPanel({
   overlays = [], setOverlays,
   showMacd, setShowMacd, macdP = { fast: 12, slow: 26, signal: 9 }, setMacdP,
   showRsi, setShowRsi, rsiN = 14, setRsiN,
+  showAdx, setShowAdx, adxN = 14, setAdxN,
+  showStoch, setShowStoch, stochN = 14, setStochN,
   showVol, setShowVol,
   ctype, setCtype,
 }) {
@@ -29,15 +32,20 @@ export default function IndicatorPanel({
   const addOverlay = () => {
     const used = new Set(overlays.map((o) => o.color));
     const color = OVERLAY_COLORS.find((c) => !used.has(c)) || OVERLAY_COLORS[overlays.length % OVERLAY_COLORS.length];
+    if (addType === "vwap") { setOverlays((p) => [...p, { type: "vwap", color }]); return; }
     setOverlays((p) => [...p, { type: addType, n: int(addLen), color, ...(addType === "bb" ? { mult: 2 } : {}) }]);
   };
 
-  const TYPE_LABEL = { ema: "EMA", sma: "SMA", bb: "BB" };
+  const TYPE_LABEL = { ema: "EMA", sma: "SMA", bb: "BB", vwap: "VWAP" };
 
-  return (
+  /* PORTAL to <body>. The details page slides up inside a CSS-transformed container, and a
+     position:fixed child of a transformed ancestor is positioned relative to THAT ancestor, not
+     the viewport — so the sheet rendered off-screen and only the grey backdrop showed. Portalling
+     to body escapes the transform and the sheet appears correctly on both the drawer and details. */
+  const sheet = (
     <div
       onClick={onClose}
-      style={{ position: "fixed", inset: 0, background: "rgba(10,10,20,.45)", zIndex: 95, display: "flex", alignItems: "flex-end", justifyContent: "center" }}
+      style={{ position: "fixed", inset: 0, background: "rgba(10,10,20,.45)", zIndex: 200, display: "flex", alignItems: "flex-end", justifyContent: "center" }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -70,13 +78,14 @@ export default function IndicatorPanel({
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderBottom: "1px solid var(--line)" }}>
               <span style={{ width: 10, height: 10, borderRadius: 3, background: o.color, flex: "0 0 auto" }} />
               <select value={o.type} onChange={(e) => updateOverlay(i, { type: e.target.value })}
-                style={{ ...numStyle, width: 68, fontWeight: 800 }}>
+                style={{ ...numStyle, width: 74, fontWeight: 800 }}>
                 <option value="ema">EMA</option>
                 <option value="sma">SMA</option>
                 <option value="bb">BB</option>
+                <option value="vwap">VWAP</option>
               </select>
-              <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>length</span>
-              <input value={o.n} inputMode="numeric" onChange={(e) => updateOverlay(i, { n: int(e.target.value) })} className="no-ring mono" style={numStyle} />
+              {o.type !== "vwap" && <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>length</span>}
+              {o.type !== "vwap" && <input value={o.n} inputMode="numeric" onChange={(e) => updateOverlay(i, { n: int(e.target.value) })} className="no-ring mono" style={numStyle} />}
               {o.type === "bb" && (<>
                 <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>×</span>
                 <input value={o.mult == null ? 2 : o.mult} inputMode="decimal" onChange={(e) => updateOverlay(i, { mult: Math.max(0.1, parseFloat(e.target.value.replace(/[^0-9.]/g, "")) || 2) })} className="no-ring mono" style={{ ...numStyle, width: 44 }} />
@@ -86,12 +95,13 @@ export default function IndicatorPanel({
           ))}
           {/* Add a new overlay at any length. */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
-            <select value={addType} onChange={(e) => setAddType(e.target.value)} style={{ ...numStyle, width: 74, fontWeight: 800 }}>
+            <select value={addType} onChange={(e) => setAddType(e.target.value)} style={{ ...numStyle, width: 78, fontWeight: 800 }}>
               <option value="ema">EMA</option>
               <option value="sma">SMA</option>
               <option value="bb">Bollinger</option>
+              <option value="vwap">VWAP</option>
             </select>
-            <input value={addLen} inputMode="numeric" onChange={(e) => setAddLen(e.target.value.replace(/[^0-9]/g, ""))} placeholder="length" className="no-ring mono" style={numStyle} />
+            {addType !== "vwap" && <input value={addLen} inputMode="numeric" onChange={(e) => setAddLen(e.target.value.replace(/[^0-9]/g, ""))} placeholder="length" className="no-ring mono" style={numStyle} />}
             <button onClick={addOverlay} className="tap disp" style={{ display: "flex", alignItems: "center", gap: 5, border: "1px dashed var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 10, padding: "7px 12px", fontSize: 12, fontWeight: 800 }}>
               <Plus size={14} /> Add {TYPE_LABEL[addType] || ""}
             </button>
@@ -126,6 +136,32 @@ export default function IndicatorPanel({
             )}
           </div>
 
+          {setShowAdx && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: "1px solid var(--line)" }}>
+              <Box checked={showAdx} onClick={() => setShowAdx(!showAdx)} />
+              <span style={{ fontSize: 13.5, fontWeight: 700, flex: "0 0 auto" }}>ADX</span>
+              {showAdx && setAdxN && (
+                <div style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: "auto" }}>
+                  <span style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>length</span>
+                  <input value={adxN} inputMode="numeric" onChange={(e) => setAdxN(int(e.target.value, 2))} className="no-ring mono" style={{ ...numStyle, width: 44 }} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {setShowStoch && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: "1px solid var(--line)" }}>
+              <Box checked={showStoch} onClick={() => setShowStoch(!showStoch)} />
+              <span style={{ fontSize: 13.5, fontWeight: 700, flex: "0 0 auto" }}>Stochastic</span>
+              {showStoch && setStochN && (
+                <div style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: "auto" }}>
+                  <span style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>length</span>
+                  <input value={stochN} inputMode="numeric" onChange={(e) => setStochN(int(e.target.value, 2))} className="no-ring mono" style={{ ...numStyle, width: 44 }} />
+                </div>
+              )}
+            </div>
+          )}
+
           {setShowVol && (
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: "1px solid var(--line)" }}>
               <Box checked={showVol} onClick={() => setShowVol(!showVol)} />
@@ -144,6 +180,7 @@ export default function IndicatorPanel({
       </div>
     </div>
   );
+  return typeof document !== "undefined" ? createPortal(sheet, document.body) : sheet;
 }
 
 function Box({ checked, onClick }) {
