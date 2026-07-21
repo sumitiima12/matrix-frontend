@@ -571,6 +571,21 @@ function TrendingRow({ s, market, onOpen, onBuy, onWhy }) {
   );
 }
 
+/* Is a market open RIGHT NOW (evaluated in IST)? Auto-buy must not fire when it's closed.
+     IN/FNO 9:15–15:30 Mon–Fri · Commodity 9:00–23:30 Mon–Fri · US 7:00pm–1:30am IST Mon–Fri
+     (the after-midnight tail belongs to the previous weekday's session) · Crypto 24/7. */
+export function marketOpen(market) {
+  if (market === "Crypto") return true;
+  const ist = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+  const day = ist.getDay();                       // 0 Sun … 6 Sat
+  const mins = ist.getHours() * 60 + ist.getMinutes();
+  const weekday = day >= 1 && day <= 5;
+  if (market === "IN" || market === "FNO") return weekday && mins >= 555 && mins <= 930;      // 9:15–15:30
+  if (market === "Commodity") return weekday && mins >= 540 && mins <= 1410;                   // 9:00–23:30
+  if (market === "US") return (mins >= 1140 && day >= 1 && day <= 5) || (mins <= 90 && day >= 2 && day <= 6); // 7:00pm–1:30am IST
+  return true;
+}
+
 export default function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, onAutoBuy, mode, watch, toggleWatch, profile, portfolio = [], realPortfolio = [], onRefreshReal, wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [], liveTick = 0, onWhy, autoOnMap: autoOnMapProp, setAutoOnMap: setAutoOnMapProp, deployCapMap: deployCapMapProp, setDeployCapMap: setDeployCapMapProp, hideDash = false }) {
   const [glMode, setGlMode] = useState("Gainers");
   // Picks refresh ONCE AN HOUR (not on every tick) so they don't churn.
@@ -771,6 +786,9 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   // them at real market prices — no simulated win/loss.
   useEffect(() => {
     if (!autoOn || !onBuy || !BACKEND_URL) return;
+    // MARKET HOURS. Never place an auto-buy when the market is CLOSED (weekends, or outside session
+    // hours) — placing an Indian trade at 8pm or on a Sunday is wrong. Crypto is 24/7.
+    if (!marketOpen(market)) return;
     // Don't consume the once-per-day guard before the picks have actually loaded — otherwise
     // toggling ON early (while UNIVERSE prices are still null → autoTrades empty) marks the day
     // "done" and buys nothing, leaving 0 positions until tomorrow. Wait for real picks first.
