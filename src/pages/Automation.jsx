@@ -1378,7 +1378,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           {/* Strategy name — first thing, before the steps. */}
           <div className="card" style={{ marginTop: 16, padding: 16 }}>
             <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Strategy name{editingId ? " · editing" : ""}</div>
-            <input value={stratName} onChange={(e) => setStratName(e.target.value)} placeholder="e.g. My Nifty swing setup" className="no-ring disp" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }} />
+            <input value={stratName} onChange={(e) => setStratName(e.target.value)} placeholder="e.g. Momentum Rider" className="no-ring disp" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }} />
 
             {/* Deploy on — symbol, right under the name; then the Stock / Option toggle above Step 1. */}
             <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, margin: "14px 0 6px" }}>Deploy on — symbol</div>
