@@ -1000,6 +1000,13 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
               <div style={{ fontSize: 10, opacity: .7, marginTop: 4 }}>P&amp;L · {periodLabel} {autoOn ? "· live positions (real exits)" : "· simulated preview"}</div>
               <div className="mono" style={{ fontWeight: 800, fontSize: 27, marginTop: 3, color: autoPnl >= 0 ? "#9CFFD6" : "#FFB3BE" }}>{(autoPnl >= 0 ? "+" : "") + fmt(autoPnl, aggCur)}</div>
               <div style={{ fontSize: 11, opacity: .85 }}>{`${periodStats.trades} trades · ${autoWinRate.toFixed(0)}% win rate · ${CUR[aggCur]}${(capNum / 1000).toFixed(0)}k capital`}</div>
+              {/* Why "0 trades today" on a closed market (e.g. US during Indian daytime): auto-buy
+                  only fires during that market's hours. Say so instead of leaving a bare zero. */}
+              {!marketOpen(market) && (
+                <div style={{ fontSize: 10.5, marginTop: 5, padding: "6px 10px", borderRadius: 9, background: "rgba(255,255,255,.10)", color: "#FFE0A3", fontWeight: 700, display: "inline-block" }}>
+                  {MKT_LABEL[market]} market is closed now — auto-buy runs at the next open ({market === "US" ? "7:00 PM IST" : market === "Commodity" ? "9:00 AM IST" : "9:15 AM IST"}). Today's plan is below.
+                </div>
+              )}
               {autoRows.some((r) => r.rejected) && (
                 <div style={{ fontSize: 10, color: "#FFB3BE", fontWeight: 700, marginTop: 3 }}>⚠ {autoRows.filter((r) => r.rejected).length} order(s) rejected — open Show Positions for the reason</div>
               )}

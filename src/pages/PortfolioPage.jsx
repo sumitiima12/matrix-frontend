@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Briefcase, ChevronRight, Home, ShieldCheck, SlidersHorizontal, X } from "lucide-react";
+import NeoIcon from "../components/common/NeoIcon";
 import { fmt } from "../lib/format";
 import { ALL, marketOf } from "../domain/universe";
 import { techSignal } from "../domain/signals";
@@ -407,6 +408,10 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
           const uni = ALL.find((a) => a.sym === h.sym) || ALL.find((a) => a.sym === baseSym);
           const sig = uni ? techSignal(uni) : null;
           const pnlPct = (h.avg && h.ltp) ? ((h.ltp / h.avg) - 1) * 100 : null;
+          // Neo's read on the REAL holding — same engine the virtual cards use, fed the broker's
+          // avg cost + qty. Only when the symbol is in our tracked universe (needs real indicators).
+          const ana = uni && sig ? analyzeHolding({ sym: h.sym, buy: h.avg != null ? h.avg : h.ltp, qty: h.qty, sl: null, tp: null }, uni, sig) : null;
+          const vColor = ana && /Exit|Reduce/.test(ana.action) ? "var(--down)" : ana && /Add/.test(ana.action) ? "var(--up)" : "var(--muted)";
           return (
             <div key={h.sym} className="card" style={{ marginTop: 9, padding: 13 }}>
               <div
@@ -442,6 +447,33 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
                   {uni.rsi != null && <MiniStat label="RSI" value={String(Math.round(uni.rsi))} color={uni.rsi > 70 ? "var(--down)" : uni.rsi < 30 ? "var(--up)" : "var(--ink)"} />}
                   {sig.rr != null && <MiniStat label="R:R" value={sig.rr + ":1"} color="var(--ink)" />}
                   {uni && onOpen && <button onClick={() => onOpen(uni)} className="tap disp" title="Open" style={{ marginLeft: "auto", fontSize: 16, fontWeight: 800, color: "var(--primary)", background: "none", border: "none", cursor: "pointer", lineHeight: 1, padding: "0 4px" }}>›</button>}
+                </div>
+              ) : (
+                <></>
+              )}
+
+              {/* Neo's verdict — verdict badge + confidence + one-line rationale, matching the
+                  virtual portfolio cards. Only when we have a real read for this holding. */}
+              {ana && ana.hasData ? (
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--line)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <NeoIcon size={14} />
+                    <span className="disp" style={{ fontWeight: 800, fontSize: 11.5 }}>Neo's verdict</span>
+                    <span className="pill" style={{ fontSize: 9, fontWeight: 800, padding: "2px 8px", background: vColor, color: "#fff" }}>{ana.action}</span>
+                    <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>{ana.confidence}% confidence</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 5, height: 5, marginTop: 6 }}>
+                    <div style={{ flex: ana.confidence, background: vColor, borderRadius: 4 }} />
+                    <div style={{ flex: 100 - ana.confidence, background: "var(--line)", borderRadius: 4 }} />
+                  </div>
+                  {(ana.reasons && ana.reasons[0]) && (
+                    <div style={{ fontSize: 10.5, color: "var(--ink-soft)", marginTop: 7, lineHeight: 1.5 }}>{ana.reasons[0]}</div>
+                  )}
+                  <div style={{ display: "flex", gap: 12, marginTop: 7, flexWrap: "wrap", fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>
+                    <span>Trend <b style={{ color: ana.trend === "Uptrend" ? "var(--up)" : ana.trend === "Downtrend" ? "var(--down)" : "var(--ink)" }}>{ana.trend}</b></span>
+                    <span>Risk <b style={{ color: ana.risk === "High" ? "var(--down)" : ana.risk === "Low" ? "var(--up)" : "var(--ink)" }}>{ana.risk}</b></span>
+                    {ana.rMultiple != null && <span>R-multiple <b style={{ color: "var(--ink)" }}>{ana.rMultiple}R</b></span>}
+                  </div>
                 </div>
               ) : (
                 <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--line)" }}>
