@@ -320,6 +320,7 @@ function IdeasModeration({ adminKey, card }) {
 function TradesSection({ trades = [], cardStyle }) {
   const [fType, setFType] = useState("All");
   const [fMkt, setFMkt] = useState("All");
+  const [fReal, setFReal] = useState("All");   // All | Real | Virtual
   const [dFrom, setDFrom] = useState("");
   const [dTo, setDTo] = useState("");
   const [expanded, setExpanded] = useState(false);
@@ -327,6 +328,8 @@ function TradesSection({ trades = [], cardStyle }) {
   const stamp = (t) => t.exitAt || t.entryAt || t.at || t.ts || 0;
   const TYPES = ["All", "Manual", "Automate", "Auto Buy"];
   const MKTS = ["All", "IN", "US", "Crypto", "Commodity"];
+  // Real orders are journalled with real:true; paper ones aren't — that's the real/virtual split.
+  const REALS = ["All", "Real", "Virtual"];
 
   const from = dFrom ? new Date(dFrom + "T00:00:00").getTime() : 0;
   const to = dTo ? new Date(dTo + "T23:59:59.999").getTime() : Date.now();
@@ -334,9 +337,10 @@ function TradesSection({ trades = [], cardStyle }) {
   const rows = useMemo(() => (trades || [])
     .filter((t) => (fType === "All" ? true : (t.tradeType || "Manual") === fType))
     .filter((t) => (fMkt === "All" ? true : (t.market || "IN") === fMkt))
+    .filter((t) => (fReal === "All" ? true : fReal === "Real" ? !!t.real : !t.real))
     .filter((t) => { const ts = stamp(t); return ts >= from && ts <= to; })
     .sort((a, b) => stamp(b) - stamp(a)),
-    [trades, fType, fMkt, from, to]);
+    [trades, fType, fMkt, fReal, from, to]);
 
   const shown = expanded ? rows : rows.slice(0, 10);
   const exportCSV = () => downloadCSV(tradeFilename("matrix-user-trades"), tradesToCSV(rows, () => null));
@@ -358,6 +362,10 @@ function TradesSection({ trades = [], cardStyle }) {
         </button>
       </div>
 
+      {/* Real / Virtual chips */}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+        {REALS.map((r) => <button key={r} onClick={() => setFReal(r)} style={chip(fReal === r)}>{r === "All" ? "All modes" : r}</button>)}
+      </div>
       {/* Trade-type chips */}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
         {TYPES.map((t) => <button key={t} onClick={() => setFType(t)} style={chip(fType === t)}>{t}</button>)}
