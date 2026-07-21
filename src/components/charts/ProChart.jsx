@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCandles } from "../../hooks/useCandles";
-import { smaSeries, emaSeries, bollingerSeries, macdSeries, rsiSeries, OVERLAYS } from "../../lib/indicators";
+import { smaSeries, emaSeries, bollingerSeries, macdSeries, rsiSeries, heikinAshiSeries, OVERLAYS } from "../../lib/indicators";
 import { lsGet, lsSet } from "../../lib/format";
 import ChartToolbar from "./ChartToolbar";
 import IndicatorPanel from "./IndicatorPanel";
@@ -26,7 +26,7 @@ import IndicatorPanel from "./IndicatorPanel";
  */
 
 const PREF_KEY = "mx_chart_prefs";
-const DEFAULT_PREFS = { active: ["ema21", "ema50"], macd: false, rsi: false, ctype: "candle" };
+const DEFAULT_PREFS = { active: ["ema21", "ema50"], macd: false, rsi: false, vol: false, ctype: "candle" };
 
 const MIN_BARS = 15;      // furthest you can zoom in
 const AXIS_W = 52;        // right-hand price gutter
@@ -72,11 +72,12 @@ export default function ProChart({ sym, defaultTf = "1d", height = 240 }) {
   const [active, setActive] = useState(saved.active);
   const [showMacd, setShowMacd] = useState(saved.macd);
   const [showRsi, setShowRsi] = useState(saved.rsi);
+  const [showVol, setShowVol] = useState(saved.vol);
   const [picker, setPicker] = useState(false);
 
   useEffect(() => {
-    lsSet(PREF_KEY, { active, macd: showMacd, rsi: showRsi, ctype });
-  }, [active, showMacd, showRsi, ctype]);
+    lsSet(PREF_KEY, { active, macd: showMacd, rsi: showRsi, vol: showVol, ctype });
+  }, [active, showMacd, showRsi, showVol, ctype]);
 
   const { data, loading, error } = useCandles(sym, tf);
   const closes = useMemo(() => (data ? data.map((c) => c.c) : []), [data]);
@@ -160,9 +161,12 @@ export default function ProChart({ sym, defaultTf = "1d", height = 240 }) {
 
   const macdFull = useMemo(() => (showMacd && closes.length ? macdSeries(closes) : null), [closes, showMacd]);
   const rsiFull = useMemo(() => (showRsi && closes.length ? rsiSeries(closes) : null), [closes, showRsi]);
+  // Heikin-Ashi candles (computed on FULL history so the smoothing recursion is correct, then
+  // sliced to the window just like the real candles). Only when that candle type is selected.
+  const haFull = useMemo(() => (ctype === "heikin" && data ? heikinAshiSeries(data) : null), [data, ctype]);
 
   const toggle = (id) => setActive((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
-  const activeCount = active.length + (showMacd ? 1 : 0) + (showRsi ? 1 : 0);
+  const activeCount = active.length + (showMacd ? 1 : 0) + (showRsi ? 1 : 0) + (showVol ? 1 : 0);
 
   const toolbar = (
     <ChartToolbar
@@ -192,6 +196,9 @@ export default function ProChart({ sym, defaultTf = "1d", height = 240 }) {
   /* ── GEOMETRY over the visible window ────────────────────────────────────── */
   const { start, count } = view;
   const vis = data.slice(start, start + count);
+  // What we DRAW as candles: Heikin-Ashi (smoothed) or the real candles. Line mode / the OHLC
+  // header / overlays stay on the REAL prices — HA only changes the candle bodies.
+  const drawn = ctype === "heikin" && haFull ? haFull.slice(start, start + count) : vis;
   const sliceOf = (arr) => (arr || []).slice(start, start + count);
   const atCursor = (arr) => {
     const v = (arr || [])[start + count - 1];
@@ -204,8 +211,8 @@ export default function ProChart({ sym, defaultTf = "1d", height = 240 }) {
 
   const lines = linesFull.map((l) => ({ ...l, vals: sliceOf(l.vals) }));
 
-  const lows = vis.map((d) => d.l);
-  const highs = vis.map((d) => d.h);
+  const lows = drawn.map((d) => d.l);
+  const highs = drawn.map((d) => d.h);
   const ov = lines.flatMap((l) => l.vals.filter((v) => v != null && !Number.isNaN(v)));
   const min = Math.min(...lows, ...(ov.length ? ov : lows));
   const max = Math.max(...highs, ...(ov.length ? ov : highs));
@@ -270,7 +277,7 @@ export default function ProChart({ sym, defaultTf = "1d", height = 240 }) {
           {ctype === "line" ? (
             <polyline points={poly(vis.map((d) => d.c), yOf)} fill="none" stroke={lineCol} strokeWidth="1.8" strokeLinejoin="round" />
           ) : (
-            vis.map((d, k) => {
+            drawn.map((d, k) => {
               const x = (k + 0.5) * cw;
               const col = d.c >= d.o ? "var(--up)" : "var(--down)";
               const yO = yOf(d.o), yC = yOf(d.c);
@@ -359,6 +366,30 @@ export default function ProChart({ sym, defaultTf = "1d", height = 240 }) {
         );
       })()}
 
+      {showVol && (() => {
+        const vols = vis.map((d) => d.v || 0);
+        const maxV = Math.max(...vols, 1);
+        const HH = 56;
+        const cur = vols[vols.length - 1];
+        const fmtVol = (v) => (v >= 1e7 ? (v / 1e7).toFixed(1) + "Cr" : v >= 1e5 ? (v / 1e5).toFixed(1) + "L" : v >= 1e3 ? (v / 1e3).toFixed(1) + "k" : String(Math.round(v)));
+        return (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ display: "flex", gap: 8, fontSize: 10, color: "var(--muted)", fontWeight: 700, marginBottom: 3 }}>
+              <span>Volume</span>
+              <span className="mono" style={{ color: "var(--ink)" }}>{fmtVol(cur)}</span>
+            </div>
+            <svg viewBox={`0 0 ${W} ${HH}`} width="100%" height={HH}>
+              {vis.map((d, k) => {
+                const h = (vols[k] / maxV) * (HH - 6);
+                const x = (k + 0.5) * cw;
+                const col = d.c >= d.o ? "var(--up)" : "var(--down)";
+                return <rect key={k} x={x - cw * 0.3} y={HH - Math.max(0.6, h)} width={Math.max(0.8, cw * 0.6)} height={Math.max(0.6, h)} fill={col} opacity="0.5" />;
+              })}
+            </svg>
+          </div>
+        );
+      })()}
+
       <div style={{ fontSize: 9.5, color: "var(--muted)", textAlign: "center", marginTop: 8 }}>
         Pinch to zoom · drag to pan
       </div>
@@ -366,8 +397,10 @@ export default function ProChart({ sym, defaultTf = "1d", height = 240 }) {
       {picker && (
         <IndicatorPanel
           active={active} toggle={toggle}
+          ctype={ctype} setCtype={setCtype}
           showMacd={showMacd} setShowMacd={setShowMacd}
           showRsi={showRsi} setShowRsi={setShowRsi}
+          showVol={showVol} setShowVol={setShowVol}
           onClose={() => setPicker(false)}
         />
       )}

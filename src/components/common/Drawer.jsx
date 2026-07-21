@@ -130,30 +130,34 @@ export default function Drawer({ s, onClose, onDetails, onBuy, canBuy }) {
               </div>
             </div>
           );
+          const isCrypto = market === "Crypto";
           return (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12, alignItems: "stretch" }}>
+            /* Crypto has no fundamentals, so we drop that column entirely and give Technicals the
+               full width — rather than showing an empty "not applicable" box. */
+            <div style={{ display: "grid", gridTemplateColumns: isCrypto ? "1fr" : "1fr 1fr", gap: 10, marginTop: 12, alignItems: "stretch" }}>
               <Col title={<>Technicals <span style={{ fontWeight: 600, color: "var(--muted)", fontSize: 9.5, letterSpacing: 0.2 }}>· Daily (1D)</span></>} icon={<Activity size={13} />}>
                 {tr ? (<>
                     {tr.rows.map((r) => <Bullet key={r.k} k={r.k} v={r.v} tone={r.tone} />)}
                     <Meter label={tr.grade} score={tr.score} />
                   </>) : <div style={{ fontSize: 11, color: "var(--muted)" }}>Waiting for live indicators.</div>}
               </Col>
-              <Col title="Fundamentals" icon={<Building2 size={13} />}>
-                {market === "Crypto" ? <div style={{ fontSize: 11, color: "var(--muted)" }}>Not applicable to crypto.</div>
-                  : fund == null ? <div style={{ fontSize: 11, color: "var(--muted)" }}>Loading…</div>
-                  : fund.unavailable ? <div style={{ fontSize: 11, color: "var(--muted)" }}>Not available right now.</div>
-                  : fr ? (<>
-                      {fr.rows.map((r) => <Bullet key={r.k} k={r.k} v={r.v} tone={r.tone} />)}
-                      <Meter label={fr.verdict} score={fr.score} />
-                    </>) : <div style={{ fontSize: 11, color: "var(--muted)" }}>—</div>}
-              </Col>
+              {!isCrypto && (
+                <Col title="Fundamentals" icon={<Building2 size={13} />}>
+                  {fund == null ? <div style={{ fontSize: 11, color: "var(--muted)" }}>Loading…</div>
+                    : fund.unavailable ? <div style={{ fontSize: 11, color: "var(--muted)" }}>Not available right now.</div>
+                    : fr ? (<>
+                        {fr.rows.map((r) => <Bullet key={r.k} k={r.k} v={r.v} tone={r.tone} />)}
+                        <Meter label={fr.verdict} score={fr.score} />
+                      </>) : <div style={{ fontSize: 11, color: "var(--muted)" }}>—</div>}
+                </Col>
+              )}
             </div>
           );
         })()}
 
         <div className="card" style={{ marginTop: 12, padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--bg)" }}>
           <div>
-            <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Matrix's verdict</div>
+            <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Neo's verdict</div>
             <div className="disp" style={{ fontWeight: 700, fontSize: 15, marginTop: 2 }}>{s.verdict} near {fmt(s.price, market)}</div>
           </div>
           <VerdictTag v={s.verdict} size={15} />

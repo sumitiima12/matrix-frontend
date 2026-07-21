@@ -15,6 +15,7 @@ import { analyzeStock } from "../services/aiService";
 import BarBlock from "../components/common/BarBlock";
 import Change from "../components/common/Change";
 import ChartCard from "../components/common/ChartCard";
+import ProChart from "../components/charts/ProChart";
 import Gauge from "../components/common/Gauge";
 import Pop from "../components/common/Pop";
 import ResearchVerdict from "../components/ai/ResearchVerdict";
@@ -107,7 +108,7 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
   const [chartType, setChartType] = useState("candles");
   const [deepBusy, setDeepBusy] = useState(false);
   const [analysis, setAnalysis] = useState(null);   // structured research verdict
-  const [strengthTf, setStrengthTf] = useState("5m");
+  const [strengthTf, setStrengthTf] = useState("1d");
   const [tfStrength, setTfStrength] = useState(null);
   const [tfLoading, setTfLoading] = useState(false);
   const [liveNews, setLiveNews] = useState(null);
@@ -155,7 +156,14 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
      ROE, margins and quarterly revenue — refuses requests from datacenter IPs
      (verified: "yahoo: auth failed" from Render). No data source, no feature.
      Deleted rather than left as an empty panel or filled with plausible numbers. */
-  const tabs = [["overview", "Overview"], ["tech", "Technicals"], ["news", "News"], ["ask", "Ask Neo"]];
+  // Fundamentals tab sits before Technicals — but not for crypto, which has no fundamentals.
+  const tabs = [
+    ["overview", "Overview"],
+    ...(market !== "Crypto" ? [["fund", "Fundamentals"]] : []),
+    ["tech", "Technicals"],
+    ["news", "News"],
+    ["ask", "Ask Neo"],
+  ];
   const n = (v, suf = "") => (v == null ? "n/a" : v + suf);
   const ctx = `Stock: ${s.name} (${s.sym}), market ${market}. Price ${fmt(s.price, market)} (${s.chg >= 0 ? "+" : ""}${s.chg}% today). REAL indicators — RSI ${n(s.rsi)}, MACD ${n(s.macd)} (signal ${n(s.macdSignal)}), ADX ${n(s.adx)}, ATR ${n(s.atr)}, 50-DMA ${n(s.sma50)}, 200-DMA ${n(s.sma200)}, support ${n(s.support)}, resistance ${n(s.resistance)}, 52w ${n(s.low52)}-${n(s.high52)}, volume ${n(s.vol)} vs 20d avg ${n(s.avgVol)}. Only use the figures given; if something is n/a, say so rather than guessing.`;
 
@@ -252,33 +260,10 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
       {/* OVERVIEW */}
       <div data-sec="overview" ref={(el) => (refs.current.overview = el)} style={{ scrollMarginTop: 118, marginTop: 14 }}>
         <div className="card" style={{ padding: 14 }}>
-          <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-            {[["candles", "Candles"], ["area", "Area"]].map(([k, l]) => (
-              <button key={k} onClick={() => setChartType(k)} className="pill tap disp" style={{ fontSize: 11.5, fontWeight: 700, padding: "5px 13px", border: "1px solid " + (chartType === k ? "var(--primary)" : "var(--line)"), background: chartType === k ? "var(--primary)" : "transparent", color: chartType === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
-            ))}
-            <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
-              {[[24, "1M"], [40, "3M"], [60, "6M"]].map(([n, l]) => (
-                <button key={l} onClick={() => setTf(n)} className="pill tap" style={{ fontSize: 11, fontWeight: 700, padding: "5px 11px", border: "none", background: tf === n ? "var(--primary-soft)" : "transparent", color: tf === n ? "var(--primary)" : "var(--muted)" }}>{l}</button>
-              ))}
-            </div>
-          </div>
-          {chartType === "candles" ? (
-            <CandleChart key={s.sym + tf} data={cdata} market={market} />
-          ) : (
-            <div style={{ height: 244 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={data} margin={{ top: 6, right: 6, bottom: 0, left: 6 }}>
-                  <defs><linearGradient id="big" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={s.chg >= 0 ? "#0FB97D" : "#FF4D67"} stopOpacity={0.3} /><stop offset="100%" stopColor={s.chg >= 0 ? "#0FB97D" : "#FF4D67"} stopOpacity={0} /></linearGradient></defs>
-                  <CartesianGrid vertical={false} stroke="var(--grid)" />
-                  <YAxis domain={["dataMin", "dataMax"]} hide />
-                  <Tooltip formatter={(v) => fmt(v, market)} labelFormatter={() => ""} contentStyle={{ borderRadius: 12, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", fontSize: 12, boxShadow: "var(--shadow)" }} itemStyle={{ color: "var(--ink)" }} />
-                  <ReferenceLine y={s.support} stroke="#C9C9D4" strokeDasharray="4 4" />
-                  <ReferenceLine y={s.resistance} stroke="#A99BFF" strokeDasharray="4 4" />
-                  <Area type="monotone" dataKey="p" stroke={s.chg >= 0 ? "#0FB97D" : "#FF4D67"} strokeWidth={2.4} fill="url(#big)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          )}
+          {/* Full interactive chart (same engine as the quick drawer): timeframe pills, candle /
+              Heikin-Ashi / line, the ƒx indicator picker (EMA/SMA/Bollinger + MACD/RSI/Volume),
+              pinch-zoom and pan. */}
+          <ProChart sym={s.sym} defaultTf={market === "Crypto" ? "1h" : "1d"} height={244} />
         </div>
         <div className="card" style={{ marginTop: 12, padding: 16, background: "linear-gradient(160deg,var(--primary-soft),var(--surface))" }}>
           <div className="disp" style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Sparkles size={16} color="var(--primary)" /> Analysis</div>
@@ -316,7 +301,7 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
 
         {/* FUNDAMENTALS — real Yahoo quoteSummary. Only for equities; crypto has none. */}
         {market !== "Crypto" && (
-          <div className="card" style={{ marginTop: 12, padding: 16 }}>
+          <div data-sec="fund" ref={(el) => (refs.current.fund = el)} className="card" style={{ marginTop: 12, padding: 16, scrollMarginTop: 118 }}>
             <div className="disp" style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}><Building2 size={16} color="var(--primary)" /> Fundamentals</div>
             {fund == null ? (
               <div style={{ color: "var(--muted)", fontSize: 12.5 }}>Loading fundamentals…</div>
@@ -447,7 +432,7 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
           <TextCard title="Technical summary">
             Price is trading {s.price > s.sma50 ? "above" : "below"} its 50-DMA and {s.price > s.sma200 ? "above" : "below"} its 200-DMA. RSI at {s.rsi} signals {s.rsi > 70 ? "stretched, overbought conditions" : s.rsi < 30 ? "oversold, possible bounce" : "balanced momentum"}; MACD is {s.macd >= 0 ? "positive" : "negative"}. Watch {fmt(s.support, market)} as support and {fmt(s.resistance, market)} as resistance.
           </TextCard>
-          <TextCard title="Matrix's summary" accent>{s.rsi > 70 ? "Momentum is hot but extended — avoid chasing; buy dips toward support." : s.rsi < 30 ? "Oversold setup — high-risk traders can scalp a bounce with tight stops." : "Constructive, non-extended setup — trend continuation favoured while support holds."}</TextCard>
+          <TextCard title="Neo's verdict" accent>{s.rsi > 70 ? "Momentum is hot but extended — avoid chasing; buy dips toward support." : s.rsi < 30 ? "Oversold setup — high-risk traders can scalp a bounce with tight stops." : "Constructive, non-extended setup — trend continuation favoured while support holds."}</TextCard>
         </Pop>
       </div>
 

@@ -9,12 +9,14 @@ import { OVERLAYS } from "../../lib/indicators";
  * adding an indicator never means editing this component.
  */
 export default function IndicatorPanel({
-  open, onClose,
+  open = true, onClose,
   active = [], toggle,
   showMacd, setShowMacd,
   showRsi, setShowRsi,
+  showVol, setShowVol,
+  ctype, setCtype,
 }) {
-  if (!open) return null;
+  if (open === false) return null;
 
   const Row = ({ checked, onClick, swatch, children }) => (
     <button
@@ -50,7 +52,24 @@ export default function IndicatorPanel({
         style={{ width: "100%", maxWidth: 460, borderRadius: "22px 22px 0 0", padding: 18, maxHeight: "72vh", display: "flex", flexDirection: "column" }}
       >
         <div style={{ width: 40, height: 4, background: "var(--line)", borderRadius: 9, margin: "0 auto 14px" }} />
-        <div className="disp" style={{ fontWeight: 800, fontSize: 15, marginBottom: 10 }}>Indicators</div>
+        <div className="disp" style={{ fontWeight: 800, fontSize: 15, marginBottom: 10 }}>Chart settings</div>
+
+        {/* Candle type — Regular / Heikin Ashi / Line. */}
+        {setCtype && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Candle type</div>
+            <div style={{ display: "flex", gap: 6 }}>
+              {[["candle", "Regular"], ["heikin", "Heikin Ashi"], ["line", "Line"]].map(([k, l]) => (
+                <button key={k} onClick={() => setCtype(k)} className="pill tap disp"
+                  style={{ flex: 1, padding: "8px 6px", fontSize: 11.5, fontWeight: 800, borderRadius: 10,
+                    border: "1px solid " + (ctype === k ? "var(--primary)" : "var(--line)"),
+                    background: ctype === k ? "var(--primary)" : "var(--surface)",
+                    color: ctype === k ? "var(--on-primary)" : "var(--ink)" }}>{l}</button>
+              ))}
+            </div>
+          </div>
+        )}
+        <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, marginBottom: 2 }}>Overlays &amp; panels</div>
 
         <div style={{ overflowY: "auto", flex: 1 }}>
           {OVERLAYS.map((o) => (
@@ -64,6 +83,11 @@ export default function IndicatorPanel({
           <Row checked={showRsi} onClick={() => setShowRsi(!showRsi)}>
             RSI (14) <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>· sub-panel</span>
           </Row>
+          {setShowVol && (
+            <Row checked={showVol} onClick={() => setShowVol(!showVol)}>
+              Volume <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>· sub-panel</span>
+            </Row>
+          )}
         </div>
 
         <button

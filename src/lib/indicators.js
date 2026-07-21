@@ -79,6 +79,25 @@ export function rsiSeries(vals, n = 14) {
   return out;
 }
 
+/** Heikin-Ashi candles from real OHLC. Each HA candle smooths the trend:
+      haClose = (o+h+l+c)/4 ; haOpen = (prevHaOpen + prevHaClose)/2 (seed (o+c)/2)
+      haHigh  = max(h, haOpen, haClose) ; haLow = min(l, haOpen, haClose)
+   Returned aligned to input so it slices to the visible window exactly like real candles. */
+export function heikinAshiSeries(candles) {
+  const out = new Array(candles.length);
+  let prevO = null, prevC = null;
+  for (let i = 0; i < candles.length; i++) {
+    const c = candles[i];
+    const haClose = (c.o + c.h + c.l + c.c) / 4;
+    const haOpen = prevO == null ? (c.o + c.c) / 2 : (prevO + prevC) / 2;
+    const haHigh = Math.max(c.h, haOpen, haClose);
+    const haLow = Math.min(c.l, haOpen, haClose);
+    out[i] = { t: c.t, o: haOpen, h: haHigh, l: haLow, c: haClose, v: c.v };
+    prevO = haOpen; prevC = haClose;
+  }
+  return out;
+}
+
 /** Chart overlay registry — adding an indicator is one entry, not new chart code. */
 export const OVERLAYS = [
   { id: "ema9",   label: "EMA 9",   kind: "ema", n: 9,   color: "#F59E0B" },
