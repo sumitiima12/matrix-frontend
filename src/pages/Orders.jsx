@@ -53,6 +53,7 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
   const RANGES = [["today", "Today"], ["7", "7d"], ["30", "30d"], ["90", "90d"], ["365", "1y"], ["all", "All"]];
   const MKTS = [["all", "All markets"], ["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["Commodity", "🪙 Commodity"]];
   const REALS = [["all", "All"], ["real", "Real"], ["virtual", "Virtual"]];
+  const STATUSES = [["all", "All status"], ["open", "Open"], ["closed", "Closed"], ["rejected", "Rejected"]];
   const [range, setRange] = useState("30");
   const [dFrom, setDFrom] = useState("");     // yyyy-mm-dd, custom range
   const [dTo, setDTo] = useState("");
@@ -60,6 +61,7 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
   // so the Orders button shows exactly what you're looking at — still switchable via the chips.
   const [mkt, setMkt] = useState(market || "all");
   const [realF, setRealF] = useState(mode === "real" ? "real" : mode === "virtual" ? "virtual" : "all");
+  const [fStatus, setFStatus] = useState("all");   // all | open | closed | rejected
   const [remote, setRemote] = useState(null);
   const [fSym, setFSym] = useState([]);
   const [fType, setFType] = useState([]);
@@ -94,7 +96,11 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
     return () => { stop = true; };
   }, [from, to, userId]);
 
-  const isOpen = (t) => t.exitAt == null || t.exit == null || t.exitType === "Open";
+  // A trade is only OPEN if it actually FILLED (has an entry price) and hasn't exited. A rejected
+  // or never-filled order (e.g. "amount too small") has no entry and is NOT an open position — it
+  // was showing as "Exit: Open" and looking like a holding that the portfolio didn't have.
+  const isRejected = (t) => t.status === "rejected" || t.rejectReason != null || (t.real && t.entry == null && t.exitAt == null);
+  const isOpen = (t) => !isRejected(t) && t.entry != null && (t.exitAt == null || t.exit == null || t.exitType === "Open");
   // Live P&L for still-open positions, using the current price.
   const withPnl = (t) => {
     if (!isOpen(t)) return { ...t, livePnl: t.pnl || 0, open: false };
@@ -113,10 +119,11 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
   const allSyms = [...new Set(src.map((t) => t.sym))].sort();
   const TYPES = ["Manual", "Automate", "Auto Buy"];
   const EXITS = ["Manual", "Exit trigger", "Stop loss", "Trailing stop", "Open"];
-  const exitOf = (t) => (t.open ? "Open" : (t.exitType || "Manual"));
+  const exitOf = (t) => (isRejected(t) ? "Rejected" : t.open ? "Open" : (t.exitType || "Manual"));
   const rows = src
     .filter((t) => (mkt === "all" ? true : (t.market || "IN") === mkt))
     .filter((t) => (realF === "all" ? true : realF === "real" ? !!t.real : !t.real))
+    .filter((t) => (fStatus === "all" ? true : fStatus === "rejected" ? isRejected(t) : fStatus === "open" ? !!t.open : (!t.open && !isRejected(t))))
     .filter((t) => (fSym.length ? fSym.includes(t.sym) : true))
     .filter((t) => (fType.length ? fType.includes(t.tradeType || "Manual") : true))
     .filter((t) => (fExit.length ? fExit.includes(exitOf(t)) : true))
@@ -182,6 +189,13 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
       <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "10px 16px 0" }}>
         {REALS.map(([k, l]) => (
           <button key={k} onClick={() => setRealF(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "6px 14px", fontSize: 12, fontWeight: 800, whiteSpace: "nowrap", border: "1px solid " + (realF === k ? "var(--primary)" : "var(--line)"), background: realF === k ? "var(--primary)" : "var(--surface)", color: realF === k ? "var(--on-primary)" : (k === "real" ? "var(--down)" : "var(--ink)") }}>{l}</button>
+        ))}
+      </div>
+
+      {/* Order status — Open (filled, not exited) / Closed / Rejected. */}
+      <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "8px 16px 0" }}>
+        {STATUSES.map(([k, l]) => (
+          <button key={k} onClick={() => setFStatus(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "6px 13px", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", border: "1px solid " + (fStatus === k ? "var(--primary)" : "var(--line)"), background: fStatus === k ? "var(--primary)" : "var(--surface)", color: fStatus === k ? "var(--on-primary)" : (k === "rejected" ? "var(--down)" : "var(--ink)") }}>{l}</button>
         ))}
       </div>
 
@@ -272,7 +286,7 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
             </div>
             <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
               <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: typeColor(t.tradeType || "Manual") }}>{t.tradeType || "Manual"}</span>
-              <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: t.open ? "var(--primary-soft)" : "var(--elev)", color: exitColor(exitOf(t)) }}>Exit: {exitOf(t)}</span>
+              <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: isRejected(t) ? "var(--down-soft)" : t.open ? "var(--primary-soft)" : "var(--elev)", color: isRejected(t) ? "var(--down)" : exitColor(exitOf(t)) }}>{isRejected(t) ? "Rejected" : `Exit: ${exitOf(t)}`}</span>
               <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: "var(--muted)" }}>Strategy by: {stratBy(t)}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 9, fontSize: 11 }}>

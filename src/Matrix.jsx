@@ -917,7 +917,7 @@ function AppInner() {
     return arr;
   }, [market, profile]);
 
-  const nav = [["home", Home, "Home"], ["ideas", Lightbulb, "Ideas"], ["portfolio", Briefcase, "Portfolio"], ["orders", Clock, "Orders"], ["automation", Bolt, "Auto"], ["ask", NeoIcon, "Neo"], ["watchlist", Star, "Watch"]];
+  const nav = [["home", Home, "Home"], ["ideas", Lightbulb, "Ideas"], ["portfolio", Briefcase, "Portfolio"], ["automation", Bolt, "Auto"], ["ask", NeoIcon, "Neo"], ["orders", Clock, "Orders"], ["watchlist", Star, "Watch"]];
 
   return (
     <BuyGateContext.Provider value={canBuy}>
@@ -1037,7 +1037,9 @@ function AppInner() {
                 label="Virtual or Real trading"
                 onChange={(next) => {
                   if (!next) { setMode("virtual"); return; }        // leaving Real is always free
-                  if (!brokerLive) { setBrokerOpen(true); return; } // no broker, no Real
+                  // Real is PER MARKET: you can only go Real on a market you've connected a broker
+                  // for. Having a Delta (crypto) session doesn't unlock Real on US.
+                  if (!brokerFor(market)) { setBuyToast({ t: `Connect a broker for ${MKT_LABEL[market] || market} to trade Real here.`, e: true }); return; }
                   setConfirmReal(true);                              // entering Real needs a yes
                 }}
               />
@@ -1122,7 +1124,7 @@ function AppInner() {
       {!detail && !onboarding && !drawer && !confirmOrder && !walletOpen && !brokerOpen && !search && !showProfile && (
         <div className="glass" style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--header-bg)", borderTop: "1px solid var(--line)", borderRadius: "22px 22px 0 0", boxShadow: "0 -10px 34px rgba(40,10,80,.3)", display: "flex", padding: "11px 6px 16px", zIndex: 100 }}>
           {nav.map(([k, Icon, label]) => (
-            <button key={k} onClick={() => { if (k === "orders") { setHistOpen(true); return; } setTab(k); setTradePreset(null); }} className="tap" style={{ flex: 1, border: "none", background: "transparent", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "6px 2px", minHeight: 52, color: (k === "orders" ? histOpen : tab === k) ? "var(--primary)" : "var(--muted)" }}>
+            <button key={k} onClick={() => { if (k === "orders") { setHistOpen(true); return; } setHistOpen(false); setTab(k); setTradePreset(null); }} className="tap" style={{ flex: 1, border: "none", background: "transparent", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "6px 2px", minHeight: 52, color: (k === "orders" ? histOpen : (tab === k && !histOpen)) ? "var(--primary)" : "var(--muted)" }}>
               <Icon size={20} fill={k === "watchlist" && tab === k ? "var(--primary)" : "none"} />
               <span style={{ fontSize: 9.5, fontWeight: 700 }}>{label}</span>
             </button>

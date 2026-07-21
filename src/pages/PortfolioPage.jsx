@@ -441,7 +441,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
                   {sig.signal && <MiniStat label="Signal" value={sig.signal} color={/Buy|Bull/i.test(sig.signal) ? "var(--up)" : /Sell|Bear/i.test(sig.signal) ? "var(--down)" : "var(--muted)"} />}
                   {uni.rsi != null && <MiniStat label="RSI" value={String(Math.round(uni.rsi))} color={uni.rsi > 70 ? "var(--down)" : uni.rsi < 30 ? "var(--up)" : "var(--ink)"} />}
                   {sig.rr != null && <MiniStat label="R:R" value={sig.rr + ":1"} color="var(--ink)" />}
-                  {uni && onOpen && <button onClick={() => onOpen(uni)} className="tap disp" style={{ marginLeft: "auto", fontSize: 11, fontWeight: 800, color: "var(--primary)", background: "none", border: "none", cursor: "pointer" }}>Manage →</button>}
+                  {uni && onOpen && <button onClick={() => onOpen(uni)} className="tap disp" title="Open" style={{ marginLeft: "auto", fontSize: 16, fontWeight: 800, color: "var(--primary)", background: "none", border: "none", cursor: "pointer", lineHeight: 1, padding: "0 4px" }}>›</button>}
                 </div>
               ) : (
                 <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--line)" }}>

@@ -620,7 +620,12 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
   /* Newest ENTRY SIGNAL first — a strategy that just filled/fired sits at the top. Fall back
      through the timestamps the server may carry so ordering is stable even for older rows. */
   const sigAt = (s) => s.filledAt || s.lastFillAt || s.lastEntryAt || s.lastSignalAt || s.entryAt || s.updatedAt || s.createdAt || 0;
-  const liveSorted = [...live].sort((a, b) => sigAt(b) - sigAt(a));
+  /* STATUS ORDER — filled first, then rejected, then a recent exit, then everything waiting.
+       0 Entry triggered · Order filled   1 Entry triggered · Order rejected
+       2 Exit triggered (exited in the last 60 min)   3 Waiting for entry */
+  const exitedRecently = (s) => { const t = s.lastExitAt || s.exitAt || 0; return t && (Date.now() - t) < 60 * 60 * 1000; };
+  const statusRank = (s) => (s.lastOrderStatus === "filled" && s.inPosition) ? 0 : s.lastOrderStatus === "rejected" ? 1 : exitedRecently(s) ? 2 : 3;
+  const liveSorted = [...live].sort((a, b) => statusRank(a) - statusRank(b) || sigAt(b) - sigAt(a));
   return (
     <div className="card" style={{ padding: 14, marginBottom: 12, border: "1px solid var(--down)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
@@ -640,6 +645,7 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
         const pnl = filled ? (s.livePnl || 0) : 0;
         const retPct = filled && s.notional ? (pnl / s.notional) * 100 : null;
         const placed = ["pending", "open", "accepted", "working"].includes(s.lastOrderStatus);
+        const exited = !filled && s.lastOrderStatus !== "rejected" && !placed && exitedRecently(s);
         return (
         <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: "1px solid var(--line)" }}>
           <div style={{ minWidth: 0 }}>
@@ -649,16 +655,19 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
             {/* Order status of the last attempt — a rejected order shows WHY (e.g. insufficient
                 balance), so it's never mistaken for a silent no-op. */}
             {s.lastOrderStatus === "rejected" && (
-              <div style={{ fontSize: 10, color: "var(--down)", fontWeight: 700, marginTop: 3, lineHeight: 1.4 }}>⚠ Order rejected{s.lastError ? ` — ${s.lastError}` : " — not filled"}</div>
+              <div style={{ fontSize: 10, color: "var(--down)", fontWeight: 700, marginTop: 3, lineHeight: 1.4 }}>⚠ Entry triggered · Order rejected{s.lastError ? ` — ${s.lastError}` : ""}</div>
             )}
             {s.lastOrderStatus === "partial" && (
               <div style={{ fontSize: 10, color: "#B87514", fontWeight: 700, marginTop: 3 }}>◑ Partially filled{s.lastError ? ` — ${s.lastError}` : ""}</div>
             )}
             {filled && (
-              <div style={{ fontSize: 9.5, color: "var(--up)", fontWeight: 700, marginTop: 3 }}>● Filled — position open</div>
+              <div style={{ fontSize: 9.5, color: "var(--up)", fontWeight: 700, marginTop: 3 }}>● Entry triggered · Order filled</div>
             )}
             {!filled && placed && (
               <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700, marginTop: 3 }}>◔ Order placed — awaiting fill</div>
+            )}
+            {exited && (
+              <div style={{ fontSize: 9.5, color: "var(--primary)", fontWeight: 700, marginTop: 3 }}>↩ Exit triggered</div>
             )}
           </div>
           <div style={{ marginLeft: "auto", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
@@ -671,7 +680,9 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
                 ? <div style={{ textAlign: "right" }}><div style={{ fontSize: 9.5, color: "var(--down)", fontWeight: 800 }}>rejected</div><div className="mono" style={{ fontSize: 10.5, fontWeight: 800, color: "var(--muted)" }}>{ccy}0.00</div></div>
                 : placed
                   ? <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>awaiting fill</div>
-                  : <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }} title="Buys automatically when your entry rule fires on live candles.">waiting for entry</div>}
+                  : exited
+                    ? <div style={{ fontSize: 9.5, color: "var(--primary)", fontWeight: 800 }}>exited</div>
+                    : <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }} title="Buys automatically when your entry rule fires on live candles.">waiting for entry</div>}
             <div style={{ display: "flex", gap: 6 }}>
               <button onClick={() => doPause(s)} className="tap" style={{ border: "1px solid " + (s.status === "active" ? "var(--line)" : "var(--up)"), background: s.status === "active" ? "transparent" : "var(--up-soft)", color: s.status === "active" ? "var(--muted)" : "var(--up)", borderRadius: 8, padding: "3px 9px", fontSize: 10, fontWeight: 800 }}>{s.status === "active" ? "❚❚ Pause" : "▶ Start"}</button>
               <button onClick={() => doCancel(s)} className="tap" style={{ border: "1px solid var(--down)", background: "transparent", color: "var(--down)", borderRadius: 8, padding: "3px 8px", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 2 }}><X size={10} /> Stop</button>
