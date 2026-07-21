@@ -289,7 +289,12 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
       );
     }
 
-    const hold = (realPortfolio && realPortfolio.holdings) || [];
+    /* A broker can cover more than one market (FYERS = Indian + Commodity), and its portfolio
+       endpoint returns EVERY holding. On the Commodity tab that leaked the user's Indian equity
+       holdings in. Keep only holdings that actually belong to the market being viewed — crypto
+       holdings arrive as "<COIN>USD", so classify those as Crypto. */
+    const holdMkt = (h) => h.market || (/USDT?$/i.test(h.sym || "") ? "Crypto" : marketOf(h.sym));
+    const hold = ((realPortfolio && realPortfolio.holdings) || []).filter((h) => (market === "Commodity" ? holdMkt(h) === "Commodity" : true));
     const cash = realPortfolio ? realPortfolio.cash : null;
     const pnl = hold.reduce((a, h) => a + (h.pnl != null ? h.pnl : 0), 0);
     /* On a LEVERAGED venue (Delta) the position notional is 20–25× the real capital, so we show

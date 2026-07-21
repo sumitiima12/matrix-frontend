@@ -1158,8 +1158,9 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
         </Section>
       )}
 
-      {/* Sector heatmap — placed below Gainers & Losers (renders only where sectors exist) */}
-      <SectorHeatmap market={market} list={list} />
+      {/* Sector heatmap — below Gainers & Losers. Not for Commodity (a handful of COMEX/NYMEX
+          contracts, no real sector breakdown to show). */}
+      {market !== "Commodity" && <SectorHeatmap market={market} list={list} />}
 
 
       {/* In the news — REAL headlines fetched live (not for F&O) */}
