@@ -956,15 +956,46 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
      named indicators. Only offered when the literal parser found no entry conditions, so it never
      competes with a user writing explicit rules. One tap loads it into the editable builder below. */
   const suggestion = useMemo(() => (eParsed.conds.length === 0 && pEntry.trim() ? suggestStrategy(pEntry) : null), [pEntry, eParsed.conds.length]);
+  /* Turn a suggested condition back into plain English the parser can RE-READ, so confirming a
+     suggestion fills the entry/exit boxes with editable rules (not opaque tokens). Returns null for
+     operands the text parser can't round-trip (Keltner / Stochastic / Supertrend) — those load into
+     the visual builder instead, which holds the exact conditions regardless. */
+  const OPWORD = { ">": ">", "<": "<", ">=": ">=", "<=": "<=", "==": "=", crosses_above: "crosses above", crosses_below: "crosses below" };
+  const plainOperand = (op, defs) => {
+    if (op === "CC.close") return "close"; if (op === "CC.open") return "open"; if (op === "CC.high") return "high"; if (op === "CC.low") return "low";
+    if (/^BB\d*\.upper$/.test(op)) return "upper band"; if (/^BB\d*\.lower$/.test(op)) return "lower band"; if (/^BB\d*\.middle$/.test(op)) return "middle band";
+    if (/^MACD\d*\.signal$/.test(op)) return "MACD signal"; if (/^MACD\d*\.hist$/.test(op)) return "MACD histogram"; if (/^MACD\d*\.line$/.test(op)) return "MACD line";
+    if (/^RSI/.test(op)) return "RSI"; if (/^ADX/.test(op)) return "ADX"; if (/^VWAP/.test(op)) return "VWAP";
+    if (op === "EMA_f" || op === "EMA_s") { const d = (defs || []).find((x) => x.name === op); return d ? "EMA " + d.len : "EMA"; }
+    const em = op.match(/^(EMA|SMA)(\d+)$/); if (em) return em[1] + " " + em[2];
+    return null;
+  };
+  const condsToPlain = (conds, defs) => {
+    const parts = [];
+    for (const c of conds) {
+      const L = plainOperand(c.la, defs); if (L == null) return null;
+      const R = c.bType === "num" ? c.b : plainOperand(c.b, defs); if (R == null) return null;
+      parts.push((c.gate === "OR" ? "or " : parts.length ? "and " : "") + `${L} ${OPWORD[c.op] || c.op} ${R}`);
+    }
+    return parts.join(" ");
+  };
   const applySuggestion = () => {
     if (!suggestion) return;
-    const withId = suggestion.defs.map((d, i) => ({ id: Date.now() + i, type: d.type, len: String(d.len == null ? "" : d.len), mult: d.mult, tf: suggestion.tf || tf, name: d.name }));
-    setDefs(withId);
-    setEntryConds(suggestion.entry);
-    setExitConds(suggestion.exit);
-    setMode("builder");
+    const eTxt = condsToPlain(suggestion.entry, suggestion.defs);
+    const xTxt = suggestion.exit.length ? condsToPlain(suggestion.exit, suggestion.defs) : "";
     if (suggestion.tf) setTf(suggestion.tf);
-    setAiMsg({ ok: true, t: "Neo drafted a strategy from your brief — review the rows below, tweak anything, then deploy." });
+    if (eTxt != null && xTxt != null) {
+      // Fully round-trippable — fill BOTH plain-English boxes so the user sees and can edit them.
+      setPEntry("Buy when " + eTxt + ".");
+      setPExit(xTxt ? "Exit when " + xTxt + "." : "");
+      setMode("plain");
+      setAiMsg({ ok: true, t: "Neo filled in the entry and exit rules below — edit anything, then deploy." });
+    } else {
+      // Has an indicator the text parser can't round-trip — load the exact rules into the builder.
+      const withId = suggestion.defs.map((d, i) => ({ id: Date.now() + i, type: d.type, len: String(d.len == null ? "" : d.len), mult: d.mult, tf: suggestion.tf || tf, name: d.name }));
+      setDefs(withId); setEntryConds(suggestion.entry); setExitConds(suggestion.exit); setMode("builder");
+      setAiMsg({ ok: true, t: "Neo loaded the strategy into the builder below — review the entry & exit rows, then deploy." });
+    }
   };
   const plainDefs = useMemo(() => { const d = []; [...eParsed.defs, ...xParsed.defs].forEach((x) => { if (x && !d.find((y) => y.name === x.name)) d.push(x); }); return d; }, [eParsed, xParsed]);
   const cfg = mode === "builder"
@@ -1613,8 +1644,8 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                     <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 800, color: "var(--primary)" }}><Sparkles size={14} /> Neo suggests a {suggestion.bias === "reversal" ? "mean-reversion" : "momentum"} strategy</div>
                     <div style={{ fontSize: 11.5, color: "var(--ink)", marginTop: 8, lineHeight: 1.55 }}><b>Buy when</b> {neoReads(suggestion.entry)}.</div>
                     <div style={{ fontSize: 11.5, color: "var(--ink)", marginTop: 4, lineHeight: 1.55 }}><b>Exit when</b> {suggestion.exit.length ? neoReads(suggestion.exit) : "the stop-loss or target is hit"}.</div>
-                    <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 6 }}>Uses {suggestion.indicators.join(" · ")} · defaults you can edit after adding</div>
-                    <button onClick={applySuggestion} className="tap disp" style={{ marginTop: 10, width: "100%", border: "none", background: "var(--primary)", color: "var(--on-primary)", borderRadius: 10, padding: 10, fontWeight: 800, fontSize: 12.5, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}><Sparkles size={14} /> Use this strategy</button>
+                    <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 6 }}>Uses {suggestion.indicators.join(" · ")} · defaults you can edit after confirming</div>
+                    <button onClick={applySuggestion} className="tap disp" style={{ marginTop: 10, width: "100%", border: "none", background: "var(--primary)", color: "var(--on-primary)", borderRadius: 10, padding: 11, fontWeight: 800, fontSize: 13, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}><Check size={15} /> Confirm &amp; use this strategy</button>
                   </div>
                 )}
                 <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, margin: "14px 0 6px" }}>Exit rules — in plain English</div>
