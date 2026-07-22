@@ -27,13 +27,21 @@ import Section from "../components/common/Section";
  */
 
 /**
- * GlobalStrip — the live global markets ticker.
+ * GlobalStrip — the live markets ticker, now MARKET-AWARE.
  *
- * Reads each index/asset's REAL day change from the universe. No hardcoded
- * percentages: an instrument with no live quote yet renders "—".
+ * It used to show the same Indian/US/commodity indices on every tab, so the Crypto
+ * page led with NIFTY and SENSEX. Each market now leads with the instruments that
+ * actually matter to it. Reads each one's REAL day change; no live quote yet -> "—".
  */
-function GlobalStrip() {
-  const rows = GLOBAL_MKTS.map((m) => ({ ...m, c: (ALL.find((a) => a.sym === m.sym) || {}).chg }));
+const STRIP_BY_MARKET = {
+  IN: [["NIFTY50", "NIFTY 50"], ["SENSEX", "SENSEX"], ["BANKNIFTY", "BANK NIFTY"], ["GOLD", "GOLD"], ["CRUDEOIL", "CRUDE"]],
+  US: [["SPX", "S&P 500"], ["NDX", "NASDAQ"], ["DJI", "DOW"], ["BTC", "BTC"], ["GOLD", "GOLD"]],
+  Crypto: [["BTC", "BTC"], ["ETH", "ETH"], ["SOL", "SOL"], ["BNB", "BNB"], ["XRP", "XRP"], ["DOGE", "DOGE"]],
+  Commodity: [["GOLD", "GOLD"], ["CRUDEOIL", "CRUDE"], ["NIFTY50", "NIFTY 50"], ["SPX", "S&P 500"], ["BTC", "BTC"]],
+};
+function GlobalStrip({ market = "IN" }) {
+  const picks = STRIP_BY_MARKET[market] || GLOBAL_MKTS.map((m) => [m.sym, m.n]);
+  const rows = picks.map(([sym, n]) => ({ sym, n, c: (ALL.find((a) => a.sym === sym) || {}).chg }));
   return (
     <div className="hide-scroll" style={{ display: "flex", gap: 0, overflowX: "auto", marginTop: 10, borderRadius: 12, border: "1px solid var(--line)", background: "var(--surface)" }}>
       {rows.map((m, i) => (
@@ -53,13 +61,16 @@ function GlobalStrip() {
 }
 
 function MarketPulseStrip({ market, list, onOpen, liveTick = 0 }) {
-  const vixSym = market === "US" ? "VIX" : "INDIAVIX";
+  // Crypto has no volatility index to show, so the first cell leads with ETH instead of India VIX.
+  const vixSym = market === "Crypto" ? "ETH" : market === "US" ? "VIX" : "INDIAVIX";
   const idxSym = market === "US" ? "SPX" : market === "Crypto" ? "BTC" : market === "Commodity" ? "GOLD" : "NIFTY50";
   const vix = ALL.find((a) => a.sym === vixSym) || ALL.find((a) => a.sym === "INDIAVIX");
   const idx = ALL.find((a) => a.sym === idxSym) || ALL[0];
   const idxLabel = market === "US" ? "S&P 500" : market === "Crypto" ? "BTC" : market === "Commodity" ? "GOLD" : "NIFTY 50";
   // It said "VIX" even when showing INDIAVIX. Name the thing we are actually showing.
-  const vixLabel = market === "US" ? "VIX" : "INDIA VIX";
+  const vixLabel = market === "Crypto" ? "ETH" : market === "US" ? "VIX" : "INDIA VIX";
+  // VIX is inverted (up = fear = bad); ETH is a normal asset (up = green). Don't flip ETH's colour.
+  const vixInverted = market !== "Crypto";
   /**
    * HOT STOCKS — what is moving most RIGHT NOW.
    *
@@ -101,7 +112,7 @@ function MarketPulseStrip({ market, list, onOpen, liveTick = 0 }) {
         <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>{vixLabel}</div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
           <span className="mono" style={{ fontWeight: 800, fontSize: 15 }}>{vix.price}</span>
-          <span className="mono" style={{ fontSize: 10.5, fontWeight: 700, color: vix.chg >= 0 ? "var(--down)" : "var(--up)" }}>{vix.chg >= 0 ? "+" : ""}{vix.chg}%</span>
+          <span className="mono" style={{ fontSize: 10.5, fontWeight: 700, color: (vixInverted ? vix.chg >= 0 : vix.chg < 0) ? "var(--down)" : "var(--up)" }}>{vix.chg >= 0 ? "+" : ""}{vix.chg}%</span>
         </div>
       </div>
       <div style={{ width: 1, background: "var(--line)" }} />
@@ -883,8 +894,8 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
 
   return (
     <div className="home-metal">
-      {/* Global markets live strip */}
-      <GlobalStrip />
+      {/* Global markets live strip — market-aware (Crypto leads with BTC/ETH, not NIFTY) */}
+      <GlobalStrip market={market} />
 
       <TunedStrip profile={profile} />
 
@@ -1191,13 +1202,15 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
         </div>
       </Section>
 
-      {/* Market updates summary */}
+      {/* Market updates summary — hidden on Crypto (news-driven brief doesn't fit 24/7 crypto). */}
+      {market !== "Crypto" && (
       <Pop style={{ marginTop: 22 }}>
         <div className="card" style={{ padding: 15 }}>
           <div className="disp" style={{ fontWeight: 700, fontSize: 13.5, display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}><Newspaper size={15} color="var(--primary)" /> Market updates</div>
           <MarketBrief market={market} list={list} />
         </div>
       </Pop>
+      )}
 
       {/* Ideas carousel (not for F&O or Commodity) */}
       {market !== "Commodity" && <StockIdeasStrip onOpen={onOpen} onBuy={onBuy} market={market} liveTick={liveTick} />}
@@ -1255,8 +1268,9 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       {market !== "Commodity" && <SectorHeatmap market={market} list={list} />}
 
 
-      {/* In the news — REAL headlines fetched live (not for F&O) */}
-      {<LiveNewsStrip symbols={inNews.map((s) => s.sym)} onOpen={onOpen} onBuy={onBuy} list={list} market={market} />}
+      {/* In the news — REAL headlines fetched live. Hidden on Crypto (headline coverage for coins is
+          thin and noisy; the crypto page stays price-driven). */}
+      {market !== "Crypto" && <LiveNewsStrip symbols={inNews.map((s) => s.sym)} onOpen={onOpen} onBuy={onBuy} list={list} market={market} />}
 
       {/* Smart money — REAL institutional holders from Yahoo (quoteSummary).
           Hidden entirely when no holder data is available: no invented names. */}
