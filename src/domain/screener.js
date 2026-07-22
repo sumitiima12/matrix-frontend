@@ -45,6 +45,37 @@ export function parseScreen(text) {
   if (/(?:price|trading)\s*(?:<|below|under)\s*(?:the\s*)?200[\s-]?(?:day|dma)/.test(t)) { res.conds.push({ m: "price", o: "<", rhs: "sma200" }); res.note.push("Price < 200-DMA"); }
   if (/(?:price|trading)\s*(?:>|above|over)\s*(?:the\s*)?50[\s-]?(?:day|dma)/.test(t)) { res.conds.push({ m: "price", o: ">", rhs: "sma50" }); res.note.push("Price > 50-DMA"); }
   if (/(?:price|trading)\s*(?:<|below|under)\s*(?:the\s*)?50[\s-]?(?:day|dma)/.test(t)) { res.conds.push({ m: "price", o: "<", rhs: "sma50" }); res.note.push("Price < 50-DMA"); }
+  // MACD momentum shorthand — "MACD bullish/positive" -> MACD > 0, "bearish/negative" -> MACD < 0.
+  if (/macd\s*(?:is\s*)?(?:bullish|positive|above\s*zero)/.test(t)) { res.conds.push({ m: "macd", o: ">", v: 0 }); res.note.push("MACD > 0 (bullish)"); }
+  if (/macd\s*(?:is\s*)?(?:bearish|negative|below\s*zero)/.test(t)) { res.conds.push({ m: "macd", o: "<", v: 0 }); res.note.push("MACD < 0 (bearish)"); }
+  /* INDICATOR-vs-INDICATOR comparisons in prose: "EMA 20 above EMA 50", "price above VWAP",
+     "RSI above SMA50". The number-based matchers above handle "<indicator> > <value>"; this handles
+     "<indicator> <op> <indicator>", which people write just as often. Only fires when BOTH sides
+     resolve to a real screener field and the right side isn't a number (that's the value case). */
+  const FIELD_WORDS = [
+    [/\bprice\b|\bltp\b|\bclose\b/, "price"],
+    [/200[\s-]?(?:day|dma)|sma\s*200|200\s*sma/, "sma200"],
+    [/50[\s-]?(?:day|dma)|sma\s*50|50\s*sma/, "sma50"],
+    [/\bema\s*20\b|\b20\s*ema\b/, "ema20"],
+    [/\bema\s*50\b|\b50\s*ema\b/, "ema50"],
+    [/\bvwap\b/, "vwap"], [/\brsi\b/, "rsi"], [/\badx\b/, "adx"], [/\bmacd\b/, "macd"],
+    [/\bstoch\w*/, "stoch"], [/\bcci\b/, "cci"], [/\bmfi\b/, "mfi"], [/\batr\b/, "atr"],
+  ];
+  const fieldOf = (s) => { for (const [re, f] of FIELD_WORDS) if (re.test(s)) return f; return null; };
+  const OPRE = /(?:\bis\s+)?(?:above|over|greater than|higher than|>|below|under|less than|lower than|<)/;
+  t.split(/\s+and\s+|,|;/).forEach((clause) => {
+    const om = OPRE.exec(clause); if (!om) return;
+    const [lhs, rhs] = clause.split(om[0]);
+    if (rhs == null) return;
+    // Resolve BOTH sides to a field. A pure-number RHS ("60") resolves to nothing and is left to the
+    // value matchers above; but "EMA 50" / "SMA 200" contain digits yet ARE fields, so we can't reject
+    // on digits alone — we reject only when the right side fails to resolve to a real indicator.
+    const mA = fieldOf(lhs || ""), mB = fieldOf(rhs || "");
+    if (mA && mB && mA !== mB) {
+      const o = /above|over|greater|higher|>/.test(om[0]) ? ">" : "<";
+      if (!res.conds.find((c) => c.m === mA && c.rhs === mB)) { res.conds.push({ m: mA, o, rhs: mB }); res.note.push(`${mA} ${o} ${mB}`); }
+    }
+  });
   return res;
 }
 /**

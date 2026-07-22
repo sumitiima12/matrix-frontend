@@ -46,8 +46,9 @@ export default function Screener({ onOpen, market, list, watchlists, addToWatch,
     "golden cross",
     "death cross",
     "price above 200-DMA",
-    "ADX > 25",
-    "RSI > 60 and ADX > 25",
+    "EMA 20 above EMA 50",
+    "price above VWAP",
+    "MACD bullish and RSI > 55",
     "banking stocks with RSI > 55",
   ];
 
