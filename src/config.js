@@ -59,11 +59,11 @@ export const TF_YF = {
    years of daily; Yahoo caps intraday near 60 days but still dwarfs the old 1–5 day windows. */
 export const BT_YF = {
   "1m":  { i: "1m",  r: "5d"  },
-  "3m":  { i: "2m",  r: "3mo" },
-  "5m":  { i: "5m",  r: "3mo" },
-  "15m": { i: "15m", r: "3mo" },
-  "30m": { i: "30m", r: "3mo" },
-  "1h":  { i: "60m", r: "1y"  },
+  "3m":  { i: "2m",  r: "1y"  },
+  "5m":  { i: "5m",  r: "1y"  },
+  "15m": { i: "15m", r: "1y"  },
+  "30m": { i: "30m", r: "1y"  },
+  "1h":  { i: "60m", r: "2y"  },
   "4h":  { i: "60m", r: "2y", agg: 4 },
   "1d":  { i: "1d",  r: "5y"  },
   "1w":  { i: "1wk", r: "5y"  },

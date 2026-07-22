@@ -40,7 +40,7 @@ function BacktestResult({ cfg, defaultSym, blocked = false, onConnect, defaultTf
   const iso = (d) => new Date(d).toISOString().slice(0, 10);
   // How far back real candles actually EXIST at each timeframe — intraday history is short, so the
   // backtest window defaults to this. Otherwise picking "5 min" leaves a 6-month window almost empty.
-  const TF_LOOKBACK = { "1m": 5, "3m": 90, "5m": 90, "15m": 90, "30m": 90, "1h": 365, "4h": 730, "1d": 1825 };
+  const TF_LOOKBACK = { "1m": 5, "3m": 365, "5m": 365, "15m": 365, "30m": 365, "1h": 730, "4h": 730, "1d": 1825 };
   const [tf, setTf] = useState(defaultTf);
   const [from, setFrom] = useState(iso(Date.now() - (TF_LOOKBACK[defaultTf] || 180) * 864e5));
   const [to, setTo] = useState(iso(Date.now()));
