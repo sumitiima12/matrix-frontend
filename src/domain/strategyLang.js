@@ -111,6 +111,22 @@ export function detectTf(text) {
   if ((m = t.match(/(\d+)\s*(?:d\b|day|days)/))) return m[1] === "1" ? "1D" : m[1] + "D";
   return null;
 }
+/* Every timeframe mentioned in a line, in order of appearance and de-duplicated. detectTf returns
+   only the FIRST; for multi-timeframe prompts ("bullish on 3m + 5m + 15m") we need them all. */
+export function detectAllTfs(text) {
+  const t = String(text || "").toLowerCase();
+  const out = [];
+  const push = (tf) => { if (tf && !out.includes(tf)) out.push(tf); };
+  const re = /(\d+)\s*(m\b|min\b|mins\b|minute|minutes|h\b|hr\b|hrs\b|hour|hours|d\b|day|days)/g;
+  let m;
+  while ((m = re.exec(t))) {
+    const n = m[1], u = m[2][0];
+    push(u === "m" ? n + "m" : u === "h" ? n + "h" : (n === "1" ? "1D" : n + "D"));
+  }
+  if (/\b(?:daily|eod|end\s*of\s*day)\b/.test(t)) push("1D");
+  if (/\bweekly\b/.test(t)) push("1W");
+  return out;
+}
 /* Momentum phrase -> a price-jump scan spec, or null. Recognises both a ratio ("current price /
    previous candle close > 1.02") and plain English ("price jumped 2% in 5 mins", "down 3% today").
    The timeframe comes from detectTf ("5 mins"/"1 hour"/"4 hours"/"daily"); default 1d. */
@@ -454,6 +470,30 @@ export function interpretText(text) {
   let work = String(text);
   const pushDefs = (ds) => (ds || []).forEach((d) => { if (d && !defs.find((x) => x.name === d.name)) defs.push(d); });
 
+  // 0. Multi-timeframe trend alignment: "bullish on 3m + 5m + 15m" (or bearish / uptrend / downtrend).
+  //    A bare direction word plus two or more timeframes means "the trend agrees on every one of these
+  //    intervals". We express that as an EMA(9) vs EMA(21) alignment PER timeframe — each EMA carries its
+  //    own tf so the engine reads it off that timeframe's aggregated candles. Consumed before anything
+  //    else so the loose "3m", "+", "15m" tokens don't confuse the word-by-word parser downstream.
+  {
+    const tfs = detectAllTfs(work);
+    const bear = /\b(bearish|downtrend|trending\s*down|weak(?:ness)?)\b/i.test(work);
+    const bull = /\b(bullish|uptrend|trending\s*up|strength|strong)\b/i.test(work);
+    if (tfs.length >= 2 && (bull || bear)) {
+      tfs.forEach((tf) => {
+        const suf = tf.replace(/\W/g, "");
+        const fast = { type: "EMA", len: "9", name: "EMA9_" + suf, tf };
+        const slow = { type: "EMA", len: "21", name: "EMA21_" + suf, tf };
+        pushDefs([fast, slow]);
+        conds.push({ la: fast.name, op: bear && !bull ? "<" : ">", b: slow.name, bType: "ind", gate: conds.length ? "AND" : undefined });
+      });
+      work = work
+        .replace(/\b(bullish|bearish|uptrend|downtrend|trending\s*up|trending\s*down|strength|strong|weak(?:ness)?)\b/ig, " ")
+        .replace(/(\d+)\s*(?:m\b|min\b|mins\b|minute|minutes|h\b|hr\b|hrs\b|hour|hours|d\b|day|days)/ig, " ")
+        .replace(/\b(?:on|across|over|and|plus)\b|[+&/]/ig, " ");
+    }
+  }
+
   // 0. Compound phrases (golden cross, oversold, MACD turns bullish, bounce off support…).
   for (const pr of PHRASE_RULES) {
     if (pr.re.test(work)) {
@@ -508,12 +548,15 @@ export function interpretText(text) {
   // Drop clauses that are only filler left over after a phrase/pattern was consumed ("when price",
   // "on", "then") — they aren't real unparsed conditions and shouldn't raise a warning.
   const FILLER = /^(?:when|then|if|on|at|in|a|an|the|is|are|was|be|it|its|and|or|buy|sell|enter|exit|go|long|short|price|of|to|from|for|with|that|this|now|forms?|forming|appears?|appearing|shows?|showing|candle|candles|candlestick|pattern|patterns|signal|line|band|near)$/i;
-  const cleanUnparsed = unparsed.filter((u) => u.split(/\s+/).some((w) => w && !FILLER.test(w)));
+  const cleanUnparsed = unparsed.filter((u) => /[a-z0-9]/i.test(u) && u.split(/\s+/).some((w) => w && !FILLER.test(w)));
   return { conds, defs, unparsed: cleanUnparsed };
 }
 
 /* Human phrase for a single operand, so a condition preview reads like English. */
 export function operandLabel(op) {
+  // Multi-timeframe EMA/SMA operand ("EMA9_3m") -> "EMA 9 (3m)" so the read-back stays human.
+  const mtf = typeof op === "string" && op.match(/^(EMA|SMA)(\d+)_(\w+)$/);
+  if (mtf) return `${mtf[1]} ${mtf[2]} (${mtf[3]})`;
   if (typeof op === "string" && op.startsWith(PATTERN_OPERAND_PREFIX)) {
     const key = op.slice(PATTERN_OPERAND_PREFIX.length);
     const ph = Object.keys(PATTERN_KEYS).find((k) => PATTERN_KEYS[k] === key);

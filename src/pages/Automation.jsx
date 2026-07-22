@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { defOperands, chainCode, IND_CATALOG, TEMPLATES, detectTf } from "../domain/strategyLang";
+import { defOperands, chainCode, IND_CATALOG, TEMPLATES, detectTf, detectAllTfs, tfMinutes } from "../domain/strategyLang";
 import { backtest, parseRules } from "../domain/backtest";
 import { stratPerf } from "../domain/strategies";
 import { Activity, Bell, Bolt, Check, ChevronDown, ChevronUp, Copy, Globe, ListChecks, Pause, Pencil, Play, Plus, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
@@ -920,7 +920,10 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   /* If the prose names a timeframe ("3 mins", "1 hour", "daily"), adopt it as the strategy tf so
      "MACD 3,10,16 (3 mins)" actually runs on 3m instead of the 5m default. */
   useEffect(() => {
-    const d = detectTf(pEntry) || detectTf(pExit);
+    // A multi-timeframe prompt ("bullish on 3m + 5m + 15m") names several intervals. The strategy must
+    // RUN on the smallest one so the larger ones can be aggregated up from it — pick the min, not the first.
+    const all = [...detectAllTfs(pEntry), ...detectAllTfs(pExit)];
+    const d = all.length ? all.reduce((a, b) => (tfMinutes(b) && tfMinutes(b) < tfMinutes(a) ? b : a)) : (detectTf(pEntry) || detectTf(pExit));
     if (d && d !== tf) setTf(d);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pEntry, pExit]);
@@ -936,7 +939,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       const text = [entryTxt && `Entry: ${entryTxt}`, exitTxt && `Exit: ${exitTxt}`].filter(Boolean).join(". ");
       const ai = await aiInterpretStrategyAI(text);
       if (ai && ((ai.entry && ai.entry.length) || (ai.exit && ai.exit.length))) {
-        const defsWithId = (ai.defs || []).map((d, i) => ({ id: Date.now() + i, type: d.type, len: String(d.len == null ? "" : d.len), tf, name: d.name }));
+        const defsWithId = (ai.defs || []).map((d, i) => ({ id: Date.now() + i, type: d.type, len: String(d.len == null ? "" : d.len), tf: d.tf || tf, name: d.name }));
         setDefs(defsWithId);
         setEntryConds(ai.entry && ai.entry.length ? ai.entry : []);
         setExitConds(ai.exit && ai.exit.length ? ai.exit : []);
@@ -951,7 +954,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const plainDefs = useMemo(() => { const d = []; [...eParsed.defs, ...xParsed.defs].forEach((x) => { if (x && !d.find((y) => y.name === x.name)) d.push(x); }); return d; }, [eParsed, xParsed]);
   const cfg = mode === "builder"
     ? { mode: "builder", tf, defs, entry: entryConds, exit: exitConds, sl, tp }
-    : { mode: "builder", tf, defs: plainDefs.map((d) => ({ ...d, tf })), entry: eParsed.conds, exit: xParsed.conds, sl, tp };
+    : { mode: "builder", tf, defs: plainDefs.map((d) => ({ ...d, tf: d.tf || tf })), entry: eParsed.conds, exit: xParsed.conds, sl, tp };
   const condStr = (c) => `${c.la} ${c.op} ${c.b}`;
   const chain = (conds) => conds.map((c, i) => `${i ? " " + (c.gate || "AND") + " " : ""}${condStr(c)}`).join("");
   /* Render an indicator's ACTUAL settings so the code preview shows what Neo understood:
@@ -1588,7 +1591,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                   ))}
                 </div>
                 <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Entry rules — in plain English</div>
-                <textarea value={pEntry} onChange={(e) => setPEntry(e.target.value)} placeholder="e.g. EMA 21 > EMA 50 and RSI > 60 — or: price bounces off support, MACD crosses above signal, three white soldiers." className="no-ring" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13, minHeight: 84, background: "var(--elev)", resize: "vertical", lineHeight: 1.5 }} />
+                <textarea value={pEntry} onChange={(e) => setPEntry(e.target.value)} placeholder="e.g. EMA 21 > EMA 50 and RSI > 60 — or: bullish on 3m + 5m + 15m — or: price bounces off support, MACD crosses above signal, three white soldiers." className="no-ring" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13, minHeight: 84, background: "var(--elev)", resize: "vertical", lineHeight: 1.5 }} />
                 {eParsed.conds.length > 0 && <div style={{ fontSize: 10.5, color: "var(--up)", marginTop: 6, fontWeight: 700, display: "flex", gap: 5 }}><Sparkles size={12} style={{ flex: "0 0 auto", marginTop: 1 }} /><span>Neo reads: buy when {neoReads(eParsed.conds)}.</span></div>}
                 <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, margin: "14px 0 6px" }}>Exit rules — in plain English</div>
                 <textarea value={pExit} onChange={(e) => setPExit(e.target.value)} placeholder="e.g. RSI > 70 — or: EMA 21 crosses below EMA 50, price rejects at resistance, three black crows." className="no-ring" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13, minHeight: 84, background: "var(--elev)", resize: "vertical", lineHeight: 1.5 }} />
@@ -1598,7 +1601,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                     <b style={{ color: "var(--ink)" }}>How Neo detects a {k.replace(/-/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())}:</b> {PATTERN_EXPLAIN[k]}
                   </div>
                 ))}
-                {unparsed.length > 0 && <div style={{ fontSize: 10.5, color: "#F59E42", marginTop: 8, fontWeight: 600 }}>⚠ Neo couldn't read that part. Try describing an entry like a chart pattern, a support/resistance level, or an indicator condition.</div>}
+                {unparsed.length > 0 && <div style={{ fontSize: 10.5, color: "#F59E42", marginTop: 8, fontWeight: 600, lineHeight: 1.5 }}>❓ Neo isn't sure what you mean by <b style={{ color: "var(--ink)" }}>“{unparsed.join("”, “")}”</b>. Did you mean an indicator condition (like “RSI &gt; 30” or “EMA 9 crosses above EMA 21”), a chart pattern (like “double bottom”), or a price level (support / resistance)? Rephrase it, or tap <b style={{ color: "var(--primary)" }}>Interpret with Neo</b> below to let Neo take a full pass.</div>}
                 <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, display: "flex", gap: 6 }}><Sparkles size={13} color="var(--primary)" style={{ flex: "0 0 auto", marginTop: 1 }} /> Neo turns your words into executable rules on the <b style={{ margin: "0 3px" }}>{tf}</b> timeframe.</div>
                 {/* Intelligent fallback: let Neo (AI) interpret anything the fast parser missed. */}
                 <button onClick={runAiInterpret} disabled={aiBusy} className="tap disp" style={{ marginTop: 10, width: "100%", border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 12, padding: 11, fontWeight: 800, fontSize: 12.5, display: "flex", gap: 6, alignItems: "center", justifyContent: "center", opacity: aiBusy ? 0.6 : 1 }}>
