@@ -56,7 +56,7 @@ export const aiInterpretStrategy = (text) => interpretStrategy(text);
 export const aiMarketBrief = (facts) => marketBrief(facts);
 
 /* -------------------------- Market data -------------------------- */
-export const fetchHistory = (sym, tf) => getHistory(yahooSymbol(sym), tf);
+export const fetchHistory = (sym, tf, useBt = false) => getHistory(yahooSymbol(sym), tf, useBt);
 export const fetchNews = (sym, name) => getNews(yahooSymbol(sym), name);
 export const fetchFundamentals = (sym) => getFundamentals(yahooSymbol(sym));
 export const fetchEarnings = (market) => getEarnings(market);

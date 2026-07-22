@@ -54,7 +54,7 @@ export function useBacktestStats(strat) {
     setState({ loading: true, stats: null });
 
     const tf = backtestTf(strat);
-    Promise.all(syms.map((s) => fetchHistory(s, tf).catch(() => null)))
+    Promise.all(syms.map((s) => fetchHistory(s, tf, true).catch(() => null)))
       .then((sets) => {
         if (stop) return;
 

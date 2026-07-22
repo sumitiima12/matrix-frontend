@@ -8,7 +8,7 @@
  * Hard rule: if the backend can't answer, these return null. They NEVER
  * fabricate data — the UI is responsible for saying "unavailable".
  */
-import { BACKEND_URL, TF_YF } from "../config";
+import { BACKEND_URL, TF_YF, BT_YF } from "../config";
 
 const get = async (path) => {
   if (!BACKEND_URL) return null;
@@ -55,8 +55,9 @@ function aggregate(candles, n) {
   return out.map((c, i) => ({ ...c, i }));
 }
 
-export async function getHistory(ySym, tf) {
-  const m = TF_YF[tf] || TF_YF["1d"];
+export async function getHistory(ySym, tf, useBt = false) {
+  const table = useBt ? BT_YF : TF_YF;
+  const m = table[tf] || table["1d"] || TF_YF["1d"];
   const d = await get(`/api/history?symbol=${encodeURIComponent(ySym)}&range=${m.r}&interval=${m.i}`);
   if (!d) return null;
   // Adaptive precision: 2dp for >=$1, but KEEP sub-dollar detail so cheap crypto (LAB $0.156,

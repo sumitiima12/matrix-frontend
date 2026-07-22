@@ -20,13 +20,13 @@ const TTL = 60_000;
  * silently failed. The conversion belongs here, once, rather than at each call
  * site where it can be forgotten.
  */
-export function useCandles(sym, tf, limit = 0) {
+export function useCandles(sym, tf, limit = 0, backtest = false) {
   const ySym = yahooSymbol(sym);
   const [state, setState] = useState({ data: null, loading: true, error: null });
 
   useEffect(() => {
     let stop = false;
-    const key = `${ySym}|${tf}`;
+    const key = `${ySym}|${tf}|${backtest ? "bt" : "c"}`;
     const hit = cache.get(key);
     if (hit && Date.now() - hit.at < TTL) {
       setState({ data: hit.data, loading: false, error: null });
@@ -37,7 +37,7 @@ export function useCandles(sym, tf, limit = 0) {
       return;
     }
     setState({ data: null, loading: true, error: null });
-    getHistory(ySym, tf)
+    getHistory(ySym, tf, backtest)
       .then((d) => {
         if (stop) return;
         if (!d || d.length < 3) { setState({ data: null, loading: false, error: "no-data" }); return; }
@@ -46,7 +46,7 @@ export function useCandles(sym, tf, limit = 0) {
       })
       .catch(() => { if (!stop) setState({ data: null, loading: false, error: "failed" }); });
     return () => { stop = true; };
-  }, [ySym, tf]);
+  }, [ySym, tf, backtest]);
 
   const data = useMemo(() => {
     if (!state.data) return null;

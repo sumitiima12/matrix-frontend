@@ -51,3 +51,21 @@ export const TF_YF = {
   "1w":  { i: "1wk", r: "5y" },
   "1mo": { i: "1mo", r: "10y" },
 };
+
+/* BACKTEST ranges — deliberately MUCH larger than the chart display ranges above. The chart only
+   needs the last few sessions; a backtest needs months. Reusing TF_YF meant a "6-month, 3-minute"
+   backtest actually had ONE DAY of candles (~189 bars) and reported almost no trades. These pull the
+   most history each source will give: the owner's FYERS (chunked) yields ~3 months of intraday and
+   years of daily; Yahoo caps intraday near 60 days but still dwarfs the old 1–5 day windows. */
+export const BT_YF = {
+  "1m":  { i: "1m",  r: "5d"  },
+  "3m":  { i: "2m",  r: "3mo" },
+  "5m":  { i: "5m",  r: "3mo" },
+  "15m": { i: "15m", r: "3mo" },
+  "30m": { i: "30m", r: "3mo" },
+  "1h":  { i: "60m", r: "1y"  },
+  "4h":  { i: "60m", r: "2y", agg: 4 },
+  "1d":  { i: "1d",  r: "5y"  },
+  "1w":  { i: "1wk", r: "5y"  },
+  "1mo": { i: "1mo", r: "10y" },
+};

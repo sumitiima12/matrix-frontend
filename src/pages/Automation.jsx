@@ -40,7 +40,7 @@ function BacktestResult({ cfg, defaultSym, blocked = false, onConnect, defaultTf
   const iso = (d) => new Date(d).toISOString().slice(0, 10);
   // How far back real candles actually EXIST at each timeframe — intraday history is short, so the
   // backtest window defaults to this. Otherwise picking "5 min" leaves a 6-month window almost empty.
-  const TF_LOOKBACK = { "1m": 1, "3m": 1, "5m": 5, "15m": 30, "30m": 30, "1h": 90, "4h": 180, "1d": 365 };
+  const TF_LOOKBACK = { "1m": 5, "3m": 90, "5m": 90, "15m": 90, "30m": 90, "1h": 365, "4h": 730, "1d": 1825 };
   const [tf, setTf] = useState(defaultTf);
   const [from, setFrom] = useState(iso(Date.now() - (TF_LOOKBACK[defaultTf] || 180) * 864e5));
   const [to, setTo] = useState(iso(Date.now()));
@@ -59,7 +59,7 @@ function BacktestResult({ cfg, defaultSym, blocked = false, onConnect, defaultTf
 
      Now: filter by real timestamps, and compute indicators over the FULL history so a
      20-period Bollinger band isn't NaN for the entire window. */
-  const { data: realData, loading: btLoading } = useCandles(sym, tf);
+  const { data: realData, loading: btLoading } = useCandles(sym, tf, 0, true);   // backtest = pull the LONG history window, not the chart's short one
 
   const fromMs = useMemo(() => new Date(from + "T00:00:00").getTime(), [from]);
   const toMs = useMemo(() => new Date(to + "T23:59:59").getTime(), [to]);
@@ -122,7 +122,7 @@ function BacktestResult({ cfg, defaultSym, blocked = false, onConnect, defaultTf
      month, hourly three months. Asking for "6M of 3-minute" is not a small stretch —
      it is impossible, and the old code silently returned six hours of one session and
      reported zero trades. Say what the data can actually support. */
-  const TF_COVER = { "1m": "1 day", "3m": "1 day", "5m": "5 days", "15m": "1 month", "30m": "1 month", "1h": "3 months", "4h": "6 months", "1d": "1 year" };
+  const TF_COVER = { "1m": "5 days", "3m": "~3 months", "5m": "~3 months", "15m": "~3 months", "30m": "~3 months", "1h": "1 year", "4h": "2 years", "1d": "5 years" };
   const coverNote = TF_COVER[tf];
 
   if (covered && covered.inWindow < 30) {

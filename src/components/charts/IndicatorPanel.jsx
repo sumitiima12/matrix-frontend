@@ -45,6 +45,16 @@ export default function IndicatorPanel({
 
   const TYPE_LABEL = { ema: "EMA", sma: "SMA", bb: "Bollinger", keltner: "Keltner", vwap: "VWAP", cpr: "CPR", pivots: "Pivots", ichimoku: "Ichimoku", fib: "Fibonacci" };
 
+  /* ONE-TAP add for any overlay type. The per-row dropdown already lets you switch a line's type, but
+     it isn't obvious it's tappable — so people thought only EMA existed. These chips make every
+     indicator visible and addable in a single tap (length defaults; edit it on the row afterwards). */
+  const quickAdd = (t) => {
+    const used = new Set(overlays.map((o) => o.color));
+    const color = OVERLAY_COLORS.find((c) => !used.has(c)) || OVERLAY_COLORS[overlays.length % OVERLAY_COLORS.length];
+    if (!HAS_LEN.has(t)) { setOverlays((p) => [...p, { type: t, color }]); return; }
+    setOverlays((p) => [...p, { type: t, n: DEFAULT_LEN[t] || 20, color, ...(t === "bb" || t === "keltner" ? { mult: 2 } : {}) }]);
+  };
+
   /* PORTAL to <body>. The details page slides up inside a CSS-transformed container, and a
      position:fixed child of a transformed ancestor is positioned relative to THAT ancestor, not
      the viewport — so the sheet rendered off-screen and only the grey backdrop showed. Portalling
@@ -120,8 +130,19 @@ export default function IndicatorPanel({
             </select>
             {HAS_LEN.has(addType) && <input value={addLen} inputMode="numeric" onChange={(e) => setAddLen(e.target.value.replace(/[^0-9]/g, ""))} placeholder={addType === "fib" ? "look" : "length"} className="no-ring mono" style={numStyle} />}
             <button onClick={addOverlay} className="tap disp" style={{ display: "flex", alignItems: "center", gap: 5, border: "1px dashed var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 10, padding: "7px 12px", fontSize: 12, fontWeight: 800 }}>
-              <Plus size={14} /> Add {TYPE_LABEL[addType] || ""}
+              <Plus size={14} /> Add Indicator
             </button>
+          </div>
+
+          {/* QUICK-ADD chips — every overlay type, one tap each. Makes Bollinger / Keltner / VWAP /
+              CPR / Pivots / Ichimoku / Fibonacci discoverable without hunting inside the dropdown. */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+            {Object.entries(TYPE_LABEL).map(([t, label]) => (
+              <button key={t} onClick={() => quickAdd(t)} className="tap disp"
+                style={{ border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", borderRadius: 999, padding: "6px 11px", fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", gap: 3 }}>
+                <Plus size={11} /> {label}
+              </button>
+            ))}
           </div>
 
           {/* Sub-panels — MACD / RSI with editable params, Volume. */}

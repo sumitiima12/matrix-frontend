@@ -108,20 +108,20 @@ function MarketPulseStrip({ market, list, onOpen, liveTick = 0 }) {
   const open = (s) => s && onOpen(s);
   return (
     <div className="card" style={{ marginTop: 22, padding: 12, display: "flex", alignItems: "stretch", gap: 10 }}>
-      <div onClick={() => open(vix)} className="tap" style={{ flex: "0 0 auto" }}>
+      <div onClick={() => open(vix)} className="tap" style={{ flex: "1 1 0", minWidth: 0 }}>
         <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>{vixLabel}</div>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
-          <span className="mono" style={{ fontWeight: 800, fontSize: 15 }}>{vix.price}</span>
-          <span className="mono" style={{ fontSize: 10.5, fontWeight: 700, color: (vixInverted ? vix.chg >= 0 : vix.chg < 0) ? "var(--down)" : "var(--up)" }}>{vix.chg >= 0 ? "+" : ""}{vix.chg}%</span>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 5, minWidth: 0 }}>
+          <span className="mono" style={{ fontWeight: 800, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{vix.price != null ? Number(vix.price).toFixed(1) : "—"}</span>
+          <span className="mono" style={{ fontSize: 10.5, fontWeight: 700, flex: "0 0 auto", color: (vixInverted ? vix.chg >= 0 : vix.chg < 0) ? "var(--down)" : "var(--up)" }}>{vix.chg >= 0 ? "+" : ""}{Number(vix.chg).toFixed(1)}%</span>
         </div>
       </div>
-      <div style={{ width: 1, background: "var(--line)" }} />
-      <div onClick={() => open(idx)} className="tap" style={{ flex: "0 0 auto" }}>
+      <div style={{ width: 1, background: "var(--line)", flex: "0 0 auto" }} />
+      <div onClick={() => open(idx)} className="tap" style={{ flex: "1 1 0", minWidth: 0 }}>
         <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>{idxLabel}</div>
-        <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: idx.chg >= 0 ? "var(--up)" : "var(--down)" }}>{idx.chg >= 0 ? "▲ +" : "▼ "}{idx.chg}%</div>
+        <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: idx.chg >= 0 ? "var(--up)" : "var(--down)" }}>{idx.chg >= 0 ? "▲ +" : "▼ "}{Number(idx.chg).toFixed(1)}%</div>
       </div>
-      <div style={{ width: 1, background: "var(--line)" }} />
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ width: 1, background: "var(--line)", flex: "0 0 auto" }} />
+      <div style={{ flex: "1.1 1 0", minWidth: 0 }}>
         <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>🔥 {market === "Crypto" ? "Hot" : "Hot Stocks"}</div>
         <div style={{ display: "flex", gap: 8, marginTop: 3 }}>
           {shown.map((h, k) => (
