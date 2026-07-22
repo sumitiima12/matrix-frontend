@@ -99,6 +99,36 @@ export function clearSession(broker) {
   saveAll(all);
 }
 
+/* DAILY-EXPIRY brokers: their access token dies every morning (a SEBI rule, not ours). We remember
+   WHEN the user last connected each — in a store that, unlike the 24h session handle above, is NOT
+   dropped overnight — so the next morning we can nudge them to reconnect for live prices instead of
+   quietly sliding them onto delayed Yahoo data. Shared-login FYERS users especially need this: they
+   have no app creds on the server, so nothing can auto-refresh their token for them. */
+const DAILY_EXPIRY = new Set(["fyers", "zerodha", "dhan", "indmoney", "angelone", "groww"]);
+const CONN_KEY = "mx_broker_connected_at";
+function _connMap() { try { return JSON.parse(localStorage.getItem(CONN_KEY) || "{}") || {}; } catch { return {}; } }
+export function recordConnect(broker) {
+  if (!broker) return;
+  try { const m = _connMap(); m[broker] = Date.now(); localStorage.setItem(CONN_KEY, JSON.stringify(m)); } catch { /* private mode */ }
+}
+export function forgetConnect(broker) {
+  try { const m = _connMap(); delete m[broker]; localStorage.setItem(CONN_KEY, JSON.stringify(m)); } catch { /* private mode */ }
+}
+/* The most recent 6:00 AM boundary. A broker token connected before this has expired for today. */
+function lastExpiryBoundary() {
+  const six = new Date(); six.setHours(6, 0, 0, 0);
+  if (Date.now() < six.getTime()) six.setDate(six.getDate() - 1);
+  return six.getTime();
+}
+/* Daily-expiry brokers the user connected on a PRIOR trading day (token now dead) that aren't
+   currently live — the ones to nudge. `activeIds` are the currently-connected broker ids. */
+export function brokersNeedingReconnect(activeIds = []) {
+  const m = _connMap();
+  const boundary = lastExpiryBoundary();
+  const active = new Set(activeIds);
+  return Object.keys(m).filter((id) => DAILY_EXPIRY.has(id) && !active.has(id) && Number(m[id]) < boundary);
+}
+
 /** Which markets each broker can actually serve. */
 export const BROKER_MARKETS = {
   fyers: ["IN", "Commodity"], zerodha: ["IN", "Commodity"], dhan: ["IN", "Commodity"], angelone: ["IN", "Commodity"], groww: ["IN", "Commodity"],

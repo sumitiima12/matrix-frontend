@@ -49,7 +49,7 @@ import WalletSheet from "./components/common/WalletSheet";
 import ConfirmOrder from "./components/common/ConfirmOrder";
 import BrokerSheet from "./components/common/BrokerSheet";
 import { brokerSymbol } from "./domain/brokerSymbols";
-import { brokerPlaceOrder, registerAutoExit } from "./services/brokerService";
+import { brokerPlaceOrder, registerAutoExit, BROKER_MARKETS } from "./services/brokerService";
 import MatrixRain from "./components/common/MatrixRain";
 import MLogo from "./components/common/MLogo";
 import NeoIcon from "./components/common/NeoIcon";
@@ -348,8 +348,20 @@ function AppInner() {
   const {
     connected: brokerLive, broker: liveBroker, connect: connectBroker, disconnect: disconnectBroker,
     lastTick: brokerTick, real: realPortfolio, realErr, realLoading, refreshPortfolio, session: brokerSession,
-    brokerFor, marketMap: brokerMarketMap, connectedBrokers,
+    brokerFor, marketMap: brokerMarketMap, connectedBrokers, reconnectHints,
   } = useBroker({ onTick: () => setBrokerTicks((t) => t + 1), userId });
+
+  /* DAILY RECONNECT NUDGE. Broker tokens expire every morning (SEBI). Rather than silently sliding a
+     previously-connected user onto delayed Yahoo prices, we surface a one-tap "reconnect" banner.
+     Held back a few seconds after mount so auto-resume (for users whose creds are on the server) can
+     reconnect first and never see it. Dismissible for the rest of the day. */
+  const [reconnectReady, setReconnectReady] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setReconnectReady(true), 4000); return () => clearTimeout(t); }, []);
+  const [reconnectDismissed, setReconnectDismissed] = useState(() => {
+    try { return localStorage.getItem("mx_reconnect_dismissed") === new Date().toDateString(); } catch { return false; }
+  });
+  const reconnectHint = reconnectReady && !reconnectDismissed && reconnectHints && reconnectHints[0] ? reconnectHints[0] : null;
+  const dismissReconnect = () => { try { localStorage.setItem("mx_reconnect_dismissed", new Date().toDateString()); } catch { /* ignore */ } setReconnectDismissed(true); };
 
   /* Real mode is only reachable with a broker attached. If the broker drops (token
      expired — they expire daily), fall straight back to Virtual rather than leaving
@@ -1062,6 +1074,24 @@ function AppInner() {
               {theme === "dark" ? <Moon size={12} color="var(--muted)" /> : <Sun size={12} color="var(--muted)" />}
             </div>
           </div>
+
+          {/* DAILY RECONNECT NUDGE — a broker connected on a prior day whose token has since expired.
+              One tap re-opens the broker sheet (already filtered to a market it covers) to log in again. */}
+          {reconnectHint && (
+            <div style={{ margin: "0 18px 12px", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 12, background: "var(--primary-soft)", border: "1px solid var(--primary)" }}>
+              <span style={{ width: 6, height: 6, borderRadius: 6, background: "var(--primary)", flex: "0 0 auto" }} />
+              <span style={{ fontSize: 11.5, color: "var(--ink)", fontWeight: 600, lineHeight: 1.4, flex: 1 }}>
+                Your {reconnectHint.name} login expired for today. Reconnect for live prices.
+              </span>
+              <button onClick={() => { const m = (BROKER_MARKETS[reconnectHint.id] || [])[0] || null; openBrokers(m); }}
+                className="tap disp" style={{ flex: "0 0 auto", border: "none", background: "var(--primary)", color: "var(--on-primary)", borderRadius: 9, padding: "7px 12px", fontWeight: 800, fontSize: 11.5, cursor: "pointer" }}>
+                Log in with {reconnectHint.name}
+              </button>
+              <button onClick={dismissReconnect} aria-label="Dismiss" className="tap" style={{ flex: "0 0 auto", border: "none", background: "transparent", color: "var(--muted)", padding: 2, cursor: "pointer", display: "grid", placeItems: "center" }}>
+                <X size={14} />
+              </button>
+            </div>
+          )}
 
           <div style={{ padding: "0 18px 14px" }}>
             <div onClick={() => setSearch(true)} className="tap" style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--elev)", border: "1px solid var(--line)", borderRadius: 14, padding: "11px 13px", color: "var(--muted)", fontSize: 13.5 }}>

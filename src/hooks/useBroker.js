@@ -6,6 +6,7 @@ import {
   loadSessions, saveSession, clearSession, BROKER_MARKETS,
   brokerSession, brokerQuotes, brokerLogout, brokerPortfolio,
   loadBrokerPref, setBrokerPref, resumeBroker, brokerStatus,
+  recordConnect, forgetConnect, brokersNeedingReconnect,
 } from "../services/brokerService";
 
 /**
@@ -83,6 +84,7 @@ export function useBroker({ onTick, userId, intervalMs = 2000 } = {}) {
       // `extra` carries bring-your-own credentials (Dhan/IND Money token, Angel One login).
       const s = await brokerSession(brokerId, requestToken, userId, extra);
       saveSession(s);                               // ADDS to the map; does not evict others
+      recordConnect(s.broker);                      // remember for the daily-reconnect nudge
       // Connected FOR a specific market -> make it the preferred driver for that market.
       if (market) setBrokerPref(market, s.broker);
       setSessions((p) => ({ ...p, [s.broker]: s }));
@@ -99,6 +101,7 @@ export function useBroker({ onTick, userId, intervalMs = 2000 } = {}) {
     targets.forEach((b) => {
       if (sessions[b]) brokerLogout(sessions[b], userId);   // drop it server-side too
       clearSession(b);
+      forgetConnect(b);   // user chose to disconnect — don't nudge them to reconnect
     });
     setSessions((p) => {
       const c = { ...p };
@@ -251,11 +254,17 @@ export function useBroker({ onTick, userId, intervalMs = 2000 } = {}) {
     }
   }, [connected, session, userId, brokerFor]);
 
+  /* Daily-expiry brokers the user connected on a prior day and that aren't live now — surfaced so the
+     UI can nudge "reconnect for live prices" each morning instead of silently going delayed. */
+  const reconnectHints = brokersNeedingReconnect(connectedBrokers)
+    .map((id) => ({ id, name: (brokerById(id) || {}).name || id }));
+
   return {
     session, connected, broker, error, lastTick,
     connect, disconnect,
     real, realErr, realLoading, refreshPortfolio,
     /* multi-broker */
     sessions, connectedBrokers, brokerFor, marketMap,
+    reconnectHints,
   };
 }
