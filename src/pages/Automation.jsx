@@ -455,7 +455,7 @@ function DeploySizeField({ market, value, onChange }) {
 function SampleStrategyCard({ s, onActivate, onClone, onEdit, market = "IN", canBacktest = true, onConnect }) {
   const { loading, stats } = useBacktestStats(s);
   const [bt, setBt] = useState(false);
-  const [size, setSize] = useState(market === "Crypto" ? 200 : 1);
+  const [size, setSize] = useState(((s.symbols && marketOf(s.symbols[0])) === "Crypto" || market === "Crypto") ? 200 : 1);
 
   const Stat = ({ k, v, c }) => (
     <div style={{ flex: 1, background: "var(--elev)", borderRadius: 11, padding: "9px 10px", minWidth: 0 }}>
@@ -548,7 +548,7 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, market = "IN", can
 function PremiumStrategyCard({ s, active, onToggle, onEdit, market = "IN", canBacktest = true, onConnect }) {
   const { loading, stats } = useBacktestStats(s);
   const [bt, setBt] = useState(false);
-  const [size, setSize] = useState(market === "Crypto" ? 200 : 1);
+  const [size, setSize] = useState(((s.symbols && marketOf(s.symbols[0])) === "Crypto" || market === "Crypto") ? 200 : 1);
   /* Show a symbol relevant to the CURRENT market. Premium strategies are shared across
      markets, so under Crypto we surface a crypto symbol, not the Indian one they were saved
      with. Fall back to the first symbol of this market's universe. */
