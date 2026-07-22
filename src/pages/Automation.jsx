@@ -1150,6 +1150,17 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const [editStrat, setEditStrat] = useState(null);
   const TF_OPTS = ["3m", "5m", "15m", "30m", "1h", "4h", "1d", "1w", "1mo"];
 
+  /* Crypto strategies trade a USD AMOUNT per trade, and the default is $200. Some older deployments
+     (and IN/US seeds later run on a crypto symbol like BTC) carry a stale quantity-style size of 1,
+     which is meaningless — and below Delta's minimum — in dollars. Normalize any crypto strategy whose
+     amount is missing or under $10 up to the $200 default, once. The guard makes it self-terminating. */
+  useEffect(() => {
+    const isCrypto = (s) => s.market === "Crypto" || marketOf((s.symbols || [])[0]) === "Crypto";
+    const stale = (s) => isCrypto(s) && (s.qty == null || Number(s.qty) < 10);
+    if (strats.some(stale)) setStrats((p) => p.map((s) => (stale(s) ? { ...s, qty: 200, cap: 200 } : s)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [strats]);
+
   // dashboard aggregation — scoped to the selected market
   const amkt = market;
   const inMkt = (s) => !(s.symbols && s.symbols.length) || s.symbols.some((x) => marketOf(x) === amkt);
