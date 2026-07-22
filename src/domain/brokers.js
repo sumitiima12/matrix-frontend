@@ -118,12 +118,16 @@ export const BROKERS = [
     realtime: false,   // prices come from the FYERS house feed; Dhan gives portfolio + orders
     oi: false,
     depth: false,
+    /* PASTE-TOKEN connect. Dhan's one-tap "Log in with Dhan" needs a Dhan PARTNER account (fintech
+       tie-up) which individual users don't have — so we connect by pasting a token generated on
+       web.dhan.co. The backend partner-consent flow stays in place and turns on automatically if the
+       server ever gets DHAN_PARTNER_ID / DHAN_PARTNER_SECRET (i.e. after registering as a partner). */
     userCreds: true,
     fields: [
       { key: "accessToken", label: "Access token", type: "password", hint: "From web.dhan.co → DhanHQ Trading APIs → Generate token" },
       { key: "clientId", label: "Client ID", type: "text", hint: "Your Dhan client ID (dhanClientId)" },
     ],
-    note: "Paste an access token generated on web.dhan.co. Shows your real Dhan holdings. Live prices come from the FYERS feed. Tokens expire — regenerate when it stops working.",
+    note: "Paste an access token generated on web.dhan.co (DhanHQ Trading APIs → Generate token). Shows your real Dhan holdings; live prices come from the FYERS feed. Tokens expire — regenerate when it stops working.",
     docs: "https://dhanhq.co/docs/v2/",
   },
   {

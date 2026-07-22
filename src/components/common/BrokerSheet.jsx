@@ -115,6 +115,23 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
     }
   };
 
+  /* SHARED-APP OAuth ("Log in with FYERS"): the simplest path. The user taps one button and lands
+     on FYERS's own login — Matrix's own registered FYERS app is the OAuth client, so there is NO app
+     id/secret for the user to create. Their token and trades are still THEIRS; we're only the client.
+     We skip saveBrokerAppCreds entirely and go straight to the login URL (the backend falls back to
+     the global FYERS_APP_ID when the user has no app of their own). */
+  const submitSharedLogin = async (b) => {
+    setErr(null);
+    setBusy(b.id);
+    try {
+      const url = await brokerLoginUrl(b.id, redirectUrl, userId);
+      window.location.href = url;      // FYERS's own login — we never see the password
+    } catch (e) {
+      setErr(String(e.message || e));
+      setBusy(null);
+    }
+  };
+
   /* BRING-YOUR-OWN-KEYS (Delta): no OAuth. Save the user's own Delta API key + secret on the
      server, then create a session (a signed call proves the keys work). Trades then execute on
      THIS user's Delta account. */
@@ -144,6 +161,10 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
       catch (e) { setErr(String(e.message || e)); setBusy(null); }
       return;
     }
+    // SHARED-APP / partner OAuth ("Log in with FYERS" / "Log in with Dhan"): one tap straight to the
+    // broker's own login. Matrix's registered app is the OAuth client, so there are NO keys for the
+    // user to create. (FYERS also keeps the "use my own app" form below as an advanced option.)
+    if (b.sharedOAuth) { return submitSharedLogin(b); }
     // Bring-your-own-app OR bring-your-own-credential OR bring-your-own-keys (Delta) brokers
     // open an inline form first.
     if (b.userCreds || b.byoaOAuth || b.byoaKeys) { setCredFor((cur) => (cur === b.id ? null : b.id)); setCreds({}); return; }
@@ -300,12 +321,25 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
                 ) : canConnect ? (
                   <button onClick={() => start(b)} disabled={busy === b.id} className="tap disp"
                     style={{ flex: "0 0 auto", border: "none", background: "var(--ink)", color: "var(--surface)", borderRadius: 10, padding: "8px 18px", fontWeight: 800, fontSize: 12, cursor: "pointer", opacity: busy === b.id ? 0.5 : 1 }}>
-                    {busy === b.id ? "…" : "Connect"}
+                    {busy === b.id ? "…" : (b.sharedOAuth ? `Log in with ${b.name}` : "Connect")}
                   </button>
                 ) : null}
               </div>
 
               <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>{b.note}</div>
+
+              {/* ADVANCED: shared-app brokers keep their manual path as a quiet fallback. FYERS → enter
+                  your own app id/secret; Dhan → paste an access token. Most users never touch this —
+                  the one-tap "Log in with …" button is the main path — but it's here when needed (and is
+                  the way to connect if the server has no shared/partner app configured). */}
+              {b.sharedOAuth && (b.byoaOAuth || b.userCreds) && !isConnected && canConnect && (
+                <button onClick={() => { setErr(null); setCreds({}); setCredFor((cur) => (cur === b.id ? null : b.id)); }}
+                  className="tap" style={{ marginTop: 7, border: "none", background: "transparent", color: "var(--primary)", fontSize: 10.5, fontWeight: 700, cursor: "pointer", padding: 0 }}>
+                  {credFor === b.id ? "Hide advanced"
+                    : b.byoaOAuth ? `Advanced: use my own ${b.name} app`
+                    : `Advanced: paste a ${b.name} access token`}
+                </button>
+              )}
 
               {/* Credential entry for bring-your-own-token brokers (Dhan, IND Money, Angel One, Groww)
                   and bring-your-own-app + OAuth brokers (FYERS). */}

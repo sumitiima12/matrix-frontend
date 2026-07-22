@@ -567,14 +567,14 @@ function AppInner() {
     fetch(`${BACKEND_URL}/health`).catch(() => {});
   }, []);
 
-  /* Finish the broker OAuth handshake. Zerodha comes back with ?request_token=,
-     FYERS with ?auth_code=. We strip it from the URL immediately afterwards — a
-     token sitting in the address bar ends up in history and in referrer headers. */
+  /* Finish the broker OAuth handshake. Zerodha comes back with ?request_token=, FYERS with
+     ?auth_code=, and Dhan's partner consent with ?tokenId=. We strip it from the URL immediately
+     afterwards — a token sitting in the address bar ends up in history and in referrer headers. */
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
-    const token = p.get("request_token") || p.get("auth_code");
+    const token = p.get("request_token") || p.get("auth_code") || p.get("tokenId");
     if (!token) return;
-    const which = p.get("request_token") ? "zerodha" : "fyers";
+    const which = p.get("request_token") ? "zerodha" : p.get("tokenId") ? "dhan" : "fyers";
     connectBroker(which, token)
       .then(() => setBuyToast({ t: "Broker connected — prices are now live" }))
       .catch((e) => setBuyToast({ t: String(e.message || e), e: true }))
