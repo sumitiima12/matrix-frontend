@@ -2,7 +2,6 @@
  * domain/strategies.js — starter strategies and the instruments automations can trade.
  */
 import { ALL } from "./universe";
-import { TEMPLATES } from "./strategyLang";
 
 /**
  * Sample strategies, across EVERY market — not just Indian indices.
@@ -14,23 +13,53 @@ import { TEMPLATES } from "./strategyLang";
  */
 export const SEED_STRATS = [
   // ── Indian equity ──────────────────────────────────────────────────────────
-  { id: "s1", name: "Golden Cross", market: "IN", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[0].cfg, cap: 200000, symbols: ["RELIANCE"], created: Date.now() - 128 * 864e5 },
-  { id: "s2", name: "MACD Pulse", market: "IN", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[2].cfg, cap: 100000, symbols: ["INFY"], created: Date.now() - 46 * 864e5 },
-  { id: "s3", name: "Bollinger Squeeze", market: "IN", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[1].cfg, cap: 150000, symbols: ["SBIN"], created: Date.now() - 84 * 864e5 },
+  // These used to share a couple of generic TEMPLATES, so the NAME never matched the RULES
+  // (e.g. "Bollinger Squeeze" actually ran EMA + RSI). Each now has its own cfg whose indicators
+  // match its name. (Timeframe = 5m and SL/TP = 0.5%/1% are applied uniformly below.)
+  { id: "s1", name: "Golden Cross", market: "IN", by: "Matrix", active: false, alerts: false, cap: 200000, symbols: ["RELIANCE"], created: Date.now() - 128 * 864e5,
+    cfg: { mode: "builder", defs: [{ type: "EMA", len: "50", name: "EMA50" }, { type: "EMA", len: "200", name: "EMA200" }],
+      entry: [{ la: "EMA50", op: "crosses_above", bType: "ind", b: "EMA200" }],
+      exit: [{ la: "EMA50", op: "crosses_below", bType: "ind", b: "EMA200" }] } },
+  { id: "s2", name: "MACD Pulse", market: "IN", by: "Matrix", active: false, alerts: false, cap: 100000, symbols: ["INFY"], created: Date.now() - 46 * 864e5,
+    cfg: { mode: "builder", defs: [{ type: "MACD", len: "", name: "MACD1" }],
+      entry: [{ la: "MACD1.line", op: "crosses_above", bType: "ind", b: "MACD1.signal" }],
+      exit: [{ la: "MACD1.line", op: "crosses_below", bType: "ind", b: "MACD1.signal" }] } },
+  { id: "s3", name: "Bollinger Squeeze", market: "IN", by: "Matrix", active: false, alerts: false, cap: 150000, symbols: ["SBIN"], created: Date.now() - 84 * 864e5,
+    cfg: { mode: "builder", defs: [{ type: "BB", len: "20", name: "BB1" }],
+      entry: [{ la: "Price", op: "crosses_above", bType: "ind", b: "BB1.upper" }],
+      exit: [{ la: "Price", op: "crosses_below", bType: "ind", b: "BB1.middle" }] } },
 
   // ── F&O ────────────────────────────────────────────────────────────────────
 
   // ── US equity ──────────────────────────────────────────────────────────────
-  { id: "s6", name: "Big Tech Momentum", market: "US", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[2].cfg, cap: 10000, symbols: ["AAPL"], created: Date.now() - 74 * 864e5 },
-  { id: "s7", name: "Bollinger Breakout", market: "US", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[4].cfg, cap: 10000, symbols: ["TSLA"], created: Date.now() - 51 * 864e5 },
+  { id: "s6", name: "Big Tech Momentum", market: "US", by: "Matrix", active: false, alerts: false, cap: 10000, symbols: ["AAPL"], created: Date.now() - 74 * 864e5,
+    cfg: { mode: "builder", defs: [{ type: "EMA", len: "20", name: "EMA20" }, { type: "EMA", len: "50", name: "EMA50" }, { type: "RSI", len: "14", name: "RSI1" }],
+      entry: [{ la: "EMA20", op: "crosses_above", bType: "ind", b: "EMA50" }, { gate: "AND", la: "RSI1", op: ">", bType: "num", b: "55" }],
+      exit: [{ la: "EMA20", op: "crosses_below", bType: "ind", b: "EMA50" }] } },
+  { id: "s7", name: "Bollinger Breakout", market: "US", by: "Matrix", active: false, alerts: false, cap: 10000, symbols: ["TSLA"], created: Date.now() - 51 * 864e5,
+    cfg: { mode: "builder", defs: [{ type: "BB", len: "20", name: "BB1" }],
+      entry: [{ la: "Price", op: "crosses_above", bType: "ind", b: "BB1.upper" }],
+      exit: [{ la: "Price", op: "crosses_below", bType: "ind", b: "BB1.middle" }] } },
 
   // ── Crypto ─────────────────────────────────────────────────────────────────
-  { id: "s8", name: "Crypto Trend Rider", market: "Crypto", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[0].cfg, cap: 5000, symbols: ["BTC"], created: Date.now() - 63 * 864e5 },
-  { id: "s9", name: "Crypto Reversal", market: "Crypto", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[1].cfg, cap: 5000, symbols: ["SOL"], created: Date.now() - 38 * 864e5 },
+  { id: "s8", name: "Crypto Trend Rider", market: "Crypto", by: "Matrix", active: false, alerts: false, cap: 5000, symbols: ["BTC"], created: Date.now() - 63 * 864e5,
+    cfg: { mode: "builder", defs: [{ type: "EMA", len: "20", name: "EMA20" }, { type: "EMA", len: "50", name: "EMA50" }],
+      entry: [{ la: "EMA20", op: "crosses_above", bType: "ind", b: "EMA50" }],
+      exit: [{ la: "EMA20", op: "crosses_below", bType: "ind", b: "EMA50" }] } },
+  { id: "s9", name: "Crypto Reversal", market: "Crypto", by: "Matrix", active: false, alerts: false, cap: 5000, symbols: ["SOL"], created: Date.now() - 38 * 864e5,
+    cfg: { mode: "builder", defs: [{ type: "RSI", len: "14", name: "RSI1" }],
+      entry: [{ la: "RSI1", op: "crosses_above", bType: "num", b: "30" }],
+      exit: [{ la: "RSI1", op: ">", bType: "num", b: "60" }] } },
 
   // ── Commodity ──────────────────────────────────────────────────────────────
-  { id: "s10", name: "Gold Trend", market: "Commodity", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[0].cfg, cap: 10000, symbols: ["GOLD"], created: Date.now() - 120 * 864e5 },
-  { id: "s11", name: "Crude Momentum", market: "Commodity", by: "Matrix", active: false, alerts: false, cfg: TEMPLATES[2].cfg, cap: 10000, symbols: ["CRUDEOIL"], created: Date.now() - 57 * 864e5 },
+  { id: "s10", name: "Gold Trend", market: "Commodity", by: "Matrix", active: false, alerts: false, cap: 10000, symbols: ["GOLD"], created: Date.now() - 120 * 864e5,
+    cfg: { mode: "builder", defs: [{ type: "EMA", len: "20", name: "EMA20" }, { type: "EMA", len: "50", name: "EMA50" }],
+      entry: [{ la: "EMA20", op: "crosses_above", bType: "ind", b: "EMA50" }],
+      exit: [{ la: "EMA20", op: "crosses_below", bType: "ind", b: "EMA50" }] } },
+  { id: "s11", name: "Crude Momentum", market: "Commodity", by: "Matrix", active: false, alerts: false, cap: 10000, symbols: ["CRUDEOIL"], created: Date.now() - 57 * 864e5,
+    cfg: { mode: "builder", defs: [{ type: "MACD", len: "", name: "MACD1" }, { type: "RSI", len: "14", name: "RSI1" }],
+      entry: [{ la: "MACD1.line", op: "crosses_above", bType: "ind", b: "MACD1.signal" }, { gate: "AND", la: "RSI1", op: ">", bType: "num", b: "50" }],
+      exit: [{ la: "MACD1.line", op: "crosses_below", bType: "ind", b: "MACD1.signal" }] } },
 
   // ── More Matrix sample strategies ────────────────────────────────────────────
   // A broader set of starter ideas across every market, each expressed in the
@@ -72,9 +101,9 @@ export const SEED_STRATS = [
       entry: [{ la: "EMA8", op: "crosses_above", bType: "ind", b: "EMA55" }, { gate: "AND", la: "Price", op: ">", bType: "ind", b: "VWAP1" }],
       exit: [{ la: "EMA8", op: "crosses_below", bType: "ind", b: "EMA55" }], sl: "0.5", tp: "1" } },
   { id: "s29", name: "Fibonacci Range", market: "Commodity", by: "Matrix", active: false, alerts: false, cap: 10000, symbols: ["CRUDEOIL"], created: Date.now() - 21 * 864e5,
-    cfg: { mode: "builder", defs: [{ type: "BB", len: "20", name: "BB1" }],
-      entry: [{ la: "Price", op: "<=", bType: "ind", b: "BB1.lower" }],
-      exit: [{ la: "Price", op: ">=", bType: "ind", b: "BB1.upper" }], sl: "3", tp: "5" } },
+    cfg: { mode: "builder", defs: [{ type: "Fib", len: "90", name: "FIB" }],
+      entry: [{ la: "Price", op: "crosses_above", bType: "ind", b: "FIB.r618" }],
+      exit: [{ la: "Price", op: ">=", bType: "ind", b: "FIB.r236" }] } },
   { id: "s30", name: "MACD Momentum", market: "US", by: "Matrix", active: false, alerts: false, cap: 10000, symbols: ["MSFT", "AAPL"], created: Date.now() - 20 * 864e5,
     cfg: { mode: "builder", defs: [{ type: "MACD", len: "", name: "MACD1" }, { type: "RSI", len: "14", name: "RSI1" }],
       entry: [{ la: "MACD1.line", op: "crosses_above", bType: "ind", b: "MACD1.signal" }, { gate: "AND", la: "RSI1", op: ">", bType: "num", b: "60" }],
@@ -196,6 +225,16 @@ export const SEED_STRATS = [
       entry: [{ la: "Price", op: ">", bType: "ind", b: "EMA50" }, { gate: "AND", la: "Price", op: "crosses_above", bType: "ind", b: "VWAP1" }, { gate: "AND", la: "RSI1", op: ">", bType: "num", b: "50" }],
       exit: [{ la: "Price", op: "crosses_below", bType: "ind", b: "EMA50" }], sl: "2", tp: "5" } },
 ];
+
+/* HOUSE DEFAULTS for every sample & premium strategy: run each indicator on the 5-minute timeframe,
+   and use a uniform 0.5% stop-loss / 1% take-profit. Applied in one pass so the individual cfgs above
+   stay readable and there's a single place to change the policy. */
+SEED_STRATS.forEach((s) => {
+  if (!s.cfg || s.cfg.mode !== "builder") return;
+  (s.cfg.defs || []).forEach((d) => { d.tf = "5m"; });
+  s.cfg.sl = "0.5";
+  s.cfg.tp = "1";
+});
 
 /**
  * Premium strategies (s20–s38): Matrix's curated, locked strategies. They live in a
