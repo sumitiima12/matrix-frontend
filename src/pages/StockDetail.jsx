@@ -270,7 +270,7 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
         <div className="card" style={{ marginTop: 12, padding: 16, background: "linear-gradient(160deg,var(--primary-soft),var(--surface))" }}>
           <div className="disp" style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><Sparkles size={16} color="var(--primary)" /> Analysis</div>
           <p style={{ fontSize: 13.5, lineHeight: 1.6, marginTop: 8, marginBottom: 0 }}>
-            {s.rsi == null ? "Live technicals are still loading for this symbol." : <>Technically, RSI is <b>{s.rsi}</b> with price {s.sma50 != null ? (s.price > s.sma50 ? "above" : "below") : "—"} the 50-DMA{s.sma50 != null && s.sma200 != null ? (s.sma50 > s.sma200 ? " and a bullish 50/200 structure" : " and a bearish 50/200 structure") : ""}.</>}
+            {s.rsi == null ? "Loading…" : <>Technically, RSI is <b>{s.rsi}</b> with price {s.sma50 != null ? (s.price > s.sma50 ? "above" : "below") : "—"} the 50-DMA{s.sma50 != null && s.sma200 != null ? (s.sma50 > s.sma200 ? " and a bullish 50/200 structure" : " and a bearish 50/200 structure") : ""}.</>}
           </p>
           {pattern && <p style={{ fontSize: 12.5, fontWeight: 700, margin: "6px 0 0", color: pattern.dir === "bull" ? "var(--up)" : pattern.dir === "bear" ? "var(--down)" : "var(--muted)" }}>◆ {patternLine(pattern, (v) => fmt(v, market))}</p>}
           {/* Framework technical read — trend → momentum → volume → levels, each interpreted. */}

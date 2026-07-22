@@ -8,7 +8,7 @@ export default function DashStat({ k, v, pos }) {
   return (
     <div>
       <div style={{ fontSize: 10.5, opacity: .8 }}>{k}</div>
-      <div className="mono" style={{ fontWeight: 800, fontSize: 14, color: pos ? "#9CFFD6" : "#FFB3BE" }}>{v}</div>
+      <div className="mono" style={{ fontWeight: 800, fontSize: 14, color: pos ? "var(--up)" : "var(--down)" }}>{v}</div>
     </div>
   );
 }
