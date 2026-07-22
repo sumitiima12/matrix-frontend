@@ -224,6 +224,22 @@ export const SEED_STRATS = [
     cfg: { mode: "builder", defs: [{ type: "VWAP", len: "", name: "VWAP1" }, { type: "EMA", len: "50", name: "EMA50" }, { type: "RSI", len: "14", name: "RSI1" }],
       entry: [{ la: "Price", op: ">", bType: "ind", b: "EMA50" }, { gate: "AND", la: "Price", op: "crosses_above", bType: "ind", b: "VWAP1" }, { gate: "AND", la: "RSI1", op: ">", bType: "num", b: "50" }],
       exit: [{ la: "Price", op: "crosses_below", bType: "ind", b: "EMA50" }], sl: "2", tp: "5" } },
+
+  // ── New premium strategies ───────────────────────────────────────────────────
+  // MULTI-TIMEFRAME: base runs on 3m; the 5m and 15m EMAs resolve on their own aggregated candles
+  // (multi-timeframe engine). Long only when all three timeframes are bullish at once.
+  { id: "s59", name: "Multi-Timeframe Momentum", market: "Crypto", by: "Matrix", active: false, alerts: false, cap: 5000, symbols: ["BTC", "ETH"], created: Date.now() - 1 * 864e5, tf: "3m",
+    cfg: { mode: "builder", tf: "3m", defs: [
+        { type: "EMA", len: "9", tf: "3m", name: "E3f" }, { type: "EMA", len: "21", tf: "3m", name: "E3s" },
+        { type: "EMA", len: "9", tf: "5m", name: "E5f" }, { type: "EMA", len: "21", tf: "5m", name: "E5s" },
+        { type: "EMA", len: "9", tf: "15m", name: "E15f" }, { type: "EMA", len: "21", tf: "15m", name: "E15s" }],
+      entry: [{ la: "E3f", op: ">", bType: "ind", b: "E3s" }, { gate: "AND", la: "E5f", op: ">", bType: "ind", b: "E5s" }, { gate: "AND", la: "E15f", op: ">", bType: "ind", b: "E15s" }],
+      exit: [{ la: "E3f", op: "crosses_below", bType: "ind", b: "E3s" }] } },
+  // OPENING RANGE BREAKOUT: buy the break above the high of the day's first 15 minutes.
+  { id: "s60", name: "Opening Range Breakout", market: "IN", by: "Matrix", active: false, alerts: false, cap: 150000, symbols: ["RELIANCE", "SBIN"], created: Date.now() - 0.5 * 864e5, tf: "5m",
+    cfg: { mode: "builder", tf: "5m", defs: [{ type: "ORB", len: "15", name: "OR" }],
+      entry: [{ la: "Price", op: "crosses_above", bType: "ind", b: "OR.high" }],
+      exit: [{ la: "Price", op: "crosses_below", bType: "ind", b: "OR.low" }] } },
 ];
 
 /* HOUSE DEFAULTS for every sample & premium strategy: run each indicator on the 5-minute timeframe,
@@ -231,7 +247,9 @@ export const SEED_STRATS = [
    stay readable and there's a single place to change the policy. */
 SEED_STRATS.forEach((s) => {
   if (!s.cfg || s.cfg.mode !== "builder") return;
-  (s.cfg.defs || []).forEach((d) => { d.tf = "5m"; });
+  // Default each indicator to 5m, but KEEP an explicit per-indicator timeframe where one is set
+  // (the multi-timeframe strategy relies on its 3m / 5m / 15m defs surviving this pass).
+  (s.cfg.defs || []).forEach((d) => { d.tf = d.tf || "5m"; });
   s.cfg.sl = "0.5";
   s.cfg.tp = "1";
 });
@@ -282,6 +300,8 @@ const PREMIUM_DESC = {
   s56: "Fades commodity extremes, entering deeply oversold and exiting into overbought.",
   s57: "Trades volatility expansion out of a quiet base, confirmed by trend strength.",
   s58: "Buys trend-aligned pullbacks that reclaim fair value — trade with the trend, enter on the dip.",
+  s59: "Goes long only when the 3-minute, 5-minute AND 15-minute trends all agree — triple-timeframe confirmation for higher-quality entries.",
+  s60: "Buys the break above the high of the day's first 15 minutes — the classic opening-range breakout, with risk pinned at the range low.",
 };
 SEED_STRATS.forEach((s) => {
   if (PREMIUM_DESC[s.id]) { s.premium = true; s.desc = PREMIUM_DESC[s.id]; }

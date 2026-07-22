@@ -189,6 +189,23 @@ function computeIndicator(d, attr, c, closes, vols) {
     case "PrevCandle": case "PrevDay": { const f = CF[attr] || "c"; return c.map((x, i) => i > 0 ? c[i - 1][f] : NaN); }
     case "LastNCandles": { const f = CF[attr] || "c"; return attr === "high" ? rollExt(c, len, "h", true) : attr === "low" ? rollExt(c, len, "l", false) : c.map((x, i) => (i - len + 1 >= 0 ? c[i - len + 1][f] : x[f])); }
     case "FirstNCandles": { const f = CF[attr] || "c"; const head = c.slice(0, Math.max(1, len)); const val = attr === "high" ? Math.max(...head.map((x) => x.h)) : attr === "low" ? Math.min(...head.map((x) => x.l)) : (attr === "open" ? head[0].o : head[head.length - 1].c); return closes.map(() => val); }
+    /* OPENING RANGE — the high/low of the first `len` MINUTES of each trading day. Resets every day.
+       `len` defaults to 15. Used for opening-range-breakout: entry when price crosses above ORB.high.
+       Day boundary is the first candle of each UTC date, which for NSE/US sessions is the market open
+       (their sessions don't straddle UTC midnight). */
+    case "ORB": {
+      const mins = Number(d.len) || 15;
+      const out = new Array(c.length);
+      let dayKey = null, hi = -Infinity, lo = Infinity, dayStart = 0;
+      for (let i = 0; i < c.length; i++) {
+        const dt = new Date(c[i].t);
+        const key = dt.getUTCFullYear() + "-" + dt.getUTCMonth() + "-" + dt.getUTCDate();
+        if (key !== dayKey) { dayKey = key; hi = -Infinity; lo = Infinity; dayStart = c[i].t; }
+        if (c[i].t - dayStart < mins * 60000) { if (c[i].h > hi) hi = c[i].h; if (c[i].l < lo) lo = c[i].l; }
+        out[i] = attr === "low" ? lo : hi;
+      }
+      return out;
+    }
     default: return closes.map(() => NaN);
   }
 }

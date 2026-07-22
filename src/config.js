@@ -47,7 +47,8 @@ export const TF_YF = {
   "30m": { i: "30m", r: "1mo" },
   "1h":  { i: "60m", r: "3mo" },
   "4h":  { i: "60m", r: "6mo", agg: 4 },   // REAL 4h: four 60m candles folded into one
-  "1d":  { i: "1d",  r: "2y" },
+  // 6 MONTHS: a daily CHART is one small, fast request. Backtests use BT_YF below for the long window.
+  "1d":  { i: "1d",  r: "6mo" },
   "1w":  { i: "1wk", r: "5y" },
   "1mo": { i: "1mo", r: "10y" },
 };
