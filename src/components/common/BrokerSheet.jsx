@@ -328,16 +328,16 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
 
               <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>{b.note}</div>
 
-              {/* ADVANCED: shared-app brokers keep their manual path as a quiet fallback. FYERS → enter
-                  your own app id/secret; Dhan → paste an access token. Most users never touch this —
-                  the one-tap "Log in with …" button is the main path — but it's here when needed (and is
-                  the way to connect if the server has no shared/partner app configured). */}
+              {/* SECOND CONNECT OPTION for shared-app brokers, shown as a clear button (not buried under
+                  "Advanced"): FYERS → enter your own App ID + Secret; Dhan → paste an access token. This
+                  is the reliable path when the one-tap shared login can't be used — e.g. a FYERS app that
+                  only authorises its own owner, so each user connects with their own app instead. */}
               {b.sharedOAuth && (b.byoaOAuth || b.userCreds) && !isConnected && canConnect && (
                 <button onClick={() => { setErr(null); setCreds({}); setCredFor((cur) => (cur === b.id ? null : b.id)); }}
-                  className="tap" style={{ marginTop: 7, border: "none", background: "transparent", color: "var(--primary)", fontSize: 10.5, fontWeight: 700, cursor: "pointer", padding: 0 }}>
-                  {credFor === b.id ? "Hide advanced"
-                    : b.byoaOAuth ? `Advanced: use my own ${b.name} app`
-                    : `Advanced: paste a ${b.name} access token`}
+                  className="tap disp" style={{ marginTop: 10, width: "100%", border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", borderRadius: 10, padding: "9px 12px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
+                  {credFor === b.id ? "Hide"
+                    : b.byoaOAuth ? `Connect with App ID & Secret`
+                    : `Paste a ${b.name} access token`}
                 </button>
               )}
 
