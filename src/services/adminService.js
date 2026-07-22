@@ -104,3 +104,15 @@ export async function adminResetPin(userId, key, phone, newPin) {
   if (!r.ok) throw new Error(d.error || `admin ${r.status}`);
   return d;
 }
+
+/** ADMIN: wipe a specific user's VIRTUAL (paper) trade history. Real broker trades are never touched. */
+export async function adminClearVirtual(userId, key, phone) {
+  const r = await fetch(`${BACKEND_URL}/api/admin/clear-virtual`, {
+    method: "POST",
+    headers: headers(userId, key),
+    body: JSON.stringify({ phone }),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || `admin ${r.status}`);
+  return d;
+}

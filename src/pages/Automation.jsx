@@ -1352,6 +1352,11 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           .map((s) => ({ s, p: stratPerf(s, trades, dashRange, priceOf), e: lastEntry(s) }))
           .sort((a, b) => b.e - a.e);
         if (!vd.length) return null;
+        /* PAPER controls, mirroring "Live Real Deployed": Pause keeps the strategy deployed but stops
+           it taking new signals; Stop removes it from the deployed list (deactivates it). Both just
+           flip flags on the local strategy — there's no broker involved in paper mode. */
+        const vPause = (s) => setStrats((p) => p.map((x) => x.id === s.id ? { ...x, paused: !x.paused } : x));
+        const vStop = (s) => setStrats((p) => p.map((x) => x.id === s.id ? { ...x, active: false } : x));
         return (
           <div className="card" style={{ padding: 14, marginTop: 12, border: "1px solid var(--primary)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
@@ -1362,16 +1367,22 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             <CollapsibleList items={vd} initial={5} reverse={false} render={({ s, p }) => (
               <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: "1px solid var(--line)" }}>
                 <div style={{ minWidth: 0 }}>
-                  <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{s.name || (s.symbols && s.symbols[0]) || "Strategy"}</div>
+                  <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{s.name || (s.symbols && s.symbols[0]) || "Strategy"}{s.paused && <span style={{ color: "var(--muted)", fontWeight: 700 }}> · paused</span>}</div>
                   <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600, marginTop: 1 }}>{(s.symbols || []).join(", ") || "—"} · by {s.by}</div>
                   <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>{p.positions} position{p.positions === 1 ? "" : "s"}{p.open ? ` · ${p.open} open` : ""}{p.winRate != null ? ` · ${p.winRate.toFixed(0)}% win` : ""}</div>
                 </div>
-                <div style={{ marginLeft: "auto", textAlign: "right" }}>
+                <div style={{ marginLeft: "auto", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
                   {/* Show combined realised + unrealised P&L whenever the strategy holds ANY position. */}
-                  <div className="mono" style={{ fontSize: 12.5, fontWeight: 800, color: chgColor(p.pnl) }}>{p.positions && p.pnl != null ? (p.pnl >= 0 ? "+" : "") + fmt(p.pnl, market) : "—"}</div>
-                  {p.positions && p.pnl != null
-                    ? <div className="mono" style={{ fontSize: 9.5, fontWeight: 700, color: chgColor(p.retPct) }}>{p.open ? "incl. live" : (p.retPct >= 0 ? "+" : "") + (p.retPct || 0).toFixed(2) + "%"}</div>
-                    : <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>waiting for signal</div>}
+                  <div style={{ textAlign: "right" }}>
+                    <div className="mono" style={{ fontSize: 12.5, fontWeight: 800, color: chgColor(p.pnl) }}>{p.positions && p.pnl != null ? (p.pnl >= 0 ? "+" : "") + fmt(p.pnl, market) : "—"}</div>
+                    {p.positions && p.pnl != null
+                      ? <div className="mono" style={{ fontSize: 9.5, fontWeight: 700, color: chgColor(p.retPct) }}>{p.open ? "incl. live" : (p.retPct >= 0 ? "+" : "") + (p.retPct || 0).toFixed(2) + "%"}</div>
+                      : <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>{s.paused ? "paused" : "waiting for signal"}</div>}
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button onClick={() => vPause(s)} className="tap" style={{ border: "1px solid " + (s.paused ? "var(--up)" : "var(--line)"), background: s.paused ? "var(--up-soft)" : "transparent", color: s.paused ? "var(--up)" : "var(--muted)", borderRadius: 8, padding: "3px 9px", fontSize: 10, fontWeight: 800 }}>{s.paused ? "▶ Start" : "❚❚ Pause"}</button>
+                    <button onClick={() => vStop(s)} className="tap" style={{ border: "1px solid var(--down)", background: "transparent", color: "var(--down)", borderRadius: 8, padding: "3px 8px", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 2 }}><X size={10} /> Stop</button>
+                  </div>
                 </div>
               </div>
             )} />

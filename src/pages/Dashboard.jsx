@@ -122,7 +122,7 @@ function MarketPulseStrip({ market, list, onOpen, liveTick = 0 }) {
       </div>
       <div style={{ width: 1, background: "var(--line)" }} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>🔥 Hot Stocks</div>
+        <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>🔥 {market === "Crypto" ? "Hot" : "Hot Stocks"}</div>
         <div style={{ display: "flex", gap: 8, marginTop: 3 }}>
           {shown.map((h, k) => (
             <div key={h.sym + k} onClick={() => open(h)} className="tap fade" style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
@@ -762,7 +762,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const [editSym, setEditSym] = useState(null);
   const [showTrades, setShowTrades] = useState(false);
   const MKT_LABEL = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", Commodity: "🪙 Commodity", FNO: "⚡ F&O" };
-  const autoOn = !!autoOnMap[market];                       // on/off for the currently selected market
+  // Smart Auto-Buy on/off is INDEPENDENT per mode: Real and Virtual each keep their own switch, so
+  // turning it on for paper trading never arms real-money auto-buys (and vice versa).
+  const autoKey = mode === "real" ? `${market}:real` : `${market}:virtual`;
+  const autoOn = !!autoOnMap[autoKey];                      // on/off for this market AND this mode
   // Minimum is small for $-markets (US/Crypto) so you can deploy e.g. $100; ₹ markets keep a higher floor.
   const capMin = (market === "US" || market === "Crypto") ? 10 : 1000;
   const capNum = Math.max(capMin, parseInt(deployCapital) || Number(capDefault(market)));
@@ -897,7 +900,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       {/* Global markets live strip — market-aware (Crypto leads with BTC/ETH, not NIFTY) */}
       <GlobalStrip market={market} />
 
-      <TunedStrip profile={profile} />
+      {market !== "Crypto" && <TunedStrip profile={profile} />}
 
       {/* Portfolio / Auto-Buy dashboard card. Hidden for gated users (non-admin, virtual mode,
           Indian paper trading off) — there is nothing to trade, so a ₹0 virtual portfolio would
@@ -986,7 +989,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                         if (!ok) return;
                         lsSet("mx_autobuy_warned", true);
                       }
-                      setAutoOnMap((m) => ({ ...m, [market]: !m[market] }));
+                      setAutoOnMap((m) => ({ ...m, [autoKey]: !m[autoKey] }));
                     }} style={{ width: 38, height: 22, borderRadius: 999, background: autoOn ? "#22C55E" : "rgba(255,255,255,.3)", position: "relative", transition: "background .2s", flexShrink: 0 }}>
                       <span style={{ position: "absolute", top: 2, left: autoOn ? 18 : 2, width: 18, height: 18, borderRadius: 999, background: "#fff", transition: "left .2s" }} />
                     </span>
@@ -1213,7 +1216,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       )}
 
       {/* Ideas carousel (not for F&O or Commodity) */}
-      {market !== "Commodity" && <StockIdeasStrip onOpen={onOpen} onBuy={onBuy} market={market} liveTick={liveTick} />}
+      {market !== "Commodity" && market !== "Crypto" && <StockIdeasStrip onOpen={onOpen} onBuy={onBuy} market={market} liveTick={liveTick} />}
 
       {/* F&O Picks (Indian derivatives) */}
 
@@ -1265,7 +1268,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
 
       {/* Sector heatmap — below Gainers & Losers. Not for Commodity (a handful of COMEX/NYMEX
           contracts, no real sector breakdown to show). */}
-      {market !== "Commodity" && <SectorHeatmap market={market} list={list} />}
+      {market !== "Commodity" && market !== "Crypto" && <SectorHeatmap market={market} list={list} />}
 
 
       {/* In the news — REAL headlines fetched live. Hidden on Crypto (headline coverage for coins is

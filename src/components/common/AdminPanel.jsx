@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { adminListUsers, adminGetUser, adminSetBlocked, adminResetPin, adminPendingUsers, adminApproveUser, adminDeleteUser } from "../../services/adminService";
+import { adminListUsers, adminGetUser, adminSetBlocked, adminResetPin, adminPendingUsers, adminApproveUser, adminDeleteUser, adminClearVirtual } from "../../services/adminService";
 import { apiListIdeas, apiReviewIdea } from "../../domain/api";
 import { tradesToCSV, downloadCSV, tradeFilename } from "../../lib/csv";
 
@@ -38,6 +38,13 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
     if (String(np).length < 4) { setErr("PIN must be at least 4 digits."); return; }
     setBusy(true);
     try { await adminResetPin(userId, adminKey, phone, np); setErr(null); alert("PIN reset."); }
+    catch (e) { setErr(String(e.message || e)); }
+    finally { setBusy(false); }
+  };
+  const clearVirtual = async (phone) => {
+    if (typeof window !== "undefined" && !window.confirm(`Delete ALL virtual (paper) trade history for ${phone}? Real broker trades are not affected. This cannot be undone.`)) return;
+    setBusy(true);
+    try { const r = await adminClearVirtual(userId, adminKey, phone); setErr(null); alert(`Cleared ${r.removed != null ? r.removed : ""} virtual trade${r.removed === 1 ? "" : "s"}.`); }
     catch (e) { setErr(String(e.message || e)); }
     finally { setBusy(false); }
   };
@@ -143,6 +150,14 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
                 style={{ marginLeft: 8, border: "1px solid var(--line)", borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: 12, cursor: "pointer", background: "transparent", color: "var(--ink)", opacity: busy ? 0.6 : 1 }}
               >
                 Reset PIN
+              </button>
+              <button
+                onClick={() => clearVirtual(selected.phone)}
+                disabled={busy}
+                className="tap disp"
+                style={{ marginLeft: 8, border: "1px solid var(--down)", borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: 12, cursor: "pointer", background: "transparent", color: "var(--down)", opacity: busy ? 0.6 : 1 }}
+              >
+                Clear virtual trades
               </button>
             </div>
             {selected.user.blocked && (
