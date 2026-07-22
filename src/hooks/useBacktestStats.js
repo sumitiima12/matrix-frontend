@@ -71,7 +71,7 @@ export function useBacktestStats(strat) {
         sets.forEach((c) => {
           if (!c || c.length < 30) return;
           usable += 1;
-          const r = backtest(cfg, c);
+          const r = backtest(cfg, c, 1, tf);
           r.trades.forEach((t) => { trades.push(t); pnl += perSym * t.ret; });
         });
 

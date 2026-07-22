@@ -85,8 +85,8 @@ function BacktestResult({ cfg, defaultSym, blocked = false, onConnect, defaultTf
   }, [realData, fromMs, toMs]);
 
   const res = useMemo(
-    () => (!cfg || cfg.mode === "plain" || !data ? null : backtest(cfg, data, startIdx)),
-    [cfg, data, startIdx]
+    () => (!cfg || cfg.mode === "plain" || !data ? null : backtest(cfg, data, startIdx, tf)),
+    [cfg, data, startIdx, tf]
   );
 
   const bars = covered ? covered.inWindow : 0;

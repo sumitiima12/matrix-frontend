@@ -15,9 +15,11 @@ import { resolveOperand, chainEval, parseClause, mapToken, detectOp, interpretTe
  * which reads as "the strategy never triggers" rather than "we never gave it enough
  * data to know". So: compute over everything, only COUNT entries from startIdx on.
  */
-export function backtest(cfg, c, startIdx = 1) {
+export function backtest(cfg, c, startIdx = 1, baseTf = null) {
   const closes = c.map((x) => x.c), vols = c.map((x) => x.v || 0), cache = {};
-  const get = (op) => resolveOperand(op, cfg.defs, c, closes, vols, cache);
+  // baseTf lets a def on a HIGHER timeframe (e.g. a 1D EMA) resolve on daily candles even though the
+  // backtest runs on, say, 5-minute bars — instead of silently becoming a wrong 5-minute EMA.
+  const get = (op) => resolveOperand(op, cfg.defs, c, closes, vols, cache, baseTf);
   const trades = []; let pos = null, equity = 1, peak = 1, maxDD = 0; const eq = [{ i: 0, eq: 100 }];
   const from = Math.max(1, startIdx | 0);
   for (let i = 1; i < c.length; i++) {
