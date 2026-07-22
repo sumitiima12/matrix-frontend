@@ -744,6 +744,46 @@ function CollapsibleList({ items, render, initial = 3, reverse = true }) {
   );
 }
 
+/* One row of the strategy-comparison table. Reuses useBacktestStats — the SAME hook the premium
+   cards use — so opening the table doesn't fire a fresh burst of history requests (results are
+   already cached from the cards). Columns: trades / wins / losses / target-hits / SL-hits / return. */
+function CompareRow({ s, td }) {
+  const { loading, stats } = useBacktestStats(s);
+  const c = (v) => ({ ...td, color: v >= 0 ? "var(--up)" : "var(--down)" });
+  return (
+    <tr>
+      <td style={{ ...td, textAlign: "left", fontWeight: 800 }}>{s.name}</td>
+      {loading ? <td style={{ ...td, color: "var(--muted)" }} colSpan={6}>backtesting…</td>
+        : !stats || !stats.trades ? <td style={{ ...td, color: "var(--muted)" }} colSpan={6}>{stats ? "no trades" : "no data"}</td>
+        : <>
+            <td style={td}>{stats.trades}</td>
+            <td style={{ ...td, color: "var(--up)" }}>{stats.wins}</td>
+            <td style={{ ...td, color: "var(--down)" }}>{stats.losses}</td>
+            <td style={{ ...td, color: "var(--up)" }}>{stats.tpHit}</td>
+            <td style={{ ...td, color: "var(--down)" }}>{stats.slHit}</td>
+            <td style={c(stats.retPct)}>{(stats.retPct >= 0 ? "+" : "") + (stats.retPct || 0).toFixed(1)}%</td>
+          </>}
+    </tr>
+  );
+}
+function ComparisonTable({ strats }) {
+  if (!strats.length) return <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>No strategies to compare for this market.</div>;
+  const th = { fontSize: 9, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".03em", padding: "7px 5px", textAlign: "center", whiteSpace: "nowrap" };
+  const td = { fontSize: 11.5, fontWeight: 700, padding: "8px 5px", textAlign: "center", borderTop: "1px solid var(--line)", whiteSpace: "nowrap" };
+  return (
+    <div className="card" style={{ padding: "6px 10px", marginBottom: 12, overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 440 }}>
+        <thead><tr>
+          <th style={{ ...th, textAlign: "left" }}>Strategy</th>
+          <th style={th}>Trades</th><th style={th}>Wins</th><th style={th}>Loss</th>
+          <th style={th}>Target</th><th style={th}>SL Hit</th><th style={th}>Return</th>
+        </tr></thead>
+        <tbody>{strats.map((s) => <CompareRow key={s.id} s={s} td={td} />)}</tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function Automation({ market = "IN", appMode = "virtual", onRecord, trades = [], strats = [], setStrats, onExitAll, me = null, isAdmin = false, userId = null, brokerFor = null, adminKey = "", onConnectBroker = null }) {
   /* Backtesting Indian stocks needs real history, which — for compliance — can only come from the
      user's OWN connected broker (or the owner's house feed). Crypto (Delta) and US (Yahoo) have
@@ -1080,6 +1120,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                 strategy with no closed trades shows "—", not a made-up win rate. */
   const [stratTab, setStratTab] = useState("sample");
   const [topTab, setTopTab] = useState("build");   // build | sample | premium | public | mine
+  const [compareOpen, setCompareOpen] = useState(false);   // premium "Compare all" backtest table
 
   // ---- Public strategies (shared across users) ----
   const [publicList, setPublicList] = useState([]);
@@ -1664,9 +1705,17 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           : sampleStrats.map(({ s }) => <SampleStrategyCard key={s.id} s={s} market={market} onActivate={useTemplateStrategy} onClone={cloneStrategy} onEdit={isAdmin ? loadForEdit : undefined} canBacktest={canBacktest} onConnect={onConnectBroker} />)
       ) : topTab === "premium" ? (
         <>
-          <div style={{ fontSize: 11.5, color: "var(--muted)", margin: "0 2px 4px", lineHeight: 1.5 }}>
-            Matrix's curated strategies — available in every market. Activate to run them live, or backtest first. Their rules are locked.
+          <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 2px 8px" }}>
+            <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.5, flex: 1 }}>
+              Matrix's curated strategies — available in every market. Activate to run them live, or backtest first. Their rules are locked.
+            </div>
+            <button onClick={() => setCompareOpen((v) => !v)} className="tap disp" style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 5, border: "1px solid " + (compareOpen ? "var(--primary)" : "var(--line)"), background: compareOpen ? "var(--primary-soft)" : "var(--surface)", color: compareOpen ? "var(--primary)" : "var(--ink)", borderRadius: 10, padding: "7px 11px", fontWeight: 800, fontSize: 11.5 }}>
+              <ListChecks size={14} /> {compareOpen ? "Hide table" : "Compare all"}
+            </button>
           </div>
+          {/* One-tap comparison table: every premium strategy for THIS market, backtested on the same
+              window, side by side. Runs on your real broker data via the same cached backtests. */}
+          {compareOpen && <ComparisonTable strats={premiumStrats.filter((s) => (s.market || marketOf((s.symbols || [])[0])) === market)} />}
           {premiumStrats.length === 0
             ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No premium strategies available.</div>
             : premiumStrats.map((s) => <PremiumStrategyCard key={s.id} s={s} active={activeInMarket(s)} market={market} onToggle={(rs, size) => togglePremiumHere(s.id, rs, size)} onEdit={isAdmin ? loadForEdit : undefined} canBacktest={canBacktest} onConnect={onConnectBroker} />)}

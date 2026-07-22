@@ -86,11 +86,17 @@ export function useBacktestStats(strat) {
         }
 
         const wins = trades.filter((t) => t.ret > 0).length;
+        // Exit-reason breakdown for the comparison table. `reason` is set by the backtest engine.
+        const slHit = trades.filter((t) => t.reason === "SL").length;
+        const tpHit = trades.filter((t) => t.reason === "TP").length;
         setState({
           loading: false,
           stats: {
             trades: trades.length,
             wins,
+            losses: trades.length - wins,
+            slHit,
+            tpHit,
             winRate: (wins / trades.length) * 100,
             pnl,
             retPct: (pnl / cap) * 100,

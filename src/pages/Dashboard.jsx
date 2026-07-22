@@ -906,7 +906,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           Indian paper trading off) — there is nothing to trade, so a ₹0 virtual portfolio would
           only mislead. */}
       {!hideDash && (
-      <div className="card glow" style={{ marginTop: 14, padding: 16, border: "none", color: "#fff", position: "relative", overflow: "hidden", background: "radial-gradient(circle at 78% 18%, rgba(255,255,255,.20), transparent 44%), linear-gradient(135deg, #E1C877 0%, #C7A24C 48%, #A6812F 100%)" }}>
+      <div className="card glow" style={{ marginTop: 14, padding: 16, border: "none", color: "#fff", position: "relative", overflow: "hidden", background: "radial-gradient(circle at 74% 20%, rgba(255,255,255,.30), transparent 46%), linear-gradient(135deg, #C4CBD0 0%, #A6AFB6 52%, #889199 100%)" }}>
         <div style={{ position: "relative" }}>
           {/* slider */}
           <div className="pill" style={{ display: "inline-flex", background: "rgba(0,0,0,.28)", padding: 3, marginBottom: 14 }}>

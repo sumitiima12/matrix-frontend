@@ -65,37 +65,37 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null })
   const periodLabel = (signupAt && ageMonths < 3) ? `Since ${monthTag(signupAt)}` : rangeText;
   const sel = { ...selStyle, flex: "1 1 0", minWidth: 0, padding: "8px 6px", fontSize: 11.5 };
   const Stat = ({ k, v, c }) => (
-    <div style={{ flex: "1 1 30%", minWidth: 88, background: "rgba(0,0,0,.05)", borderRadius: 12, padding: "9px 11px" }}>
-      <div style={{ fontSize: 9.5, opacity: .7, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".03em" }}>{k}</div>
-      <div className="mono" style={{ fontWeight: 800, fontSize: 14.5, marginTop: 2, color: c || "var(--ink)" }}>{v}</div>
+    <div style={{ flex: "1 1 30%", minWidth: 88, background: "rgba(255,255,255,.15)", borderRadius: 12, padding: "9px 11px" }}>
+      <div style={{ fontSize: 9.5, opacity: .85, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".03em" }}>{k}</div>
+      <div className="mono" style={{ fontWeight: 800, fontSize: 14.5, marginTop: 2, color: c || "#fff" }}>{v}</div>
     </div>
   );
   // Collapsed: just Win/Loss + P&L and an expand arrow.
   if (collapsed) {
     return (
-      <button onClick={onExpand} className="tap disp card glow" style={{ width: "100%", marginTop: 14, border: "none", background: "linear-gradient(135deg, #F2EADA 0%, #E7DAC2 100%)", color: "var(--ink)", borderRadius: 24, padding: "13px 16px", display: "flex", alignItems: "center", gap: 14 }}>
+      <button onClick={onExpand} className="tap disp card glow" style={{ width: "100%", marginTop: 14, border: "none", background: "radial-gradient(circle at 74% 20%, rgba(255,255,255,.28), transparent 46%), linear-gradient(135deg, #C4CBD0 0%, #A6AFB6 52%, #889199 100%)", color: "#fff", borderRadius: 24, padding: "13px 16px", display: "flex", alignItems: "center", gap: 14 }}>
         <div style={{ textAlign: "left" }}>
-          <div style={{ fontSize: 10, opacity: .65, fontWeight: 700 }}>WIN / LOSS</div>
+          <div style={{ fontSize: 10, opacity: .85, fontWeight: 700 }}>WIN / LOSS</div>
           <div className="mono" style={{ fontWeight: 800, fontSize: 15 }}>{wins} : {losses}</div>
         </div>
         <div style={{ textAlign: "left" }}>
-          <div style={{ fontSize: 10, opacity: .65, fontWeight: 700 }}>P&amp;L</div>
-          <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: netPnl >= 0 ? "var(--up)" : "var(--down)" }}>{netPnl >= 0 ? "+" : ""}{fmt(netPnl, "IN")}</div>
+          <div style={{ fontSize: 10, opacity: .85, fontWeight: 700 }}>P&amp;L</div>
+          <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: netPnl >= 0 ? "#9CFFD6" : "#FFB3BE" }}>{netPnl >= 0 ? "+" : ""}{fmt(netPnl, "IN")}</div>
         </div>
         <span style={{ marginLeft: "auto", display: "grid", placeItems: "center" }}><ChevronDown size={16} /></span>
       </button>
     );
   }
   return (
-    <div className="card glow" style={{ marginTop: 14, padding: 16, border: "none", background: "linear-gradient(135deg, #F2EADA 0%, #E7DAC2 100%)", color: "var(--ink)" }}>
+    <div className="card glow" style={{ marginTop: 14, padding: 16, border: "none", background: "radial-gradient(circle at 74% 20%, rgba(255,255,255,.28), transparent 46%), linear-gradient(135deg, #C4CBD0 0%, #A6AFB6 52%, #889199 100%)", color: "#fff" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div className="disp" style={{ fontWeight: 700, fontSize: 15 }}>Ideas Dashboard</div>
-        <span style={{ fontSize: 10.5, opacity: .7, marginRight: 34 }}>{periodLabel}</span>
+        <span style={{ fontSize: 10.5, opacity: .85, marginRight: 34 }}>{periodLabel}</span>
       </div>
-      <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 6, color: netPnl >= 0 ? "var(--up)" : "var(--down)" }}>{netPnl >= 0 ? "+" : ""}{fmt(netPnl, "IN")}</div>
-      <div style={{ fontSize: 11, opacity: .7, marginTop: -2 }}>If every idea was traded with {fmt(cap, "IN")} · {openN} still open</div>
+      <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 6, color: netPnl >= 0 ? "#9CFFD6" : "#FFB3BE" }}>{netPnl >= 0 ? "+" : ""}{fmt(netPnl, "IN")}</div>
+      <div style={{ fontSize: 11, opacity: .85, marginTop: -2 }}>If every idea was traded with {fmt(cap, "IN")} · {openN} still open</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-        <Stat k="Returns %" v={(avg >= 0 ? "+" : "") + avg.toFixed(2) + "%"} c={avg >= 0 ? "var(--up)" : "var(--down)"} />
+        <Stat k="Returns %" v={(avg >= 0 ? "+" : "") + avg.toFixed(2) + "%"} c={avg >= 0 ? "#9CFFD6" : "#FFB3BE"} />
         <Stat k="Win rate" v={n ? winRate.toFixed(0) + "%" : "—"} />
         <Stat k="Win / Loss" v={wins + " : " + losses} />
         <Stat k="Trades" v={n} />
@@ -274,7 +274,7 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
       ) : (
         <div style={{ position: "relative" }}>
           <IdeasDashboard ideas={shown} signupAt={signupAt} />
-          <button onClick={() => setDashOpen(false)} className="tap" title="Collapse" style={{ position: "absolute", top: 14, right: 16, display: "grid", placeItems: "center", border: "1px solid rgba(0,0,0,.15)", background: "rgba(0,0,0,.05)", color: "var(--ink)", borderRadius: 10, padding: "6px", fontWeight: 800 }}><ChevronUp size={14} /></button>
+          <button onClick={() => setDashOpen(false)} className="tap" title="Collapse" style={{ position: "absolute", top: 14, right: 16, display: "grid", placeItems: "center", border: "1px solid rgba(255,255,255,.35)", background: "rgba(255,255,255,.18)", color: "#fff", borderRadius: 10, padding: "6px", fontWeight: 800 }}><ChevronUp size={14} /></button>
         </div>
       ))}
       {view !== "community" && shown.length === 0 && <div className="card" style={{ marginTop: 12, padding: 16, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No Neo ideas for this market yet. Switch markets from the tabs above, or check the Community tab.</div>}
