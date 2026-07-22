@@ -1234,9 +1234,9 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const fmtDate = (t) => new Date(t).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" });
 
   const DStat = ({ k, v, c }) => (
-    <div style={{ flex: "1 1 28%", minWidth: 88, background: "rgba(255,255,255,.1)", borderRadius: 14, padding: "10px 12px" }}>
+    <div style={{ flex: "1 1 28%", minWidth: 88, background: "rgba(0,0,0,.05)", borderRadius: 14, padding: "10px 12px" }}>
       <div style={{ fontSize: 9.5, opacity: .85, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".03em" }}>{k}</div>
-      <div className="mono" style={{ fontWeight: 800, fontSize: 15, marginTop: 3, color: c || "#fff" }}>{v}</div>
+      <div className="mono" style={{ fontWeight: 800, fontSize: 15, marginTop: 3, color: c || "#141416" }}>{v}</div>
     </div>
   );
   const MetricMini = ({ k, v, c }) => (
@@ -1484,30 +1484,30 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           (Returns % / Win rate / Win-Loss / Trades) and a matching filter row.
           COLLAPSED: a Win/Loss + P&L strip with an expand chevron, exactly like Ideas. */}
       {!dashOpen ? (
-        <button onClick={() => setDashOpen(true)} className="tap disp card glow metal" style={{ width: "100%", marginTop: 18, border: "none", background: "var(--feature-grad)", color: "#fff", borderRadius: 24, padding: "13px 16px", display: "flex", alignItems: "center", gap: 14 }}>
+        <button onClick={() => setDashOpen(true)} className="tap disp card glow" style={{ width: "100%", marginTop: 18, border: "1px solid rgba(0,0,0,.06)", background: "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)", color: "#141416", borderRadius: 24, padding: "13px 16px", display: "flex", alignItems: "center", gap: 14 }}>
           <div style={{ textAlign: "left" }}>
             <div style={{ fontSize: 10, opacity: .8, fontWeight: 700 }}>WIN / LOSS</div>
             <div className="mono" style={{ fontWeight: 800, fontSize: 15 }}>{agg.wins} : {dLosses}</div>
           </div>
           <div style={{ textAlign: "left" }}>
             <div style={{ fontSize: 10, opacity: .8, fontWeight: 700 }}>P&amp;L</div>
-            <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: agg.pnl >= 0 ? "#9CFFD6" : "#FFB3BE" }}>{agg.pnl >= 0 ? "+" : ""}{fmt(agg.pnl, "IN")}</div>
+            <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: agg.pnl >= 0 ? "var(--up)" : "var(--down)" }}>{agg.pnl >= 0 ? "+" : ""}{fmt(agg.pnl, "IN")}</div>
           </div>
           <span style={{ marginLeft: "auto", display: "grid", placeItems: "center" }}><ChevronDown size={16} /></span>
         </button>
       ) : (
-      <div className="card glow metal" style={{ marginTop: 18, padding: 18, border: "none", background: "var(--feature-grad)", color: "#fff" }}>
+      <div className="card glow" style={{ marginTop: 18, padding: 18, border: "1px solid rgba(0,0,0,.06)", background: "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)", color: "#141416" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div className="disp" style={{ fontWeight: 700, fontSize: 15 }}>Automation Dashboard</div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 10.5, opacity: .85 }}>{(DASH_PRESETS.find(([v]) => v === dashPreset) || [null, "Last 12 months"])[1]}</span>
-            <button onClick={() => setDashOpen(false)} className="tap" title="Collapse" style={{ flex: "0 0 auto", display: "grid", placeItems: "center", border: "1px solid rgba(255,255,255,.28)", background: "rgba(255,255,255,.1)", color: "#fff", borderRadius: 10, padding: "5px" }}><ChevronUp size={15} /></button>
+            <button onClick={() => setDashOpen(false)} className="tap" title="Collapse" style={{ flex: "0 0 auto", display: "grid", placeItems: "center", border: "1px solid rgba(0,0,0,.12)", background: "rgba(0,0,0,.06)", color: "#141416", borderRadius: 10, padding: "5px" }}><ChevronUp size={15} /></button>
           </div>
         </div>
-        <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 6, color: agg.pnl >= 0 ? "#9CFFD6" : "#FFB3BE" }}>{agg.pnl >= 0 ? "+" : ""}{fmt(agg.pnl, "IN")}</div>
+        <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 6, color: agg.pnl >= 0 ? "var(--up)" : "var(--down)" }}>{agg.pnl >= 0 ? "+" : ""}{fmt(agg.pnl, "IN")}</div>
         <div style={{ fontSize: 11, opacity: .85, marginTop: -2 }}>{activeCount} active of {shown.length} strategies · {agg.open} still open</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-          <DStat k="Returns %" v={(dRet >= 0 ? "+" : "") + dRet.toFixed(2) + "%"} c={dRet >= 0 ? "#9CFFD6" : "#FFB3BE"} />
+          <DStat k="Returns %" v={(dRet >= 0 ? "+" : "") + dRet.toFixed(2) + "%"} c={dRet >= 0 ? "var(--up)" : "var(--down)"} />
           <DStat k="Win rate" v={agg.trades ? dWinRate.toFixed(0) + "%" : "—"} />
           <DStat k="Win / Loss" v={agg.wins + " : " + dLosses} />
           <DStat k="Trades" v={agg.trades} />
@@ -1521,12 +1521,12 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             </div>
             {dashPreset === "custom" && (
               <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                <input type="date" aria-label="From" value={dashFrom} onChange={(e) => setDashFrom(e.target.value)} className="no-ring mono" style={{ ...dsel, colorScheme: "dark" }} />
-                <input type="date" aria-label="To" value={dashTo} onChange={(e) => setDashTo(e.target.value)} className="no-ring mono" style={{ ...dsel, colorScheme: "dark" }} />
+                <input type="date" aria-label="From" value={dashFrom} onChange={(e) => setDashFrom(e.target.value)} className="no-ring mono" style={{ ...dsel, colorScheme: "light" }} />
+                <input type="date" aria-label="To" value={dashTo} onChange={(e) => setDashTo(e.target.value)} className="no-ring mono" style={{ ...dsel, colorScheme: "light" }} />
               </div>
             )}
             <div style={{ marginTop: 8 }}>
-              <MultiSelect label="Symbol" options={DEPLOY_OPTIONS} value={symFilter} onChange={setSymFilter} dark />
+              <MultiSelect label="Symbol" options={DEPLOY_OPTIONS} value={symFilter} onChange={setSymFilter} />
             </div>
           </>
         )}
