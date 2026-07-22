@@ -806,7 +806,13 @@ function AppInner() {
   /* The Indian market is shown to a non-admin only if they've connected an Indian broker (their
      own live NSE feed) OR the admin has enabled "show Indian without broker" (delayed BSE feed). */
   const indianVisible = effAdmin || Boolean(brokerFor && brokerFor("IN")) || Boolean(appSettings && appSettings.showIndianWithoutBroker);
-  useEffect(() => { if (!indianVisible && market === "IN") setMarket("US"); }, [indianVisible, market]);
+  /* US is admin-only until the admin turns on "Show US market". Commodity is Indian MCX, so it rides
+     with Indian visibility — when Indian is hidden, Commodity hides too. Crypto is always visible. */
+  const usVisible = effAdmin || Boolean(appSettings && appSettings.showUSMarket);
+  const commodityVisible = indianVisible;
+  const marketVisible = useCallback((m) => ({ IN: indianVisible, US: usVisible, Crypto: true, Commodity: commodityVisible }[m] ?? true), [indianVisible, usVisible, commodityVisible]);
+  // If the user is sitting on a market they can no longer see, snap them to a visible one.
+  useEffect(() => { if (!marketVisible(market)) setMarket(indianVisible ? "IN" : "Crypto"); }, [marketVisible, market, indianVisible]);
   /* If a member is (or was) in Real mode but the admin has turned Real off for the market they're
      on, snap them back to Virtual — a stored "real" preference must not override a live admin lock. */
   useEffect(() => { if (appSettings && !canRealMode(market) && mode === "real") setMode("virtual"); }, [appSettings, canRealMode, market, mode, setMode]);
@@ -1100,7 +1106,7 @@ function AppInner() {
           </div>
           {!detail && ["home", "ideas", "automation", "portfolio"].includes(tab) && (
             <div className="hide-scroll" style={{ display: "flex", gap: 8, overflowX: "auto", padding: "0 18px 12px" }}>
-              {[["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["Commodity", "🪙 Commodity"]].filter(([k]) => k !== "IN" || indianVisible).map(([k, l]) => (
+              {[["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["Commodity", "🪙 Commodity"]].filter(([k]) => marketVisible(k)).map(([k, l]) => (
                 <button key={k} onClick={() => setMarket(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "8px 14px", fontWeight: 700, fontSize: 12.5, border: "1px solid " + (market === k ? "var(--primary)" : "var(--line)"), background: market === k ? "var(--primary)" : "var(--surface)", color: market === k ? "var(--on-primary)" : "var(--ink)" }}>{l}</button>
               ))}
             </div>

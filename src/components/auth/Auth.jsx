@@ -472,6 +472,15 @@ function AdminGates({ settings, onSave }) {
         <YesNo on={Boolean(local.showIndianWithoutBroker)} onChange={(v) => push({ ...local, showIndianWithoutBroker: v })} />
       </div>
 
+      {/* 2c. Show the US market tab to non-admin users. Default No — US stays admin-only until enabled. */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, paddingTop: 10, paddingBottom: 12, borderBottom: "1px solid var(--line)" }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 12.5 }}>Show US market</div>
+          <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2, lineHeight: 1.4 }}>Off: only admins see the US market. On: all users see the US market tab.</div>
+        </div>
+        <YesNo on={Boolean(local.showUSMarket)} onChange={(v) => push({ ...local, showUSMarket: v })} />
+      </div>
+
       {/* 3. Broker connect, per market */}
       <div style={{ fontWeight: 700, fontSize: 12.5, marginTop: 12, marginBottom: 6 }}>Allow users to connect brokers</div>
       {GATE_MARKETS.map(([m, label]) => (

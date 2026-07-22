@@ -161,10 +161,10 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
       catch (e) { setErr(String(e.message || e)); setBusy(null); }
       return;
     }
-    // SHARED-APP / partner OAuth ("Log in with FYERS" / "Log in with Dhan"): one tap straight to the
-    // broker's own login. Matrix's registered app is the OAuth client, so there are NO keys for the
-    // user to create. (FYERS also keeps the "use my own app" form below as an advanced option.)
-    if (b.sharedOAuth) { return submitSharedLogin(b); }
+    // SHARED-APP OAuth ("Log in with FYERS") is ADMIN-ONLY: the house app authorises the owner's own
+    // FYERS account. Other users must bring their own FYERS app (App ID + Secret), so for them we skip
+    // the shared login and fall through to the credential form below.
+    if (b.sharedOAuth && isAdmin) { return submitSharedLogin(b); }
     // Bring-your-own-app OR bring-your-own-credential OR bring-your-own-keys (Delta) brokers
     // open an inline form first.
     if (b.userCreds || b.byoaOAuth || b.byoaKeys) { setCredFor((cur) => (cur === b.id ? null : b.id)); setCreds({}); return; }
@@ -321,7 +321,7 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
                 ) : canConnect ? (
                   <button onClick={() => start(b)} disabled={busy === b.id} className="tap disp"
                     style={{ flex: "0 0 auto", border: "none", background: "var(--ink)", color: "var(--surface)", borderRadius: 10, padding: "8px 18px", fontWeight: 800, fontSize: 12, cursor: "pointer", opacity: busy === b.id ? 0.5 : 1 }}>
-                    {busy === b.id ? "…" : (b.sharedOAuth ? `Log in with ${b.name}` : "Connect")}
+                    {busy === b.id ? "…" : (b.sharedOAuth && isAdmin ? `Log in with ${b.name}` : "Connect")}
                   </button>
                 ) : null}
               </div>
@@ -332,7 +332,7 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
                   "Advanced"): FYERS → enter your own App ID + Secret; Dhan → paste an access token. This
                   is the reliable path when the one-tap shared login can't be used — e.g. a FYERS app that
                   only authorises its own owner, so each user connects with their own app instead. */}
-              {b.sharedOAuth && (b.byoaOAuth || b.userCreds) && !isConnected && canConnect && (
+              {b.sharedOAuth && isAdmin && (b.byoaOAuth || b.userCreds) && !isConnected && canConnect && (
                 <button onClick={() => { setErr(null); setCreds({}); setCredFor((cur) => (cur === b.id ? null : b.id)); }}
                   className="tap disp" style={{ marginTop: 10, width: "100%", border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", borderRadius: 10, padding: "9px 12px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
                   {credFor === b.id ? "Hide"
