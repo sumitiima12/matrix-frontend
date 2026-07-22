@@ -552,11 +552,104 @@ export function interpretText(text) {
   return { conds, defs, unparsed: cleanUnparsed };
 }
 
+/* ── STRATEGY SUGGESTER ──────────────────────────────────────────────────────────────────
+   Turns a loose BRIEF ("suggest a strategy using Bollinger, MACD and RSI", "ride momentum with
+   BB + RSI") into a COMPLETE, coherent entry+exit system. Unlike interpretText (which parses the
+   literal conditions a user writes), this DESIGNS one: Neo picks sensible defaults and combines the
+   named indicators into a bull-momentum (default) or mean-reversion strategy. Each indicator plays a
+   role — trend/breakout trigger, momentum confirmation, or exit — and the highest-priority exit wins
+   so the strategy has one clean way out. Bias flips every rule for reversal briefs. */
+function suggestSpecs(bias) {
+  const bull = bias !== "reversal";
+  return {
+    BB: { defs: [{ type: "BB", len: "20", name: "BB1" }, CC_DEF],
+      entry: [{ la: "CC.close", op: bull ? ">" : "<", b: bull ? "BB1.upper" : "BB1.lower", bType: "ind" }],
+      exit: { la: "CC.close", op: bull ? "crosses_below" : "crosses_above", b: "BB1.middle", bType: "ind" }, exitP: 90 },
+    KC: { defs: [{ type: "KC", len: "20", name: "KC1" }, CC_DEF],
+      entry: [{ la: "CC.close", op: bull ? ">" : "<", b: bull ? "KC1.upper" : "KC1.lower", bType: "ind" }],
+      exit: { la: "CC.close", op: bull ? "crosses_below" : "crosses_above", b: "KC1.middle", bType: "ind" }, exitP: 85 },
+    Supertrend: { defs: [{ type: "Supertrend", len: "10", mult: "3", name: "ST1" }],
+      entry: [{ la: "ST1.dir", op: bull ? ">" : "<", b: "0", bType: "num" }],
+      exit: { la: "ST1.dir", op: bull ? "crosses_below" : "crosses_above", b: "0", bType: "num" }, exitP: 70 },
+    MACD: { defs: [{ type: "MACD", len: "", name: "MACD1" }],
+      entry: [{ la: "MACD1.line", op: bull ? ">" : "crosses_above", b: "MACD1.signal", bType: "ind" }],
+      exit: { la: "MACD1.line", op: "crosses_below", b: "MACD1.signal", bType: "ind" }, exitP: 60 },
+    EMA: { defs: [{ type: "EMA", len: "9", name: "EMA_f" }, { type: "EMA", len: "21", name: "EMA_s" }],
+      entry: [{ la: "EMA_f", op: bull ? ">" : "crosses_above", b: "EMA_s", bType: "ind" }],
+      exit: { la: "EMA_f", op: "crosses_below", b: "EMA_s", bType: "ind" }, exitP: 50 },
+    VWAP: { defs: [{ type: "VWAP", len: "", name: "VWAP1" }, CC_DEF],
+      entry: [{ la: "CC.close", op: bull ? ">" : "<", b: "VWAP1", bType: "ind" }],
+      exit: { la: "CC.close", op: bull ? "crosses_below" : "crosses_above", b: "VWAP1", bType: "ind" }, exitP: 40 },
+    Stoch: { defs: [{ type: "Stoch", len: "14", name: "STO1" }],
+      entry: bull ? [{ la: "STO1.k", op: ">", b: "STO1.d", bType: "ind" }] : [{ la: "STO1.k", op: "<", b: "20", bType: "num" }],
+      exit: bull ? { la: "STO1.k", op: "crosses_below", b: "STO1.d", bType: "ind" } : { la: "STO1.k", op: ">", b: "80", bType: "num" }, exitP: 35 },
+    RSI: { defs: [{ type: "RSI", len: "14", name: "RSI1" }],
+      entry: [{ la: "RSI1", op: bull ? ">" : "<", b: bull ? "60" : "30", bType: "num" }],
+      exit: { la: "RSI1", op: bull ? "<" : ">", b: bull ? "45" : "55", bType: "num" }, exitP: 30 },
+    ADX: { defs: [{ type: "ADX", len: "14", name: "ADX1" }],   // trend-strength FILTER only — no exit of its own
+      entry: [{ la: "ADX1", op: ">", b: "25", bType: "num" }], exit: null, exitP: 0 },
+  };
+}
+const SUGGEST_DETECT = [
+  [/bollinger|boll\b|\bbb\b|bbands?/i, "BB"],
+  [/keltner|\bkc\b/i, "KC"],
+  [/super\s*trend/i, "Supertrend"],
+  [/macd/i, "MACD"],
+  [/vwap/i, "VWAP"],
+  [/stochastic|\bstoch\b/i, "Stoch"],
+  [/\badx\b/i, "ADX"],
+  [/\brsi\b|relative\s*strength/i, "RSI"],
+  [/\bema\b|exponential\s*moving|moving\s*average|\bma\b/i, "EMA"],
+];
+/* Does this text READ like a request for Neo to design a strategy (vs. a literal rule)? */
+export function isSuggestRequest(text) {
+  return /\b(suggest|recommend|design|build|create|make|give\s+me|come\s+up|ride|combination|combine)\b/i.test(String(text || ""))
+    && SUGGEST_DETECT.some(([re]) => re.test(text));
+}
+export function suggestStrategy(text) {
+  const t = String(text || "");
+  const reversal = /revers|mean[\s-]*revert|mean[\s-]*reversion|bounce|oversold|\bdip\b|pull[\s-]*back|contrarian|fade/i.test(t);
+  const bias = reversal ? "reversal" : "momentum";
+  const specs = suggestSpecs(bias);
+  const picked = [];
+  for (const [re, key] of SUGGEST_DETECT) if (re.test(t) && !picked.includes(key)) picked.push(key);
+  if (!picked.length) return null;
+  const defs = [], entry = [], exitCands = [];
+  const addDefs = (ds) => ds.forEach((d) => { if (!defs.find((x) => x.name === d.name)) defs.push(d); });
+  picked.forEach((key) => {
+    const s = specs[key];
+    addDefs(s.defs);
+    s.entry.forEach((c) => entry.push({ ...c, gate: entry.length ? "AND" : undefined }));
+    if (s.exit) exitCands.push({ p: s.exitP, cond: s.exit });
+  });
+  exitCands.sort((a, b) => b.p - a.p);
+  const exit = exitCands.length ? [{ ...exitCands[0].cond, gate: undefined }] : [];
+  return { entry, exit, defs, bias, indicators: picked, tf: detectTf(t) || null };
+}
+
 /* Human phrase for a single operand, so a condition preview reads like English. */
 export function operandLabel(op) {
   // Multi-timeframe EMA/SMA operand ("EMA9_3m") -> "EMA 9 (3m)" so the read-back stays human.
   const mtf = typeof op === "string" && op.match(/^(EMA|SMA)(\d+)_(\w+)$/);
   if (mtf) return `${mtf[1]} ${mtf[2]} (${mtf[3]})`;
+  // Sub-attribute operands (BB1.upper, MACD1.signal, CC.close) -> friendly phrases for the read-back.
+  if (typeof op === "string" && op.includes(".") && !op.startsWith(PATTERN_OPERAND_PREFIX) && !op.startsWith(CANDLE_OPERAND_PREFIX)) {
+    const [nm, attrRaw] = op.split("."); const a = (attrRaw || "").toLowerCase();
+    if (/^CC$/i.test(nm) || /^CurrentCandle/i.test(nm)) return "candle " + a;
+    if (/^PC$/i.test(nm) || /^PrevCandle/i.test(nm)) return "previous candle " + a;
+    if (/^BB/i.test(nm)) return "Bollinger " + (a === "upper" ? "upper band" : a === "lower" ? "lower band" : "middle band");
+    if (/^KC/i.test(nm)) return "Keltner " + (a === "upper" ? "upper band" : a === "lower" ? "lower band" : "middle line");
+    if (/^MACD/i.test(nm)) return a === "signal" ? "MACD signal" : a === "hist" ? "MACD histogram" : "MACD line";
+    if (/^STO/i.test(nm)) return a === "d" ? "Stochastic %D" : "Stochastic %K";
+    if (/^ST/i.test(nm)) return "Supertrend " + (a === "dir" ? "direction" : "line");
+  }
+  if (typeof op === "string" && !op.includes(".")) {
+    if (/^RSI/i.test(op)) return "RSI";
+    if (/^ADX/i.test(op)) return "ADX";
+    if (/^VWAP/i.test(op)) return "VWAP";
+    if (op === "EMA_f") return "fast EMA"; if (op === "EMA_s") return "slow EMA";
+    const em = op.match(/^(EMA|SMA)(\d+)$/); if (em) return `${em[1]} ${em[2]}`;
+  }
   if (typeof op === "string" && op.startsWith(PATTERN_OPERAND_PREFIX)) {
     const key = op.slice(PATTERN_OPERAND_PREFIX.length);
     const ph = Object.keys(PATTERN_KEYS).find((k) => PATTERN_KEYS[k] === key);

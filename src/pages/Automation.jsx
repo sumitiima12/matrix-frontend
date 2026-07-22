@@ -10,7 +10,7 @@ import { useBacktestStats } from "../hooks/useBacktestStats";
 import { SMAarr, EMAarr, RSIarr, MACDarr, BBarr, CCIarr, ATRarr, VWAParr, ADXarr, CF } from "../lib/series";
 import { ALL, UNIVERSE, marketOf } from "../domain/universe";
 import { apiListPublicStrategies, apiPublishStrategy, apiUnpublishStrategy, aiInterpretStrategyAI } from "../domain/api";
-import { humanizeStrategy, humanizeCond, PATTERN_EXPLAIN, patternsInConds } from "../domain/strategyLang";
+import { humanizeStrategy, humanizeCond, PATTERN_EXPLAIN, patternsInConds, suggestStrategy } from "../domain/strategyLang";
 /* Neo's plain-English read-back of a set of conditions: "a Cup & Handle forms, and RSI is below 40". */
 const neoReads = (conds) => (conds || []).map((c, i) => `${i ? (c.gate === "OR" ? "or " : "and ") : ""}${humanizeCond(c)}`).join(", ");
 import { useCandles } from "../hooks/useCandles";
@@ -870,8 +870,8 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const DEPLOY_OPTIONS = useMemo(() => (
     (UNIVERSE[market] || []).map((s) => s.sym)
   ), [market]);
-  const [pEntry, setPEntry] = useState("Buy when EMA 9 crosses above EMA 21 and RSI is above 55.");
-  const [pExit, setPExit] = useState("Exit when RSI crosses above 85 or MACD histogram becomes negative or MACD line crosses below MACD signal line.");
+  const [pEntry, setPEntry] = useState("");
+  const [pExit, setPExit] = useState("");
   const [stratName, setStratName] = useState("");
   const [editingId, setEditingId] = useState(null);       // when set, Save updates this strategy in place
   const [selectedTpl, setSelectedTpl] = useState(null);   // highlighted Strategy Idea (tap toggles)
@@ -950,6 +950,21 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       }
     } catch { setAiMsg({ ok: false, t: "Couldn't reach Neo just now — try again." }); }
     setAiBusy(false);
+  };
+  /* STRATEGY SUGGESTION. When the entry box reads like a brief ("suggest a strategy using Bollinger,
+     MACD and RSI") rather than literal conditions, Neo DESIGNS a complete entry+exit system from the
+     named indicators. Only offered when the literal parser found no entry conditions, so it never
+     competes with a user writing explicit rules. One tap loads it into the editable builder below. */
+  const suggestion = useMemo(() => (eParsed.conds.length === 0 && pEntry.trim() ? suggestStrategy(pEntry) : null), [pEntry, eParsed.conds.length]);
+  const applySuggestion = () => {
+    if (!suggestion) return;
+    const withId = suggestion.defs.map((d, i) => ({ id: Date.now() + i, type: d.type, len: String(d.len == null ? "" : d.len), mult: d.mult, tf: suggestion.tf || tf, name: d.name }));
+    setDefs(withId);
+    setEntryConds(suggestion.entry);
+    setExitConds(suggestion.exit);
+    setMode("builder");
+    if (suggestion.tf) setTf(suggestion.tf);
+    setAiMsg({ ok: true, t: "Neo drafted a strategy from your brief — review the rows below, tweak anything, then deploy." });
   };
   const plainDefs = useMemo(() => { const d = []; [...eParsed.defs, ...xParsed.defs].forEach((x) => { if (x && !d.find((y) => y.name === x.name)) d.push(x); }); return d; }, [eParsed, xParsed]);
   const cfg = mode === "builder"
@@ -1513,7 +1528,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         <div className="fade">
           {/* how do you want to build it? */}
           <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
-            {[["builder", "🧩 Visual builder"], ["plain", "✍️ Write a Prompt"]].map(([k, l]) => (
+            {[["builder", "🧩 Visual builder"], ["plain", "✍️ Plain English"]].map(([k, l]) => (
               <button key={k} onClick={() => setMode(k)} className="tap disp" style={{ flex: 1, padding: "12px 10px", borderRadius: 14, fontWeight: 700, fontSize: 12.5, border: "1px solid " + (mode === k ? "var(--primary)" : "var(--line)"), background: mode === k ? "var(--primary-soft)" : "var(--surface)", color: mode === k ? "var(--primary)" : "var(--ink)" }}>{l}</button>
             ))}
           </div>
@@ -1593,6 +1608,15 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                 <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Entry rules — in plain English</div>
                 <textarea value={pEntry} onChange={(e) => setPEntry(e.target.value)} placeholder="e.g. EMA 21 > EMA 50 and RSI > 60 — or: bullish on 3m + 5m + 15m — or: price bounces off support, MACD crosses above signal, three white soldiers." className="no-ring" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13, minHeight: 84, background: "var(--elev)", resize: "vertical", lineHeight: 1.5 }} />
                 {eParsed.conds.length > 0 && <div style={{ fontSize: 10.5, color: "var(--up)", marginTop: 6, fontWeight: 700, display: "flex", gap: 5 }}><Sparkles size={12} style={{ flex: "0 0 auto", marginTop: 1 }} /><span>Neo reads: buy when {neoReads(eParsed.conds)}.</span></div>}
+                {suggestion && suggestion.indicators.length > 0 && (
+                  <div style={{ marginTop: 8, border: "1px solid var(--primary)", background: "var(--primary-soft)", borderRadius: 12, padding: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 800, color: "var(--primary)" }}><Sparkles size={14} /> Neo suggests a {suggestion.bias === "reversal" ? "mean-reversion" : "momentum"} strategy</div>
+                    <div style={{ fontSize: 11.5, color: "var(--ink)", marginTop: 8, lineHeight: 1.55 }}><b>Buy when</b> {neoReads(suggestion.entry)}.</div>
+                    <div style={{ fontSize: 11.5, color: "var(--ink)", marginTop: 4, lineHeight: 1.55 }}><b>Exit when</b> {suggestion.exit.length ? neoReads(suggestion.exit) : "the stop-loss or target is hit"}.</div>
+                    <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 6 }}>Uses {suggestion.indicators.join(" · ")} · defaults you can edit after adding</div>
+                    <button onClick={applySuggestion} className="tap disp" style={{ marginTop: 10, width: "100%", border: "none", background: "var(--primary)", color: "var(--on-primary)", borderRadius: 10, padding: 10, fontWeight: 800, fontSize: 12.5, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}><Sparkles size={14} /> Use this strategy</button>
+                  </div>
+                )}
                 <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, margin: "14px 0 6px" }}>Exit rules — in plain English</div>
                 <textarea value={pExit} onChange={(e) => setPExit(e.target.value)} placeholder="e.g. RSI > 70 — or: EMA 21 crosses below EMA 50, price rejects at resistance, three black crows." className="no-ring" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13, minHeight: 84, background: "var(--elev)", resize: "vertical", lineHeight: 1.5 }} />
                 {xParsed.conds.length > 0 && <div style={{ fontSize: 10.5, color: "var(--up)", marginTop: 6, fontWeight: 700, display: "flex", gap: 5 }}><Sparkles size={12} style={{ flex: "0 0 auto", marginTop: 1 }} /><span>Neo reads: exit when {neoReads(xParsed.conds)}.</span></div>}
