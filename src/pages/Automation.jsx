@@ -648,8 +648,9 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
   const [busy, setBusy] = useState(false);
   const refresh = () => { if (userId) loadAutoBuys(userId).then(setData); };
   useEffect(() => { refresh(); const id = setInterval(refresh, 12000); return () => clearInterval(id); /* eslint-disable-next-line */ }, [userId]);
-  // Only strategies for the market you're on (a crypto auto-buy doesn't show under Indian).
-  const live = (data.strategies || []).filter((s) => (s.status === "active" || s.status === "paused") && (s.market || "Crypto") === market);
+  // Only strategies for the market you're on (a crypto auto-buy doesn't show under Indian) AND that
+  // actually hold a LIVE position right now — "Live" means in a trade, not merely armed and waiting.
+  const live = (data.strategies || []).filter((s) => (s.status === "active" || s.status === "paused") && (s.market || "Crypto") === market && s.inPosition);
   if (!userId || !live.length) return null;
   const doPause = async (s) => {
     const nowActive = s.status === "active";

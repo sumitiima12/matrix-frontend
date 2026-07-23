@@ -904,7 +904,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       inMarket(t.sym, t.market) &&
       (isReal ? !!t.real : !t.real) &&
       t.status !== "rejected" && t.entry != null &&
-      stampT(t) >= totFrom);
+      // An OPEN position is live right now, so its P&L belongs in every period (even if it was
+      // entered before the window) — matching what the Smart Auto-Buy card shows. Closed trades
+      // are still scoped to the selected date range.
+      (t.exitAt == null || stampT(t) >= totFrom));
     let pnl = 0, invested = 0, open = 0, closedN = 0, wins = 0, byType = { Manual: 0, "Auto Buy": 0, Automate: 0 };
     for (const t of rows) {
       const closed = t.exitAt != null && t.exit != null;
@@ -1090,7 +1093,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   {autoRows.length === 0 && <div style={{ fontSize: 11.5, opacity: .82, lineHeight: 1.6 }}>No auto-buy positions in this period yet. Positions are placed at real market prices and closed by the exit engine when a target or stop is actually hit.</div>}
                   {autoRows.map((t) => {
                     const cyc = (t.market || marketOf(t.sym) || "IN");
-                    const statusLabel = t.rejected ? "REJECTED" : t.status === "partial" ? "◑ PARTIAL" : t.open ? "● OPEN" : (t.exitType || "CLOSED");
+                    const statusLabel = t.rejected ? "⛔ Order rejected" : t.status === "partial" ? "◑ PARTIAL" : t.open ? "● OPEN" : (t.exitType || "CLOSED");
                     const statusColor = t.rejected ? "var(--down)" : t.status === "partial" ? "#B26B00" : undefined;
                     return (
                     <div key={t.id} style={{ background: t.rejected ? "rgba(232,72,85,.12)" : "rgba(0,0,0,.05)", borderRadius: 12, padding: "10px 12px", border: t.rejected ? "1px solid rgba(232,72,85,.4)" : "none" }}>
