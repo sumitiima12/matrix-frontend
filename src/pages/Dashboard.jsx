@@ -934,7 +934,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           {dashView === "total" ? (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 12, opacity: .85 }}>{isReal ? "Real" : "Virtual"} · {MKT_LABEL[market]} · {isReal && isLeveraged ? "margin deployed" : "current value"}</span>
+                <span style={{ fontSize: 12, opacity: .85, fontWeight: 700 }}>P&amp;L</span>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   {/* Total-card date range — a dropdown (default Today) instead of a chip row. */}
                   <select aria-label="Date range" value={totPeriod} onClick={(e) => e.stopPropagation()} onChange={(e) => { e.stopPropagation(); setTotPeriod(e.target.value); }} style={{ fontSize: 11, fontWeight: 700, border: "1px solid rgba(0,0,0,.14)", borderRadius: 9, padding: "5px 8px", background: "rgba(0,0,0,.04)", color: "#141416" }}>
@@ -945,25 +945,25 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 </div>
               </div>
               <div onClick={onGoPortfolio} className="tap" style={{ marginTop: 2 }}>
-                {/* Headline = total P&L (Manual + Smart Auto-Buy + Automate) for the chosen period. */}
-                <div className="mono" style={{ fontWeight: 800, fontSize: 27, color: totalStats.pnl >= 0 ? "var(--up)" : "var(--down)" }}>{isReal && isLeveraged ? (totalStats.pnl >= 0 ? "+" : "") + money1(totalStats.pnl) : (isReal ? money1(dashVal) : fmt(dashVal, market))}</div>
-                <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
-                  {isReal && isLeveraged ? (
-                    <DashStat k="Net returns" v={(dashNet >= 0 ? "+" : "") + money1(dashNet)} pos={dashNet >= 0} />
-                  ) : (
-                    <>
-                      <DashStat k={`P&L · ${totLabel}`} v={(totalStats.pnl >= 0 ? "+" : "") + (isReal ? money1(totalStats.pnl) : fmt(totalStats.pnl, market))} pos={totalStats.pnl >= 0} />
-                      <DashStat k="Returns %" v={(totalStats.retPct >= 0 ? "+" : "") + totalStats.retPct.toFixed(1) + "%"} pos={totalStats.retPct >= 0} />
-                      {isReal && realCash != null && <DashStat k="Available cash" v={money1(realCash)} pos />}
-                    </>
-                  )}
-                </div>
+                {/* Headline = total P&L (Manual + Smart Auto-Buy + Automate) in BLACK, with Returns %
+                    right beside it in green/red. Everything else on the card stays black. */}
+                {(() => {
+                  const hp = (isReal && isLeveraged) ? dashNet : totalStats.pnl;
+                  const hr = (isReal && isLeveraged) ? dashRet : totalStats.retPct;
+                  return (
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+                      <div className="mono" style={{ fontWeight: 800, fontSize: 27, color: "var(--ink)" }}>{(hp >= 0 ? "+" : "") + (isReal ? money1(hp) : fmt(hp, market))}</div>
+                      <div className="mono" style={{ fontWeight: 800, fontSize: 16, color: hr >= 0 ? "var(--up)" : "var(--down)" }}>{(hr >= 0 ? "+" : "") + hr.toFixed(1) + "%"}</div>
+                    </div>
+                  );
+                })()}
+                {isReal && realCash != null && <div style={{ marginTop: 8, fontSize: 11.5, opacity: .9 }}>Available cash <b style={{ fontWeight: 800, color: "var(--ink)" }}>{money1(realCash)}</b></div>}
                 {/* Per-type P&L breakdown so the three sources are visible at a glance. */}
                 {!(isReal && isLeveraged) && (
                   <div style={{ display: "flex", gap: 14, marginTop: 12, fontSize: 11.5, opacity: .9, flexWrap: "wrap" }}>
-                    <span>Manual <b style={{ fontWeight: 800, color: totalStats.byType.Manual >= 0 ? "var(--up)" : "var(--down)" }}>{(totalStats.byType.Manual >= 0 ? "+" : "") + (isReal ? money1(totalStats.byType.Manual) : fmt(totalStats.byType.Manual, market))}</b></span>
-                    <span>Auto-Buy <b style={{ fontWeight: 800, color: totalStats.byType["Auto Buy"] >= 0 ? "var(--up)" : "var(--down)" }}>{(totalStats.byType["Auto Buy"] >= 0 ? "+" : "") + (isReal ? money1(totalStats.byType["Auto Buy"]) : fmt(totalStats.byType["Auto Buy"], market))}</b></span>
-                    <span>Automate <b style={{ fontWeight: 800, color: totalStats.byType.Automate >= 0 ? "var(--up)" : "var(--down)" }}>{(totalStats.byType.Automate >= 0 ? "+" : "") + (isReal ? money1(totalStats.byType.Automate) : fmt(totalStats.byType.Automate, market))}</b></span>
+                    <span>Manual <b style={{ fontWeight: 800, color: "var(--ink)" }}>{(totalStats.byType.Manual >= 0 ? "+" : "") + (isReal ? money1(totalStats.byType.Manual) : fmt(totalStats.byType.Manual, market))}</b></span>
+                    <span>Auto-Buy <b style={{ fontWeight: 800, color: "var(--ink)" }}>{(totalStats.byType["Auto Buy"] >= 0 ? "+" : "") + (isReal ? money1(totalStats.byType["Auto Buy"]) : fmt(totalStats.byType["Auto Buy"], market))}</b></span>
+                    <span>Automate <b style={{ fontWeight: 800, color: "var(--ink)" }}>{(totalStats.byType.Automate >= 0 ? "+" : "") + (isReal ? money1(totalStats.byType.Automate) : fmt(totalStats.byType.Automate, market))}</b></span>
                   </div>
                 )}
                 {/* At-a-glance counts — holdings, auto-buy positions, and any rejects for THIS market. */}
