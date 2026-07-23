@@ -593,7 +593,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
         const present = TRADE_TYPES.filter((t) =>
           portfolio.some((h) => (h.market || marketOf(h.sym)) === mkt && typeOf(h) === t));
         if (present.length < 2) return null;
-        const color = (t) => (t === "Auto Buy" ? "var(--primary)" : t === "Automate" ? "#8B5CF6" : "var(--muted)");
+        const color = (t) => (t === "Auto Buy" ? "var(--primary)" : t === "Automate" ? "#8B5CF6" : t === "Screener Auto Buy" ? "#0EA5E9" : "var(--muted)");
         return (
           <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginTop: 12 }}>
             {present.map((t) => {

@@ -452,6 +452,11 @@ function AppInner() {
      time it's about to fire we show a single heads-up (see Dashboard), then never again.
      Auto-sell on SL/TP is already handled by the exit monitor in useOrders. */
   const autoBuyNow = (stock, qty = 1, opts = {}) => buyStockNow(stock, qty, { ...opts, tradeType: "Auto Buy" });
+  /* SCREENER AUTO-BUY — same mechanics as Auto-Buy (no confirm sheet, SL/TP armed, real or paper by
+     mode), but journalled under its own trade type so its P&L is attributable separately on the
+     dashboard and in history. Fired by the homepage "Popular Screeners" carousels and by any
+     user-built "Create your own screener". */
+  const screenerBuyNow = (stock, qty = 1, opts = {}) => buyStockNow(stock, qty, { ...opts, tradeType: "Screener Auto Buy" });
   /* Place a REAL market order WITHOUT the confirm sheet (for instant/auto buys). Routes by
      market to the connected broker, attaches SL/TP, and hands exits to the engine. Used when
      the app is in REAL mode so instant buys and Auto-Buy actually move real money. */
@@ -1124,7 +1129,7 @@ function AppInner() {
             <DetailPage s={detail} onBack={() => setDetail(null)} watched={watch.includes(detail.sym)} toggleWatch={toggleWatch} onTrade={goTrade} onBuy={buyStock} canBuy={canBuy} />
           ) : (
             <>
-              {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} onAutoBuy={autoBuyNow} mode={mode} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} canBuy={canBuy} hideDash={(market === "IN" || market === "Commodity") && virtualBlocked(market)} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} realPortfolio={realPortfolio} onRefreshReal={() => refreshPortfolio(market)} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} trades={trades} liveTick={liveTick} onWhy={openWhy} autoOnMap={autoOnMap} setAutoOnMap={setAutoOnMap} deployCapMap={deployCapMap} setDeployCapMap={setDeployCapMap} />}
+              {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} onAutoBuy={autoBuyNow} onScreenerBuy={screenerBuyNow} mode={mode} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} canBuy={canBuy} hideDash={(market === "IN" || market === "Commodity") && virtualBlocked(market)} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} realPortfolio={realPortfolio} onRefreshReal={() => refreshPortfolio(market)} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} trades={trades} liveTick={liveTick} onWhy={openWhy} autoOnMap={autoOnMap} setAutoOnMap={setAutoOnMap} deployCapMap={deployCapMap} setDeployCapMap={setDeployCapMap} />}
               {tab === "trade" && <TradeView walletMap={walletMap} adjustWallet={adjustWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} recordTrade={recordTrade} />}
               {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} canBuy={canBuy} market={market} onWhy={openWhy} me={auth ? (auth.username || null) : null} isAdmin={effAdmin} adminKey={adminKey} signupAt={auth ? (auth.createdAt || null) : null} />}
               {tab === "automation" && <Automation market={market} appMode={mode} onRecord={recordTrade} trades={trades} strats={strats} setStrats={setStrats} onExitAll={exitAllStrategies} me={auth ? (auth.username || null) : null} isAdmin={effAdmin} userId={userId} brokerFor={brokerFor} adminKey={adminKey} onConnectBroker={() => openBrokers(market)} />}

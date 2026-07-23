@@ -216,8 +216,8 @@ function BacktestResult({ cfg, defaultSym, blocked = false, onConnect, defaultTf
 
 /* ============================== TRADE AUTOMATION ============================== */
 
-const TFS = ["3m", "5m", "15m", "30m", "1h", "4h", "1D"];
-const OPSET = [[">", ">"], ["<", "<"], [">=", "≥"], ["<=", "≤"], ["==", "="], ["crosses_above", "⤴ crosses above"], ["crosses_below", "⤵ crosses below"], ["crossed_above_within", "⤴ crossed above (within N)"], ["crossed_below_within", "⤵ crossed below (within N)"]];
+export const TFS = ["3m", "5m", "15m", "30m", "1h", "4h", "1D"];
+export const OPSET = [[">", ">"], ["<", "<"], [">=", "≥"], ["<=", "≤"], ["==", "="], ["crosses_above", "⤴ crosses above"], ["crosses_below", "⤵ crosses below"], ["crossed_above_within", "⤴ crossed above (within N)"], ["crossed_below_within", "⤵ crossed below (within N)"]];
 
 function TemplateCard({ t, onActivate, onToggleBt, btActive, onLoad, selected = false, market = "IN" }) {
   // Only symbols that belong to the market you are looking at.
@@ -279,7 +279,7 @@ const IND_PARAMS = {
   Stoch: [["smoothK", "Smooth %K", "3"], ["smoothD", "Smooth %D", "3"]],
   Supertrend: [["mult", "Multiplier", "3"]],
 };
-function IndicatorDefs({ defs, setDefs }) {
+export function IndicatorDefs({ defs, setDefs }) {
   const [openId, setOpenId] = useState(null);   // which indicator's settings panel is expanded
   const upd = (id, k, v) => setDefs((p) => p.map((d) => d.id === id ? { ...d, [k]: v } : d));
   const add = () => setDefs((p) => [...p, { id: Date.now(), type: "EMA", len: "20", tf: "1D", name: "IND" + (p.length + 1) }]);
@@ -333,7 +333,7 @@ function IndicatorDefs({ defs, setDefs }) {
   );
 }
 
-function CondBuilder2({ label, conds, setConds, operands }) {
+export function CondBuilder2({ label, conds, setConds, operands }) {
   const upd = (i, k, v) => setConds((p) => p.map((c, j) => j === i ? { ...c, [k]: v } : c));
   const add = () => setConds((p) => [...p, { la: operands[0] || "Price", op: "<", bType: "num", b: "30", gate: "AND" }]);
   const del = (i) => setConds((p) => p.filter((_, j) => j !== i).map((c, j) => { if (j === 0) { const { gate, ...rest } = c; return rest; } return c; }));

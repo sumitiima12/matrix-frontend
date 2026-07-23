@@ -21,6 +21,7 @@ import CarouselCard from "../components/cards/CarouselCard";
 import MiniCandles from "../components/charts/MiniCandles";
 import Pop from "../components/common/Pop";
 import Section from "../components/common/Section";
+import PopularScreeners from "../components/home/PopularScreeners";
 
 /**
  * Dashboard — the trading desk. Composes the market strips, Matrix's Picks, trending, gainers/losers, news and the auto-buy panel.
@@ -616,7 +617,7 @@ export function marketOpen(market) {
   return true;
 }
 
-export default function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, onAutoBuy, mode, watch, toggleWatch, profile, portfolio = [], realPortfolio = [], onRefreshReal, wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [], liveTick = 0, onWhy, autoOnMap: autoOnMapProp, setAutoOnMap: setAutoOnMapProp, deployCapMap: deployCapMapProp, setDeployCapMap: setDeployCapMapProp, hideDash = false }) {
+export default function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, onAutoBuy, onScreenerBuy, mode, watch, toggleWatch, profile, portfolio = [], realPortfolio = [], onRefreshReal, wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [], liveTick = 0, onWhy, autoOnMap: autoOnMapProp, setAutoOnMap: setAutoOnMapProp, deployCapMap: deployCapMapProp, setDeployCapMap: setDeployCapMapProp, hideDash = false }) {
   const [glMode, setGlMode] = useState("Gainers");
   // Picks refresh ONCE AN HOUR (not on every tick) so they don't churn.
   const [pickHour, setPickHour] = useState(() => Math.floor(Date.now() / 3600000));
@@ -909,7 +910,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       // are still scoped to the selected date range.
       (t.exitAt == null || stampT(t) >= totFrom));
     const todayStart = new Date(new Date().setHours(0, 0, 0, 0)).getTime();
-    let pnl = 0, invested = 0, open = 0, closedN = 0, wins = 0, byType = { Manual: 0, "Auto Buy": 0, Automate: 0 };
+    let pnl = 0, invested = 0, open = 0, closedN = 0, wins = 0, byType = { Manual: 0, "Auto Buy": 0, Automate: 0, "Screener Auto Buy": 0 };
     for (const t of rows) {
       const closed = t.exitAt != null && t.exit != null;
       const st = ALL.find((a) => a.sym === t.sym) || {};
@@ -926,7 +927,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       const p = (cur - ref) * (t.qty || 1);
       pnl += p; invested += t.entry * (t.qty || 1);
       if (!closed) open++; else { closedN++; if (p > 0) wins++; }
-      const key = t.tradeType === "Auto Buy" ? "Auto Buy" : t.tradeType === "Automate" ? "Automate" : "Manual";
+      const key = t.tradeType === "Auto Buy" ? "Auto Buy" : t.tradeType === "Automate" ? "Automate" : t.tradeType === "Screener Auto Buy" ? "Screener Auto Buy" : "Manual";
       byType[key] += p;
     }
     // Win rate is over CLOSED trades only (an open position hasn't won or lost yet).
@@ -984,6 +985,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     <span>Manual <b style={{ fontWeight: 800, color: "var(--ink)" }}>{(totalStats.byType.Manual >= 0 ? "+" : "") + (isReal ? money1(totalStats.byType.Manual) : fmt(totalStats.byType.Manual, market))}</b></span>
                     <span>Auto-Buy <b style={{ fontWeight: 800, color: "var(--ink)" }}>{(totalStats.byType["Auto Buy"] >= 0 ? "+" : "") + (isReal ? money1(totalStats.byType["Auto Buy"]) : fmt(totalStats.byType["Auto Buy"], market))}</b></span>
                     <span>Automate <b style={{ fontWeight: 800, color: "var(--ink)" }}>{(totalStats.byType.Automate >= 0 ? "+" : "") + (isReal ? money1(totalStats.byType.Automate) : fmt(totalStats.byType.Automate, market))}</b></span>
+                    <span>Screener <b style={{ fontWeight: 800, color: "var(--ink)" }}>{(totalStats.byType["Screener Auto Buy"] >= 0 ? "+" : "") + (isReal ? money1(totalStats.byType["Screener Auto Buy"]) : fmt(totalStats.byType["Screener Auto Buy"], market))}</b></span>
                   </div>
                 )}
                 {/* At-a-glance counts — holdings, auto-buy positions, and any rejects for THIS market. */}
@@ -1263,6 +1265,9 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
 
       {/* Ideas carousel (not for F&O or Commodity) */}
       {market !== "Commodity" && market !== "Crypto" && <StockIdeasStrip onOpen={onOpen} onBuy={onBuy} market={market} liveTick={liveTick} />}
+
+      {/* Popular Screeners — 3 live-scanning strategy carousels, market-aware. */}
+      <PopularScreeners market={market} mode={mode} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} liveTick={liveTick} />
 
       {/* F&O Picks (Indian derivatives) */}
 

@@ -127,7 +127,7 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
     .filter((t) => { const ts = stamp(t); return ts >= from && ts <= to; })
     .map(withPnl);
   const allSyms = [...new Set(src.map((t) => t.sym))].sort();
-  const TYPES = ["Manual", "Automate", "Auto Buy"];
+  const TYPES = ["Manual", "Automate", "Auto Buy", "Screener Auto Buy"];
   const EXITS = ["Manual", "Exit trigger", "Stop loss", "Trailing stop", "Open"];
   const exitOf = (t) => (isRejected(t) ? "Rejected" : t.open ? "Open" : t.reconciled ? "Closed" : (t.exitType || "Manual"));
   const rows = src
@@ -141,10 +141,10 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
   const dt = (ms) => ms ? new Date(ms).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
   const totalPnl = rows.reduce((a, t) => a + (t.livePnl || 0), 0);
   const openN = rows.filter((t) => t.open).length;
-  const typeColor = (tt) => tt === "Auto Buy" ? "var(--primary)" : tt === "Automate" ? "#8B5CF6" : "var(--muted)";
+  const typeColor = (tt) => tt === "Auto Buy" ? "var(--primary)" : tt === "Automate" ? "#8B5CF6" : tt === "Screener Auto Buy" ? "#0EA5E9" : "var(--muted)";
   const exitColor = (et) => (et === "Stop loss" || et === "Trailing stop") ? "var(--down)" : et === "Exit trigger" ? "var(--up)" : et === "Open" ? "var(--primary)" : "var(--muted)";
   /* "Strategy by" — the strategy's creator for automated trades, else Manual / Auto Buy. */
-  const stratBy = (t) => t.strategyBy || (t.tradeType === "Auto Buy" ? "Auto Buy" : "Manual");
+  const stratBy = (t) => t.strategyBy || (t.tradeType === "Auto Buy" ? "Auto Buy" : t.tradeType === "Screener Auto Buy" ? "Screener Auto Buy" : "Manual");
 
   // Export the trades CURRENTLY shown (all active filters applied), so what you
   // see is what you get. Open positions carry their live price and unrealised P&L.

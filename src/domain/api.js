@@ -52,6 +52,21 @@ export async function scanIdeas(appSyms) {
     return (d.ideas || []).map((m) => ({ ...m, sym: bySy.get(m.sym) || m.sym }));
   } catch { return []; }
 }
+/* Screener scan — which of these symbols' LATEST 5m candle fires the screener's entry chain RIGHT NOW.
+   Returns [{sym, price, entryPrice, entryAt}]. Powers the homepage "Popular Screeners" carousels. */
+export async function scanScreener({ key, defs, entry, tf, appSyms }) {
+  if (!BACKEND_URL || !appSyms || !appSyms.length || !entry || !entry.length) return [];
+  try {
+    const ySyms = appSyms.map(yahooSymbol);
+    const r = await fetch(`${BACKEND_URL}/api/screener-scan`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, defs, entry, tf, symbols: ySyms }),
+    });
+    const d = await r.json().catch(() => ({}));
+    const bySy = new Map(appSyms.map((s) => [yahooSymbol(s), s]));
+    return (d.matches || []).map((m) => ({ ...m, sym: bySy.get(m.sym) || m.sym }));
+  } catch { return []; }
+}
 /* Momentum scan — "which stocks moved X% over one <tf> candle". Returns [{sym, chg, ratio}]. */
 export async function scanMomentum({ tf, pct, dir, bars, syms }) {
   if (!BACKEND_URL || !syms || !syms.length || !(pct > 0)) return [];
