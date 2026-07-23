@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ALL, UNIVERSE } from "../../domain/universe";
 import { CUR, chgColor, fmt, lsGet, lsSet } from "../../lib/format";
-import { METRICS, OPS, indValue } from "../../domain/screener";
-import { marketOpen } from "../../domain/api";
+import { METRICS, OPS, indValue, parseScreen } from "../../domain/screener";
+import { marketOpen, aiInterpretScreen } from "../../domain/api";
 import { selStyle } from "../common/styles";
-import { ChevronDown, ChevronUp, Filter, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Filter, Plus, Sparkles, Trash2 } from "lucide-react";
 
 /* CREATE YOUR OWN SCREENER — the second tab of "Screener".
    Built on the SAME metric engine as the Screener that used to sit below Trending (RSI, EMA, MACD,
@@ -34,11 +34,35 @@ const passes = (stock, conds) => conds.every((f) => {
   return cmp(f.o, x, y);
 });
 
-/* One editable list of metric conditions (used for both Entry and Exit) — mirrors the old Screener row. */
-function FilterRows({ conds, setConds }) {
+/* Turn a plain-English screen into metric conditions — local parser first (instant, no backend), then
+   Neo as a fallback. Returns an array of normalised conditions, or null if nothing could be read. */
+async function interpretConds(text) {
+  const res = parseScreen(text);
+  const out = (res.conds || []).map(normF);
+  if (res.dma) out.push(normF({ m: "sma50", o: ">", rhsType: "indicator", rhs: "sma200" }));
+  if (res.dmaBear) out.push(normF({ m: "sma50", o: "<", rhsType: "indicator", rhs: "sma200" }));
+  if (out.length) return out;
+  const ai = await aiInterpretScreen(text).catch(() => null);
+  return (ai && ai.length) ? ai.map(normF) : null;
+}
+
+/* One editable list of metric conditions (used for both Entry and Exit) — mirrors the old Screener row,
+   including the "Or write a prompt" box below Add condition. */
+function FilterRows({ conds, setConds, placeholder }) {
   const upd = (i, k, v) => setConds((p) => p.map((f, j) => j === i ? { ...f, [k]: v } : f));
   const add = () => setConds((p) => [...p, normF({ m: "ema20", o: ">", rhsType: "indicator", rhs: "ema50" })]);
   const del = (i) => setConds((p) => p.filter((_, j) => j !== i));
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState(null);
+  const runPrompt = async () => {
+    if (!text.trim()) return;
+    setBusy(true); setNote("Interpreting…");
+    const c = await interpretConds(text).catch(() => null);
+    setBusy(false);
+    if (c && c.length) { setConds(c); setNote("Applied " + c.length + " condition" + (c.length > 1 ? "s" : "") + " from your prompt."); }
+    else setNote("Couldn't read that — try wording it like \"RSI under 40 and MACD bullish\".");
+  };
   return (
     <div>
       {conds.map((f, i) => (
@@ -61,6 +85,13 @@ function FilterRows({ conds, setConds }) {
         </div>
       ))}
       <button onClick={add} className="tap" style={{ border: "1px dashed var(--line)", background: "transparent", borderRadius: 12, padding: "8px 12px", fontSize: 12.5, fontWeight: 600, color: "var(--primary)", display: "flex", gap: 5, alignItems: "center" }}><Plus size={15} /> Add condition</button>
+
+      {/* Or write a prompt — plain-English, parsed into the conditions above. */}
+      <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>Or write a prompt</div>
+      <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder || "e.g. RSI under 40 and MACD bullish"} className="no-ring"
+        style={{ width: "100%", marginTop: 6, border: "1px solid var(--line)", borderRadius: 12, padding: 11, fontSize: 13, minHeight: 58, resize: "vertical", background: "var(--surface)", color: "var(--ink)" }} />
+      <button onClick={runPrompt} disabled={busy || !text.trim()} className="tap disp" style={{ marginTop: 8, border: "none", borderRadius: 10, padding: "9px 14px", fontSize: 12.5, fontWeight: 800, background: text.trim() ? "var(--primary)" : "var(--elev)", color: text.trim() ? "var(--on-primary)" : "var(--muted)", display: "flex", gap: 6, alignItems: "center", opacity: busy ? 0.6 : 1 }}><Sparkles size={14} /> {busy ? "Interpreting…" : "Apply prompt"}</button>
+      {note && <div style={{ fontSize: 11, color: note.startsWith("Applied") ? "var(--up)" : "var(--muted)", marginTop: 7, fontWeight: 600, lineHeight: 1.5 }}>{note.startsWith("Applied") ? "✓ " : ""}{note}</div>}
     </div>
   );
 }
@@ -194,11 +225,11 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
 
       {/* Entry rules */}
       <div className="disp" style={{ fontWeight: 800, fontSize: 13.5, margin: "18px 0 8px" }}>Entry conditions <span style={{ fontWeight: 600, fontSize: 11, color: "var(--muted)" }}>— when to buy</span></div>
-      <FilterRows conds={entry} setConds={(u) => { setEntry(u); setSelRec(null); }} />
+      <FilterRows conds={entry} setConds={(u) => { setEntry(u); setSelRec(null); }} placeholder="e.g. RSI under 40 and MACD bullish and price above 50-DMA" />
 
       {/* Exit rules */}
       <div className="disp" style={{ fontWeight: 800, fontSize: 13.5, margin: "18px 0 8px" }}>Exit conditions <span style={{ fontWeight: 600, fontSize: 11, color: "var(--muted)" }}>— when to close</span></div>
-      <FilterRows conds={exit} setConds={setExit} />
+      <FilterRows conds={exit} setConds={setExit} placeholder="e.g. RSI above 65 or price below 50-DMA" />
       <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8 }}>Screening on daily indicators. Positions also close on the per-symbol stop-loss / target below.</div>
 
       {/* Symbol selection — collapsible, with Select all */}
