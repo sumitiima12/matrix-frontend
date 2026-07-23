@@ -661,7 +661,7 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
     <div className="card" style={{ padding: 14, marginBottom: 12, border: "1px solid var(--down)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <Bolt size={15} color="var(--down)" />
-        <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>Live Real Deployed</div>
+        <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>Live</div>
         {isAdmin && adminKey
           ? <button onClick={toggleLive} disabled={busy} className="tap disp" style={{ marginLeft: "auto", fontSize: 9, fontWeight: 800, padding: "4px 10px", borderRadius: 999, border: "1px solid " + (data.engineLive ? "var(--down)" : "var(--line)"), background: data.engineLive ? "var(--down-soft)" : "var(--elev)", color: data.engineLive ? "var(--down)" : "var(--muted)" }}>{busy ? "…" : (data.engineLive ? "● TRADING LIVE — tap to pause" : "DRY-RUN — tap to GO LIVE")}</button>
           : <span className="pill" style={{ marginLeft: "auto", fontSize: 9, fontWeight: 800, padding: "3px 8px", background: data.engineLive ? "var(--down-soft)" : "var(--elev)", color: data.engineLive ? "var(--down)" : "var(--muted)" }}>{data.engineLive ? "TRADING LIVE" : "DRY-RUN"}</span>}
@@ -1503,6 +1503,9 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a ? a.price : null; };
         const vd = strats.filter((s) => s.active && inMkt(s))
           .map((s) => ({ s, p: stratPerf(s, trades, dashRange, priceOf), e: lastEntry(s) }))
+          // "Live" means a position is actually OPEN right now (entry fired, exit/SL/TP not yet). A
+          // deployed strategy still waiting for its signal isn't live, so it doesn't belong here.
+          .filter((x) => x.p && x.p.open > 0)
           .sort((a, b) => b.e - a.e);
         if (!vd.length) return null;
         /* PAPER controls, mirroring "Live Real Deployed": Pause keeps the strategy deployed but stops
@@ -1514,7 +1517,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           <div className="card" style={{ padding: 14, marginTop: 12, border: "1px solid var(--primary)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
               <Sparkles size={15} color="var(--primary)" />
-              <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>Virtual Live Deployed</div>
+              <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>Live</div>
               <span className="pill" style={{ marginLeft: "auto", fontSize: 9, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: "var(--muted)" }}>PAPER</span>
             </div>
             <CollapsibleList items={vd} initial={5} reverse={false} render={({ s, p }) => (

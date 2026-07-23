@@ -931,27 +931,21 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 </div>
               </div>
               <div onClick={onGoPortfolio} className="tap" style={{ marginTop: 2 }}>
-                <div className="mono" style={{ fontWeight: 800, fontSize: 27 }}>{isReal ? money1(dashVal) : fmt(dashVal, market)}</div>
+                {/* Headline = total P&L (Manual + Smart Auto-Buy + Automate) for the chosen period. */}
+                <div className="mono" style={{ fontWeight: 800, fontSize: 27, color: totalStats.pnl >= 0 ? "var(--up)" : "var(--down)" }}>{isReal && isLeveraged ? (totalStats.pnl >= 0 ? "+" : "") + money1(totalStats.pnl) : (isReal ? money1(dashVal) : fmt(dashVal, market))}</div>
                 <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
-                  {/* P&L across ALL trade types (manual + auto-buy + automate) for the chosen period.
-                      For leveraged real venues the broker's own equity/P&L stays authoritative. */}
                   {isReal && isLeveraged ? (
-                    <>
-                      <DashStat k="Returns %" v={(dashRet >= 0 ? "+" : "") + dashRet.toFixed(1) + "%"} pos={dashRet >= 0} />
-                      <DashStat k="Net returns" v={(dashNet >= 0 ? "+" : "") + money1(dashNet)} pos={dashNet >= 0} />
-                      {realEquity != null && <DashStat k="Account equity" v={money1(realEquity)} pos={realEquity >= 0} />}
-                    </>
+                    <DashStat k="Net returns" v={(dashNet >= 0 ? "+" : "") + money1(dashNet)} pos={dashNet >= 0} />
                   ) : (
                     <>
                       <DashStat k={`P&L · ${totLabel}`} v={(totalStats.pnl >= 0 ? "+" : "") + (isReal ? money1(totalStats.pnl) : fmt(totalStats.pnl, market))} pos={totalStats.pnl >= 0} />
                       <DashStat k="Returns %" v={(totalStats.retPct >= 0 ? "+" : "") + totalStats.retPct.toFixed(1) + "%"} pos={totalStats.retPct >= 0} />
                       <DashStat k="Win rate" v={totalStats.winRate == null ? "—" : totalStats.winRate.toFixed(0) + "%"} pos={(totalStats.winRate || 0) >= 50} />
                       <DashStat k="Holdings value" v={isReal ? money1(dashVal) : fmt(dashVal, market)} pos={dashNet >= 0} />
+                      {isReal && realCash != null && <DashStat k="Available cash" v={money1(realCash)} pos />}
                     </>
                   )}
-                  {isReal && realCash != null && <DashStat k="Available cash" v={money1(realCash)} pos />}
                 </div>
-                {isReal && isLeveraged && <div style={{ fontSize: 10.5, opacity: .75, marginTop: 8 }}>Real capital at risk (margin), not the leveraged position size.</div>}
                 {/* Per-type P&L breakdown so the three sources are visible at a glance. */}
                 {!(isReal && isLeveraged) && (
                   <div style={{ display: "flex", gap: 14, marginTop: 12, fontSize: 11.5, opacity: .9, flexWrap: "wrap" }}>

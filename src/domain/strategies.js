@@ -1,7 +1,7 @@
 /**
  * domain/strategies.js — starter strategies and the instruments automations can trade.
  */
-import { ALL } from "./universe";
+import { ALL, marketOf } from "./universe";
 
 /**
  * Sample strategies, across EVERY market — not just Indian indices.
@@ -332,10 +332,19 @@ export function stratPerf(strat, trades = [], rangeDays = 365, priceOf = null) {
   const openPos = mine.filter((t) => t.entry != null && (t.exitAt == null || t.exit == null));
   const cap = strat.cap || 100000;
 
-  const realised = closed.reduce((a, t) => a + (t.exit - t.entry) * (t.qty || 1), 0);
+  /* P&L per trade. For CRYPTO, `qty` is the USD NOTIONAL per trade ("Amount per trade $200"), NOT a
+     coin count — so a $200 position that moves 0.5% makes ±$1, i.e. amount × (exit/entry − 1). Using
+     (exit − entry) × qty there treated $200 as 200 COINS and blew a 0.5% move up into a −164% "loss".
+     For stocks/others qty is a share/lot count, so (exit − entry) × qty is correct. */
+  const tradePnl = (t, exitPx) => {
+    if (t.entry == null || exitPx == null) return 0;
+    if (marketOf(t.sym) === "Crypto") return (Number(t.qty) || 0) * ((exitPx / t.entry) - 1);
+    return (exitPx - t.entry) * (Number(t.qty) || 1);
+  };
+  const realised = closed.reduce((a, t) => a + tradePnl(t, t.exit), 0);
   const unrealised = openPos.reduce((a, t) => {
     const cur = priceOf ? priceOf(t.sym) : null;
-    return a + (cur != null ? (cur - t.entry) * (t.qty || 1) : 0);
+    return a + (cur != null ? tradePnl(t, cur) : 0);
   }, 0);
   const pnl = realised + unrealised;
 
@@ -348,7 +357,7 @@ export function stratPerf(strat, trades = [], rangeDays = 365, priceOf = null) {
     };
   }
 
-  const wins = closed.filter((t) => (t.exit - t.entry) * (t.qty || 1) > 0).length;
+  const wins = closed.filter((t) => tradePnl(t, t.exit) > 0).length;
   const retPct = cap ? (pnl / cap) * 100 : 0;
   const years = Math.max(rangeDays / 365, 1 / 365);
 
