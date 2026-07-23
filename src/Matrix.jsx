@@ -935,7 +935,8 @@ function AppInner() {
     return arr;
   }, [market, profile]);
 
-  const nav = [["home", Home, "Home"], ["ideas", Lightbulb, "Ideas"], ["portfolio", Briefcase, "Portfolio"], ["automation", Bolt, "Auto"], ["ask", NeoIcon, "Neo"], ["orders", Clock, "Orders"], ["watchlist", Star, "Watch"]];
+  // Neo is no longer a bottom-bar tab — it's a floating chatbot button (see below), so the bar has room.
+  const nav = [["home", Home, "Home"], ["ideas", Lightbulb, "Ideas"], ["portfolio", Briefcase, "Portfolio"], ["automation", Bolt, "Auto"], ["orders", Clock, "Orders"], ["watchlist", Star, "Watch"]];
 
   return (
     <BuyGateContext.Provider value={canBuy}>
@@ -1167,6 +1168,16 @@ function AppInner() {
               <span style={{ fontSize: 9.5, fontWeight: 700 }}>{label}</span>
             </button>
           ))}
+        </div>
+      )}
+
+      {/* NEO — floating chatbot button, bottom-right, just above the bottom bar. Replaces the old Neo
+          tab. Sits inside a centered 460-wide track so it hugs the app's right edge, not the viewport. */}
+      {!detail && !onboarding && !drawer && !confirmOrder && !walletOpen && !brokerOpen && !search && !showProfile && tab !== "ask" && (
+        <div style={{ position: "fixed", left: 0, right: 0, bottom: 92, maxWidth: 460, margin: "0 auto", zIndex: 105, display: "flex", justifyContent: "flex-end", paddingRight: 16, pointerEvents: "none" }}>
+          <button onClick={() => { setHistOpen(false); setTab("ask"); setTradePreset(null); }} aria-label="Ask Neo" className="tap" style={{ pointerEvents: "auto", width: 56, height: 56, borderRadius: "50%", border: "none", background: "linear-gradient(135deg, var(--primary), var(--primary-2))", boxShadow: "0 8px 24px rgba(40,10,80,.4)", display: "grid", placeItems: "center", color: "#fff" }}>
+            <NeoIcon size={28} />
+          </button>
         </div>
       )}
 

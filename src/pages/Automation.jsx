@@ -452,10 +452,28 @@ function DeploySizeField({ market, value, onChange }) {
   );
 }
 
+/* Editable Stop-loss / Target on a strategy card. Defaults come from the strategy (0.5% / 1.5% if it
+   carries none); the user can change them before deploying and the chosen values ride along on activate. */
+function StratSLTP({ sl, tp, setSl, setTp }) {
+  const box = { width: 54, textAlign: "center", border: "1px solid var(--line)", borderRadius: 8, padding: "5px 4px", fontWeight: 800, fontSize: 12.5, background: "var(--elev)", color: "var(--ink)" };
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10, gap: 8 }}>
+      <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>Stop-loss / Target</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <input value={sl} onChange={(e) => setSl(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={box} />
+        <span style={{ fontSize: 11, color: "var(--down)", fontWeight: 800 }}>% SL</span>
+        <input value={tp} onChange={(e) => setTp(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={box} />
+        <span style={{ fontSize: 11, color: "var(--up)", fontWeight: 800 }}>% TP</span>
+      </div>
+    </div>
+  );
+}
 function SampleStrategyCard({ s, onActivate, onClone, onEdit, market = "IN", canBacktest = true, onConnect }) {
   const { loading, stats } = useBacktestStats(s);
   const [bt, setBt] = useState(false);
   const [size, setSize] = useState(((s.symbols && marketOf(s.symbols[0])) === "Crypto" || market === "Crypto") ? 200 : 1);
+  const [sl, setSl] = useState(String((s.cfg && s.cfg.sl) || "0.5"));
+  const [tp, setTp] = useState(String((s.cfg && s.cfg.tp) || "1.5"));
 
   const Stat = ({ k, v, c }) => (
     <div style={{ flex: 1, background: "var(--elev)", borderRadius: 11, padding: "9px 10px", minWidth: 0 }}>
@@ -501,6 +519,7 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, market = "IN", can
       )}
 
       <DeploySizeField market={market} value={size} onChange={setSize} />
+      <StratSLTP sl={sl} tp={tp} setSl={setSl} setTp={setTp} />
 
       {/* TEST BEFORE YOU ACTIVATE. The headline stats above are a fixed backtest; this
           is the interactive one — pick the symbol, timeframe and window yourself. It was
@@ -526,7 +545,7 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, market = "IN", can
           </button>
         )}
         {onActivate && (
-          <button onClick={() => onActivate(s, size)} className="tap disp"
+          <button onClick={() => onActivate(s, size, { sl, tp })} className="tap disp"
             style={{ flex: 1, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>
             Use
           </button>
@@ -549,6 +568,8 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, market = "IN", canBa
   const { loading, stats } = useBacktestStats(s);
   const [bt, setBt] = useState(false);
   const [size, setSize] = useState(((s.symbols && marketOf(s.symbols[0])) === "Crypto" || market === "Crypto") ? 200 : 1);
+  const [sl, setSl] = useState(String((s.cfg && s.cfg.sl) || "0.5"));
+  const [tp, setTp] = useState(String((s.cfg && s.cfg.tp) || "1.5"));
   /* Show a symbol relevant to the CURRENT market. Premium strategies are shared across
      markets, so under Crypto we surface a crypto symbol, not the Indian one they were saved
      with. Fall back to the first symbol of this market's universe. */
@@ -585,6 +606,7 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, market = "IN", canBa
       ) : null}
 
       <DeploySizeField market={market} value={size} onChange={setSize} />
+      <StratSLTP sl={sl} tp={tp} setSl={setSl} setTp={setTp} />
 
       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
         <button
@@ -601,7 +623,7 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, market = "IN", canBa
           </button>
         )}
         <button
-          onClick={() => onToggle(relSym, size)}
+          onClick={() => onToggle(relSym, size, { sl, tp })}
           className="tap disp"
           style={{ flex: 1, border: "1px solid " + (active ? "var(--up)" : "var(--primary)"), background: active ? "var(--up-soft)" : "var(--primary)", color: active ? "var(--up)" : "#fff", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
         >
@@ -784,6 +806,58 @@ function ComparisonTable({ strats }) {
   );
 }
 
+/* P&L TAB — every strategy (active + inactive) for this market with its total P&L over a chosen
+   window; tap one to see its trades (entry/exit time + per-trade P&L). Crypto P&L uses the USD-notional
+   formula (qty is an amount, not a coin count), matching the fixed stratPerf. */
+function StrategyPnLView({ strats, trades, market }) {
+  const [range, setRange] = useState(1);
+  const [openId, setOpenId] = useState(null);
+  const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a ? a.price : null; };
+  const inMkt = (s) => !(s.symbols && s.symbols.length) || s.symbols.some((x) => marketOf(x) === market);
+  const RANGES = [[1, "Today"], [7, "Last 7 days"], [30, "Last 30 days"], [180, "Last 6 months"]];
+  const rows = strats.filter(inMkt).map((s) => ({ s, p: stratPerf(s, trades, range, priceOf) })).sort((a, b) => (b.p.pnl || 0) - (a.p.pnl || 0));
+  const dt = (t) => (t ? new Date(t).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
+  const tradesFor = (s) => (trades || []).filter((t) => (t.strategyId === s.id || t.strategy === s.name) && t.status !== "rejected" && (t.exitAt || t.entryAt || 0) >= Date.now() - range * 864e5).sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
+  const tPnl = (t) => { const px = t.exit != null ? t.exit : priceOf(t.sym); if (t.entry == null || px == null) return null; return marketOf(t.sym) === "Crypto" ? (Number(t.qty) || 0) * ((px / t.entry) - 1) : (px - t.entry) * (Number(t.qty) || 1); };
+  return (
+    <div className="fade">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "18px 2px 4px" }}>
+        <div className="disp" style={{ fontWeight: 700, fontSize: 18 }}>Strategy P&amp;L</div>
+        <select aria-label="Date range" value={range} onChange={(e) => setRange(+e.target.value)} style={{ ...selStyle, flex: "0 0 auto", width: "auto", fontSize: 12 }}>{RANGES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+      </div>
+      {rows.length === 0 && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 12 }}>No strategies in this market yet.</div>}
+      {rows.map(({ s, p }) => (
+        <div key={s.id} className="card" style={{ padding: 12, marginTop: 10 }}>
+          <div onClick={() => setOpenId(openId === s.id ? null : s.id)} className="tap" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+            <div style={{ minWidth: 0 }}>
+              <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{s.name || "Strategy"}{!s.active && <span style={{ color: "var(--muted)", fontWeight: 700 }}> · inactive</span>}</div>
+              <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600, marginTop: 1 }}>{(s.symbols || []).join(", ") || "—"} · {p.trades || 0} trades{p.winRate != null ? ` · ${p.winRate.toFixed(0)}% win` : ""}</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div className="mono" style={{ fontWeight: 800, fontSize: 14, color: chgColor(p.pnl) }}>{p.pnl == null ? "—" : (p.pnl >= 0 ? "+" : "") + fmt(p.pnl, market)}</div>
+              <ChevronDown size={15} style={{ transform: openId === s.id ? "rotate(180deg)" : "none", transition: "transform .2s", color: "var(--muted)" }} />
+            </div>
+          </div>
+          {openId === s.id && (
+            <div style={{ marginTop: 10, borderTop: "1px solid var(--line)", paddingTop: 8 }}>
+              {tradesFor(s).length === 0 && <div style={{ fontSize: 11.5, color: "var(--muted)" }}>No trades in this period.</div>}
+              {tradesFor(s).map((t, i) => { const pl = tPnl(t); return (
+                <div key={t.id || i} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "7px 0", borderTop: i ? "1px solid var(--line)" : "none", fontSize: 11 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 800 }}>{t.sym} <span style={{ color: "var(--muted)", fontWeight: 600 }}>×{t.qty}</span></div>
+                    <div style={{ color: "var(--muted)" }}>In {dt(t.entryAt)}</div>
+                    <div style={{ color: "var(--muted)" }}>{t.exitAt ? "Out " + dt(t.exitAt) : "position open"}</div>
+                  </div>
+                  <div className="mono" style={{ fontWeight: 800, color: pl == null ? "var(--muted)" : chgColor(pl), textAlign: "right", flex: "0 0 auto" }}>{pl == null ? "—" : (pl >= 0 ? "+" : "") + fmt(pl, marketOf(t.sym))}</div>
+                </div>
+              ); })}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 export default function Automation({ market = "IN", appMode = "virtual", onRecord, trades = [], strats = [], setStrats, onExitAll, me = null, isAdmin = false, userId = null, brokerFor = null, adminKey = "", onConnectBroker = null }) {
   /* Backtesting Indian stocks needs real history, which — for compliance — can only come from the
      user's OWN connected broker (or the owner's house feed). Crypto (Delta) and US (Yahoo) have
@@ -1080,7 +1154,11 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   };
 
   /* "Use this strategy" on a sample: copy its rules and symbols into your own. */
-  const useTemplateStrategy = (s, size) => activateTemplate({ name: s.name, cfg: s.cfg }, s.symbols, size);
+  // Card-chosen SL/TP (default 0.5% / 1.5%) ride along on the cfg when the user deploys the strategy.
+  const withSLTP = (cfg, opts) => (opts && (opts.sl != null || opts.tp != null))
+    ? { ...cfg, ...(opts.sl != null ? { sl: String(opts.sl) } : {}), ...(opts.tp != null ? { tp: String(opts.tp) } : {}) }
+    : cfg;
+  const useTemplateStrategy = (s, size, opts) => activateTemplate({ name: s.name, cfg: withSLTP(s.cfg, opts) }, s.symbols, size);
 
   /* Clone: drop an editable copy into "My strategies" (inactive), so you can tweak it
      before deploying. Works from Samples and from your own strategies. */
@@ -1140,10 +1218,10 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
      (re)assigns this market's symbol so it always surfaces under this market's Deployed → Active.
      A second tap while it's active HERE deactivates it. */
   const activeInMarket = (s) => s.active && (!(s.symbols && s.symbols[0]) || marketOf(s.symbols[0]) === market);
-  const togglePremiumHere = (id, relSym, size) => setStrats((p) => p.map((s) => {
+  const togglePremiumHere = (id, relSym, size, opts) => setStrats((p) => p.map((s) => {
     if (s.id !== id) return s;
     if (activeInMarket(s)) return { ...s, active: false };
-    return { ...s, active: true, ...(relSym ? { symbols: [relSym] } : {}), ...(size != null ? { qty: size, cap: size } : {}) };
+    return { ...s, active: true, cfg: withSLTP(s.cfg, opts), ...(relSym ? { symbols: [relSym] } : {}), ...(size != null ? { qty: size, cap: size } : {}) };
   }));
   const toggleAlerts = (s) => { const willOn = !s.alerts; setStrats((p) => p.map((x) => x.id === s.id ? { ...x, alerts: willOn } : x)); if (willOn) fireAlert(s); };
   const updateStrat = (id, patch) => setStrats((p) => p.map((s) => s.id === id ? { ...s, ...patch } : s));
@@ -1547,8 +1625,8 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       })()}
 
       {/* TOP SELECTOR — one place to switch between building, samples, and your own. */}
-      <div style={{ display: "flex", gap: 7, marginTop: 18 }}>
-        {[["build", "Build"], ["deployed", "Deployed"], ["sample", `Samples`], ["premium", `Premium`], ["public", "Public"], ["mine", `Mine`]].map(([k, label]) => (
+      <div className="hide-scroll" style={{ display: "flex", gap: 7, marginTop: 18, overflowX: "auto" }}>
+        {[["build", "Build"], ["deployed", "Deployed"], ["sample", `Samples`], ["premium", `Premium`], ["public", "Public"], ["mine", `Mine`], ["pnl", "P&L"]].map(([k, label]) => (
           <button
             key={k}
             onClick={() => setTopTab(k)}
@@ -1765,7 +1843,9 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       </>)}
 
       {/* SAMPLES + MY STRATEGIES — driven by the TOP selector now, not a second tab row. */}
-      {topTab !== "build" && (<>
+      {topTab === "pnl" && <StrategyPnLView strats={strats} trades={trades} market={market} />}
+
+      {topTab !== "build" && topTab !== "pnl" && (<>
       <div ref={stratsRef} className="disp" style={{ fontWeight: 700, fontSize: 18, margin: "28px 2px 4px", scrollMarginTop: 80 }}>Strategies</div>
       <div className="gold-line" style={{ width: 44, margin: "0 0 14px 2px", borderRadius: 2 }} />
 
@@ -1789,7 +1869,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           {compareOpen && <ComparisonTable strats={premiumStrats.filter((s) => (s.market || marketOf((s.symbols || [])[0])) === market)} />}
           {premiumStrats.length === 0
             ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No premium strategies available.</div>
-            : premiumStrats.map((s) => <PremiumStrategyCard key={s.id} s={s} active={activeInMarket(s)} market={market} onToggle={(rs, size) => togglePremiumHere(s.id, rs, size)} onEdit={isAdmin ? loadForEdit : undefined} canBacktest={canBacktest} onConnect={onConnectBroker} />)}
+            : premiumStrats.map((s) => <PremiumStrategyCard key={s.id} s={s} active={activeInMarket(s)} market={market} onToggle={(rs, size, opts) => togglePremiumHere(s.id, rs, size, opts)} onEdit={isAdmin ? loadForEdit : undefined} canBacktest={canBacktest} onConnect={onConnectBroker} />)}
         </>
       ) : topTab === "public" ? (
         <>

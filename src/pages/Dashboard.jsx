@@ -921,13 +921,12 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 12, opacity: .85 }}>{isReal ? "Real" : "Virtual"} · {MKT_LABEL[market]} · {isReal && isLeveraged ? "margin deployed" : "current value"}</span>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  {/* Total-card timeframe — like Smart Auto-Buy, default Today. */}
-                  <div className="pill" style={{ display: "inline-flex", background: "rgba(0,0,0,.06)", padding: 2 }}>
-                    {[["today", "Today"], ["month", "Month"], ["lifetime", "All"]].map(([k, l]) => (
-                      <button key={k} onClick={(e) => { e.stopPropagation(); setTotPeriod(k); }} className="pill tap disp" style={{ padding: "5px 10px", fontSize: 10, fontWeight: 800, border: "none", background: totPeriod === k ? "#141416" : "transparent", color: totPeriod === k ? "#fff" : "rgba(0,0,0,.55)" }}>{l}</button>
-                    ))}
-                  </div>
-                  <span onClick={onGoPortfolio} className="pill tap" style={{ fontSize: 11, fontWeight: 700, background: "rgba(0,0,0,.06)", padding: "4px 10px", display: "flex", alignItems: "center", gap: 4 }}>Portfolio <ChevronRight size={13} /></span>
+                  {/* Total-card date range — a dropdown (default Today) instead of a chip row. */}
+                  <select aria-label="Date range" value={totPeriod} onClick={(e) => e.stopPropagation()} onChange={(e) => { e.stopPropagation(); setTotPeriod(e.target.value); }} style={{ fontSize: 11, fontWeight: 700, border: "1px solid rgba(0,0,0,.14)", borderRadius: 9, padding: "5px 8px", background: "rgba(0,0,0,.04)", color: "#141416" }}>
+                    <option value="today">Today</option>
+                    <option value="month">This month</option>
+                    <option value="lifetime">All time</option>
+                  </select>
                 </div>
               </div>
               <div onClick={onGoPortfolio} className="tap" style={{ marginTop: 2 }}>
@@ -940,8 +939,6 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     <>
                       <DashStat k={`P&L · ${totLabel}`} v={(totalStats.pnl >= 0 ? "+" : "") + (isReal ? money1(totalStats.pnl) : fmt(totalStats.pnl, market))} pos={totalStats.pnl >= 0} />
                       <DashStat k="Returns %" v={(totalStats.retPct >= 0 ? "+" : "") + totalStats.retPct.toFixed(1) + "%"} pos={totalStats.retPct >= 0} />
-                      <DashStat k="Win rate" v={totalStats.winRate == null ? "—" : totalStats.winRate.toFixed(0) + "%"} pos={(totalStats.winRate || 0) >= 50} />
-                      <DashStat k="Holdings value" v={isReal ? money1(dashVal) : fmt(dashVal, market)} pos={dashNet >= 0} />
                       {isReal && realCash != null && <DashStat k="Available cash" v={money1(realCash)} pos />}
                     </>
                   )}
@@ -968,11 +965,11 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 12, opacity: .85 }}>Smart Auto-Buy · {MKT_LABEL[market]}</span>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div className="pill" style={{ display: "inline-flex", background: "rgba(0,0,0,.06)", padding: 2 }}>
-                    {[["today", "Today"], ["month", "Month"], ["lifetime", "Lifetime"]].map(([k, l]) => (
-                      <button key={k} onClick={() => setPlPeriod(k)} className="pill tap disp" style={{ padding: "5px 10px", fontSize: 10, fontWeight: 800, border: "none", background: plPeriod === k ? "#141416" : "transparent", color: plPeriod === k ? "#fff" : "rgba(0,0,0,.55)" }}>{l}</button>
-                    ))}
-                  </div>
+                  <select aria-label="Date range" value={plPeriod} onChange={(e) => setPlPeriod(e.target.value)} style={{ fontSize: 11, fontWeight: 700, border: "1px solid rgba(0,0,0,.14)", borderRadius: 9, padding: "5px 8px", background: "rgba(0,0,0,.04)", color: "#141416" }}>
+                    <option value="today">Today</option>
+                    <option value="month">This month</option>
+                    <option value="lifetime">Lifetime</option>
+                  </select>
                   <label className="tap" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700 }}>
                     {autoOn ? "On" : "Off"}
                     <span onClick={() => {
