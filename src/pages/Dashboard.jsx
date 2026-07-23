@@ -16,7 +16,6 @@ import Change from "../components/common/Change";
 import { computeTags } from "../domain/tags";
 import DashStat from "../components/common/DashStat";
 import ListRow from "../components/cards/ListRow";
-import Screener from "./Screener";
 import CarouselCard from "../components/cards/CarouselCard";
 import MiniCandles from "../components/charts/MiniCandles";
 import Pop from "../components/common/Pop";
@@ -1267,7 +1266,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       {market !== "Commodity" && market !== "Crypto" && <StockIdeasStrip onOpen={onOpen} onBuy={onBuy} market={market} liveTick={liveTick} />}
 
       {/* Popular Screeners — 3 live-scanning strategy carousels, market-aware. */}
-      <PopularScreeners market={market} mode={mode} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} liveTick={liveTick} />
+      <PopularScreeners market={market} mode={mode} list={list} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} liveTick={liveTick} />
 
       {/* F&O Picks (Indian derivatives) */}
 
@@ -1292,13 +1291,6 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
               )}
           </div>
         </Section>
-      )}
-
-      {/* Screener — not for F&O or Commodity */}
-      {market !== "Commodity" && (
-        <Pop style={{ marginTop: 40 }}>
-          <Screener onOpen={onOpen} market={market} list={list} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} />
-        </Pop>
       )}
 
       {/* Gainers / Losers — not for F&O or Commodity */}

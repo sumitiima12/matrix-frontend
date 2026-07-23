@@ -98,53 +98,37 @@ function ScreenerRow({ screener, market, onOpen, onBuy, onAutoBuy, onScreenerBuy
 
   const dt = (t) => t ? new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
   const cur = CUR[market] || "₹";
-  const inBox = { width: 42, textAlign: "center", border: "none", background: "rgba(0,0,0,.06)", borderRadius: 7, padding: "3px 3px", fontWeight: 800, fontSize: 11, color: "#141416" };
+  const inBox = { width: 42, textAlign: "center", border: "1px solid var(--line)", background: "var(--elev)", borderRadius: 7, padding: "4px 3px", fontWeight: 800, fontSize: 11, color: "var(--ink)" };
+
+  // Hide a screener entirely while nothing meets its entry trigger — an empty carousel is just noise.
+  if (!matches.length) return null;
 
   return (
-    <div className="card flat" style={{ marginTop: 12, padding: 12, border: "1px solid rgba(0,0,0,.06)", boxShadow: "none", color: "#141416", background: GRAD, display: "flex", gap: 10, overflow: "hidden" }}>
-      {/* LEFT dashboard panel (~24%) */}
-      <div style={{ flex: "0 0 138px", minWidth: 0 }}>
-        <div className="disp" style={{ fontWeight: 800, fontSize: 13, lineHeight: 1.2 }}>{screener.name}</div>
-        <div style={{ fontSize: 9, opacity: .7, marginTop: 1 }}>5m · {matches.length} live</div>
-
-        <label className="tap" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, marginTop: 10 }}>
-          <span onClick={() => { const v = !autoOn; setAutoOn(v); lsSet(`mx_scrauto_${screener.key}_${market}`, v); }} style={{ width: 34, height: 20, borderRadius: 999, background: autoOn ? "#22C55E" : "rgba(0,0,0,.2)", position: "relative", flexShrink: 0, transition: "background .2s" }}>
-            <span style={{ position: "absolute", top: 2, left: autoOn ? 16 : 2, width: 16, height: 16, borderRadius: 999, background: "#fff", transition: "left .2s" }} />
+    <div className="card" style={{ marginTop: 12, padding: 12, background: "var(--elev)" }}>
+      {/* Header — screener name (left), Auto-Buy toggle (right) */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+        <div style={{ minWidth: 0 }}>
+          <div className="disp" style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.15, color: "var(--ink)" }}>{screener.name}</div>
+          <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 2, fontWeight: 600 }}>5m · {matches.length} live</div>
+        </div>
+        <label className="tap" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, fontWeight: 800, color: "var(--ink)", flexShrink: 0 }}>
+          <span onClick={() => { const v = !autoOn; setAutoOn(v); lsSet(`mx_scrauto_${screener.key}_${market}`, v); }} style={{ width: 36, height: 21, borderRadius: 999, background: autoOn ? "#22C55E" : "var(--line)", position: "relative", flexShrink: 0, transition: "background .2s" }}>
+            <span style={{ position: "absolute", top: 2, left: autoOn ? 17 : 2, width: 17, height: 17, borderRadius: 999, background: "#fff", transition: "left .2s" }} />
           </span>
-          Screener Auto-Buy
+          Auto-Buy
         </label>
-
-        <select aria-label="Date range" value={period} onChange={(e) => setPeriod(e.target.value)} style={{ width: "100%", marginTop: 8, fontSize: 10, fontWeight: 700, border: "1px solid rgba(0,0,0,.14)", borderRadius: 8, padding: "4px 6px", background: "rgba(0,0,0,.04)", color: "#141416" }}>
-          <option value="today">Today</option>
-          <option value="7d">Last 7 days</option>
-          <option value="30d">Last 30 days</option>
-          <option value="all">All time</option>
-        </select>
-
-        <div style={{ marginTop: 8, background: "rgba(0,0,0,.05)", borderRadius: 9, padding: "5px 8px" }}>
-          <div style={{ fontSize: 8.5, opacity: .7, fontWeight: 700 }}>CAPITAL ({cur})</div>
-          <input value={capital} onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ""); setCapital(v); lsSet(`mx_scrcap_${market}`, v); }} inputMode="numeric" className="no-ring mono" style={{ width: "100%", background: "transparent", border: "none", color: "#141416", fontSize: 14, fontWeight: 800 }} />
-        </div>
-
-        <div style={{ marginTop: 8 }}>
-          <div style={{ fontSize: 8.5, opacity: .7, fontWeight: 700 }}>LIVE P&amp;L</div>
-          <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: chgColor(livePnl) }}>{(livePnl >= 0 ? "+" : "") + fmt(livePnl, market)}</div>
-        </div>
       </div>
 
-      {/* RIGHT carousel of matched symbols */}
-      <div className="hide-scroll" style={{ flex: 1, minWidth: 0, display: "flex", gap: 10, overflowX: "auto", paddingBottom: 2 }}>
-        {matches.length === 0 && (
-          <div style={{ fontSize: 11, opacity: .7, alignSelf: "center", padding: "0 4px" }}>No symbol meets the entry trigger right now — check back as the market moves.</div>
-        )}
+      {/* Carousel of matched symbols — full width, below the name */}
+      <div className="hide-scroll" style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 2, marginTop: 10 }}>
         {matches.map((m) => {
           const st = ALL.find((a) => a.sym === m.sym);
           const price = st ? st.price : m.entryPrice;
           return (
-            <div key={m.sym} onClick={() => st && onOpen && onOpen(st)} className="tap" style={{ flex: "0 0 auto", width: 168, background: "rgba(255,255,255,.72)", borderRadius: 12, padding: 10, border: "1px solid rgba(0,0,0,.05)" }}>
+            <div key={m.sym} onClick={() => st && onOpen && onOpen(st)} className="tap" style={{ flex: "0 0 auto", width: 160, background: "var(--surface)", borderRadius: 12, padding: 10, border: "1px solid var(--line)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
-                <span className="disp" style={{ fontWeight: 800, fontSize: 12.5 }}>{m.sym}</span>
-                <span className="mono" style={{ fontWeight: 800, fontSize: 12.5 }}>{fmt(price, market)}</span>
+                <span className="disp" style={{ fontWeight: 800, fontSize: 12.5, color: "var(--ink)" }}>{m.sym}</span>
+                <span className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: "var(--ink)" }}>{fmt(price, market)}</span>
               </div>
               <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 4 }}>● Entry {dt(m.entryAt)} @ <span className="mono">{fmt(m.entryPrice, market)}</span></div>
               <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 8 }} onClick={(e) => e.stopPropagation()}>
@@ -157,16 +141,34 @@ function ScreenerRow({ screener, market, onOpen, onBuy, onAutoBuy, onScreenerBuy
           );
         })}
       </div>
+
+      {/* Footer — date range · capital · live P&L, all on one line below the cards */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
+        <select aria-label="Date range" value={period} onChange={(e) => setPeriod(e.target.value)} style={{ flex: "0 0 auto", fontSize: 10.5, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 9, padding: "7px 8px", background: "var(--surface)", color: "var(--ink)" }}>
+          <option value="today">Today</option>
+          <option value="7d">Last 7 days</option>
+          <option value="30d">Last 30 days</option>
+          <option value="all">All time</option>
+        </select>
+        <div style={{ flex: "1 1 0", minWidth: 0, display: "flex", alignItems: "center", gap: 6, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 9, padding: "5px 9px" }}>
+          <span style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 800, flexShrink: 0 }}>CAPITAL ({cur})</span>
+          <input value={capital} onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ""); setCapital(v); lsSet(`mx_scrcap_${market}`, v); }} inputMode="numeric" className="no-ring mono" style={{ flex: "1 1 0", minWidth: 0, background: "transparent", border: "none", color: "var(--ink)", fontSize: 13.5, fontWeight: 800, textAlign: "right" }} />
+        </div>
+        <div style={{ flex: "0 0 auto", textAlign: "right" }}>
+          <div style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 800 }}>LIVE P&amp;L</div>
+          <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: chgColor(livePnl) }}>{(livePnl >= 0 ? "+" : "") + fmt(livePnl, market)}</div>
+        </div>
+      </div>
     </div>
   );
 }
 
-export default function PopularScreeners({ market, mode = "virtual", onOpen, onBuy, onAutoBuy, onScreenerBuy, liveTick = 0 }) {
+export default function PopularScreeners({ market, mode = "virtual", list = [], onOpen, onBuy, onAutoBuy, onScreenerBuy, liveTick = 0 }) {
   const [tab, setTab] = useState("popular");   // "popular" | "custom"
   // Not for Commodity (thin universe / no 5m intraday screening there).
   if (market === "Commodity") return null;
   return (
-    <Section title="Popular Screeners" icon={<SlidersHorizontal size={17} color="var(--primary)" />}>
+    <Section title="Screener" icon={<SlidersHorizontal size={17} color="var(--primary)" />}>
       {/* Popular | Create your own screener */}
       <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3, marginBottom: 4 }}>
         {[["popular", "Popular"], ["custom", "Create your own screener"]].map(([k, l]) => (
@@ -178,7 +180,7 @@ export default function PopularScreeners({ market, mode = "virtual", onOpen, onB
         ? SCREENERS.map((s) => (
             <ScreenerRow key={s.key} screener={s} market={market} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} liveTick={liveTick} />
           ))
-        : <CustomScreener market={market} mode={mode} onOpen={onOpen} onBuy={onBuy} onScreenerBuy={onScreenerBuy} liveTick={liveTick} />}
+        : <CustomScreener market={market} mode={mode} list={list} onOpen={onOpen} onScreenerBuy={onScreenerBuy} liveTick={liveTick} />}
     </Section>
   );
 }
