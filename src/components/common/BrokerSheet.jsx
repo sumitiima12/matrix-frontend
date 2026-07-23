@@ -152,6 +152,16 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
     }
   };
 
+  /* OWNER "server session" (like Delta): FYERS is already logged in server-side via the daily TOTP
+     auto-login, so the owner connects with ONE tap and no redirect — the backend opens a session from
+     the house token. Mirrors the admin-Delta path (onConnect with no user token). */
+  const connectHouse = async (b) => {
+    setErr(null);
+    setBusy(b.id);
+    try { await onConnect(b.id, null, { house: true }); setBusy(null); onClose && onClose(); }
+    catch (e) { setErr(String(e.message || e)); setBusy(null); }
+  };
+
   const start = async (b) => {
     setErr(null);
     // ADMIN + Delta (byoaKeys): connect straight to the server's house Delta account — no key form.
@@ -161,10 +171,10 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
       catch (e) { setErr(String(e.message || e)); setBusy(null); }
       return;
     }
-    // SHARED-APP OAuth ("Log in with FYERS") is ADMIN-ONLY: the house app authorises the owner's own
-    // FYERS account. Other users must bring their own FYERS app (App ID + Secret), so for them we skip
-    // the shared login and fall through to the credential form below.
-    if (b.sharedOAuth && isAdmin) { return submitSharedLogin(b); }
+    // OWNER + shared-app FYERS: the primary tap now uses the server-side TOTP session (option 1 —
+    // instant, like Delta). "Log in with FYERS" (option 2) and "App ID & Secret" (option 3) are offered
+    // as the two buttons below. Non-owners still fall through to their own credential form.
+    if (b.sharedOAuth && isAdmin) { return connectHouse(b); }
     // Bring-your-own-app OR bring-your-own-credential OR bring-your-own-keys (Delta) brokers
     // open an inline form first.
     if (b.userCreds || b.byoaOAuth || b.byoaKeys) { setCredFor((cur) => (cur === b.id ? null : b.id)); setCreds({}); return; }
@@ -321,7 +331,7 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
                 ) : canConnect ? (
                   <button onClick={() => start(b)} disabled={busy === b.id} className="tap disp"
                     style={{ flex: "0 0 auto", border: "none", background: "var(--ink)", color: "var(--surface)", borderRadius: 10, padding: "8px 18px", fontWeight: 800, fontSize: 12, cursor: "pointer", opacity: busy === b.id ? 0.5 : 1 }}>
-                    {busy === b.id ? "…" : (b.sharedOAuth && isAdmin ? `Log in with ${b.name}` : "Connect")}
+                    {busy === b.id ? "…" : (b.sharedOAuth && isAdmin ? "Connect" : "Connect")}
                   </button>
                 ) : null}
               </div>
@@ -332,9 +342,18 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
                   "Advanced"): FYERS → enter your own App ID + Secret; Dhan → paste an access token. This
                   is the reliable path when the one-tap shared login can't be used — e.g. a FYERS app that
                   only authorises its own owner, so each user connects with their own app instead. */}
+              {/* OPTION 2 — Log in with FYERS (the interactive OAuth redirect). Owner only. */}
+              {b.sharedOAuth && isAdmin && !isConnected && canConnect && (
+                <button onClick={() => submitSharedLogin(b)} disabled={busy === b.id}
+                  className="tap disp" style={{ marginTop: 10, width: "100%", border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", borderRadius: 10, padding: "9px 12px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
+                  Log in with {b.name}
+                </button>
+              )}
+
+              {/* OPTION 3 — bring your own app: FYERS App ID + Secret (or paste-token brokers). */}
               {b.sharedOAuth && isAdmin && (b.byoaOAuth || b.userCreds) && !isConnected && canConnect && (
                 <button onClick={() => { setErr(null); setCreds({}); setCredFor((cur) => (cur === b.id ? null : b.id)); }}
-                  className="tap disp" style={{ marginTop: 10, width: "100%", border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", borderRadius: 10, padding: "9px 12px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
+                  className="tap disp" style={{ marginTop: 8, width: "100%", border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", borderRadius: 10, padding: "9px 12px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
                   {credFor === b.id ? "Hide"
                     : b.byoaOAuth ? `Connect with App ID & Secret`
                     : `Paste a ${b.name} access token`}

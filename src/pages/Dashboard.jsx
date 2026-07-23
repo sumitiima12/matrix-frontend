@@ -760,6 +760,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const prodCode = product === "INTRADAY" ? "MIS" : "CNC";         // what the broker order body expects
   const showProduct = market === "IN" || market === "FNO";         // concept only applies to Indian equity/F&O
   const [autoOverrides, setAutoOverrides] = useState({});   // sym -> {tp, sl}
+  // GLOBAL Smart Auto-Buy SL/TP. null = use each pick's own target/stop; a number overrides ALL picks
+  // (a per-symbol override in the edit panel still wins). Prefilled from the picks once they load.
+  const [autoSL, setAutoSL] = useState(null);
+  const [autoTP, setAutoTP] = useState(null);
   const [editSym, setEditSym] = useState(null);
   const [showTrades, setShowTrades] = useState(false);
   const MKT_LABEL = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", Commodity: "🪙 Commodity", FNO: "⚡ F&O" };
@@ -789,14 +793,25 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     const m = marketOf(s.sym);
     const auto = autoTargets(s);
     const ov = autoOverrides[s.sym];
-    const tpPct = ov ? ov.tp : auto.tp;
-    const slPct = ov ? ov.sl : auto.sl;
+    // Precedence: a per-symbol edit wins; else the card's global SL/TP; else the pick's own target/stop.
+    const tpPct = ov ? ov.tp : (autoTP != null ? autoTP : auto.tp);
+    const slPct = ov ? ov.sl : (autoSL != null ? autoSL : auto.sl);
     const entry = s.price;
     // Crypto sizes by AMOUNT (fractional units); stocks by whole shares.
     const qty = m === "Crypto" ? +(perCap / entry).toFixed(6) : Math.max(1, Math.floor(perCap / entry));
     const dp = entry < 1 ? 6 : entry < 10 ? 4 : 2;
     return { sym: s.sym, m, qty, entry, tpPct, slPct, auto };   // planned entry; the exit engine closes it at real prices
   }).filter(Boolean);   // F&O names with no real lot size are dropped, not guessed
+  /* Prefill the global SL/TP from the day's Top Picks (their average target/stop) whenever the market
+     changes, so the fields start at Matrix's suggested levels; the user can then override them. */
+  useEffect(() => {
+    if (!autoPicks.length) return;
+    const ts = autoPicks.map(autoTargets);
+    const avg = (arr) => +(arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1);
+    setAutoSL(avg(ts.map((x) => x.sl)));
+    setAutoTP(avg(ts.map((x) => x.tp)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [market, autoPicks.length]);
   // When Auto-Buy is ON, actually place today's picks as REAL positions (once per
   // day per market) with their target/stop attached. The exit engine then closes
   // them at real market prices — no simulated win/loss.
@@ -1021,6 +1036,18 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 <DashStat k="Trades" v={periodStats.trades} pos={true} />
                 <DashStat k="Win rate" v={autoWinRate.toFixed(0) + "%"} pos={autoWinRate >= 50} />
                 <DashStat k="Capital" v={fmt(capNum, aggCur)} pos={true} />
+              </div>
+
+              {/* Global SL/TP for Smart Auto-Buy — prefilled from the Top Picks' average, editable.
+                  Applies to every pick unless a single position is overridden in the edit panel. */}
+              <div style={{ marginTop: 12, background: "rgba(0,0,0,.05)", borderRadius: 12, padding: "8px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ fontSize: 9.5, opacity: .8, fontWeight: 700 }}>STOP-LOSS / TARGET (auto-exit)</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <input value={autoSL == null ? "" : autoSL} onChange={(e) => setAutoSL(e.target.value === "" ? null : +e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={{ width: 46, textAlign: "center", border: "none", background: "rgba(0,0,0,.06)", borderRadius: 8, padding: "5px 4px", fontWeight: 800, fontSize: 13, color: "#141416" }} />
+                  <span style={{ fontSize: 11, color: "var(--down)", fontWeight: 800 }}>% SL</span>
+                  <input value={autoTP == null ? "" : autoTP} onChange={(e) => setAutoTP(e.target.value === "" ? null : +e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={{ width: 46, textAlign: "center", border: "none", background: "rgba(0,0,0,.06)", borderRadius: 8, padding: "5px 4px", fontWeight: 800, fontSize: 13, color: "#141416" }} />
+                  <span style={{ fontSize: 11, color: "var(--up)", fontWeight: 800 }}>% TP</span>
+                </div>
               </div>
 
               {/* capital — type then Save */}
