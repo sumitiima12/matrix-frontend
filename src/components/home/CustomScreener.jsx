@@ -171,10 +171,12 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
           <option value="30d">Last 30 days</option>
           <option value="all">All time</option>
         </select>
-        <div style={{ marginLeft: "auto", textAlign: "right" }}>
-          <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 800 }}>LIVE P&amp;L</div>
-          <div className="mono" style={{ fontWeight: 800, fontSize: 16, color: chgColor(livePnl) }}>{(livePnl >= 0 ? "+" : "") + fmt(livePnl, market)}</div>
-        </div>
+        {autoOn && (
+          <div style={{ marginLeft: "auto", textAlign: "right" }}>
+            <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 800 }}>LIVE P&amp;L</div>
+            <div className="mono" style={{ fontWeight: 800, fontSize: 16, color: chgColor(livePnl) }}>{(livePnl >= 0 ? "+" : "") + fmt(livePnl, market)}</div>
+          </div>
+        )}
       </div>
       {autoOn && (
         <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 6, lineHeight: 1.5, background: "var(--elev)", borderRadius: 9, padding: "7px 9px" }}>
@@ -233,8 +235,8 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
         </div>
       )}
 
-      {/* Per-symbol SL / TP / quantity */}
-      {!!selSyms.length && (
+      {/* Per-symbol SL / TP / quantity — only relevant when Auto-Buy is on. */}
+      {autoOn && !!selSyms.length && (
         <>
           <div className="disp" style={{ fontWeight: 800, fontSize: 13.5, margin: "18px 0 4px" }}>Stop-loss, target & quantity</div>
           <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 8 }}>Defaults 0.4% SL / 1% TP · {isCrypto ? "amount in " + cur : "quantity"} per trade.</div>

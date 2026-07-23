@@ -131,18 +131,21 @@ function ScreenerRow({ screener, market, onOpen, onBuy, onAutoBuy, onScreenerBuy
                 <span className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: "var(--ink)" }}>{fmt(price, market)}</span>
               </div>
               <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 4 }}>● Entry {dt(m.entryAt)} @ <span className="mono">{fmt(m.entryPrice, market)}</span></div>
-              <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 8 }} onClick={(e) => e.stopPropagation()}>
-                <input value={cardSL(m.sym)} onChange={(e) => setCardOv(m.sym, "sl", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={inBox} />
-                <span style={{ fontSize: 9.5, color: "var(--down)", fontWeight: 800 }}>% SL</span>
-                <input value={cardTP(m.sym)} onChange={(e) => setCardOv(m.sym, "tp", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={inBox} />
-                <span style={{ fontSize: 9.5, color: "var(--up)", fontWeight: 800 }}>% TP</span>
-              </div>
+              {autoOn && (
+                <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 8 }} onClick={(e) => e.stopPropagation()}>
+                  <input value={cardSL(m.sym)} onChange={(e) => setCardOv(m.sym, "sl", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={inBox} />
+                  <span style={{ fontSize: 9.5, color: "var(--down)", fontWeight: 800 }}>% SL</span>
+                  <input value={cardTP(m.sym)} onChange={(e) => setCardOv(m.sym, "tp", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={inBox} />
+                  <span style={{ fontSize: 9.5, color: "var(--up)", fontWeight: 800 }}>% TP</span>
+                </div>
+              )}
             </div>
           );
         })}
       </div>
 
-      {/* Footer — date range · capital · live P&L, all on one line below the cards */}
+      {/* Footer — date range · capital · live P&L. Only shown when Auto-Buy is on (off = a plain discovery list). */}
+      {autoOn && (
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
         <select aria-label="Date range" value={period} onChange={(e) => setPeriod(e.target.value)} style={{ flex: "0 0 auto", fontSize: 10.5, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 9, padding: "7px 8px", background: "var(--surface)", color: "var(--ink)" }}>
           <option value="today">Today</option>
@@ -159,6 +162,7 @@ function ScreenerRow({ screener, market, onOpen, onBuy, onAutoBuy, onScreenerBuy
           <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: chgColor(livePnl) }}>{(livePnl >= 0 ? "+" : "") + fmt(livePnl, market)}</div>
         </div>
       </div>
+      )}
     </div>
   );
 }
