@@ -164,14 +164,14 @@ function ScreenerRow({ screener, market, onOpen, onBuy, onAutoBuy, onScreenerBuy
 }
 
 export default function PopularScreeners({ market, mode = "virtual", list = [], onOpen, onBuy, onAutoBuy, onScreenerBuy, liveTick = 0 }) {
-  const [tab, setTab] = useState("popular");   // "popular" | "custom"
+  const [tab, setTab] = useState("custom");   // "custom" | "popular" — Create-your-own is the default
   // Not for Commodity (thin universe / no 5m intraday screening there).
   if (market === "Commodity") return null;
   return (
     <Section title="Screener" icon={<SlidersHorizontal size={17} color="var(--primary)" />}>
       {/* Popular | Create your own screener */}
       <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3, marginBottom: 4 }}>
-        {[["popular", "Popular"], ["custom", "Create your own screener"]].map(([k, l]) => (
+        {[["custom", "Create your own screener"], ["popular", "Popular"]].map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} className="pill tap disp" style={{ padding: "6px 14px", fontSize: 12, fontWeight: 800, border: "none", whiteSpace: "nowrap", background: tab === k ? "var(--primary)" : "transparent", color: tab === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
         ))}
       </div>
