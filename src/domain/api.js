@@ -36,6 +36,22 @@ export async function scanPattern(pattern, appSyms) {
     return (d.matches || []).map((m) => ({ ...m, sym: bySy.get(m.sym) || m.sym }));
   } catch { return []; }
 }
+/* Idea scan — Neo's daily ideas from REAL bullish candlestick + chart patterns on 1d/1h candles.
+   Returns [{sym, tf, pattern, name, candlestick, entry, target, stop, tpPct, slPct, rr, strength}]. */
+export async function scanIdeas(appSyms) {
+  if (!BACKEND_URL || !appSyms || !appSyms.length) return [];
+  try {
+    const ySyms = appSyms.map(yahooSymbol);
+    const r = await fetch(`${BACKEND_URL}/api/idea-scan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ symbols: ySyms }),
+    });
+    const d = await r.json().catch(() => ({}));
+    const bySy = new Map(appSyms.map((s) => [yahooSymbol(s), s]));
+    return (d.ideas || []).map((m) => ({ ...m, sym: bySy.get(m.sym) || m.sym }));
+  } catch { return []; }
+}
 /* Momentum scan — "which stocks moved X% over one <tf> candle". Returns [{sym, chg, ratio}]. */
 export async function scanMomentum({ tf, pct, dir, bars, syms }) {
   if (!BACKEND_URL || !syms || !syms.length || !(pct > 0)) return [];

@@ -6,7 +6,7 @@ import { Building2, ChevronRight, Lightbulb, Newspaper, Pencil, Sparkles, Trendi
 import { BACKEND_URL, RECONCILE_REAL_CLOSES } from "../config";
 import { CUR, DAY, chgColor, clamp, compact, fmt, lsGet, lsSet, pct, timeAgo } from "../lib/format";
 import { ALL, GLOBAL_MKTS, UNIVERSE, marketOf } from "../domain/universe";
-import { askMatrix, fetchNews, fetchNewsFeed } from "../domain/api";
+import { askMatrix, fetchNews, fetchNewsFeed, scanIdeas } from "../domain/api";
 import AddBtn from "../components/common/AddBtn";
 import SectorHeatmap from "../components/common/SectorHeatmap";
 import EarningsSection from "../components/common/EarningsSection";
@@ -142,7 +142,25 @@ function StockIdeasStrip({ onOpen, onBuy, market, liveTick = 0 }) {
   const mkt = market;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const ideas = useMemo(() => currentIdeas(), [liveTick]);
-  const all = ideas.filter((i) => marketOf(i.sym) === mkt);
+  const localAll = ideas.filter((i) => marketOf(i.sym) === mkt);
+
+  /* PATTERN-BASED IDEAS (Neo). The backend scans this market's universe on real 1d/1h candles for
+     bullish candlestick + chart patterns and returns entry/target/stop. We prefer those; if the scan
+     is empty or the backend is unreachable, we fall back to the snapshot-technical ideas above. */
+  const [gen, setGen] = useState([]);
+  useEffect(() => {
+    let stop = false;
+    const syms = (UNIVERSE[mkt] || []).map((s) => s.sym).slice(0, 40);
+    if (!syms.length) { setGen([]); return undefined; }
+    scanIdeas(syms).then((list) => { if (!stop) setGen(Array.isArray(list) ? list : []); }).catch(() => { if (!stop) setGen([]); });
+    return () => { stop = true; };
+  }, [mkt]);
+  const genCards = gen.map((g) => ({
+    by: "Neo", sym: g.sym, entry: g.entry, exit: g.target, stop: g.stop, gain: g.tpPct, rr: g.rr,
+    pattern: g.pattern, tradeType: "Stock", signal: g.name, tf: g.tf,
+    logic: `A ${g.name} formed on the ${g.tf} chart${g.candlestick && g.candlestick !== g.name ? ` (with a ${g.candlestick})` : ""} — a bullish setup. Target +${g.tpPct}%, stop −${g.slPct}%.`,
+  }));
+  const all = genCards.length ? genCards : localAll;
   /* Ordered by POTENTIAL LEFT, descending: how far the price still has to run to
      the target, measured against the live price. An idea whose target is already
      hit has nothing left to give, so it sinks to the bottom rather than leading.
@@ -760,10 +778,12 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const prodCode = product === "INTRADAY" ? "MIS" : "CNC";         // what the broker order body expects
   const showProduct = market === "IN" || market === "FNO";         // concept only applies to Indian equity/F&O
   const [autoOverrides, setAutoOverrides] = useState({});   // sym -> {tp, sl}
-  // GLOBAL Smart Auto-Buy SL/TP. null = use each pick's own target/stop; a number overrides ALL picks
-  // (a per-symbol override in the edit panel still wins). Prefilled from the picks once they load.
-  const [autoSL, setAutoSL] = useState(null);
-  const [autoTP, setAutoTP] = useState(null);
+  /* SL/TP mode for Smart Auto-Buy. "default" (the original behaviour) keeps a SEPARATE target/stop per
+     symbol, taken from that pick's Top-Picks levels. "custom" applies ONE SL/TP to every pick, prefilled
+     0.5% / 1.5%. A per-symbol edit in the positions panel still overrides either. */
+  const [slMode, setSlMode] = useState("default");
+  const [autoSL, setAutoSL] = useState(0.5);
+  const [autoTP, setAutoTP] = useState(1.5);
   const [editSym, setEditSym] = useState(null);
   const [showTrades, setShowTrades] = useState(false);
   const MKT_LABEL = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", Commodity: "🪙 Commodity", FNO: "⚡ F&O" };
@@ -793,25 +813,15 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     const m = marketOf(s.sym);
     const auto = autoTargets(s);
     const ov = autoOverrides[s.sym];
-    // Precedence: a per-symbol edit wins; else the card's global SL/TP; else the pick's own target/stop.
-    const tpPct = ov ? ov.tp : (autoTP != null ? autoTP : auto.tp);
-    const slPct = ov ? ov.sl : (autoSL != null ? autoSL : auto.sl);
+    // Precedence: a per-symbol edit wins; else (Custom mode) the one global SL/TP; else the pick's own.
+    const tpPct = ov ? ov.tp : (slMode === "custom" ? autoTP : auto.tp);
+    const slPct = ov ? ov.sl : (slMode === "custom" ? autoSL : auto.sl);
     const entry = s.price;
     // Crypto sizes by AMOUNT (fractional units); stocks by whole shares.
     const qty = m === "Crypto" ? +(perCap / entry).toFixed(6) : Math.max(1, Math.floor(perCap / entry));
     const dp = entry < 1 ? 6 : entry < 10 ? 4 : 2;
     return { sym: s.sym, m, qty, entry, tpPct, slPct, auto };   // planned entry; the exit engine closes it at real prices
   }).filter(Boolean);   // F&O names with no real lot size are dropped, not guessed
-  /* Prefill the global SL/TP from the day's Top Picks (their average target/stop) whenever the market
-     changes, so the fields start at Matrix's suggested levels; the user can then override them. */
-  useEffect(() => {
-    if (!autoPicks.length) return;
-    const ts = autoPicks.map(autoTargets);
-    const avg = (arr) => +(arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1);
-    setAutoSL(avg(ts.map((x) => x.sl)));
-    setAutoTP(avg(ts.map((x) => x.tp)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [market, autoPicks.length]);
   // When Auto-Buy is ON, actually place today's picks as REAL positions (once per
   // day per market) with their target/stop attached. The exit engine then closes
   // them at real market prices — no simulated win/loss.
@@ -924,26 +934,23 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       {!hideDash && (
       <div className="card glow" style={{ marginTop: 14, padding: 16, border: "1px solid rgba(0,0,0,.06)", color: "#141416", position: "relative", overflow: "hidden", background: "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)" }}>
         <div style={{ position: "relative" }}>
-          {/* slider */}
-          <div className="pill" style={{ display: "inline-flex", background: "rgba(0,0,0,.06)", padding: 3, marginBottom: 14 }}>
-            {[["total", "Total"], ["auto", "Smart Auto-Buy"]].map(([k, l]) => (
-              <button key={k} onClick={() => setDashView(k)} className="pill tap disp" style={{ padding: "6px 16px", fontSize: 12, fontWeight: 800, border: "none", background: dashView === k ? "#141416" : "transparent", color: dashView === k ? "#fff" : "rgba(0,0,0,.55)" }}>{l}</button>
-            ))}
+          {/* slider + date range on ONE row (the dropdown controls whichever view is showing) */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+            <div className="pill" style={{ display: "inline-flex", background: "rgba(0,0,0,.06)", padding: 3 }}>
+              {[["total", "Total"], ["auto", "Smart Auto-Buy"]].map(([k, l]) => (
+                <button key={k} onClick={() => setDashView(k)} className="pill tap disp" style={{ padding: "6px 16px", fontSize: 12, fontWeight: 800, border: "none", background: dashView === k ? "#141416" : "transparent", color: dashView === k ? "#fff" : "rgba(0,0,0,.55)" }}>{l}</button>
+              ))}
+            </div>
+            <select aria-label="Date range" value={dashView === "total" ? totPeriod : plPeriod} onChange={(e) => { const v = e.target.value; if (dashView === "total") setTotPeriod(v); else setPlPeriod(v); }} style={{ fontSize: 11, fontWeight: 700, border: "1px solid rgba(0,0,0,.14)", borderRadius: 9, padding: "5px 8px", background: "rgba(0,0,0,.04)", color: "#141416" }}>
+              <option value="today">Today</option>
+              <option value="month">This month</option>
+              <option value="lifetime">{dashView === "total" ? "All time" : "Lifetime"}</option>
+            </select>
           </div>
 
           {dashView === "total" ? (
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 12, opacity: .85, fontWeight: 700 }}>P&amp;L</span>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  {/* Total-card date range — a dropdown (default Today) instead of a chip row. */}
-                  <select aria-label="Date range" value={totPeriod} onClick={(e) => e.stopPropagation()} onChange={(e) => { e.stopPropagation(); setTotPeriod(e.target.value); }} style={{ fontSize: 11, fontWeight: 700, border: "1px solid rgba(0,0,0,.14)", borderRadius: 9, padding: "5px 8px", background: "rgba(0,0,0,.04)", color: "#141416" }}>
-                    <option value="today">Today</option>
-                    <option value="month">This month</option>
-                    <option value="lifetime">All time</option>
-                  </select>
-                </div>
-              </div>
+              <span style={{ fontSize: 12, opacity: .85, fontWeight: 700 }}>P&amp;L</span>
               <div onClick={onGoPortfolio} className="tap" style={{ marginTop: 2 }}>
                 {/* Headline = total P&L (Manual + Smart Auto-Buy + Automate) in BLACK, with Returns %
                     right beside it in green/red. Everything else on the card stays black. */}
@@ -980,11 +987,6 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 12, opacity: .85 }}>Smart Auto-Buy · {MKT_LABEL[market]}</span>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <select aria-label="Date range" value={plPeriod} onChange={(e) => setPlPeriod(e.target.value)} style={{ fontSize: 11, fontWeight: 700, border: "1px solid rgba(0,0,0,.14)", borderRadius: 9, padding: "5px 8px", background: "rgba(0,0,0,.04)", color: "#141416" }}>
-                    <option value="today">Today</option>
-                    <option value="month">This month</option>
-                    <option value="lifetime">Lifetime</option>
-                  </select>
                   <label className="tap" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700 }}>
                     {autoOn ? "On" : "Off"}
                     <span onClick={() => {
@@ -1038,16 +1040,27 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 <DashStat k="Capital" v={fmt(capNum, aggCur)} pos={true} />
               </div>
 
-              {/* Global SL/TP for Smart Auto-Buy — prefilled from the Top Picks' average, editable.
-                  Applies to every pick unless a single position is overridden in the edit panel. */}
-              <div style={{ marginTop: 12, background: "rgba(0,0,0,.05)", borderRadius: 12, padding: "8px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                <div style={{ fontSize: 9.5, opacity: .8, fontWeight: 700 }}>STOP-LOSS / TARGET (auto-exit)</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <input value={autoSL == null ? "" : autoSL} onChange={(e) => setAutoSL(e.target.value === "" ? null : +e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={{ width: 46, textAlign: "center", border: "none", background: "rgba(0,0,0,.06)", borderRadius: 8, padding: "5px 4px", fontWeight: 800, fontSize: 13, color: "#141416" }} />
-                  <span style={{ fontSize: 11, color: "var(--down)", fontWeight: 800 }}>% SL</span>
-                  <input value={autoTP == null ? "" : autoTP} onChange={(e) => setAutoTP(e.target.value === "" ? null : +e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={{ width: 46, textAlign: "center", border: "none", background: "rgba(0,0,0,.06)", borderRadius: 8, padding: "5px 4px", fontWeight: 800, fontSize: 13, color: "#141416" }} />
-                  <span style={{ fontSize: 11, color: "var(--up)", fontWeight: 800 }}>% TP</span>
+              {/* SL/TP mode. Default = each pick keeps its own target/stop (from Top Picks). Custom = one
+                  SL/TP for all picks, prefilled 0.5% / 1.5%. A per-position edit still overrides either. */}
+              <div style={{ marginTop: 12, background: "rgba(0,0,0,.05)", borderRadius: 12, padding: "10px 12px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                  <div style={{ fontSize: 9.5, opacity: .8, fontWeight: 700 }}>STOP-LOSS / TARGET</div>
+                  <div className="pill" style={{ display: "inline-flex", background: "rgba(0,0,0,.06)", padding: 2 }}>
+                    {[["default", "Default"], ["custom", "Custom"]].map(([k, l]) => (
+                      <button key={k} onClick={() => setSlMode(k)} className="pill tap disp" style={{ padding: "4px 12px", fontSize: 10.5, fontWeight: 800, border: "none", background: slMode === k ? "#141416" : "transparent", color: slMode === k ? "#fff" : "rgba(0,0,0,.55)" }}>{l}</button>
+                    ))}
+                  </div>
                 </div>
+                {slMode === "custom" ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 9 }}>
+                    <input value={autoSL} onChange={(e) => setAutoSL(+e.target.value.replace(/[^0-9.]/g, "") || 0)} inputMode="decimal" className="no-ring mono" style={{ width: 52, textAlign: "center", border: "none", background: "rgba(0,0,0,.06)", borderRadius: 8, padding: "5px 4px", fontWeight: 800, fontSize: 13, color: "#141416" }} />
+                    <span style={{ fontSize: 11, color: "var(--down)", fontWeight: 800 }}>% SL</span>
+                    <input value={autoTP} onChange={(e) => setAutoTP(+e.target.value.replace(/[^0-9.]/g, "") || 0)} inputMode="decimal" className="no-ring mono" style={{ width: 52, textAlign: "center", border: "none", background: "rgba(0,0,0,.06)", borderRadius: 8, padding: "5px 4px", fontWeight: 800, fontSize: 13, color: "#141416" }} />
+                    <span style={{ fontSize: 11, color: "var(--up)", fontWeight: 800 }}>% TP</span>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 10, opacity: .65, marginTop: 6 }}>Each pick uses its own target &amp; stop from Matrix's Top Picks.</div>
+                )}
               </div>
 
               {/* capital — type then Save */}
