@@ -908,12 +908,22 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       // entered before the window) — matching what the Smart Auto-Buy card shows. Closed trades
       // are still scoped to the selected date range.
       (t.exitAt == null || stampT(t) >= totFrom));
+    const todayStart = new Date(new Date().setHours(0, 0, 0, 0)).getTime();
     let pnl = 0, invested = 0, open = 0, closedN = 0, wins = 0, byType = { Manual: 0, "Auto Buy": 0, Automate: 0 };
     for (const t of rows) {
       const closed = t.exitAt != null && t.exit != null;
-      const last = (ALL.find((a) => a.sym === t.sym) || {}).price;
+      const st = ALL.find((a) => a.sym === t.sym) || {};
+      const last = st.price;
       const cur = closed ? t.exit : (last != null ? last : t.entry);
-      const p = (cur - t.entry) * (t.qty || 1);
+      /* Reference the P&L is measured FROM. Normally the entry price. But an OPEN position carried in
+         from a PRIOR day, shown under "Today", should contribute only TODAY's move — not its whole
+         unrealised loss since entry. So we measure from today's open (derived from the live day-change %),
+         which is why "Today" no longer shows a big loss for positions you didn't trade today. */
+      let ref = t.entry;
+      if (!closed && totPeriod === "today" && (t.entryAt || 0) < todayStart && st.chg != null && last != null) {
+        ref = last / (1 + st.chg / 100);
+      }
+      const p = (cur - ref) * (t.qty || 1);
       pnl += p; invested += t.entry * (t.qty || 1);
       if (!closed) open++; else { closedN++; if (p > 0) wins++; }
       const key = t.tradeType === "Auto Buy" ? "Auto Buy" : t.tradeType === "Automate" ? "Automate" : "Manual";
@@ -921,7 +931,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     }
     // Win rate is over CLOSED trades only (an open position hasn't won or lost yet).
     return { pnl: +pnl.toFixed(2), invested: +invested.toFixed(2), count: rows.length, open, closedN, wins, winRate: closedN ? (wins / closedN) * 100 : null, byType, retPct: invested ? (pnl / invested) * 100 : 0 };
-  }, [trades, market, isReal, totFrom]);
+  }, [trades, market, isReal, totFrom, totPeriod]);
   const totLabel = totPeriod === "today" ? "today" : totPeriod === "month" ? "this month" : "all time";
 
   return (
@@ -935,7 +945,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           Indian paper trading off) — there is nothing to trade, so a ₹0 virtual portfolio would
           only mislead. */}
       {!hideDash && (
-      <div className="card flat" style={{ marginTop: 14, padding: 16, border: "1px solid rgba(0,0,0,.06)", color: "#141416", position: "relative", overflow: "hidden", background: "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)" }}>
+      <div className="card flat" style={{ marginTop: 14, padding: 16, border: "1px solid rgba(0,0,0,.06)", color: "#141416", position: "relative", overflow: "hidden", boxShadow: "none", background: "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)" }}>
         <div style={{ position: "relative" }}>
           {/* slider + date range on ONE row (the dropdown controls whichever view is showing) */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
@@ -1215,8 +1225,9 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     </div>}
                   </div>
                 )}
-                {/* Buy with explicit quantity; the pick's REAL stop & target are armed with it. */}
-                <div style={{ marginTop: "auto", paddingTop: 13 }} onClick={(e) => e.stopPropagation()}>
+                {/* Buy with explicit quantity; the pick's REAL stop & target are armed with it. Sits right
+                    under the setup (no "auto" push) so there's no big empty gap above it. */}
+                <div style={{ marginTop: 12, paddingTop: 0 }} onClick={(e) => e.stopPropagation()}>
                   <BuyButton
                     s={s}
                     market={market}

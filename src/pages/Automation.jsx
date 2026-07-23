@@ -938,7 +938,10 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const [maxTrades, setMaxTrades] = useState("5");      // max fresh entries per day
   const [maxReentries, setMaxReentries] = useState("5");// max re-entries after an exit
   const [tf, setTf] = useState("5m");
-  const [deploySyms, setDeploySyms] = useState(["NIFTY50"]);
+  // Default deploy symbol per market: Indian → NIFTY 50, US → S&P 500, Commodity → Gold, Crypto → BTC.
+  const DEFAULT_DEPLOY_SYM = { IN: "NIFTY50", US: "SPX", Commodity: "GOLD", Crypto: "BTC", FNO: "NIFTY50" };
+  const [deploySyms, setDeploySyms] = useState([DEFAULT_DEPLOY_SYM[market] || "NIFTY50"]);
+  useEffect(() => { setDeploySyms([DEFAULT_DEPLOY_SYM[market] || "NIFTY50"]); /* eslint-disable-next-line */ }, [market]);
   const [symFilter, setSymFilter] = useState([]);
   /* Symbols for the market you are actually on. This was hardcoded to the F&O
      list, so on the US or Crypto tab the builder offered you Indian F&O names —
@@ -1325,8 +1328,8 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const fmtDate = (t) => new Date(t).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" });
 
   const DStat = ({ k, v, c }) => (
-    <div style={{ flex: "1 1 28%", minWidth: 88, background: "rgba(0,0,0,.05)", borderRadius: 14, padding: "10px 12px" }}>
-      <div style={{ fontSize: 9.5, opacity: .85, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".03em" }}>{k}</div>
+    <div style={{ flex: "1 1 0", minWidth: 0, background: "rgba(0,0,0,.05)", borderRadius: 14, padding: "10px 8px" }}>
+      <div style={{ fontSize: 9, opacity: .85, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".02em", whiteSpace: "nowrap" }}>{k}</div>
       <div className="mono" style={{ fontWeight: 800, fontSize: 15, marginTop: 3, color: c || "#141416" }}>{v}</div>
     </div>
   );
@@ -1525,7 +1528,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       {/* Automation Dashboard — moved ABOVE the deployed lists so the headline P&L is the first
           thing you see. Collapsed: a Win/Loss + P&L strip with an expand chevron. */}
       {!dashOpen ? (
-        <button onClick={() => setDashOpen(true)} className="tap disp card flat" style={{ width: "100%", marginTop: 14, border: "1px solid rgba(0,0,0,.06)", background: "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)", color: "#141416", borderRadius: 24, padding: "13px 16px", display: "flex", alignItems: "center", gap: 14 }}>
+        <button onClick={() => setDashOpen(true)} className="tap disp card flat" style={{ width: "100%", marginTop: 14, border: "1px solid rgba(0,0,0,.06)", boxShadow: "none", background: "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)", color: "#141416", borderRadius: 24, padding: "13px 16px", display: "flex", alignItems: "center", gap: 14 }}>
           <div style={{ textAlign: "left" }}>
             <div style={{ fontSize: 10, opacity: .8, fontWeight: 700 }}>WIN / LOSS</div>
             <div className="mono" style={{ fontWeight: 800, fontSize: 15 }}>{agg.wins} : {dLosses}</div>
@@ -1537,7 +1540,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           <span style={{ marginLeft: "auto", display: "grid", placeItems: "center" }}><ChevronDown size={16} /></span>
         </button>
       ) : (
-      <div className="card flat" style={{ marginTop: 14, padding: 18, border: "1px solid rgba(0,0,0,.06)", background: "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)", color: "#141416" }}>
+      <div className="card flat" style={{ marginTop: 14, padding: 18, border: "1px solid rgba(0,0,0,.06)", boxShadow: "none", background: "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)", color: "#141416" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div className="disp" style={{ fontWeight: 700, fontSize: 15 }}>Automation Dashboard</div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1662,17 +1665,27 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
 
           {/* Strategy name — first thing, before the steps. */}
           <div className="card" style={{ marginTop: 16, padding: 16 }}>
-            <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Strategy name{editingId ? " · editing" : ""}</div>
-            <input value={stratName} onChange={(e) => setStratName(e.target.value)} placeholder="e.g. Momentum Rider" className="no-ring disp" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }} />
-
-            {/* Deploy on — symbol, right under the name; then the Stock / Option toggle above Step 1. */}
-            <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, margin: "14px 0 6px" }}>Deploy on — symbol</div>
-            <select value={deploySyms[0] || ""} onChange={(e) => setDeploySyms(e.target.value ? [e.target.value] : [])} aria-label="Deploy symbol" style={{ ...selStyle, width: "100%" }}>
-              <option value="">Choose a symbol…</option>
-              {DEPLOY_OPTIONS.map((sy) => <option key={sy} value={sy}>{sy}</option>)}
-            </select>
+            {/* Strategy name + Deploy-on symbol share ONE row (name flexes, symbol sits beside it). */}
+            <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+              <div style={{ flex: "1 1 150px", minWidth: 0 }}>
+                <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Strategy name{editingId ? " · editing" : ""}</div>
+                <input value={stratName} onChange={(e) => setStratName(e.target.value)} placeholder="e.g. Momentum Rider" className="no-ring disp" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }} />
+              </div>
+              <div style={{ flex: "0 0 132px" }}>
+                <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Deploy on</div>
+                <select value={deploySyms[0] || ""} onChange={(e) => setDeploySyms(e.target.value ? [e.target.value] : [])} aria-label="Deploy symbol" style={{ ...selStyle, width: "100%" }}>
+                  <option value="">Symbol…</option>
+                  {DEPLOY_OPTIONS.map((sy) => <option key={sy} value={sy}>{sy}</option>)}
+                </select>
+              </div>
+            </div>
             <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 6 }}>The strategy runs on this instrument.</div>
-            <OptionLeg symbols={deploySyms.length ? deploySyms : ["NIFTY50"]} value={optLeg} onChange={setOptLeg} />
+            {/* Options are only offered where they exist: any Indian/US/Commodity underlying, but in CRYPTO
+                only BTC and ETH have a listed options market — so the "trade options" toggle is hidden for
+                every other coin. */}
+            {!(market === "Crypto" && !deploySyms.some((x) => x === "BTC" || x === "ETH")) && (
+              <OptionLeg symbols={deploySyms.length ? deploySyms : ["NIFTY50"]} value={optLeg} onChange={setOptLeg} />
+            )}
           </div>
 
           {mode === "builder" && (

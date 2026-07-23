@@ -601,19 +601,40 @@ const SUGGEST_DETECT = [
   [/\brsi\b|relative\s*strength/i, "RSI"],
   [/\bema\b|exponential\s*moving|moving\s*average|\bma\b/i, "EMA"],
 ];
+/* TRADING-STYLE INTENTS — the "training" that lets Neo answer "suggest a scalping / momentum /
+   mean-reversion / breakout / trend strategy" even when NO indicator is named. Each style maps to the
+   indicator recipe a trader would actually use:
+     • Scalping    — quick in/out on a fast EMA cross confirmed by RSI strength (tight SL/TP).
+     • Momentum    — ride strength: EMA trend + MACD + ADX (a real trend, not chop).
+     • Mean revert — fade extremes: buy the lower Bollinger band while RSI is oversold.
+     • Breakout    — buy the upper Bollinger band with MACD confirming.
+     • Trend       — EMA trend filtered by ADX strength. */
+const SUGGEST_INTENTS = [
+  { re: /scalp/i, inds: ["EMA", "RSI"], bias: "momentum" },
+  { re: /mean[\s-]*revers|mean[\s-]*revert|reversion|revert|contrarian|fade|oversold\s*bounce/i, inds: ["BB", "RSI"], bias: "reversal" },
+  { re: /break\s*out/i, inds: ["BB", "MACD"], bias: "momentum" },
+  { re: /momentum|trend[\s-]*follow|trend\s*rider|trending|strong\s*trend/i, inds: ["EMA", "MACD", "ADX"], bias: "momentum" },
+  { re: /\btrend\b/i, inds: ["EMA", "ADX"], bias: "momentum" },
+];
 /* Does this text READ like a request for Neo to design a strategy (vs. a literal rule)? */
 export function isSuggestRequest(text) {
-  return /\b(suggest|recommend|design|build|create|make|give\s+me|come\s+up|ride|combination|combine)\b/i.test(String(text || ""))
-    && SUGGEST_DETECT.some(([re]) => re.test(text));
+  const t = String(text || "");
+  const hasVerb = /\b(suggest|recommend|design|build|create|make|give\s+me|come\s+up|ride|combination|combine|want|need)\b/i.test(t);
+  return hasVerb && (SUGGEST_DETECT.some(([re]) => re.test(t)) || SUGGEST_INTENTS.some((x) => x.re.test(t)));
 }
 export function suggestStrategy(text) {
   const t = String(text || "");
-  const reversal = /revers|mean[\s-]*revert|mean[\s-]*reversion|bounce|oversold|\bdip\b|pull[\s-]*back|contrarian|fade/i.test(t);
+  let reversal = /revers|mean[\s-]*revert|mean[\s-]*reversion|bounce|oversold|\bdip\b|pull[\s-]*back|contrarian|fade/i.test(t);
+  let picked = [];
+  for (const [re, key] of SUGGEST_DETECT) if (re.test(t) && !picked.includes(key)) picked.push(key);
+  // No indicator named? Fall back to the trading-style intent recipe (scalping / momentum / …).
+  if (!picked.length) {
+    const intent = SUGGEST_INTENTS.find((x) => x.re.test(t));
+    if (intent) { picked = intent.inds.slice(); if (intent.bias === "reversal") reversal = true; }
+  }
+  if (!picked.length) return null;
   const bias = reversal ? "reversal" : "momentum";
   const specs = suggestSpecs(bias);
-  const picked = [];
-  for (const [re, key] of SUGGEST_DETECT) if (re.test(t) && !picked.includes(key)) picked.push(key);
-  if (!picked.length) return null;
   const defs = [], entry = [], exitCands = [];
   const addDefs = (ds) => ds.forEach((d) => { if (!defs.find((x) => x.name === d.name)) defs.push(d); });
   picked.forEach((key) => {
