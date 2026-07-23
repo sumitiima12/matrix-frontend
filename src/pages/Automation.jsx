@@ -452,6 +452,9 @@ function DeploySizeField({ market, value, onChange }) {
   );
 }
 
+/* Who made a strategy: Neo for the built-in sample/premium set, otherwise the poster's user id
+   (public strategies) or "You" for your own. Drives the "Created by" tag on every card. */
+function creatorOf(s) { return (s && (s.premium || s.by === "Matrix")) ? "Neo" : ((s && s.by) || "You"); }
 /* Editable Stop-loss / Target on a strategy card. Defaults come from the strategy (0.5% / 1.5% if it
    carries none); the user can change them before deploying and the chosen values ride along on activate. */
 function StratSLTP({ sl, tp, setSl, setTp }) {
@@ -487,9 +490,7 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, market = "IN", can
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
         <div style={{ minWidth: 0 }}>
           <div className="disp" style={{ fontWeight: 700, fontSize: 14 }}>{s.name}</div>
-          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
-            {(s.symbols || []).join(" · ")}
-          </div>
+          <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>Created by {creatorOf(s)} · {(s.symbols || []).join(" · ")}</div>
         </div>
         <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--primary-soft)", color: "var(--primary)", flex: "0 0 auto" }}>SAMPLE</span>
       </div>
@@ -589,7 +590,7 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, market = "IN", canBa
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
         <div style={{ minWidth: 0 }}>
           <div className="disp" style={{ fontWeight: 700, fontSize: 14 }}>{s.name}</div>
-          {shownSyms.length > 0 && <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{shownSyms.join(" · ")}</div>}
+          <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>Created by {creatorOf(s)}{shownSyms.length ? " · " + shownSyms.join(" · ") : ""}</div>
           {s.desc && <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 4, lineHeight: 1.5 }}>{s.desc}</div>}
         </div>
         <span className="pill gold-border" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 9px", color: "var(--gold)", flex: "0 0 auto", whiteSpace: "nowrap" }}>★ PREMIUM</span>
@@ -1362,7 +1363,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           <span style={{ width: 9, height: 9, borderRadius: 9, flex: "0 0 auto", background: s.active ? "var(--up)" : "var(--muted)", boxShadow: s.active ? "0 0 0 4px var(--up-soft)" : "none" }} />
           <div style={{ minWidth: 0 }}>
             <div className="disp" style={{ fontWeight: 700, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</div>
-            <div style={{ fontSize: 10.5, color: "var(--muted)" }}>by {s.by} · started {fmtDate(s.created)} · {fmt(s.cap || 100000, "IN")}</div>
+            <div style={{ fontSize: 10.5, color: "var(--muted)" }}>Created by {creatorOf(s)} · started {fmtDate(s.created)} · {fmt(s.cap || 100000, "IN")}</div>
             {s.symbols && s.symbols.length > 0 && (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
                 {s.symbols.slice(0, 4).map((sy) => <span key={sy} className="pill" style={{ fontSize: 9.5, fontWeight: 700, background: "var(--primary-soft)", color: "var(--primary)", padding: "2px 8px" }}>{sy}</span>)}
@@ -1389,6 +1390,8 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         <MetricMini k="Win rate" v={p.winRate == null ? "—" : p.winRate.toFixed(0) + "%"} />
         <MetricMini k="P&L" v={p.pnl == null ? "—" : (p.pnl >= 0 ? "+" : "") + fmt(p.pnl, market)} c={chgColor(p.pnl)} />
         <MetricMini k="Returns" v={pct(p.retPct, 1)} c={chgColor(p.retPct)} />
+        <MetricMini k="Stop-loss" v={(s.cfg && s.cfg.sl != null && s.cfg.sl !== "") ? s.cfg.sl + "%" : "—"} c="var(--down)" />
+        <MetricMini k="Target" v={(s.cfg && s.cfg.tp != null && s.cfg.tp !== "") ? s.cfg.tp + "%" : "—"} c="var(--up)" />
       </div>
       {/* Deploy size — AMOUNT (USD) for crypto, QUANTITY for other markets. Default $10 / 1 qty. */}
       {(() => {
@@ -1522,7 +1525,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       {/* Automation Dashboard — moved ABOVE the deployed lists so the headline P&L is the first
           thing you see. Collapsed: a Win/Loss + P&L strip with an expand chevron. */}
       {!dashOpen ? (
-        <button onClick={() => setDashOpen(true)} className="tap disp card glow" style={{ width: "100%", marginTop: 14, border: "1px solid rgba(0,0,0,.06)", background: "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)", color: "#141416", borderRadius: 24, padding: "13px 16px", display: "flex", alignItems: "center", gap: 14 }}>
+        <button onClick={() => setDashOpen(true)} className="tap disp card flat" style={{ width: "100%", marginTop: 14, border: "1px solid rgba(0,0,0,.06)", background: "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)", color: "#141416", borderRadius: 24, padding: "13px 16px", display: "flex", alignItems: "center", gap: 14 }}>
           <div style={{ textAlign: "left" }}>
             <div style={{ fontSize: 10, opacity: .8, fontWeight: 700 }}>WIN / LOSS</div>
             <div className="mono" style={{ fontWeight: 800, fontSize: 15 }}>{agg.wins} : {dLosses}</div>
@@ -1534,7 +1537,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           <span style={{ marginLeft: "auto", display: "grid", placeItems: "center" }}><ChevronDown size={16} /></span>
         </button>
       ) : (
-      <div className="card glow" style={{ marginTop: 14, padding: 18, border: "1px solid rgba(0,0,0,.06)", background: "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)", color: "#141416" }}>
+      <div className="card flat" style={{ marginTop: 14, padding: 18, border: "1px solid rgba(0,0,0,.06)", background: "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)", color: "#141416" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div className="disp" style={{ fontWeight: 700, fontSize: 15 }}>Automation Dashboard</div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1603,7 +1606,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
               <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: "1px solid var(--line)" }}>
                 <div style={{ minWidth: 0 }}>
                   <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{s.name || (s.symbols && s.symbols[0]) || "Strategy"}{s.paused && <span style={{ color: "var(--muted)", fontWeight: 700 }}> · paused</span>}</div>
-                  <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600, marginTop: 1 }}>{(s.symbols || []).join(", ") || "—"} · by {s.by}</div>
+                  <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600, marginTop: 1 }}>{(s.symbols || []).join(", ") || "—"} · Created by {creatorOf(s)}</div>
                   <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>{p.positions} position{p.positions === 1 ? "" : "s"}{p.open ? ` · ${p.open} open` : ""}{p.winRate != null ? ` · ${p.winRate.toFixed(0)}% win` : ""}</div>
                 </div>
                 <div style={{ marginLeft: "auto", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
@@ -1896,7 +1899,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
                     <div style={{ minWidth: 0 }}>
                       <div className="disp" style={{ fontWeight: 700, fontSize: 14 }}>{ps.name}</div>
-                      <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>by {ps.owner_name || "user"}{(ps.symbols || []).length ? " · " + ps.symbols.join(" · ") : ""}</div>
+                      <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>Created by {ps.owner_name || "user"}{(ps.symbols || []).length ? " · " + ps.symbols.join(" · ") : ""}</div>
                     </div>
                     <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--primary-soft)", color: "var(--primary)", flex: "0 0 auto", display: "inline-flex", alignItems: "center", gap: 4 }}><Globe size={11} /> PUBLIC</span>
                   </div>

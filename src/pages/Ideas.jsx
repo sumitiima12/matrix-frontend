@@ -73,7 +73,7 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null })
   // Collapsed: just Win/Loss + P&L and an expand arrow.
   if (collapsed) {
     return (
-      <button onClick={onExpand} className="tap disp card glow" style={{ width: "100%", marginTop: 14, border: "none", background: "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)", color: "#141416", borderRadius: 24, padding: "13px 16px", display: "flex", alignItems: "center", gap: 14 }}>
+      <button onClick={onExpand} className="tap disp card glow" style={{ width: "100%", marginTop: 14, border: "none", background: "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)", boxShadow: "none", color: "#141416", borderRadius: 24, padding: "13px 16px", display: "flex", alignItems: "center", gap: 14 }}>
         <div style={{ textAlign: "left" }}>
           <div style={{ fontSize: 10, opacity: .85, fontWeight: 700 }}>WIN / LOSS</div>
           <div className="mono" style={{ fontWeight: 800, fontSize: 15 }}>{wins} : {losses}</div>
@@ -87,7 +87,7 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null })
     );
   }
   return (
-    <div className="card glow" style={{ marginTop: 14, padding: 16, border: "none", background: "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)", color: "#141416" }}>
+    <div className="card glow" style={{ marginTop: 14, padding: 16, border: "none", background: "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)", boxShadow: "none", color: "#141416" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div className="disp" style={{ fontWeight: 700, fontSize: 15 }}>Ideas Dashboard</div>
         <span style={{ fontSize: 10.5, opacity: .85, marginRight: 34 }}>{periodLabel}</span>

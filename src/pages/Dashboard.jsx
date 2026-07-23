@@ -935,7 +935,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           Indian paper trading off) — there is nothing to trade, so a ₹0 virtual portfolio would
           only mislead. */}
       {!hideDash && (
-      <div className="card glow" style={{ marginTop: 14, padding: 16, border: "1px solid rgba(0,0,0,.06)", color: "#141416", position: "relative", overflow: "hidden", background: "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)" }}>
+      <div className="card flat" style={{ marginTop: 14, padding: 16, border: "1px solid rgba(0,0,0,.06)", color: "#141416", position: "relative", overflow: "hidden", background: "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)" }}>
         <div style={{ position: "relative" }}>
           {/* slider + date range on ONE row (the dropdown controls whichever view is showing) */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
