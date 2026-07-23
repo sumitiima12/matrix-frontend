@@ -156,9 +156,10 @@ function StockIdeasStrip({ onOpen, onBuy, market, liveTick = 0 }) {
     .sort((a, b) => b.left - a.left)
     .slice(0, 6)
     .map((x) => x.i);
+  // Hide the whole Ideas section when this market has none, rather than showing an empty shell.
+  if (top.length === 0) return null;
   return (
     <Section title="Ideas" icon={<Lightbulb size={17} color="var(--primary)" />}>
-      {top.length === 0 && <div style={{ fontSize: 12, color: "var(--muted)", padding: "2px 2px 8px", lineHeight: 1.5 }}>No ideas for this market right now — check back later or switch markets.</div>}
       <div className="hide-scroll" style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4 }}>
         {top.map((idea, i) => {
           const s = ALL.find((a) => a.sym === idea.sym); const m = marketOf(idea.sym);
@@ -240,7 +241,7 @@ function LiveNewsStrip({ symbols = [], onOpen, onBuy, list = [], market = "IN" }
 
   const TAG_COLOR = {
     Earnings: "var(--primary)", Dividend: "var(--up)", Split: "#8B5CF6",
-    "Bulk deal": "#E8A33D", Buyback: "var(--up)", "M&A": "#EC4899", "Order win": "var(--up)",
+    "Bulk deal": "#E8A33D", Buyback: "var(--up)", "M&A": "var(--primary)", "Order win": "var(--up)",
     Others: "var(--muted)",
   };
 

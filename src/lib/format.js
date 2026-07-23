@@ -20,7 +20,9 @@ export function fmt(n, market = "IN") {
   const c = CUR[market] || "₹";
   if (n == null || isNaN(n)) return "—";
   const a = Math.abs(n);
-  const digits = a === 0 ? 2 : a < 0.001 ? 8 : a < 1 ? 4 : 2;
+  // At most 2 decimals for anything a user actually reads (₹/$ prices). Sub-cent tokens (< $0.01)
+  // keep more so they don't collapse to "0.00", but everything ≥ 0.01 shows exactly 2 places.
+  const digits = a === 0 ? 2 : a < 0.01 ? 6 : 2;
   const inGrouping = market === "IN" || (market === "Commodity" && _commodityINR);
   const grouped = Number(n).toLocaleString(inGrouping ? "en-IN" : "en-US", { maximumFractionDigits: digits });
   return c + grouped;

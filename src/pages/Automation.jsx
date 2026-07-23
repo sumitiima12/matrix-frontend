@@ -489,7 +489,7 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, market = "IN", can
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
             <Stat k="WIN RATE" v={stats.winRate.toFixed(0) + "%"} />
             <Stat k="TRADES" v={stats.trades} />
-            <Stat k="P&L" v={(stats.pnl >= 0 ? "+" : "") + fmt(stats.pnl, "IN")} c={chgColor(stats.pnl)} />
+            <Stat k="P&L" v={(stats.pnl >= 0 ? "+" : "") + fmt(stats.pnl, market)} c={chgColor(stats.pnl)} />
             <Stat k="RETURN" v={pct(stats.retPct, 1)} c={chgColor(stats.retPct)} />
           </div>
           <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.45 }}>
@@ -885,7 +885,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const [toast, setToast] = useState(null);
   const [dashBy, setDashBy] = useState("All");
   const [dashOpen, setDashOpen] = useState(false);          // collapsed by default (P&L only)
-  const [dashPreset, setDashPreset] = useState("12m");   // default Last 12 months (label now shown even when collapsed)
+  const [dashPreset, setDashPreset] = useState("today");   // default Today (label shown even when collapsed)
   const [dashFrom, setDashFrom] = useState("");             // custom range (yyyy-mm-dd)
   const [dashTo, setDashTo] = useState("");
   const dashRange = useMemo(() => {
@@ -1308,7 +1308,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             rather than inventing one, so every figure here must handle null. */}
         <MetricMini k="Trades" v={p.trades} />
         <MetricMini k="Win rate" v={p.winRate == null ? "—" : p.winRate.toFixed(0) + "%"} />
-        <MetricMini k="P&L" v={p.pnl == null ? "—" : (p.pnl >= 0 ? "+" : "") + fmt(p.pnl, "IN")} c={chgColor(p.pnl)} />
+        <MetricMini k="P&L" v={p.pnl == null ? "—" : (p.pnl >= 0 ? "+" : "") + fmt(p.pnl, market)} c={chgColor(p.pnl)} />
         <MetricMini k="Returns" v={pct(p.retPct, 1)} c={chgColor(p.retPct)} />
       </div>
       {/* Deploy size — AMOUNT (USD) for crypto, QUANTITY for other markets. Default $10 / 1 qty. */}
@@ -1440,6 +1440,58 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       <div className="disp" style={{ fontWeight: 700, fontSize: 22, marginTop: 8 }}>Automate with Neo</div>
       <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 2 }}>{{ IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", FNO: "⚡ F&O", Commodity: "🪙 Commodity" }[market]} strategies · track performance and manage automations.</div>
 
+      {/* Automation Dashboard — moved ABOVE the deployed lists so the headline P&L is the first
+          thing you see. Collapsed: a Win/Loss + P&L strip with an expand chevron. */}
+      {!dashOpen ? (
+        <button onClick={() => setDashOpen(true)} className="tap disp card glow" style={{ width: "100%", marginTop: 14, border: "1px solid rgba(0,0,0,.06)", background: "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)", color: "#141416", borderRadius: 24, padding: "13px 16px", display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ textAlign: "left" }}>
+            <div style={{ fontSize: 10, opacity: .8, fontWeight: 700 }}>WIN / LOSS</div>
+            <div className="mono" style={{ fontWeight: 800, fontSize: 15 }}>{agg.wins} : {dLosses}</div>
+          </div>
+          <div style={{ textAlign: "left" }}>
+            <div style={{ fontSize: 10, opacity: .8, fontWeight: 700 }}>P&amp;L</div>
+            <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: agg.pnl >= 0 ? "var(--up)" : "var(--down)" }}>{agg.pnl >= 0 ? "+" : ""}{fmt(agg.pnl, market)}</div>
+          </div>
+          <span style={{ marginLeft: "auto", display: "grid", placeItems: "center" }}><ChevronDown size={16} /></span>
+        </button>
+      ) : (
+      <div className="card glow" style={{ marginTop: 14, padding: 18, border: "1px solid rgba(0,0,0,.06)", background: "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)", color: "#141416" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div className="disp" style={{ fontWeight: 700, fontSize: 15 }}>Automation Dashboard</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 10.5, opacity: .85 }}>{(DASH_PRESETS.find(([v]) => v === dashPreset) || [null, "Today"])[1]}</span>
+            <button onClick={() => setDashOpen(false)} className="tap" title="Collapse" style={{ flex: "0 0 auto", display: "grid", placeItems: "center", border: "1px solid rgba(0,0,0,.12)", background: "rgba(0,0,0,.06)", color: "#141416", borderRadius: 10, padding: "5px" }}><ChevronUp size={15} /></button>
+          </div>
+        </div>
+        <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 6, color: agg.pnl >= 0 ? "var(--up)" : "var(--down)" }}>{agg.pnl >= 0 ? "+" : ""}{fmt(agg.pnl, market)}</div>
+        <div style={{ fontSize: 11, opacity: .85, marginTop: -2 }}>{activeCount} active of {shown.length} strategies · {agg.open} still open</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+          <DStat k="Returns %" v={(dRet >= 0 ? "+" : "") + dRet.toFixed(2) + "%"} c={dRet >= 0 ? "var(--up)" : "var(--down)"} />
+          <DStat k="Win rate" v={agg.trades ? dWinRate.toFixed(0) + "%" : "—"} />
+          <DStat k="Win / Loss" v={agg.wins + " : " + dLosses} />
+          <DStat k="Trades" v={agg.trades} />
+        </div>
+        {(
+          <>
+            <div style={{ fontSize: 10, opacity: .7, fontWeight: 700, letterSpacing: ".04em", margin: "16px 0 7px" }}>FILTERS</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <select aria-label="Created by" value={dashBy} onChange={(e) => setDashBy(e.target.value)} style={dsel}>{byOptions.map((o) => <option key={o} value={o}>Created by: {o}</option>)}</select>
+              <select aria-label="Time period" value={dashPreset} onChange={(e) => setDashPreset(e.target.value)} style={dsel}>{DASH_PRESETS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+            </div>
+            {dashPreset === "custom" && (
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <input type="date" aria-label="From" value={dashFrom} onChange={(e) => setDashFrom(e.target.value)} className="no-ring mono" style={{ ...dsel, colorScheme: "light" }} />
+                <input type="date" aria-label="To" value={dashTo} onChange={(e) => setDashTo(e.target.value)} className="no-ring mono" style={{ ...dsel, colorScheme: "light" }} />
+              </div>
+            )}
+            <div style={{ marginTop: 8 }}>
+              <MultiSelect label="Symbol" options={DEPLOY_OPTIONS} value={symFilter} onChange={setSymFilter} />
+            </div>
+          </>
+        )}
+      </div>
+      )}
+
       {/* Live Real Deployed — REAL mode only (real-money armed strategies). */}
       {appMode === "real" && <div style={{ marginTop: 14 }}><LiveAutoBuys userId={userId} market={market} isAdmin={isAdmin} adminKey={adminKey} /></div>}
 
@@ -1490,59 +1542,6 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           </div>
         );
       })()}
-
-      {/* Automation Dashboard — mirrors the Ideas Dashboard: big P&L, a 4-stat grid
-          (Returns % / Win rate / Win-Loss / Trades) and a matching filter row.
-          COLLAPSED: a Win/Loss + P&L strip with an expand chevron, exactly like Ideas. */}
-      {!dashOpen ? (
-        <button onClick={() => setDashOpen(true)} className="tap disp card glow" style={{ width: "100%", marginTop: 18, border: "1px solid rgba(0,0,0,.06)", background: "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)", color: "#141416", borderRadius: 24, padding: "13px 16px", display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ textAlign: "left" }}>
-            <div style={{ fontSize: 10, opacity: .8, fontWeight: 700 }}>WIN / LOSS</div>
-            <div className="mono" style={{ fontWeight: 800, fontSize: 15 }}>{agg.wins} : {dLosses}</div>
-          </div>
-          <div style={{ textAlign: "left" }}>
-            <div style={{ fontSize: 10, opacity: .8, fontWeight: 700 }}>P&amp;L</div>
-            <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: agg.pnl >= 0 ? "var(--up)" : "var(--down)" }}>{agg.pnl >= 0 ? "+" : ""}{fmt(agg.pnl, "IN")}</div>
-          </div>
-          <span style={{ marginLeft: "auto", display: "grid", placeItems: "center" }}><ChevronDown size={16} /></span>
-        </button>
-      ) : (
-      <div className="card glow" style={{ marginTop: 18, padding: 18, border: "1px solid rgba(0,0,0,.06)", background: "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)", color: "#141416" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div className="disp" style={{ fontWeight: 700, fontSize: 15 }}>Automation Dashboard</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 10.5, opacity: .85 }}>{(DASH_PRESETS.find(([v]) => v === dashPreset) || [null, "Last 12 months"])[1]}</span>
-            <button onClick={() => setDashOpen(false)} className="tap" title="Collapse" style={{ flex: "0 0 auto", display: "grid", placeItems: "center", border: "1px solid rgba(0,0,0,.12)", background: "rgba(0,0,0,.06)", color: "#141416", borderRadius: 10, padding: "5px" }}><ChevronUp size={15} /></button>
-          </div>
-        </div>
-        <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 6, color: agg.pnl >= 0 ? "var(--up)" : "var(--down)" }}>{agg.pnl >= 0 ? "+" : ""}{fmt(agg.pnl, "IN")}</div>
-        <div style={{ fontSize: 11, opacity: .85, marginTop: -2 }}>{activeCount} active of {shown.length} strategies · {agg.open} still open</div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-          <DStat k="Returns %" v={(dRet >= 0 ? "+" : "") + dRet.toFixed(2) + "%"} c={dRet >= 0 ? "var(--up)" : "var(--down)"} />
-          <DStat k="Win rate" v={agg.trades ? dWinRate.toFixed(0) + "%" : "—"} />
-          <DStat k="Win / Loss" v={agg.wins + " : " + dLosses} />
-          <DStat k="Trades" v={agg.trades} />
-        </div>
-        {(
-          <>
-            <div style={{ fontSize: 10, opacity: .7, fontWeight: 700, letterSpacing: ".04em", margin: "16px 0 7px" }}>FILTERS</div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <select aria-label="Created by" value={dashBy} onChange={(e) => setDashBy(e.target.value)} style={dsel}>{byOptions.map((o) => <option key={o} value={o}>Created by: {o}</option>)}</select>
-              <select aria-label="Time period" value={dashPreset} onChange={(e) => setDashPreset(e.target.value)} style={dsel}>{DASH_PRESETS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-            </div>
-            {dashPreset === "custom" && (
-              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                <input type="date" aria-label="From" value={dashFrom} onChange={(e) => setDashFrom(e.target.value)} className="no-ring mono" style={{ ...dsel, colorScheme: "light" }} />
-                <input type="date" aria-label="To" value={dashTo} onChange={(e) => setDashTo(e.target.value)} className="no-ring mono" style={{ ...dsel, colorScheme: "light" }} />
-              </div>
-            )}
-            <div style={{ marginTop: 8 }}>
-              <MultiSelect label="Symbol" options={DEPLOY_OPTIONS} value={symFilter} onChange={setSymFilter} />
-            </div>
-          </>
-        )}
-      </div>
-      )}
 
       {/* TOP SELECTOR — one place to switch between building, samples, and your own. */}
       <div style={{ display: "flex", gap: 7, marginTop: 18 }}>
