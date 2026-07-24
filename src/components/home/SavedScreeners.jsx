@@ -3,7 +3,7 @@ import { ALL } from "../../domain/universe";
 import { CUR, DAY, chgColor, fmt, lsGet, lsSet } from "../../lib/format";
 import { indValue } from "../../domain/screener";
 import { marketOpen } from "../../domain/api";
-import { Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 
 /* MY SCREENERS — the carousels for screeners the user built and saved under "Create your own screener".
    Each is scanned with the SAME metric engine as the builder (indicator snapshots over the live list),
@@ -22,6 +22,11 @@ export function addSavedScreener(scr) {
   saveSaved(all);
   return id;
 }
+/** Update an existing screener in place (by id). */
+export function updateSavedScreener(id, patch) {
+  const all = loadSaved().map((s) => s.id === id ? { ...s, ...patch, id, updatedAt: Date.now() } : s);
+  saveSaved(all);
+}
 
 const qtyDefault = (m) => (m === "Crypto" ? 200 : 1);
 const cmp = (o, x, y) => o === ">" ? x > y : o === "<" ? x < y : o === ">=" ? x >= y : o === "<=" ? x <= y : Math.abs(x - y) < 1e-6;
@@ -32,7 +37,7 @@ const passes = (stock, conds) => (conds || []).every((f) => {
   return cmp(f.o, x, y);
 });
 
-function SavedRow({ scr, market, mode, list, onOpen, onScreenerBuy, onDelete, liveTick = 0 }) {
+function SavedRow({ scr, market, mode, list, onOpen, onScreenerBuy, onDelete, onEdit, liveTick = 0 }) {
   const bySym = useMemo(() => { const m = new Map(); (list || []).forEach((s) => m.set(s.sym, s)); ALL.forEach((s) => { if (!m.has(s.sym)) m.set(s.sym, s); }); return m; }, [list]);
   const priceOf = (sym) => { const s = bySym.get(sym); return s ? s.price : null; };
   const [autoOn, setAutoOn] = useState(() => lsGet(`mx_savedauto_${scr.id}`, false));
@@ -103,34 +108,37 @@ function SavedRow({ scr, market, mode, list, onOpen, onScreenerBuy, onDelete, li
             </span>
             Auto-Buy
           </label>
+          {onEdit && <button onClick={() => onEdit(scr)} className="tap" title="Edit screener" style={{ border: "none", background: "transparent", padding: 2, flexShrink: 0 }}><Pencil size={14} color="var(--muted)" /></button>}
           <button onClick={() => onDelete(scr.id)} className="tap" title="Delete screener" style={{ border: "none", background: "transparent", padding: 2, flexShrink: 0 }}><Trash2 size={15} color="var(--down)" /></button>
         </div>
       </div>
 
-      {/* Carousel — hidden when nothing meets entry */}
-      {matched.length > 0 && (
-      <div className="hide-scroll" style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 2, marginTop: 10 }}>
-        {matched.map((sym) => {
-          const st = bySym.get(sym); const price = st ? st.price : null; const info = entryPx.current[sym];
-          return (
-            <div key={sym} onClick={() => st && onOpen && onOpen(st)} className="tap" style={{ flex: "0 0 auto", width: 160, background: "var(--surface)", borderRadius: 12, padding: 10, border: "1px solid var(--line)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
-                <span className="disp" style={{ fontWeight: 800, fontSize: 12.5, color: "var(--ink)" }}>{sym}</span>
-                <span className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: "var(--ink)" }}>{fmt(price, market)}</span>
-              </div>
-              <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 4 }}>● Entry {dt(info && info.at)} @ <span className="mono">{fmt(info && info.px, market)}</span></div>
-              {autoOn && (
-                <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 8 }} onClick={(e) => e.stopPropagation()}>
-                  <input value={ovSL(sym)} onChange={(e) => setOvField(sym, "sl", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={inBox} />
-                  <span style={{ fontSize: 9.5, color: "var(--down)", fontWeight: 800 }}>% SL</span>
-                  <input value={ovTP(sym)} onChange={(e) => setOvField(sym, "tp", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={inBox} />
-                  <span style={{ fontSize: 9.5, color: "var(--up)", fontWeight: 800 }}>% TP</span>
+      {/* Matched symbols — vertical list, one below the other */}
+      {matched.length > 0 ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+          {matched.map((sym) => {
+            const st = bySym.get(sym); const price = st ? st.price : null; const info = entryPx.current[sym];
+            return (
+              <div key={sym} style={{ background: "var(--surface)", borderRadius: 10, border: "1px solid var(--line)", padding: "9px 11px" }}>
+                <div onClick={() => st && onOpen && onOpen(st)} className="tap" style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
+                  <span className="disp" style={{ fontWeight: 800, fontSize: 13, color: "var(--ink)" }}>{sym}</span>
+                  <span className="mono" style={{ fontWeight: 800, fontSize: 13, color: "var(--ink)" }}>{fmt(price, market)}</span>
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+                <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 3 }}>● Entry {dt(info && info.at)} @ <span className="mono">{fmt(info && info.px, market)}</span></div>
+                {autoOn && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 8 }}>
+                    <input value={ovSL(sym)} onChange={(e) => setOvField(sym, "sl", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={inBox} />
+                    <span style={{ fontSize: 9.5, color: "var(--down)", fontWeight: 800 }}>% SL</span>
+                    <input value={ovTP(sym)} onChange={(e) => setOvField(sym, "tp", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={inBox} />
+                    <span style={{ fontSize: 9.5, color: "var(--up)", fontWeight: 800 }}>% TP</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 10 }}>No symbols currently matching the entry criteria.</div>
       )}
 
       {/* Footer — date range + Live P&L (only when Auto-Buy is on) */}
@@ -153,7 +161,7 @@ function SavedRow({ scr, market, mode, list, onOpen, onScreenerBuy, onDelete, li
   );
 }
 
-export default function MyScreeners({ market, mode = "virtual", list = [], onOpen, onScreenerBuy, liveTick = 0 }) {
+export default function MyScreeners({ market, mode = "virtual", list = [], onOpen, onScreenerBuy, onEdit, liveTick = 0 }) {
   const [items, setItems] = useState(() => loadSaved());
   // Re-read whenever the tab is shown (component mounts) or the market changes.
   useEffect(() => { setItems(loadSaved()); }, [market]);
@@ -170,7 +178,7 @@ export default function MyScreeners({ market, mode = "virtual", list = [], onOpe
   return (
     <>
       {mine.map((scr) => (
-        <SavedRow key={scr.id} scr={scr} market={market} mode={mode} list={list} onOpen={onOpen} onScreenerBuy={onScreenerBuy} onDelete={remove} liveTick={liveTick} />
+        <SavedRow key={scr.id} scr={scr} market={market} mode={mode} list={list} onOpen={onOpen} onScreenerBuy={onScreenerBuy} onDelete={remove} onEdit={onEdit} liveTick={liveTick} />
       ))}
     </>
   );

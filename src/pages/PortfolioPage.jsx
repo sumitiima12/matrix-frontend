@@ -12,6 +12,10 @@ import { loadAutoExits, cancelAutoExit } from "../services/brokerService";
  * Portfolio — holdings with AI intelligence, health score and sector exposure.
  */
 
+/* Crypto quantities carry long floating tails (4.3200048999…); show at most 2 decimals (trailing
+   zeros trimmed). Non-crypto quantities are whole units and pass through unchanged. */
+const qtyText = (q, sym) => (marketOf(sym) === "Crypto" ? +(+q || 0).toFixed(2) : q);
+
 /* Server-side auto-exits the engine is watching for this user. Read-only + cancel. Shows
    whether the engine is actually armed (AUTO_EXIT_LIVE) so the user is never misled into
    thinking a stop is live when the server is only in dry-run. */
@@ -135,7 +139,7 @@ function ManageHolding({ r, st, onBuy, onSell, onUpdate, onClose, real = false, 
         {stepper(sellQty, setSellQty, r.qty)}
         <button onClick={() => { onSell && onSell(st, sellQty, { market: r.market || r.m }); onClose && onClose(); }} className="tap disp" style={{ flex: 1, background: "linear-gradient(120deg,var(--down),#D93A4E)", color: "#fff", border: "none", borderRadius: 10, padding: 11, fontWeight: 800, fontSize: 13 }}>Sell · {sellQty}</button>
       </div>
-      <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 7 }}>You hold {r.qty} units · sell up to {r.qty}.</div>
+      <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 7 }}>You hold {qtyText(r.qty, r.sym)} units · sell up to {qtyText(r.qty, r.sym)}.</div>
       <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600, margin: "12px 0 6px" }}>{real ? "Stop / target (%) — armed with your broker" : "Risk orders (%)"}</div>
       <div style={{ display: "flex", gap: 8 }}>
         {[["Stop loss", sl, setSl], ["Trailing SL", tsl, setTsl], ["Take profit", tp, setTp]].map(([lbl, val, setter]) => (
@@ -581,7 +585,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
         <div style={{ fontSize: 12, opacity: .8 }}>Holdings value</div>
         <div className="mono" style={{ fontWeight: 700, fontSize: 28, marginTop: 2 }}>{fmt(totalVal, mkt)}</div>
         <div style={{ display: "flex", gap: 18, marginTop: 10, fontSize: 12.5 }}>
-          <div><div style={{ opacity: .7 }}>Cash</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(wallet, "IN")}</div></div>
+          {mkt !== "Crypto" && <div><div style={{ opacity: .7 }}>Cash</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(wallet, "IN")}</div></div>}
           <div><div style={{ opacity: .7 }}>Invested</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(totalInv, mkt)}</div></div>
           <div><div style={{ opacity: .7 }}>Total P/L</div><div className="mono" style={{ fontWeight: 700, color: totalPL >= 0 ? "#5CF0B5" : "#FF8FA0" }}>{totalPL >= 0 ? "+" : ""}{fmt(totalPL, mkt)}</div></div>
         </div>
@@ -663,7 +667,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize: 11, color: "var(--muted)" }}>{r.qty} units · held {r.days}d</div>
+                <div style={{ fontSize: 11, color: "var(--muted)" }}>{qtyText(r.qty, r.sym)} units · held {r.days}d</div>
               </div>
               <div style={{ textAlign: "right" }}>
                 <div className="mono" style={{ fontWeight: 700, fontSize: 14, color: r.pl >= 0 ? "var(--up)" : "var(--down)" }}>{r.pl >= 0 ? "+" : ""}{fmt(r.pl, r.m)}</div>
@@ -707,7 +711,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
             <div key={h.sym} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, gap: 10 }}>
               <span className="disp" style={{ fontWeight: 700 }}>{h.sym}</span>
               <span className="mono" style={{ color: "var(--muted)", fontSize: 11.5, marginLeft: "auto" }}>
-                {h.qty} units
+                {qtyText(h.qty, h.sym)} units
               </span>
               <button
                 onClick={() => onRemove && onRemove(h.sym)}
@@ -731,7 +735,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
           {orphans.map((h) => (
             <div key={h.sym} style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 12.5 }}>
               <span className="disp" style={{ fontWeight: 700 }}>{h.sym}</span>
-              <span className="mono" style={{ color: "var(--muted)" }}>{h.qty} units · bought at {fmt(h.buy, "Crypto")}</span>
+              <span className="mono" style={{ color: "var(--muted)" }}>{qtyText(h.qty, h.sym)} units · bought at {fmt(h.buy, "Crypto")}</span>
             </div>
           ))}
         </div>

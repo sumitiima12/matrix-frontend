@@ -4,7 +4,7 @@ import { CUR, chgColor, fmt, lsGet, lsSet } from "../../lib/format";
 import { METRICS, OPS, indValue, parseScreen } from "../../domain/screener";
 import { marketOpen, aiInterpretScreen } from "../../domain/api";
 import { selStyle } from "../common/styles";
-import { addSavedScreener } from "./SavedScreeners";
+import { addSavedScreener, updateSavedScreener } from "./SavedScreeners";
 import { ChevronDown, ChevronUp, Filter, Plus, Save, Sparkles, Trash2 } from "lucide-react";
 
 /* CREATE YOUR OWN SCREENER — the second tab of "Screener".
@@ -97,7 +97,7 @@ function FilterRows({ conds, setConds, placeholder }) {
   );
 }
 
-export default function CustomScreener({ market, mode = "virtual", list = [], onOpen, onScreenerBuy, liveTick = 0 }) {
+export default function CustomScreener({ market, mode = "virtual", list = [], onOpen, onScreenerBuy, liveTick = 0, editing = null, onDoneEditing }) {
   const LSK = `mx_customscr_${market}`;
   const saved = useMemo(() => lsGet(LSK, null) || {}, [LSK, market]);
   const [entry, setEntry] = useState(() => (saved.entry || [{ m: "rsi", o: ">", v: "60" }]).map(normF));
@@ -126,6 +126,18 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
   }, [market]);
 
   useEffect(() => { lsSet(LSK, { entry, exit, selSyms, ov }); }, [LSK, entry, exit, selSyms, ov]);
+
+  // When an existing screener is opened for editing, load its config into the builder.
+  useEffect(() => {
+    if (!editing) return;
+    setEntry((editing.entry || [{ m: "rsi", o: ">", v: "60" }]).map(normF));
+    setExit((editing.exit || [{ m: "rsi", o: "<", v: "40" }]).map(normF));
+    setSelSyms(editing.selSyms || []);
+    setOv(editing.ov || {});
+    setScrName(editing.name || "");
+    setSelRec(null); setRan(true); setSaveNote(null); entryPx.current = {};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing && editing.id]);
 
   const cur = CUR[market] || "₹";
   const isCrypto = market === "Crypto";
@@ -185,12 +197,19 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
   }, [autoOn, market, matched.length]);
 
   const applyRec = (r) => { setSelRec(r.label); setEntry(r.f.map(normF)); if (r.x) setExit(r.x.map(normF)); setScrName(r.label); setSaveNote(null); };
+  const clearRec = () => { setSelRec(null); setScrName(""); };
   const saveScreener = () => {
     const name = scrName.trim();
     if (!name) { setSaveNote("Give your screener a name first."); return; }
     if (!selSyms.length) { setSaveNote("Select at least one symbol before saving."); return; }
-    addSavedScreener({ name, market, entry, exit, ov, selSyms });
-    setScrName(""); setSaveNote(`Saved "${name}" — find it under My Screeners.`);
+    if (editing) {
+      updateSavedScreener(editing.id, { name, market, entry, exit, ov, selSyms });
+      setSaveNote(`Updated "${name}".`);
+      onDoneEditing && onDoneEditing();
+    } else {
+      addSavedScreener({ name, market, entry, exit, ov, selSyms });
+      setScrName(""); setSaveNote(`Saved "${name}" — find it under My Screeners.`);
+    }
   };
   const dt = (t) => t ? new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
   const inBox = { width: 46, textAlign: "center", border: "1px solid var(--line)", background: "var(--elev)", borderRadius: 7, padding: "5px 3px", fontWeight: 800, fontSize: 11.5, color: "var(--ink)" };
@@ -198,7 +217,7 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
 
   return (
     <div className="card" style={{ marginTop: 12, padding: 14 }}>
-      {/* Screener Auto-Buy + date range + live P&L */}
+      {/* Screener Auto-Buy toggle. Date range + Live P&L live in Popular / My Screeners, not here. */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <label className="tap" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 800 }}>
           <span onClick={() => { const v = !autoOn; setAutoOn(v); lsSet(`${LSK}_auto`, v); }} style={{ width: 38, height: 22, borderRadius: 999, background: autoOn ? "#22C55E" : "var(--line)", position: "relative", flexShrink: 0, transition: "background .2s" }}>
@@ -206,12 +225,6 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
           </span>
           Screener Auto-Buy
         </label>
-        <select aria-label="Date range" value={period} onChange={(e) => setPeriod(e.target.value)} style={{ fontSize: 11.5, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 9, padding: "5px 8px", background: "var(--elev)", color: "var(--ink)" }}>
-          <option value="today">Today</option>
-          <option value="7d">Last 7 days</option>
-          <option value="30d">Last 30 days</option>
-          <option value="6m">Last 6 months</option>
-        </select>
         {autoOn && (
           <div style={{ marginLeft: "auto", textAlign: "right" }}>
             <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 800 }}>LIVE P&amp;L</div>
@@ -229,7 +242,7 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
       <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", margin: "16px 2px 8px" }}>Recommended</div>
       <div className="hide-scroll" style={{ display: "flex", gap: 8, overflowX: "auto" }}>
         {RECOMMENDED.map((r) => (
-          <button key={r.label} onClick={() => applyRec(r)} className="pill tap" style={{ flex: "0 0 auto", border: "1px solid " + (selRec === r.label ? "var(--primary)" : "var(--line)"), background: selRec === r.label ? "var(--primary)" : "var(--surface)", color: selRec === r.label ? "var(--on-primary)" : "var(--ink)", fontSize: 12.5, fontWeight: selRec === r.label ? 800 : 600, padding: "9px 14px", whiteSpace: "nowrap" }}>{r.label}</button>
+          <button key={r.label} onClick={() => selRec === r.label ? clearRec() : applyRec(r)} className="pill tap" style={{ flex: "0 0 auto", border: "1px solid " + (selRec === r.label ? "var(--primary)" : "var(--line)"), background: selRec === r.label ? "var(--primary)" : "var(--surface)", color: selRec === r.label ? "var(--on-primary)" : "var(--ink)", fontSize: 12.5, fontWeight: selRec === r.label ? 800 : 600, padding: "9px 14px", whiteSpace: "nowrap" }}>{r.label}</button>
         ))}
       </div>
 
@@ -237,9 +250,13 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
       <div className="disp" style={{ fontWeight: 800, fontSize: 13.5, margin: "18px 0 8px" }}>Entry conditions <span style={{ fontWeight: 600, fontSize: 11, color: "var(--muted)" }}>— when to buy</span></div>
       <FilterRows conds={entry} setConds={(u) => { setEntry(u); setSelRec(null); }} placeholder="e.g. RSI under 40 and MACD bullish and price above 50-DMA" />
 
-      {/* Exit rules */}
-      <div className="disp" style={{ fontWeight: 800, fontSize: 13.5, margin: "18px 0 8px" }}>Exit conditions <span style={{ fontWeight: 600, fontSize: 11, color: "var(--muted)" }}>— when to close</span></div>
-      <FilterRows conds={exit} setConds={setExit} placeholder="e.g. RSI above 65 or price below 50-DMA" />
+      {/* Exit rules — only asked for (and required) when Auto-Buy is on. */}
+      {autoOn && (
+        <>
+          <div className="disp" style={{ fontWeight: 800, fontSize: 13.5, margin: "18px 0 8px" }}>Exit conditions <span style={{ fontWeight: 600, fontSize: 11, color: "var(--muted)" }}>— when to close (required)</span></div>
+          <FilterRows conds={exit} setConds={setExit} placeholder="e.g. RSI above 65 or price below 50-DMA" />
+        </>
+      )}
 
       {/* Symbol selection — collapsible, with Select all */}
       <div className="disp" style={{ fontWeight: 800, fontSize: 13.5, margin: "18px 0 8px" }}>Symbols to screen</div>
@@ -312,14 +329,15 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
         </div>
       )}
 
-      {/* Save this screener — appears under My Screeners. Name is required. */}
+      {/* Save / update this screener — appears under My Screeners. Name is required. */}
       <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
-        <div className="disp" style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 8 }}>Save screener</div>
+        <div className="disp" style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 8 }}>{editing ? `Edit screener` : "Save screener"}</div>
         <div style={{ display: "flex", gap: 8 }}>
           <input value={scrName} onChange={(e) => { setScrName(e.target.value); setSaveNote(null); }} placeholder="Screener name (required)" className="no-ring" style={{ flex: "1 1 0", minWidth: 0, border: "1px solid var(--line)", borderRadius: 10, padding: "10px 11px", fontSize: 13, fontWeight: 600, background: "var(--surface)", color: "var(--ink)" }} />
-          <button onClick={saveScreener} disabled={!scrName.trim()} className="tap disp" style={{ flex: "0 0 auto", border: "none", borderRadius: 10, padding: "10px 14px", fontSize: 12.5, fontWeight: 800, display: "flex", gap: 6, alignItems: "center", background: scrName.trim() ? "var(--primary)" : "var(--elev)", color: scrName.trim() ? "var(--on-primary)" : "var(--muted)", cursor: scrName.trim() ? "pointer" : "not-allowed" }}><Save size={14} /> Save</button>
+          <button onClick={saveScreener} disabled={!scrName.trim()} className="tap disp" style={{ flex: "0 0 auto", border: "none", borderRadius: 10, padding: "10px 14px", fontSize: 12.5, fontWeight: 800, display: "flex", gap: 6, alignItems: "center", background: scrName.trim() ? "var(--primary)" : "var(--elev)", color: scrName.trim() ? "var(--on-primary)" : "var(--muted)", cursor: scrName.trim() ? "pointer" : "not-allowed" }}><Save size={14} /> {editing ? "Update" : "Save"}</button>
+          {editing && <button onClick={() => onDoneEditing && onDoneEditing()} className="tap disp" style={{ flex: "0 0 auto", border: "1px solid var(--line)", background: "var(--elev)", color: "var(--muted)", borderRadius: 10, padding: "10px 14px", fontSize: 12.5, fontWeight: 800 }}>Cancel</button>}
         </div>
-        {saveNote && <div style={{ fontSize: 11, color: saveNote.startsWith("Saved") ? "var(--up)" : "var(--down)", marginTop: 7, fontWeight: 600 }}>{saveNote.startsWith("Saved") ? "✓ " : ""}{saveNote}</div>}
+        {saveNote && <div style={{ fontSize: 11, color: (saveNote.startsWith("Saved") || saveNote.startsWith("Updated")) ? "var(--up)" : "var(--down)", marginTop: 7, fontWeight: 600 }}>{(saveNote.startsWith("Saved") || saveNote.startsWith("Updated")) ? "✓ " : ""}{saveNote}</div>}
       </div>
     </div>
   );
