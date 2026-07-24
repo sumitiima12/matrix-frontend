@@ -3,6 +3,7 @@ import { ALL } from "../../domain/universe";
 import { CUR, DAY, chgColor, fmt, lsGet, lsSet } from "../../lib/format";
 import { indValue } from "../../domain/screener";
 import { marketOpen } from "../../domain/api";
+import { saveScreenersRemote, loadScreenersRemote } from "../../services/tradeService";
 import { Pencil, Trash2 } from "lucide-react";
 
 /* MY SCREENERS — the carousels for screeners the user built and saved under "Create your own screener".
@@ -13,7 +14,9 @@ import { Pencil, Trash2 } from "lucide-react";
 
 export const SAVED_KEY = "mx_saved_screeners";
 export const loadSaved = () => { const v = lsGet(SAVED_KEY, []); return Array.isArray(v) ? v : []; };
-export const saveSaved = (arr) => lsSet(SAVED_KEY, arr);
+/* Persist locally AND to the server (fire-and-forget) so a saved screener survives logout / a new
+   device. The server call no-ops when logged out or backend-less. */
+export const saveSaved = (arr) => { lsSet(SAVED_KEY, arr); try { saveScreenersRemote(arr); } catch { /* offline */ } };
 /** Append a screener. Returns the new id. */
 export function addSavedScreener(scr) {
   const all = loadSaved();
@@ -165,6 +168,17 @@ export default function MyScreeners({ market, mode = "virtual", list = [], onOpe
   const [items, setItems] = useState(() => loadSaved());
   // Re-read whenever the tab is shown (component mounts) or the market changes.
   useEffect(() => { setItems(loadSaved()); }, [market]);
+  // Hydrate from the server once (survives logout / new device). Server wins if it has any; otherwise
+  // migrate whatever's local up to the server so it's saved from now on.
+  useEffect(() => {
+    let stop = false;
+    loadScreenersRemote().then((remote) => {
+      if (stop || remote == null) return;
+      if (remote.length) { lsSet(SAVED_KEY, remote); setItems(remote); }
+      else { const local = loadSaved(); if (local.length) saveScreenersRemote(local).catch(() => {}); }
+    }).catch(() => {});
+    return () => { stop = true; };
+  }, []);
   const mine = items.filter((s) => (s.market || "IN") === market);
   const remove = (id) => { const all = loadSaved().filter((s) => s.id !== id); saveSaved(all); setItems(all); };
 

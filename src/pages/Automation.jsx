@@ -780,12 +780,13 @@ function CompareRow({ s, td, opts }) {
   return (
     <tr>
       <td style={{ ...td, textAlign: "left", fontWeight: 800 }}>{s.name}</td>
-      {loading ? <td style={{ ...td, color: "var(--muted)" }} colSpan={6}>backtesting…</td>
-        : !stats || !stats.trades ? <td style={{ ...td, color: "var(--muted)" }} colSpan={6}>{stats ? "no trades" : "no data"}</td>
+      {loading ? <td style={{ ...td, color: "var(--muted)" }} colSpan={7}>backtesting…</td>
+        : !stats || !stats.trades ? <td style={{ ...td, color: "var(--muted)" }} colSpan={7}>{stats ? "no trades" : "no data"}</td>
         : <>
             <td style={td}>{stats.trades}</td>
             <td style={{ ...td, color: "var(--up)" }}>{stats.wins}</td>
             <td style={{ ...td, color: "var(--down)" }}>{stats.losses}</td>
+            <td style={td}>{stats.losses > 0 ? (stats.wins / stats.losses).toFixed(2) : (stats.wins > 0 ? "∞" : "—")}</td>
             <td style={{ ...td, color: "var(--up)" }}>{stats.tpHit}</td>
             <td style={{ ...td, color: "var(--down)" }}>{stats.slHit}</td>
             <td style={c(stats.retPct)}>{(stats.retPct >= 0 ? "+" : "") + (stats.retPct || 0).toFixed(1)}%</td>
@@ -802,7 +803,7 @@ function ComparisonTable({ strats }) {
       <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 440 }}>
         <thead><tr>
           <th style={{ ...th, textAlign: "left" }}>Strategy</th>
-          <th style={th}>Trades</th><th style={th}>Wins</th><th style={th}>Loss</th>
+          <th style={th}>Trades</th><th style={th}>Wins</th><th style={th}>Loss</th><th style={th}>W/L</th>
           <th style={th}>Target</th><th style={th}>SL Hit</th><th style={th}>Return</th>
         </tr></thead>
         <tbody>{strats.map((s) => <CompareRow key={s.id} s={s} td={td} />)}</tbody>
@@ -814,9 +815,13 @@ function ComparisonTable({ strats }) {
 /* ADMIN BACKTESTING PANEL — every premium strategy backtested on a chosen timeframe + period, side by
    side. Reuses the same useBacktestStats hook (via CompareRow) but overrides tf and trims to the
    selected window. */
-function BacktestPanel({ strats }) {
+function BacktestPanel({ strats, market = "IN" }) {
+  const DEF_SYM = { US: "SPX", IN: "NIFTY50", Crypto: "BTC", Commodity: "GOLD", FNO: "NIFTY50" };
   const [tf, setTf] = useState("5m");
   const [days, setDays] = useState(180);
+  const [sym, setSym] = useState(DEF_SYM[market] || "NIFTY50");
+  useEffect(() => { setSym(DEF_SYM[market] || "NIFTY50"); /* eslint-disable-next-line */ }, [market]);
+  const symOptions = useMemo(() => (UNIVERSE[market] || []).map((s) => s.sym), [market]);
   const TF_OPTS = [["5m", "5 min"], ["15m", "15 min"], ["30m", "30 min"], ["1h", "1 hour"], ["1d", "1 day"]];
   const PERIODS = [[5, "5 days"], [30, "1 month"], [90, "3 months"], [180, "6 months"], [365, "1 year"]];
   const sel = { ...selStyle, flex: "1 1 0", minWidth: 0, fontSize: 12 };
@@ -827,25 +832,29 @@ function BacktestPanel({ strats }) {
       <div style={{ fontSize: 11.5, color: "var(--muted)", margin: "0 2px 10px", lineHeight: 1.5 }}>
         Backtest of every premium strategy on real candles for the selected timeframe and period. Results are hindsight, not a promise.
       </div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        <label style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        <label style={{ flex: "1 1 30%", minWidth: 100 }}>
+          <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>SYMBOL</div>
+          <select aria-label="Symbol" value={sym} onChange={(e) => setSym(e.target.value)} style={sel}>{symOptions.map((s) => <option key={s} value={s}>{s}</option>)}</select>
+        </label>
+        <label style={{ flex: "1 1 30%", minWidth: 100 }}>
           <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>TIMEFRAME</div>
           <select aria-label="Timeframe" value={tf} onChange={(e) => setTf(e.target.value)} style={sel}>{TF_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
         </label>
-        <label style={{ flex: 1, minWidth: 0 }}>
+        <label style={{ flex: "1 1 30%", minWidth: 100 }}>
           <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>PERIOD</div>
           <select aria-label="Period" value={days} onChange={(e) => setDays(+e.target.value)} style={sel}>{PERIODS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
         </label>
       </div>
       {!strats.length ? <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>No premium strategies to backtest.</div> : (
         <div className="card" style={{ padding: "6px 10px", overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 460 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 500 }}>
             <thead><tr>
               <th style={{ ...th, textAlign: "left" }}>Strategy</th>
-              <th style={th}>Trades</th><th style={th}>Wins</th><th style={th}>Loss</th>
+              <th style={th}>Trades</th><th style={th}>Wins</th><th style={th}>Loss</th><th style={th}>W/L</th>
               <th style={th}>Target</th><th style={th}>SL Hit</th><th style={th}>Return</th>
             </tr></thead>
-            <tbody>{strats.map((s) => <CompareRow key={s.id + tf + days} s={s} td={td} opts={{ tf, days }} />)}</tbody>
+            <tbody>{strats.map((s) => <CompareRow key={s.id + tf + days + sym} s={s} td={td} opts={{ tf, days, sym }} />)}</tbody>
           </table>
         </div>
       )}
@@ -1919,7 +1928,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       </div>
 
       {isAdmin && stratTab === "backtest" ? (
-        <BacktestPanel strats={premiumStrats} />
+        <BacktestPanel strats={premiumStrats} market={market} />
       ) : stratTab === "sample" ? (
         sampleStrats.length === 0
           ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No sample strategies for this market.</div>

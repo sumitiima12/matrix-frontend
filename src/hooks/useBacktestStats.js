@@ -45,11 +45,12 @@ export function useBacktestStats(strat, opts = {}) {
   const [state, setState] = useState({ loading: true, stats: null });
   const tfOverride = ALLOWED_TF.has(opts.tf) ? opts.tf : null;
   const days = Number(opts.days) || 0;
+  const symOverride = opts.sym || null;
 
   useEffect(() => {
     let stop = false;
 
-    const syms = (strat && strat.symbols) || [];
+    const syms = symOverride ? [symOverride] : ((strat && strat.symbols) || []);
     const cfg = strat && strat.cfg;
     if (!cfg || cfg.mode === "plain" || !syms.length) {
       setState({ loading: false, stats: null });
@@ -118,7 +119,7 @@ export function useBacktestStats(strat, opts = {}) {
 
     return () => { stop = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [strat && strat.id, tfOverride, days]);
+  }, [strat && strat.id, tfOverride, days, symOverride]);
 
   return state;
 }

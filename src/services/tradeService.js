@@ -285,6 +285,19 @@ export async function loadState(userId) {
   } catch { return null; }
 }
 
+/* Saved screeners ("My Screeners") — persisted per user so they survive logout / a new device. */
+export async function saveScreenersRemote(list) { return post("/api/screeners", { screeners: list }); }
+export async function loadScreenersRemote() {
+  if (!BACKEND_URL) return null;
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/screeners`, { headers: authHeaders() });
+    handle401(r.status);
+    if (!r.ok) return null;
+    const d = await r.json();
+    return Array.isArray(d.screeners) ? d.screeners : [];
+  } catch { return null; }
+}
+
 /** Get the logged-in user's security question status. */
 export async function getMySecurityQuestion() {
   if (!BACKEND_URL) return null;
