@@ -650,8 +650,11 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
   const refresh = () => { if (userId) loadAutoBuys(userId).then(setData); };
   useEffect(() => { refresh(); const id = setInterval(refresh, 12000); return () => clearInterval(id); /* eslint-disable-next-line */ }, [userId]);
   // Only strategies for the market you're on (a crypto auto-buy doesn't show under Indian) AND that
-  // actually hold a LIVE position right now — "Live" means in a trade, not merely armed and waiting.
-  const live = (data.strategies || []).filter((s) => (s.status === "active" || s.status === "paused") && (s.market || "Crypto") === market && s.inPosition);
+  // actually hold a LIVE position right now — "Live" means in a FILLED trade, not merely armed and
+  // waiting. Matching the Virtual "Live" (open>0), we require a real fill, since the server's
+  // `inPosition` flag alone was surfacing every armed strategy here.
+  const holdsPosition = (s) => s.inPosition && (s.lastOrderStatus === "filled" || s.lastOrderStatus === "partial");
+  const live = (data.strategies || []).filter((s) => (s.status === "active" || s.status === "paused") && (s.market || "Crypto") === market && holdsPosition(s));
   if (!userId || !live.length) return null;
   const doPause = async (s) => {
     const nowActive = s.status === "active";
@@ -811,7 +814,7 @@ function ComparisonTable({ strats }) {
 /* P&L TAB — every strategy (active + inactive) for this market with its total P&L over a chosen
    window; tap one to see its trades (entry/exit time + per-trade P&L). Crypto P&L uses the USD-notional
    formula (qty is an amount, not a coin count), matching the fixed stratPerf. */
-function StrategyPnLView({ strats, trades, market }) {
+function StrategyPnLView({ strats, trades, market, onDelete }) {
   const [range, setRange] = useState(1);
   const [openId, setOpenId] = useState(null);
   const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a ? a.price : null; };
@@ -837,6 +840,7 @@ function StrategyPnLView({ strats, trades, market }) {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <div className="mono" style={{ fontWeight: 800, fontSize: 14, color: chgColor(p.pnl) }}>{p.pnl == null ? "—" : (p.pnl >= 0 ? "+" : "") + fmt(p.pnl, market)}</div>
+              {onDelete && <button onClick={(e) => { e.stopPropagation(); onDelete(s); }} className="tap" title="Delete strategy" style={{ border: "none", background: "transparent", padding: 2, flexShrink: 0 }}><Trash2 size={14} color="var(--down)" /></button>}
               <ChevronDown size={15} style={{ transform: openId === s.id ? "rotate(180deg)" : "none", transition: "transform .2s", color: "var(--muted)" }} />
             </div>
           </div>
@@ -1865,14 +1869,11 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       </>)}
 
       {/* SAMPLES + MY STRATEGIES — driven by the TOP selector now, not a second tab row. */}
-      {topTab === "pnl" && <StrategyPnLView strats={strats} trades={trades} market={market} />}
+      {topTab === "pnl" && <StrategyPnLView strats={strats} trades={trades} market={market} onDelete={deleteStrategy} />}
 
       {topTab === "strategies" && (<>
-      <div ref={stratsRef} className="disp" style={{ fontWeight: 700, fontSize: 18, margin: "28px 2px 4px", scrollMarginTop: 80 }}>Strategies</div>
-      <div className="gold-line" style={{ width: 44, margin: "0 0 14px 2px", borderRadius: 2 }} />
-
-      {/* Sub-sections under Strategies */}
-      <div className="hide-scroll" style={{ display: "flex", gap: 7, marginBottom: 14, overflowX: "auto" }}>
+      {/* Sub-sections under Strategies — shown directly (no redundant "Strategies" heading). */}
+      <div ref={stratsRef} className="hide-scroll" style={{ display: "flex", gap: 7, margin: "18px 0 14px", scrollMarginTop: 80, overflowX: "auto" }}>
         {[["deployed", "Deployed"], ["sample", "Samples"], ["premium", "Premium"], ["public", "Public"], ["mine", "Mine"]].map(([k, label]) => (
           <button key={k} onClick={() => setStratTab(k)} className="tap disp" style={{ flex: "0 0 auto", borderRadius: 999, padding: "7px 14px", fontWeight: 800, fontSize: 11.5, whiteSpace: "nowrap", border: "1px solid " + (stratTab === k ? "var(--primary)" : "var(--line)"), background: stratTab === k ? "var(--primary)" : "var(--surface)", color: stratTab === k ? "#fff" : "var(--ink)" }}>{label}</button>
         ))}

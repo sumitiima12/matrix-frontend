@@ -33,11 +33,13 @@ import PopularScreeners from "../components/home/PopularScreeners";
  * page led with NIFTY and SENSEX. Each market now leads with the instruments that
  * actually matter to it. Reads each one's REAL day change; no live quote yet -> "—".
  */
+/* Each market shows ONLY its own instruments — no cross-market bleed (no Gold/Crude under Indian,
+   no BTC/NIFTY under Commodity). */
 const STRIP_BY_MARKET = {
-  IN: [["NIFTY50", "NIFTY 50"], ["SENSEX", "SENSEX"], ["BANKNIFTY", "BANK NIFTY"], ["GOLD", "GOLD"], ["CRUDEOIL", "CRUDE"]],
-  US: [["SPX", "S&P 500"], ["NDX", "NASDAQ"], ["DJI", "DOW"], ["BTC", "BTC"], ["GOLD", "GOLD"]],
+  IN: [["NIFTY50", "NIFTY 50"], ["SENSEX", "SENSEX"], ["BANKNIFTY", "BANK NIFTY"], ["FINNIFTY", "FIN NIFTY"], ["INDIAVIX", "INDIA VIX"]],
+  US: [["SPX", "S&P 500"], ["NDX", "NASDAQ"], ["DJI", "DOW"], ["VIX", "VIX"]],
   Crypto: [["BTC", "BTC"], ["ETH", "ETH"], ["SOL", "SOL"], ["BNB", "BNB"], ["XRP", "XRP"], ["DOGE", "DOGE"]],
-  Commodity: [["GOLD", "GOLD"], ["CRUDEOIL", "CRUDE"], ["NIFTY50", "NIFTY 50"], ["SPX", "S&P 500"], ["BTC", "BTC"]],
+  Commodity: [["GOLD", "GOLD"], ["SILVER", "SILVER"], ["CRUDEOIL", "CRUDE"], ["ALUMINIUM", "ALUMINIUM"]],
 };
 function GlobalStrip({ market = "IN" }) {
   const picks = STRIP_BY_MARKET[market] || GLOBAL_MKTS.map((m) => [m.sym, m.n]);
