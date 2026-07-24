@@ -4,6 +4,7 @@ import { CUR, DAY, chgColor, fmt, lsGet, lsSet } from "../../lib/format";
 import { scanScreener, marketOpen } from "../../domain/api";
 import Section from "../common/Section";
 import CustomScreener from "./CustomScreener";
+import MyScreeners from "./SavedScreeners";
 import { SlidersHorizontal } from "lucide-react";
 
 /* THE THREE POPULAR SCREENERS. Each is a real strategy config (indicators + entry chain) evaluated live
@@ -100,9 +101,6 @@ function ScreenerRow({ screener, market, onOpen, onBuy, onAutoBuy, onScreenerBuy
   const cur = CUR[market] || "₹";
   const inBox = { width: 42, textAlign: "center", border: "1px solid var(--line)", background: "var(--elev)", borderRadius: 7, padding: "4px 3px", fontWeight: 800, fontSize: 11, color: "var(--ink)" };
 
-  // Hide a screener entirely while nothing meets its entry trigger — an empty carousel is just noise.
-  if (!matches.length) return null;
-
   return (
     <div className="card" style={{ marginTop: 12, padding: 12, background: "var(--elev)" }}>
       {/* Header — screener name (left), Auto-Buy toggle (right) */}
@@ -119,7 +117,8 @@ function ScreenerRow({ screener, market, onOpen, onBuy, onAutoBuy, onScreenerBuy
         </label>
       </div>
 
-      {/* Carousel of matched symbols — full width, below the name */}
+      {/* Carousel of matched symbols — full width, below the name. Hidden when nothing meets entry. */}
+      {matches.length > 0 && (
       <div className="hide-scroll" style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 2, marginTop: 10 }}>
         {matches.map((m) => {
           const st = ALL.find((a) => a.sym === m.sym);
@@ -143,6 +142,7 @@ function ScreenerRow({ screener, market, onOpen, onBuy, onAutoBuy, onScreenerBuy
           );
         })}
       </div>
+      )}
 
       {/* Footer — date range · capital · live P&L. Only shown when Auto-Buy is on (off = a plain discovery list). */}
       {autoOn && (
@@ -151,7 +151,7 @@ function ScreenerRow({ screener, market, onOpen, onBuy, onAutoBuy, onScreenerBuy
           <option value="today">Today</option>
           <option value="7d">Last 7 days</option>
           <option value="30d">Last 30 days</option>
-          <option value="all">All time</option>
+          <option value="6m">Last 6 months</option>
         </select>
         <div style={{ flex: "1 1 0", minWidth: 0, display: "flex", alignItems: "center", gap: 6, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 9, padding: "5px 9px" }}>
           <span style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 800, flexShrink: 0 }}>CAPITAL ({cur})</span>
@@ -168,23 +168,25 @@ function ScreenerRow({ screener, market, onOpen, onBuy, onAutoBuy, onScreenerBuy
 }
 
 export default function PopularScreeners({ market, mode = "virtual", list = [], onOpen, onBuy, onAutoBuy, onScreenerBuy, liveTick = 0 }) {
-  const [tab, setTab] = useState("custom");   // "custom" | "popular" — Create-your-own is the default
+  const [tab, setTab] = useState("custom");   // "custom" | "popular" | "mine" — Create-your-own is the default
   // Not for Commodity (thin universe / no 5m intraday screening there).
   if (market === "Commodity") return null;
   return (
     <Section title="Screener" icon={<SlidersHorizontal size={17} color="var(--primary)" />}>
-      {/* Popular | Create your own screener */}
-      <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3, marginBottom: 4 }}>
-        {[["custom", "Create your own screener"], ["popular", "Popular"]].map(([k, l]) => (
-          <button key={k} onClick={() => setTab(k)} className="pill tap disp" style={{ padding: "6px 14px", fontSize: 12, fontWeight: 800, border: "none", whiteSpace: "nowrap", background: tab === k ? "var(--primary)" : "transparent", color: tab === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
-        ))}
+      {/* Create your own screener | Popular Screeners | My Screeners */}
+      <div className="hide-scroll" style={{ display: "flex", marginBottom: 4, overflowX: "auto" }}>
+        <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3 }}>
+          {[["custom", "Create your own screener"], ["popular", "Popular Screeners"], ["mine", "My Screeners"]].map(([k, l]) => (
+            <button key={k} onClick={() => setTab(k)} className="pill tap disp" style={{ padding: "6px 14px", fontSize: 12, fontWeight: 800, border: "none", whiteSpace: "nowrap", background: tab === k ? "var(--primary)" : "transparent", color: tab === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
+          ))}
+        </div>
       </div>
 
-      {tab === "popular"
-        ? SCREENERS.map((s) => (
-            <ScreenerRow key={s.key} screener={s} market={market} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} liveTick={liveTick} />
-          ))
-        : <CustomScreener market={market} mode={mode} list={list} onOpen={onOpen} onScreenerBuy={onScreenerBuy} liveTick={liveTick} />}
+      {tab === "popular" && SCREENERS.map((s) => (
+        <ScreenerRow key={s.key} screener={s} market={market} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} liveTick={liveTick} />
+      ))}
+      {tab === "custom" && <CustomScreener market={market} mode={mode} list={list} onOpen={onOpen} onScreenerBuy={onScreenerBuy} liveTick={liveTick} />}
+      {tab === "mine" && <MyScreeners market={market} mode={mode} list={list} onOpen={onOpen} onScreenerBuy={onScreenerBuy} liveTick={liveTick} />}
     </Section>
   );
 }

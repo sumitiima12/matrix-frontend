@@ -4,7 +4,8 @@ import { CUR, chgColor, fmt, lsGet, lsSet } from "../../lib/format";
 import { METRICS, OPS, indValue, parseScreen } from "../../domain/screener";
 import { marketOpen, aiInterpretScreen } from "../../domain/api";
 import { selStyle } from "../common/styles";
-import { ChevronDown, ChevronUp, Filter, Plus, Sparkles, Trash2 } from "lucide-react";
+import { addSavedScreener } from "./SavedScreeners";
+import { ChevronDown, ChevronUp, Filter, Plus, Save, Sparkles, Trash2 } from "lucide-react";
 
 /* CREATE YOUR OWN SCREENER — the second tab of "Screener".
    Built on the SAME metric engine as the Screener that used to sit below Trending (RSI, EMA, MACD,
@@ -108,6 +109,8 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
   const [selRec, setSelRec] = useState(null);
   const [pickOpen, setPickOpen] = useState(false);
   const [ran, setRan] = useState(false);
+  const [scrName, setScrName] = useState("");
+  const [saveNote, setSaveNote] = useState(null);
   const entryPx = useRef({});   // sym -> { px, at } captured when a symbol first meets entry
 
   // Reload persisted state when the market changes.
@@ -182,6 +185,13 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
   }, [autoOn, market, matched.length]);
 
   const applyRec = (r) => { setSelRec(r.label); setEntry(r.f.map(normF)); };
+  const saveScreener = () => {
+    const name = scrName.trim();
+    if (!name) { setSaveNote("Give your screener a name first."); return; }
+    if (!selSyms.length) { setSaveNote("Select at least one symbol before saving."); return; }
+    addSavedScreener({ name, market, entry, exit, ov, selSyms });
+    setScrName(""); setSaveNote(`Saved "${name}" — find it under My Screeners.`);
+  };
   const dt = (t) => t ? new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
   const inBox = { width: 46, textAlign: "center", border: "1px solid var(--line)", background: "var(--elev)", borderRadius: 7, padding: "5px 3px", fontWeight: 800, fontSize: 11.5, color: "var(--ink)" };
   const isMatch = (sym) => matched.includes(sym);
@@ -200,7 +210,7 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
           <option value="today">Today</option>
           <option value="7d">Last 7 days</option>
           <option value="30d">Last 30 days</option>
-          <option value="all">All time</option>
+          <option value="6m">Last 6 months</option>
         </select>
         {autoOn && (
           <div style={{ marginLeft: "auto", textAlign: "right" }}>
@@ -306,6 +316,16 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
           {matched.length ? `${matched.length} of ${selSyms.length} symbols meet your entry rules right now.` : "No selected symbol meets your entry rules right now — adjust the rules or check back as prices move."}
         </div>
       )}
+
+      {/* Save this screener — appears under My Screeners. Name is required. */}
+      <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
+        <div className="disp" style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 8 }}>Save screener</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input value={scrName} onChange={(e) => { setScrName(e.target.value); setSaveNote(null); }} placeholder="Screener name (required)" className="no-ring" style={{ flex: "1 1 0", minWidth: 0, border: "1px solid var(--line)", borderRadius: 10, padding: "10px 11px", fontSize: 13, fontWeight: 600, background: "var(--surface)", color: "var(--ink)" }} />
+          <button onClick={saveScreener} disabled={!scrName.trim()} className="tap disp" style={{ flex: "0 0 auto", border: "none", borderRadius: 10, padding: "10px 14px", fontSize: 12.5, fontWeight: 800, display: "flex", gap: 6, alignItems: "center", background: scrName.trim() ? "var(--primary)" : "var(--elev)", color: scrName.trim() ? "var(--on-primary)" : "var(--muted)", cursor: scrName.trim() ? "pointer" : "not-allowed" }}><Save size={14} /> Save</button>
+        </div>
+        {saveNote && <div style={{ fontSize: 11, color: saveNote.startsWith("Saved") ? "var(--up)" : "var(--down)", marginTop: 7, fontWeight: 600 }}>{saveNote.startsWith("Saved") ? "✓ " : ""}{saveNote}</div>}
+      </div>
     </div>
   );
 }
