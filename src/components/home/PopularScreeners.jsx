@@ -5,6 +5,8 @@ import { scanScreener, marketOpen } from "../../domain/api";
 import Section from "../common/Section";
 import CustomScreener from "./CustomScreener";
 import MyScreeners from "./SavedScreeners";
+import { CondBuilder2, IndicatorDefs, TFS } from "../../pages/Automation";
+import { defOperands } from "../../domain/strategyLang";
 import { Pencil, SlidersHorizontal } from "lucide-react";
 
 /* THE THREE POPULAR SCREENERS. Each is a real strategy config (indicators + entry chain) evaluated live
@@ -49,14 +51,34 @@ function ScreenerRow({ screener, market, isAdmin = false, onOpen, onBuy, onAutoB
   const [period, setPeriod] = useState("today");
   const [capital, setCapital] = useState(() => lsGet(`mx_scrcap_${market}`, capDefault(market)));
   const [ov, setOv] = useState({});   // per-symbol { sl, tp } override
-  // Admin-editable overrides for this Popular screener: display name + default SL/TP.
+  // Admin-editable overrides for this Popular screener: display name, default SL/TP, and the actual
+  // scan rules (indicators + entry/exit chains + timeframe). Absent fields fall back to the built-in.
   const EDK = `mx_popedit_${screener.key}`;
-  const [edit, setEdit] = useState(null);   // null | { name, sl, tp } while the admin edit panel is open
+  const [edit, setEdit] = useState(null);   // null | { name, sl, tp, defs, entry, exit, tf } while the panel is open
   const [ovr, setOvr] = useState(() => lsGet(EDK, {}));
   const dispName = (ovr && ovr.name) || screener.name;
   const defSL = (ovr && ovr.sl != null) ? ovr.sl : 0.4;
   const defTP = (ovr && ovr.tp != null) ? ovr.tp : 1.0;
-  const saveEdit = () => { const next = { name: (edit.name || "").trim() || screener.name, sl: +edit.sl || 0.4, tp: +edit.tp || 1.0 }; setOvr(next); lsSet(EDK, next); setEdit(null); };
+  // Effective scan config — admin's edited rules if present, else the built-in screener definition.
+  const eDefs = (ovr && ovr.defs) || screener.defs;
+  const eEntry = (ovr && ovr.entry) || screener.entry;
+  const eTf = (ovr && ovr.tf) || screener.tf;
+  const cfgSig = useMemo(() => JSON.stringify({ d: eDefs, e: eEntry, t: eTf }), [eDefs, eEntry, eTf]);
+  const saveEdit = () => {
+    const next = {
+      name: (edit.name || "").trim() || screener.name,
+      sl: +edit.sl || 0.4, tp: +edit.tp || 1.0,
+      defs: edit.defs, entry: edit.entry, exit: edit.exit, tf: edit.tf || screener.tf,
+    };
+    setOvr(next); lsSet(EDK, next); setEdit(null);
+  };
+  const startEdit = () => setEdit({
+    name: dispName, sl: defSL, tp: defTP, tf: eTf,
+    defs: (eDefs || []).map((d) => ({ ...d, id: d.id || Date.now() + Math.random(), tf: d.tf || eTf || "5m" })),
+    entry: (eEntry || []).map((c) => ({ ...c })),
+    exit: ((ovr && ovr.exit) || screener.exit || []).map((c) => ({ ...c })),
+  });
+  const editOperands = useMemo(() => ["Price", "Volume", ...defOperands((edit && edit.defs) || [])], [edit]);
 
   // Live scan for THIS market's universe.
   useEffect(() => {
@@ -65,12 +87,13 @@ function ScreenerRow({ screener, market, isAdmin = false, onOpen, onBuy, onAutoB
     setCapital(lsGet(`mx_scrcap_${market}`, capDefault(market)));
     setAutoOn(lsGet(`mx_scrauto_${screener.key}_${market}`, false));
     if (!syms.length) { setMatches([]); return undefined; }
-    scanScreener({ key: screener.key, defs: screener.defs, entry: screener.entry, tf: screener.tf, appSyms: syms })
+    let h = 0; for (let i = 0; i < cfgSig.length; i++) h = (h * 31 + cfgSig.charCodeAt(i)) | 0;
+    scanScreener({ key: `${screener.key}:${(h >>> 0).toString(36)}`, defs: eDefs, entry: eEntry, tf: eTf, appSyms: syms })
       .then((list) => { if (!stop) setMatches(Array.isArray(list) ? list : []); })
       .catch(() => { if (!stop) setMatches([]); });
     return () => { stop = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [market, liveTick]);
+  }, [market, liveTick, cfgSig]);
 
   const capNum = Math.max(1, parseInt(capital) || Number(capDefault(market)));
   const perCap = capNum / Math.max(1, matches.length);
@@ -115,7 +138,7 @@ function ScreenerRow({ screener, market, isAdmin = false, onOpen, onBuy, onAutoB
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
         <div style={{ minWidth: 0 }}>
           <div className="disp" style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.15, color: "var(--ink)" }}>{dispName}</div>
-          <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 2, fontWeight: 600 }}>5m · {matches.length} live</div>
+          <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 2, fontWeight: 600 }}>{eTf} · {matches.length} live</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           <label className="tap" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, fontWeight: 800, color: "var(--ink)" }}>
@@ -124,20 +147,34 @@ function ScreenerRow({ screener, market, isAdmin = false, onOpen, onBuy, onAutoB
             </span>
             Auto-Buy
           </label>
-          {isAdmin && <button onClick={() => setEdit(edit ? null : { name: dispName, sl: defSL, tp: defTP })} className="tap" title="Edit screener (admin)" style={{ border: "none", background: "transparent", padding: 2, flexShrink: 0 }}><Pencil size={14} color="var(--muted)" /></button>}
+          {isAdmin && <button onClick={() => edit ? setEdit(null) : startEdit()} className="tap" title="Edit screener (admin)" style={{ border: "none", background: "transparent", padding: 2, flexShrink: 0 }}><Pencil size={14} color="var(--muted)" /></button>}
         </div>
       </div>
 
-      {/* Admin edit panel — rename + default SL/TP for this Popular screener */}
+      {/* Admin edit panel — name, default SL/TP, timeframe, indicators and entry/exit rules. */}
       {isAdmin && edit && (
-        <div style={{ marginTop: 10, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: 10 }}>
+        <div style={{ marginTop: 10, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: 12, color: "var(--ink)" }}>
           <input value={edit.name} onChange={(e) => setEdit((s) => ({ ...s, name: e.target.value }))} placeholder="Screener name" className="no-ring" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 9px", fontSize: 12.5, fontWeight: 600, background: "var(--elev)", color: "var(--ink)", marginBottom: 8 }} />
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
             <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 800 }}>Default SL%</span>
             <input value={edit.sl} onChange={(e) => setEdit((s) => ({ ...s, sl: e.target.value.replace(/[^0-9.]/g, "") }))} inputMode="decimal" className="no-ring mono" style={inBox} />
             <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 800 }}>Default TP%</span>
             <input value={edit.tp} onChange={(e) => setEdit((s) => ({ ...s, tp: e.target.value.replace(/[^0-9.]/g, "") }))} inputMode="decimal" className="no-ring mono" style={inBox} />
-            <button onClick={saveEdit} className="tap disp" style={{ marginLeft: "auto", border: "none", borderRadius: 8, padding: "7px 12px", fontSize: 11.5, fontWeight: 800, background: "var(--primary)", color: "var(--on-primary)" }}>Save</button>
+            <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 800, marginLeft: 4 }}>TF</span>
+            <select value={edit.tf || "5m"} onChange={(e) => setEdit((s) => ({ ...s, tf: e.target.value }))} style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "5px 6px", fontSize: 11.5, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }}>{TFS.map((t) => <option key={t} value={t}>{t}</option>)}</select>
+          </div>
+
+          <div className="disp" style={{ fontWeight: 800, fontSize: 12.5, margin: "6px 0 6px" }}>Indicators</div>
+          <IndicatorDefs defs={edit.defs || []} setDefs={(u) => setEdit((s) => ({ ...s, defs: typeof u === "function" ? u(s.defs || []) : u }))} />
+
+          <div style={{ height: 12 }} />
+          <CondBuilder2 label="Entry signal — when a symbol qualifies" conds={edit.entry || []} setConds={(u) => setEdit((s) => ({ ...s, entry: typeof u === "function" ? u(s.entry || []) : u }))} operands={editOperands} />
+          <div style={{ height: 12 }} />
+          <CondBuilder2 label="Exit signal — when to close" conds={edit.exit || []} setConds={(u) => setEdit((s) => ({ ...s, exit: typeof u === "function" ? u(s.exit || []) : u }))} operands={editOperands} />
+
+          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            <button onClick={saveEdit} className="tap disp" style={{ flex: 1, border: "none", borderRadius: 10, padding: "10px 12px", fontSize: 12.5, fontWeight: 800, background: "var(--primary)", color: "var(--on-primary)" }}>Save changes</button>
+            <button onClick={() => { setOvr({}); lsSet(EDK, {}); setEdit(null); }} className="tap disp" style={{ flex: "0 0 auto", border: "1px solid var(--line)", background: "var(--elev)", color: "var(--muted)", borderRadius: 10, padding: "10px 14px", fontSize: 12.5, fontWeight: 800 }}>Reset to default</button>
           </div>
         </div>
       )}
