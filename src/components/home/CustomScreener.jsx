@@ -7,7 +7,7 @@ import { marketOpen, aiInterpretScreen, scanMomentum } from "../../domain/api";
 /* Screener metrics = the daily-snapshot set PLUS "Price change %", which is evaluated on real candles
    over a chosen window (3m … 1d) via the momentum scan rather than the daily snapshot. */
 const PCHG = "pchg";
-const SCR_METRICS = [...METRICS, [PCHG, "Price change %"]];
+const SCR_METRICS = [...METRICS, ["vol", "Volume"], [PCHG, "Price change %"]];
 const PCHG_TFS = [["3m", "3 min"], ["5m", "5 min"], ["15m", "15 min"], ["30m", "30 min"], ["1h", "60 min"], ["1d", "1 day"]];
 const pcSig = (f) => `${f.tf || "5m"}|${f.o}|${f.v}`;
 import { selStyle } from "../common/styles";
