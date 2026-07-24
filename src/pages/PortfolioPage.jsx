@@ -54,7 +54,7 @@ function AutoExitsCard({ userId }) {
 function HoldingIntel({ a, market = "IN", stock, onWhy }) {
   const [open, setOpen] = useState(false);
   if (!a) return null;
-  const col = a.action === "Add" ? "var(--up)" : a.action === "Exit" ? "var(--down)" : a.action === "Reduce" ? "#F59E0B" : "var(--muted)";
+  const col = a.action === "Add" || a.action === "Take profit" ? "var(--up)" : a.action === "Exit" ? "var(--down)" : a.action === "Reduce" ? "#F59E0B" : "var(--muted)";
   if (!a.hasData) {
     return <div style={{ marginTop: 10, fontSize: 10.5, color: "var(--muted)" }}>Data currently unavailable</div>;
   }
@@ -415,7 +415,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
           // Neo's read on the REAL holding — same engine the virtual cards use, fed the broker's
           // avg cost + qty. Only when the symbol is in our tracked universe (needs real indicators).
           const ana = uni && sig ? analyzeHolding({ sym: h.sym, buy: h.avg != null ? h.avg : h.ltp, qty: h.qty, sl: null, tp: null }, uni, sig) : null;
-          const vColor = ana && /Exit|Reduce/.test(ana.action) ? "var(--down)" : ana && /Add/.test(ana.action) ? "var(--up)" : "var(--muted)";
+          const vColor = ana && /Exit|Reduce/.test(ana.action) ? "var(--down)" : ana && /Add|Take profit/.test(ana.action) ? "var(--up)" : "var(--muted)";
           return (
             <div key={h.sym} className="card" style={{ marginTop: 9, padding: 13 }}>
               <div

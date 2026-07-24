@@ -72,7 +72,7 @@ export function analyzeHolding(h, s, signal) {
     confidence = 90;
     reasons.push(`Price ${price} is at or below the stop ${suggestedStop} — the thesis is invalidated.`);
   } else if (hitTarget) {
-    action = "Reduce";
+    action = "Take profit";
     confidence = 75;
     reasons.push(`Target ${suggestedTarget} reached — booking part of the position locks in the gain.`);
   } else if (trend === "Downtrend" && pnlPct < 0) {
