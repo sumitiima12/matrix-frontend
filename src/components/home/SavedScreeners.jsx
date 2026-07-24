@@ -163,7 +163,7 @@ export default function MyScreeners({ market, mode = "virtual", list = [], onOpe
   if (!mine.length) {
     return (
       <div className="card" style={{ marginTop: 12, padding: 20, textAlign: "center", color: "var(--muted)", fontSize: 12.5, lineHeight: 1.6 }}>
-        No saved screeners yet for {market}. Build one under <b style={{ color: "var(--ink)" }}>Create your own screener</b> and tap <b style={{ color: "var(--ink)" }}>Save screener</b> — it'll appear here as a carousel.
+        No saved screeners yet for {market}. Build one under <b style={{ color: "var(--ink)" }}>Create your own screener</b> and tap <b style={{ color: "var(--ink)" }}>Save screener</b> — it'll appear here.
       </div>
     );
   }

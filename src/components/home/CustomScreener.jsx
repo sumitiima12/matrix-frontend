@@ -19,12 +19,12 @@ const TODAY = new Date().toISOString().slice(0, 10);
 const DAY_KEY = TODAY.replace(/-/g, "");
 const qtyDefault = (m) => (m === "Crypto" ? 200 : 1);   // crypto = USD amount, others = share/lot count
 
-// Same four the old Screener offered — tap to load into the entry rules.
+// Same four the old Screener offered — tap to load both entry (f) and a sensible exit (x).
 const RECOMMENDED = [
-  { label: "Momentum movers", f: [{ m: "rsi", o: ">", v: "60" }, { m: "chg", o: ">", v: "1" }] },
-  { label: "Value with growth", f: [{ m: "pe", o: "<", v: "30" }, { m: "revGrowth", o: ">", v: "8" }] },
-  { label: "Oversold bounce", f: [{ m: "rsi", o: "<", v: "35" }] },
-  { label: "EMA 21 > EMA 50", f: [{ m: "ema20", o: ">", rhsType: "indicator", rhs: "ema50" }] },
+  { label: "Momentum movers", f: [{ m: "rsi", o: ">", v: "60" }, { m: "chg", o: ">", v: "1" }], x: [{ m: "rsi", o: "<", v: "50" }] },
+  { label: "Value with growth", f: [{ m: "pe", o: "<", v: "30" }, { m: "revGrowth", o: ">", v: "8" }], x: [{ m: "rsi", o: ">", v: "70" }] },
+  { label: "Oversold bounce", f: [{ m: "rsi", o: "<", v: "35" }], x: [{ m: "rsi", o: ">", v: "55" }] },
+  { label: "EMA 21 > EMA 50", f: [{ m: "ema20", o: ">", rhsType: "indicator", rhs: "ema50" }], x: [{ m: "ema20", o: "<", rhsType: "indicator", rhs: "ema50" }] },
 ];
 const normF = (f) => ({ m: f.m, o: f.o || ">", rhsType: f.rhsType || (f.rhs ? "indicator" : "value"), v: f.v != null ? String(f.v) : "", rhs: f.rhs || "sma50" });
 const cmp = (o, x, y) => o === ">" ? x > y : o === "<" ? x < y : o === ">=" ? x >= y : o === "<=" ? x <= y : Math.abs(x - y) < 1e-6;
@@ -184,7 +184,7 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoOn, market, matched.length]);
 
-  const applyRec = (r) => { setSelRec(r.label); setEntry(r.f.map(normF)); };
+  const applyRec = (r) => { setSelRec(r.label); setEntry(r.f.map(normF)); if (r.x) setExit(r.x.map(normF)); setScrName(r.label); setSaveNote(null); };
   const saveScreener = () => {
     const name = scrName.trim();
     if (!name) { setSaveNote("Give your screener a name first."); return; }
@@ -240,7 +240,6 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
       {/* Exit rules */}
       <div className="disp" style={{ fontWeight: 800, fontSize: 13.5, margin: "18px 0 8px" }}>Exit conditions <span style={{ fontWeight: 600, fontSize: 11, color: "var(--muted)" }}>— when to close</span></div>
       <FilterRows conds={exit} setConds={setExit} placeholder="e.g. RSI above 65 or price below 50-DMA" />
-      <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8 }}>Screening on daily indicators. Positions also close on the per-symbol stop-loss / target below.</div>
 
       {/* Symbol selection — collapsible, with Select all */}
       <div className="disp" style={{ fontWeight: 800, fontSize: 13.5, margin: "18px 0 8px" }}>Symbols to screen</div>
@@ -248,13 +247,6 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
         <span>{selSyms.length ? `${selSyms.length} symbol${selSyms.length > 1 ? "s" : ""} selected` : "Choose symbols…"}</span>
         {pickOpen ? <ChevronUp size={17} color="var(--muted)" /> : <ChevronDown size={17} color="var(--muted)" />}
       </button>
-      {!!selSyms.length && !pickOpen && (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-          {selSyms.map((sym) => (
-            <span key={sym} onClick={() => toggleSym(sym)} className="pill tap" style={{ fontSize: 10.5, fontWeight: 800, padding: "4px 9px", background: "var(--primary-soft)", color: "var(--primary)", display: "flex", gap: 4, alignItems: "center" }}>{sym} ✕</span>
-          ))}
-        </div>
-      )}
       {pickOpen && (
         <div style={{ marginTop: 8, maxHeight: 230, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 10, padding: 8 }}>
           {/* Select all — first row */}
@@ -276,18 +268,21 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
         </div>
       )}
 
-      {/* Per-symbol SL / TP / quantity — only relevant when Auto-Buy is on. */}
-      {autoOn && !!selSyms.length && (
+      {/* Screened symbols. Always shown once symbols are picked; the SL/TP/quantity columns only appear
+          when Auto-Buy is on (off = a plain list of which symbols meet entry). */}
+      {!!selSyms.length && (
         <>
-          <div className="disp" style={{ fontWeight: 800, fontSize: 13.5, margin: "18px 0 4px" }}>Stop-loss, target & quantity</div>
-          <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 8 }}>Defaults 0.4% SL / 1% TP · {isCrypto ? "amount in " + cur : "quantity"} per trade.</div>
+          <div className="disp" style={{ fontWeight: 800, fontSize: 13.5, margin: "18px 0 4px" }}>{autoOn ? "Stop-loss, target & quantity" : "Screened symbols"}</div>
+          {autoOn && <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 8 }}>Defaults 0.4% SL / 1% TP · {isCrypto ? "amount in " + cur : "quantity"} per trade.</div>}
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 8.5, fontWeight: 800, color: "var(--muted)", padding: "0 2px" }}>
-              <span style={{ flex: "1 1 0", minWidth: 0 }}>SYMBOL</span>
-              <span style={{ width: 46, textAlign: "center", color: "var(--down)" }}>% SL</span>
-              <span style={{ width: 46, textAlign: "center", color: "var(--up)" }}>% TP</span>
-              <span style={{ width: 46, textAlign: "center" }}>{qtyLabel}</span>
-            </div>
+            {autoOn && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 8.5, fontWeight: 800, color: "var(--muted)", padding: "0 2px" }}>
+                <span style={{ flex: "1 1 0", minWidth: 0 }}>SYMBOL</span>
+                <span style={{ width: 46, textAlign: "center", color: "var(--down)" }}>% SL</span>
+                <span style={{ width: 46, textAlign: "center", color: "var(--up)" }}>% TP</span>
+                <span style={{ width: 46, textAlign: "center" }}>{qtyLabel}</span>
+              </div>
+            )}
             {selSyms.map((sym) => {
               const m = isMatch(sym); const info = entryPx.current[sym];
               return (
@@ -298,9 +293,9 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
                       {m ? `● Entry ${dt(info && info.at)} @ ${fmt(info && info.px, market)}` : ran ? "not meeting entry" : "not scanned yet"}
                     </div>
                   </div>
-                  <input value={ovSL(sym)} onChange={(e) => setOvField(sym, "sl", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={inBox} />
-                  <input value={ovTP(sym)} onChange={(e) => setOvField(sym, "tp", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={inBox} />
-                  <input value={ovQty(sym)} onChange={(e) => setOvField(sym, "qty", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={inBox} />
+                  {autoOn && <input value={ovSL(sym)} onChange={(e) => setOvField(sym, "sl", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={inBox} />}
+                  {autoOn && <input value={ovTP(sym)} onChange={(e) => setOvField(sym, "tp", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={inBox} />}
+                  {autoOn && <input value={ovQty(sym)} onChange={(e) => setOvField(sym, "qty", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={inBox} />}
                 </div>
               );
             })}
