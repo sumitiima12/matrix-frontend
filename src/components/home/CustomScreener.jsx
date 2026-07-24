@@ -2,7 +2,14 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ALL, UNIVERSE } from "../../domain/universe";
 import { CUR, chgColor, fmt, lsGet, lsSet } from "../../lib/format";
 import { METRICS, OPS, indValue, parseScreen } from "../../domain/screener";
-import { marketOpen, aiInterpretScreen } from "../../domain/api";
+import { marketOpen, aiInterpretScreen, scanMomentum } from "../../domain/api";
+
+/* Screener metrics = the daily-snapshot set PLUS "Price change %", which is evaluated on real candles
+   over a chosen window (3m … 1d) via the momentum scan rather than the daily snapshot. */
+const PCHG = "pchg";
+const SCR_METRICS = [...METRICS, [PCHG, "Price change %"]];
+const PCHG_TFS = [["3m", "3 min"], ["5m", "5 min"], ["15m", "15 min"], ["30m", "30 min"], ["1h", "60 min"], ["1d", "1 day"]];
+const pcSig = (f) => `${f.tf || "5m"}|${f.o}|${f.v}`;
 import { selStyle } from "../common/styles";
 import { addSavedScreener, updateSavedScreener } from "./SavedScreeners";
 import { ChevronDown, ChevronUp, Filter, Plus, Save, Sparkles, Trash2 } from "lucide-react";
@@ -26,9 +33,12 @@ const RECOMMENDED = [
   { label: "Oversold bounce", f: [{ m: "rsi", o: "<", v: "35" }], x: [{ m: "rsi", o: ">", v: "55" }] },
   { label: "EMA 21 > EMA 50", f: [{ m: "ema20", o: ">", rhsType: "indicator", rhs: "ema50" }], x: [{ m: "ema20", o: "<", rhsType: "indicator", rhs: "ema50" }] },
 ];
-const normF = (f) => ({ m: f.m, o: f.o || ">", rhsType: f.rhsType || (f.rhs ? "indicator" : "value"), v: f.v != null ? String(f.v) : "", rhs: f.rhs || "sma50" });
+const normF = (f) => ({ m: f.m, o: f.o || ">", rhsType: f.rhsType || (f.rhs ? "indicator" : "value"), v: f.v != null ? String(f.v) : "", rhs: f.rhs || "sma50", ...(f.m === "pchg" ? { tf: f.tf || "5m" } : {}) });
 const cmp = (o, x, y) => o === ">" ? x > y : o === "<" ? x < y : o === ">=" ? x >= y : o === "<=" ? x <= y : Math.abs(x - y) < 1e-6;
-const passes = (stock, conds) => conds.every((f) => {
+const passes = (stock, conds, pcHits = {}) => conds.every((f) => {
+  // Price change % over a window: satisfied when the symbol is in that condition's momentum hit set.
+  // While the async scan is still loading (no set yet), don't block — matches the "unavailable" rule.
+  if (f.m === PCHG) { const set = pcHits[pcSig(f)]; return set ? set.has(stock.sym) : true; }
   const x = indValue(stock, f.m);
   const y = f.rhsType === "indicator" ? indValue(stock, f.rhs) : parseFloat(f.v);
   if (x == null || isNaN(x) || y == null || isNaN(y)) return true;   // an unavailable metric never blocks a match
@@ -69,19 +79,26 @@ function FilterRows({ conds, setConds, placeholder }) {
       {conds.map((f, i) => (
         <div key={i} style={{ border: "1px solid var(--line)", borderRadius: 12, padding: 9, marginBottom: 8, background: "var(--elev)" }}>
           <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
-            <select aria-label="Metric" value={f.m} onChange={(e) => upd(i, "m", e.target.value)} style={{ ...selStyle, flex: 1, minWidth: 0 }}>{METRICS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+            <select aria-label="Metric" value={f.m} onChange={(e) => upd(i, "m", e.target.value === PCHG ? PCHG : e.target.value)} style={{ ...selStyle, flex: 1, minWidth: 0 }}>{SCR_METRICS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
             <select aria-label="Comparator" value={f.o} onChange={(e) => upd(i, "o", e.target.value)} style={{ ...selStyle, flex: "0 0 54px" }}>{OPS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
-            {(f.rhsType || "value") === "value"
-              ? <input value={f.v} onChange={(e) => upd(i, "v", e.target.value)} style={{ ...selStyle, flex: "0 0 70px" }} className="no-ring" placeholder="value" />
-              : <select aria-label="Compare against" value={f.rhs || "sma50"} onChange={(e) => upd(i, "rhs", e.target.value)} style={{ ...selStyle, flex: 1, minWidth: 0 }}>{METRICS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>}
+            {(f.m === PCHG || (f.rhsType || "value") === "value")
+              ? <input value={f.v} onChange={(e) => upd(i, "v", e.target.value)} style={{ ...selStyle, flex: "0 0 70px" }} className="no-ring" placeholder={f.m === PCHG ? "%" : "value"} />
+              : <select aria-label="Compare against" value={f.rhs || "sma50"} onChange={(e) => upd(i, "rhs", e.target.value)} style={{ ...selStyle, flex: 1, minWidth: 0 }}>{SCR_METRICS.filter(([k]) => k !== PCHG).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>}
             <button onClick={() => del(i)} disabled={conds.length === 1} className="tap" style={{ border: "none", background: "transparent", flex: "0 0 auto", opacity: conds.length === 1 ? 0.3 : 1 }}><Trash2 size={16} color="var(--down)" /></button>
           </div>
           <div style={{ display: "flex", gap: 7, alignItems: "center", marginTop: 7 }}>
-            <div className="pill" style={{ display: "inline-flex", background: "var(--surface)", border: "1px solid var(--line)", padding: 2 }}>
-              {[["value", "vs value"], ["indicator", "vs indicator"]].map(([k, l]) => (
-                <button key={k} onClick={() => upd(i, "rhsType", k)} className="pill tap" style={{ padding: "5px 9px", fontSize: 10, fontWeight: 800, border: "none", background: (f.rhsType || "value") === k ? "var(--primary)" : "transparent", color: (f.rhsType || "value") === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
-              ))}
-            </div>
+            {f.m === PCHG ? (
+              <>
+                <span style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 700 }}>in the last</span>
+                <select aria-label="Window" value={f.tf || "5m"} onChange={(e) => upd(i, "tf", e.target.value)} style={{ ...selStyle, flex: "0 0 auto", width: "auto", fontSize: 11.5, padding: "6px 8px" }}>{PCHG_TFS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+              </>
+            ) : (
+              <div className="pill" style={{ display: "inline-flex", background: "var(--surface)", border: "1px solid var(--line)", padding: 2 }}>
+                {[["value", "vs value"], ["indicator", "vs indicator"]].map(([k, l]) => (
+                  <button key={k} onClick={() => upd(i, "rhsType", k)} className="pill tap" style={{ padding: "5px 9px", fontSize: 10, fontWeight: 800, border: "none", background: (f.rhsType || "value") === k ? "var(--primary)" : "transparent", color: (f.rhsType || "value") === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       ))}
@@ -156,10 +173,31 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
   const toggleSym = (sym) => setSelSyms((p) => p.includes(sym) ? p.filter((x) => x !== sym) : [...p, sym]);
   const toggleAll = () => setSelSyms(allSelected ? [] : symbolOptions.slice());
 
-  // Which SELECTED symbols meet the ENTRY rules right now — recomputed live off the snapshot list.
-  const matched = useMemo(() => selSyms.filter((sym) => { const s = bySym.get(sym); return s && passes(s, entry); }),
+  /* Price-change conditions run on real candles (momentum scan), not the daily snapshot. For each such
+     entry condition we fetch the set of selected symbols that moved by the requested % over the chosen
+     window, keyed by the condition signature; passes() then checks membership. */
+  const [pcHits, setPcHits] = useState({});
+  useEffect(() => {
+    const pcConds = entry.filter((f) => f.m === PCHG && f.v !== "" && f.v != null);
+    if (!pcConds.length || !selSyms.length) { setPcHits({}); return undefined; }
+    let stop = false;
+    (async () => {
+      const out = {};
+      for (const f of pcConds) {
+        const num = parseFloat(f.v); if (!Number.isFinite(num)) continue;
+        const dir = (f.o === "<" || f.o === "<=") ? "down" : "up";
+        try { const hits = await scanMomentum({ tf: f.tf || "5m", pct: Math.abs(num), dir, syms: selSyms }); out[pcSig(f)] = new Set((hits || []).map((h) => h.sym)); } catch { /* leave unset → doesn't block */ }
+      }
+      if (!stop) setPcHits(out);
+    })();
+    return () => { stop = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selSyms, entry, bySym, liveTick]);
+  }, [entry, selSyms, liveTick, market]);
+
+  // Which SELECTED symbols meet the ENTRY rules right now — recomputed live off the snapshot + momentum.
+  const matched = useMemo(() => selSyms.filter((sym) => { const s = bySym.get(sym); return s && passes(s, entry, pcHits); }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selSyms, entry, bySym, liveTick, pcHits]);
 
   // Capture an entry price the first time a symbol qualifies; drop it when it stops qualifying.
   useEffect(() => {
