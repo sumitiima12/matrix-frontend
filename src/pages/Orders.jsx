@@ -141,6 +141,14 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
   const dt = (ms) => ms ? new Date(ms).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
   const totalPnl = rows.reduce((a, t) => a + (t.livePnl || 0), 0);
   const openN = rows.filter((t) => t.open).length;
+  /* Summary stats over the CURRENTLY FILTERED rows — recompute whenever any filter changes. Wins/losses
+     are measured on CLOSED, filled trades (an open position hasn't won or lost yet; a reject isn't a trade). */
+  const filledRows = rows.filter((t) => !isRejected(t));
+  const closedFilled = filledRows.filter((t) => !t.open);
+  const winN = closedFilled.filter((t) => (t.livePnl || 0) > 0).length;
+  const lossN = closedFilled.filter((t) => (t.livePnl || 0) < 0).length;
+  const wlRatio = lossN > 0 ? (winN / lossN).toFixed(2) : (winN > 0 ? "∞" : "—");
+  const statMkt = mkt === "all" ? "IN" : mkt;
   const typeColor = (tt) => tt === "Auto Buy" ? "var(--primary)" : tt === "Automate" ? "#8B5CF6" : tt === "Screener Auto Buy" ? "#0EA5E9" : "var(--muted)";
   const exitColor = (et) => (et === "Stop loss" || et === "Trailing stop") ? "var(--down)" : et === "Exit trigger" ? "var(--up)" : et === "Open" ? "var(--primary)" : "var(--muted)";
   /* "Strategy by" — the strategy's creator for automated trades, else Manual / Auto Buy. */
@@ -283,6 +291,26 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 24px" }}>
+        {/* Summary dashboard — reflects the current filter selection above. */}
+        <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".04em" }}>Total P&amp;L</span>
+            <span className="mono" style={{ fontWeight: 800, fontSize: 22, color: totalPnl >= 0 ? "var(--up)" : "var(--down)" }}>{(totalPnl >= 0 ? "+" : "") + fmt(totalPnl, statMkt)}</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+            {[
+              ["Trades", rows.length, "var(--ink)"],
+              ["Wins", winN, "var(--up)"],
+              ["Losses", lossN, "var(--down)"],
+              ["Win:Loss", wlRatio, "var(--ink)"],
+            ].map(([k, v, c]) => (
+              <div key={k} style={{ background: "var(--elev)", borderRadius: 10, padding: "8px 9px", minWidth: 0 }}>
+                <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".03em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{k}</div>
+                <div className="mono" style={{ fontWeight: 800, fontSize: 16, color: c, marginTop: 2 }}>{v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
         {rows.length === 0 ? (
           <div className="card" style={{ padding: 30, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No trades match. Buys show as <b>Open</b> until you sell; manual, auto-buy and automate trades all record here.</div>
         ) : rows.map((t) => (
