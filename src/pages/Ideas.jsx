@@ -14,11 +14,14 @@ import TagRow from "../components/common/TagRow";
  * Ideas — trade ideas published by Matrix, scored against real candles.
  */
 
-function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null }) {
+function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, market = "IN" }) {
+  const capDefault = (m) => (m === "Crypto" || m === "US" ? 1000 : 100000);   // crypto/US in USD
   const [postedBy, setPostedBy] = useState("Neo");
   const [range, setRange] = useState(365);
-  const [cap, setCap] = useState(100000);
+  const [cap, setCap] = useState(capDefault(market));
   const [symF, setSymF] = useState("All");
+  // Each market carries its own sensible per-idea capital + currency; reset on market switch.
+  useEffect(() => { setCap(capDefault(market)); }, [market]);
   const postedByOptions = useMemo(() => ["All", ...Array.from(new Set(ideas.map((i) => i.by).filter(Boolean)))], [ideas]);
   // Outcomes are resolved against REAL candles (async). Until the history lands we
   // show nothing rather than a guess.
@@ -80,7 +83,7 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null })
         </div>
         <div style={{ textAlign: "left" }}>
           <div style={{ fontSize: 10, opacity: .85, fontWeight: 700 }}>P&amp;L</div>
-          <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: netPnl >= 0 ? "var(--up)" : "var(--down)" }}>{netPnl >= 0 ? "+" : ""}{fmt(netPnl, "IN")}</div>
+          <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: netPnl >= 0 ? "var(--up)" : "var(--down)" }}>{netPnl >= 0 ? "+" : ""}{fmt(netPnl, market)}</div>
         </div>
         <span style={{ marginLeft: "auto", display: "grid", placeItems: "center" }}><ChevronDown size={16} /></span>
       </button>
@@ -92,8 +95,8 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null })
         <div className="disp" style={{ fontWeight: 700, fontSize: 15 }}>Ideas Dashboard</div>
         <span style={{ fontSize: 10.5, opacity: .85, marginRight: 34 }}>{periodLabel}</span>
       </div>
-      <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 6, color: netPnl >= 0 ? "var(--up)" : "var(--down)" }}>{netPnl >= 0 ? "+" : ""}{fmt(netPnl, "IN")}</div>
-      <div style={{ fontSize: 11, opacity: .85, marginTop: -2 }}>If every idea was traded with {fmt(cap, "IN")} · {openN} still open</div>
+      <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 6, color: netPnl >= 0 ? "var(--up)" : "var(--down)" }}>{netPnl >= 0 ? "+" : ""}{fmt(netPnl, market)}</div>
+      <div style={{ fontSize: 11, opacity: .85, marginTop: -2 }}>If every idea was traded with {fmt(cap, market)} · {openN} still open</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
         <Stat k="Returns %" v={(avg >= 0 ? "+" : "") + avg.toFixed(2) + "%"} c={avg >= 0 ? "var(--up)" : "var(--down)"} />
         <Stat k="Win rate" v={n ? winRate.toFixed(0) + "%" : "—"} />
@@ -270,10 +273,10 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
       </div>
 
       {view !== "community" && (!dashOpen ? (
-        <IdeasDashboard ideas={shown} collapsed onExpand={() => setDashOpen(true)} signupAt={signupAt} />
+        <IdeasDashboard ideas={shown} collapsed onExpand={() => setDashOpen(true)} signupAt={signupAt} market={market} />
       ) : (
         <div style={{ position: "relative" }}>
-          <IdeasDashboard ideas={shown} signupAt={signupAt} />
+          <IdeasDashboard ideas={shown} signupAt={signupAt} market={market} />
           <button onClick={() => setDashOpen(false)} className="tap" title="Collapse" style={{ position: "absolute", top: 14, right: 16, display: "grid", placeItems: "center", border: "1px solid rgba(255,255,255,.35)", background: "rgba(255,255,255,.18)", color: "#fff", borderRadius: 10, padding: "6px", fontWeight: 800 }}><ChevronUp size={14} /></button>
         </div>
       ))}

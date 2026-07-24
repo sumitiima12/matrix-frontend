@@ -882,7 +882,7 @@ function StrategyPnLView({ strats, trades, market, onDelete }) {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <div className="mono" style={{ fontWeight: 800, fontSize: 14, color: chgColor(p.pnl) }}>{p.pnl == null ? "—" : (p.pnl >= 0 ? "+" : "") + fmt(p.pnl, market)}</div>
-              {onDelete && <button onClick={(e) => { e.stopPropagation(); onDelete(s); }} className="tap" title="Delete strategy" style={{ border: "none", background: "transparent", padding: 2, flexShrink: 0 }}><Trash2 size={14} color="var(--down)" /></button>}
+              {onDelete && openId === s.id && <button onClick={(e) => { e.stopPropagation(); onDelete(s); }} className="tap" title="Delete strategy" style={{ border: "none", background: "transparent", padding: 2, flexShrink: 0 }}><Trash2 size={14} color="var(--down)" /></button>}
               <ChevronDown size={15} style={{ transform: openId === s.id ? "rotate(180deg)" : "none", transition: "transform .2s", color: "var(--muted)" }} />
             </div>
           </div>
@@ -1365,13 +1365,10 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const myStrats     = mineOwn;
   /* "Deployed" spans EVERY type (Mine, Premium, Sample, Public), split into Active
      (running now) and Inactive, each shown with its type + state tag — market-filtered.
-     In REAL mode we additionally show only strategies that TRIGGERED AN ENTRY TODAY — a
-     strategy still waiting for its signal today is hidden from the Real deployed list. */
-  const startOfToday = new Date(new Date().setHours(0, 0, 0, 0)).getTime();
-  const triggeredToday = (s) => (trades || []).some((t) => (t.strategyId === s.id || t.strategy === s.name) && !!t.real && (t.entryAt || 0) >= startOfToday);
-  const realGate = (s) => appMode !== "real" || triggeredToday(s);
-  const deployedActive   = strats.filter((s) => s.active && stratInMarket(s) && realGate(s)).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
-  const deployedInactive = strats.filter((s) => !s.active && stratInMarket(s) && realGate(s)).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
+     Every active/armed strategy shows here (including a just-activated premium that hasn't
+     traded yet); the "Live" section separately shows only those holding a position. */
+  const deployedActive   = strats.filter((s) => s.active && stratInMarket(s)).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
+  const deployedInactive = strats.filter((s) => !s.active && stratInMarket(s)).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
   const myActive     = deployedActive;
   const myInactive   = deployedInactive;
   const byOptions = ["All", "Matrix", "You", "Community"];

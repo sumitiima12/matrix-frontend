@@ -437,7 +437,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
                 <div style={{ textAlign: "right" }}>
                   <div className="mono" style={{ fontSize: 13.5, fontWeight: 800 }}>{h.ltp != null ? ccy + h.ltp.toFixed(2) : "—"}</div>
                   <div className="mono" style={{ fontSize: 10.5, fontWeight: 800, marginTop: 2, color: h.pnl == null ? "var(--muted)" : h.pnl >= 0 ? "var(--up)" : "var(--down)" }}>
-                    {h.pnl == null ? "—" : (h.pnl >= 0 ? "+" : "") + ccy + (Math.abs(h.pnl) >= 100 ? h.pnl.toFixed(0) : Math.abs(h.pnl) >= 1 ? h.pnl.toFixed(2) : h.pnl.toFixed(4))}
+                    {h.pnl == null ? "—" : (h.pnl >= 0 ? "+" : "") + ccy + (Math.abs(h.pnl) >= 100 ? Math.abs(h.pnl).toFixed(0) : Math.abs(h.pnl).toFixed(2))}
                     {pnlPct != null && <span style={{ opacity: .8 }}> ({pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(1)}%)</span>}
                   </div>
                 </div>
