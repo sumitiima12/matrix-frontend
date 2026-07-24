@@ -61,6 +61,11 @@ export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, us
     );
     if (!verdict.ok) {
       notify?.({ kind: "risk", text: verdict.reasons[0], error: true });
+      // Journal the REJECT (buys only) with its reason so it shows in Orders under "Rejected" — a
+      // paper reject used to vanish (only real orders were logged), so the Rejected filter was empty.
+      if (side === "BUY") {
+        try { recordTrade({ id: `rej-${Date.now()}-${stock.sym}`, sym: stock.sym, market, qty, side: "BUY", entryAt: Date.now(), tradeType: opts.tradeType || "Manual", strategy: opts.strategy || null, status: "rejected", rejectReason: verdict.reasons[0] }); } catch {}
+      }
       return { ok: false, reasons: verdict.reasons, warnings: verdict.warnings };
     }
     if (verdict.warnings.length) notify?.({ kind: "risk", text: verdict.warnings[0] });
@@ -76,6 +81,9 @@ export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, us
     // 3 ── ORDER STATUS.
     if (res.status !== "FILLED") {
       notify?.({ kind: "order", text: `Order rejected: ${res.reason || "broker declined"}`, error: true });
+      if (side === "BUY") {
+        try { recordTrade({ id: `rej-${Date.now()}-${stock.sym}`, sym: stock.sym, market, qty, side: "BUY", entryAt: Date.now(), tradeType: opts.tradeType || "Manual", strategy: opts.strategy || null, status: "rejected", rejectReason: res.reason || "broker declined" }); } catch {}
+      }
       return { ok: false, reasons: [res.reason || "Broker rejected the order."], warnings: [] };
     }
 

@@ -786,6 +786,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const [autoTP, setAutoTP] = useState(1.5);
   const [editSym, setEditSym] = useState(null);
   const [showTrades, setShowTrades] = useState(false);
+  const [showTotalPos, setShowTotalPos] = useState(false);   // Total card "Show positions" toggle
   const MKT_LABEL = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", Commodity: "🪙 Commodity", FNO: "⚡ F&O" };
   // Smart Auto-Buy on/off is INDEPENDENT per mode: Real and Virtual each keep their own switch, so
   // turning it on for paper trading never arms real-money auto-buys (and vice versa).
@@ -934,6 +935,21 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   }, [trades, market, isReal, totFrom, totPeriod]);
   const totLabel = totPeriod === "today" ? "today" : totPeriod === "month" ? "this month" : "all time";
 
+  /* The OPEN positions that make up the Total — every trade type (Manual / Auto-Buy / Automate /
+     Screener), still open, for this market + mode. Rejected orders are excluded (they live in Orders,
+     not in a positions list). Powers the Total card's "Show positions". */
+  const totalOpenRows = useMemo(() => (trades || [])
+    .filter((t) => inMarket(t.sym, t.market) && (isReal ? !!t.real : !t.real)
+      && t.status !== "rejected" && t.entry != null && (t.exitAt == null || t.exit == null))
+    .map((t) => {
+      const last = (ALL.find((a) => a.sym === t.sym) || {}).price;
+      const cur = last != null ? last : t.entry;
+      return { ...t, cur, livePnl: +(((cur - t.entry) * (t.qty || 1))).toFixed(2) };
+    })
+    .sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [trades, market, isReal]);
+
   return (
     <div className="home-metal">
       {/* Global markets live strip — market-aware (Crypto leads with BTC/ETH, not NIFTY) */}
@@ -978,22 +994,46 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   );
                 })()}
                 {isReal && realCash != null && <div style={{ marginTop: 8, fontSize: 11.5, opacity: .9 }}>Available cash <b style={{ fontWeight: 800, color: "var(--ink)" }}>{money1(realCash)}</b></div>}
-                {/* Per-type P&L breakdown so the three sources are visible at a glance. */}
+                {/* Per-type P&L breakdown — equal, subtle boxes so all four sources read at a glance. */}
                 {!(isReal && isLeveraged) && (
-                  <div style={{ display: "flex", gap: 14, marginTop: 12, fontSize: 11.5, opacity: .9, flexWrap: "wrap" }}>
-                    <span>Manual <b style={{ fontWeight: 800, color: "var(--ink)" }}>{(totalStats.byType.Manual >= 0 ? "+" : "") + (isReal ? money1(totalStats.byType.Manual) : fmt(totalStats.byType.Manual, market))}</b></span>
-                    <span>Auto-Buy <b style={{ fontWeight: 800, color: "var(--ink)" }}>{(totalStats.byType["Auto Buy"] >= 0 ? "+" : "") + (isReal ? money1(totalStats.byType["Auto Buy"]) : fmt(totalStats.byType["Auto Buy"], market))}</b></span>
-                    <span>Automate <b style={{ fontWeight: 800, color: "var(--ink)" }}>{(totalStats.byType.Automate >= 0 ? "+" : "") + (isReal ? money1(totalStats.byType.Automate) : fmt(totalStats.byType.Automate, market))}</b></span>
-                    <span>Screener <b style={{ fontWeight: 800, color: "var(--ink)" }}>{(totalStats.byType["Screener Auto Buy"] >= 0 ? "+" : "") + (isReal ? money1(totalStats.byType["Screener Auto Buy"]) : fmt(totalStats.byType["Screener Auto Buy"], market))}</b></span>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginTop: 12 }}>
+                    {[["Manual", totalStats.byType.Manual], ["Auto-Buy", totalStats.byType["Auto Buy"]], ["Automate", totalStats.byType.Automate], ["Screener", totalStats.byType["Screener Auto Buy"]]].map(([label, v]) => (
+                      <div key={label} style={{ background: "rgba(0,0,0,.05)", borderRadius: 9, padding: "7px 8px", minWidth: 0 }}>
+                        <div style={{ fontSize: 9, opacity: .65, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
+                        <div className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: v >= 0 ? "var(--up)" : "var(--down)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(v >= 0 ? "+" : "") + (isReal ? money1(v) : fmt(v, market))}</div>
+                      </div>
+                    ))}
                   </div>
                 )}
-                {/* At-a-glance counts — holdings, auto-buy positions, and any rejects for THIS market. */}
+                {/* At-a-glance counts — trades and OPEN positions for THIS market. */}
                 <div style={{ display: "flex", gap: 14, marginTop: 10, fontSize: 12, opacity: .9, flexWrap: "wrap" }}>
                   <span><b style={{ fontWeight: 800 }}>{totalStats.count}</b> <span style={{ opacity: .7 }}>trades</span></span>
-                  <span><b style={{ fontWeight: 800 }}>{holds.length}</b> <span style={{ opacity: .7 }}>open</span></span>
-                  {autoRows.some((r) => r.rejected) && <span style={{ color: "var(--down)" }}><b style={{ fontWeight: 800 }}>{autoRows.filter((r) => r.rejected).length}</b> rejected</span>}
+                  <span><b style={{ fontWeight: 800 }}>{totalOpenRows.length}</b> <span style={{ opacity: .7 }}>open</span></span>
                 </div>
                 {totalStats.count === 0 && <div style={{ fontSize: 11.5, opacity: .8, marginTop: 10 }}>No {isReal ? "real" : "virtual"} trades {totLabel} in {MKT_LABEL[market]}.</div>}
+
+                {/* Show positions — the OPEN positions behind the Total (all types), rejected excluded. */}
+                {totalOpenRows.length > 0 && (
+                  <>
+                    <button onClick={(e) => { e.stopPropagation(); setShowTotalPos((v) => !v); }} className="tap disp" style={{ marginTop: 12, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid rgba(0,0,0,.14)", background: "rgba(0,0,0,.04)", color: "#141416", borderRadius: 11, padding: "9px 12px", fontWeight: 800, fontSize: 12 }}>
+                      {showTotalPos ? "Hide positions" : `Show positions (${totalOpenRows.length})`}<ChevronRight size={15} style={{ transform: showTotalPos ? "rotate(-90deg)" : "rotate(90deg)", transition: "transform .2s" }} />
+                    </button>
+                    {showTotalPos && (
+                      <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                        {totalOpenRows.map((t) => (
+                          <div key={t.id || `${t.sym}-${t.entryAt}`} style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,.6)", borderRadius: 9, padding: "8px 10px" }}>
+                            <div style={{ flex: "1 1 0", minWidth: 0 }}>
+                              <div className="disp" style={{ fontWeight: 800, fontSize: 12.5, color: "#141416" }}>{t.sym} <span style={{ fontSize: 9.5, fontWeight: 700, opacity: .6 }}>{t.tradeType || "Manual"}</span></div>
+                              <div style={{ fontSize: 9.5, color: "rgba(0,0,0,.55)", fontWeight: 700 }}>Entry {isReal ? money1(t.entry) : fmt(t.entry, market)} · now {isReal ? money1(t.cur) : fmt(t.cur, market)}</div>
+                            </div>
+                            <div className="mono" style={{ flex: "0 0 auto", fontWeight: 800, fontSize: 13, color: (t.livePnl || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{(t.livePnl || 0) >= 0 ? "+" : ""}{isReal ? money1(t.livePnl) : fmt(t.livePnl, market)}</div>
+                          </div>
+                        ))}
+                        <div style={{ fontSize: 10, color: "rgba(0,0,0,.5)", fontWeight: 600, marginTop: 2 }}>Rejected orders aren't positions — find them under Orders.</div>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           ) : (
@@ -1045,7 +1085,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 </div>
               )}
               {autoRows.some((r) => r.rejected) && (
-                <div style={{ fontSize: 10, color: "var(--down)", fontWeight: 700, marginTop: 3 }}>⚠ {autoRows.filter((r) => r.rejected).length} order(s) rejected — open Show Positions for the reason</div>
+                <div style={{ fontSize: 10, color: "var(--down)", fontWeight: 700, marginTop: 3 }}>⚠ {autoRows.filter((r) => r.rejected).length} order(s) rejected — see the reason under Orders</div>
               )}
 
               <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
@@ -1096,13 +1136,14 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
               {/* Positions — REAL. Planned entries when Auto-Buy is off; live/closed
                   positions (with real P&L) once it is on. Nothing is simulated. */}
               <button onClick={() => setShowTrades((v) => !v)} className="tap disp" style={{ width: "100%", marginTop: 12, background: "rgba(0,0,0,.06)", color: "#141416", border: "1px solid rgba(0,0,0,.12)", borderRadius: 12, padding: 11, fontWeight: 800, fontSize: 12.5, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}>
-                {showTrades ? "Hide positions" : (autoOn ? `Show Positions (${autoRows.length})` : `Show Today's Plan (${autoTrades.length})`)}<ChevronRight size={15} style={{ transform: showTrades ? "rotate(-90deg)" : "rotate(90deg)", transition: "transform .2s" }} />
+                {showTrades ? "Hide positions" : (autoOn ? `Show Positions (${autoRows.filter((r) => !r.rejected).length})` : `Show Today's Plan (${autoTrades.length})`)}<ChevronRight size={15} style={{ transform: showTrades ? "rotate(-90deg)" : "rotate(90deg)", transition: "transform .2s" }} />
               </button>
 
               {showTrades && (autoOn ? (
                 <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-                  {autoRows.length === 0 && <div style={{ fontSize: 11.5, opacity: .82, lineHeight: 1.6 }}>No auto-buy positions in this period yet. Positions are placed at real market prices and closed by the exit engine when a target or stop is actually hit.</div>}
-                  {autoRows.map((t) => {
+                  {/* Rejected orders aren't positions — they live under Orders, not here. */}
+                  {autoRows.filter((t) => !t.rejected).length === 0 && <div style={{ fontSize: 11.5, opacity: .82, lineHeight: 1.6 }}>No auto-buy positions in this period yet. Positions are placed at real market prices and closed by the exit engine when a target or stop is actually hit.</div>}
+                  {autoRows.filter((t) => !t.rejected).map((t) => {
                     const cyc = (t.market || marketOf(t.sym) || "IN");
                     const statusLabel = t.rejected ? "⛔ Order rejected" : t.status === "partial" ? "◑ PARTIAL" : t.open ? "● OPEN" : (t.exitType || "CLOSED");
                     const statusColor = t.rejected ? "var(--down)" : t.status === "partial" ? "#B26B00" : undefined;
