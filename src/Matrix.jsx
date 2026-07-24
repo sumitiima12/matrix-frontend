@@ -1137,8 +1137,13 @@ function AppInner() {
               {tab === "watchlist" && <WatchlistView watchlists={watchlists} activeWl={activeWl} setActiveWl={setActiveWl} createWatchlist={createWatchlist} deleteWatchlist={deleteWatchlist} toggleWatch={toggleWatch} onOpen={openStock} />}
               {tab === "ask" && (
                 <div className="fade">
-                  <div className="disp" style={{ fontWeight: 700, fontSize: 20, marginTop: 6 }}>Ask Neo</div>
-                  <div style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 10 }}>Your AI markets expert. Ask about any stock, sector or strategy.</div>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginTop: 6 }}>
+                    <div>
+                      <div className="disp" style={{ fontWeight: 700, fontSize: 20 }}>Ask Neo</div>
+                      <div style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 10 }}>Your AI markets expert. Ask about any stock, sector or strategy.</div>
+                    </div>
+                    <button onClick={() => setTab("home")} className="tap" title="Close chat" aria-label="Close chat" style={{ flexShrink: 0, border: "none", background: "var(--elev)", borderRadius: 11, width: 36, height: 36, display: "grid", placeItems: "center", color: "var(--ink)" }}><X size={18} /></button>
+                  </div>
                   <div className="card" style={{ padding: 14, height: 520 }}>
                     <ChatPanel suggestions={["Is it a good time to buy Indian IT?", "Explain RSI vs MACD simply", "Build me a swing-trade checklist", "What sectors look strong now?"]} />
                   </div>

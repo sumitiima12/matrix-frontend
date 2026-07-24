@@ -774,8 +774,8 @@ function CollapsibleList({ items, render, initial = 3, reverse = true }) {
 /* One row of the strategy-comparison table. Reuses useBacktestStats — the SAME hook the premium
    cards use — so opening the table doesn't fire a fresh burst of history requests (results are
    already cached from the cards). Columns: trades / wins / losses / target-hits / SL-hits / return. */
-function CompareRow({ s, td }) {
-  const { loading, stats } = useBacktestStats(s);
+function CompareRow({ s, td, opts }) {
+  const { loading, stats } = useBacktestStats(s, opts);
   const c = (v) => ({ ...td, color: v >= 0 ? "var(--up)" : "var(--down)" });
   return (
     <tr>
@@ -807,6 +807,48 @@ function ComparisonTable({ strats }) {
         </tr></thead>
         <tbody>{strats.map((s) => <CompareRow key={s.id} s={s} td={td} />)}</tbody>
       </table>
+    </div>
+  );
+}
+
+/* ADMIN BACKTESTING PANEL — every premium strategy backtested on a chosen timeframe + period, side by
+   side. Reuses the same useBacktestStats hook (via CompareRow) but overrides tf and trims to the
+   selected window. */
+function BacktestPanel({ strats }) {
+  const [tf, setTf] = useState("5m");
+  const [days, setDays] = useState(180);
+  const TF_OPTS = [["5m", "5 min"], ["15m", "15 min"], ["30m", "30 min"], ["1h", "1 hour"], ["1d", "1 day"]];
+  const PERIODS = [[5, "5 days"], [30, "1 month"], [90, "3 months"], [180, "6 months"], [365, "1 year"]];
+  const sel = { ...selStyle, flex: "1 1 0", minWidth: 0, fontSize: 12 };
+  const th = { fontSize: 9, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".03em", padding: "7px 5px", textAlign: "center", whiteSpace: "nowrap" };
+  const td = { fontSize: 11.5, fontWeight: 700, padding: "8px 5px", textAlign: "center", borderTop: "1px solid var(--line)", whiteSpace: "nowrap" };
+  return (
+    <div className="fade">
+      <div style={{ fontSize: 11.5, color: "var(--muted)", margin: "0 2px 10px", lineHeight: 1.5 }}>
+        Backtest of every premium strategy on real candles for the selected timeframe and period. Results are hindsight, not a promise.
+      </div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <label style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>TIMEFRAME</div>
+          <select aria-label="Timeframe" value={tf} onChange={(e) => setTf(e.target.value)} style={sel}>{TF_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+        </label>
+        <label style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>PERIOD</div>
+          <select aria-label="Period" value={days} onChange={(e) => setDays(+e.target.value)} style={sel}>{PERIODS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+        </label>
+      </div>
+      {!strats.length ? <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>No premium strategies to backtest.</div> : (
+        <div className="card" style={{ padding: "6px 10px", overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 460 }}>
+            <thead><tr>
+              <th style={{ ...th, textAlign: "left" }}>Strategy</th>
+              <th style={th}>Trades</th><th style={th}>Wins</th><th style={th}>Loss</th>
+              <th style={th}>Target</th><th style={th}>SL Hit</th><th style={th}>Return</th>
+            </tr></thead>
+            <tbody>{strats.map((s) => <CompareRow key={s.id + tf + days} s={s} td={td} opts={{ tf, days }} />)}</tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -1874,12 +1916,14 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       {topTab === "strategies" && (<>
       {/* Sub-sections under Strategies — shown directly (no redundant "Strategies" heading). */}
       <div ref={stratsRef} className="hide-scroll" style={{ display: "flex", gap: 7, margin: "18px 0 14px", scrollMarginTop: 80, overflowX: "auto" }}>
-        {[["deployed", "Deployed"], ["sample", "Samples"], ["premium", "Premium"], ["public", "Public"], ["mine", "Mine"]].map(([k, label]) => (
+        {[["deployed", "Deployed"], ["sample", "Samples"], ["premium", "Premium"], ["public", "Public"], ["mine", "Mine"], ...(isAdmin ? [["backtest", "Backtesting"]] : [])].map(([k, label]) => (
           <button key={k} onClick={() => setStratTab(k)} className="tap disp" style={{ flex: "0 0 auto", borderRadius: 999, padding: "7px 14px", fontWeight: 800, fontSize: 11.5, whiteSpace: "nowrap", border: "1px solid " + (stratTab === k ? "var(--primary)" : "var(--line)"), background: stratTab === k ? "var(--primary)" : "var(--surface)", color: stratTab === k ? "#fff" : "var(--ink)" }}>{label}</button>
         ))}
       </div>
 
-      {stratTab === "sample" ? (
+      {isAdmin && stratTab === "backtest" ? (
+        <BacktestPanel strats={premiumStrats} />
+      ) : stratTab === "sample" ? (
         sampleStrats.length === 0
           ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No sample strategies for this market.</div>
           : sampleStrats.map(({ s }) => <SampleStrategyCard key={s.id} s={s} market={market} onActivate={useTemplateStrategy} onClone={cloneStrategy} onEdit={isAdmin ? loadForEdit : undefined} canBacktest={canBacktest} onConnect={onConnectBroker} />)
