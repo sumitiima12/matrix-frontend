@@ -1124,7 +1124,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         : `${name} saved as a draft. Activate it to start trading.`);
     }
     setStratName(""); setShowBuilder(false);
-    setStratTab("mine"); setTopTab("mine");
+    setStratTab("mine"); setTopTab("strategies");
     setTimeout(() => stratsRef.current && stratsRef.current.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   };
   /* Load an existing strategy into the builder to edit its rules IN PLACE (Save updates it). */
@@ -1154,7 +1154,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     // running strategies under the samples.
     setStrats((p) => [{ id, name: t.name, by: creator, active: true, alerts: false, cfg: t.cfg, cap: sz, qty: sz, symbols, created: Date.now() }, ...p]);
     setToast(`${t.name} is live on ${symbols.join(", ")} — it will place orders when its rules trigger.`);
-    setStratTab("mine"); setTopTab("mine");
+    setStratTab("mine"); setTopTab("strategies");
     setTimeout(() => stratsRef.current && stratsRef.current.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   };
 
@@ -1174,7 +1174,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       ...p,
     ]);
     setToast(`Cloned "${s.name}" into My strategies — edit it there.`);
-    setStratTab("mine"); setTopTab("mine");
+    setStratTab("mine"); setTopTab("strategies");
     setTimeout(() => stratsRef.current && stratsRef.current.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   };
 
@@ -1261,7 +1261,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                 real 6-month BACKTEST on real candles, labelled as such.
        MINE    (created by the user): scored on their ACTUAL closed trades. A
                 strategy with no closed trades shows "—", not a made-up win rate. */
-  const [stratTab, setStratTab] = useState("sample");
+  const [stratTab, setStratTab] = useState("deployed");   // sub-tab under "Strategies": deployed | sample | premium | public | mine
   const [topTab, setTopTab] = useState("build");   // build | sample | premium | public | mine
   const [compareOpen, setCompareOpen] = useState(false);   // premium "Compare all" backtest table
 
@@ -1274,17 +1274,17 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     setPublicLoading(true);
     apiListPublicStrategies({ symbol: pubSym, by: pubBy }).then((l) => { setPublicList(Array.isArray(l) ? l : []); setPublicLoading(false); });
   }, [pubSym, pubBy]);
-  useEffect(() => { if (topTab === "public") refreshPublic(); }, [topTab, refreshPublic]);
+  useEffect(() => { if (topTab === "strategies" && stratTab === "public") refreshPublic(); }, [topTab, stratTab, refreshPublic]);
   const publishOwn = async (s) => {
     const r = await apiPublishStrategy({ id: "pub_" + s.id, name: s.name, symbols: s.symbols || [], cfg: s.cfg });
-    if (r && r.ok) { updateStrat(s.id, { publicId: (r.strategy && r.strategy.id) || ("pub_" + s.id) }); setToast(`"${s.name}" is now public.`); if (topTab === "public") refreshPublic(); }
+    if (r && r.ok) { updateStrat(s.id, { publicId: (r.strategy && r.strategy.id) || ("pub_" + s.id) }); setToast(`"${s.name}" is now public.`); if (stratTab === "public") refreshPublic(); }
     else setToast((r && r.error) || "Couldn't publish — make sure you're signed in.");
   };
   const unpublishOwn = async (s) => {
     if (s.publicId) await apiUnpublishStrategy(s.publicId);
     updateStrat(s.id, { publicId: null });
     setToast(`"${s.name}" removed from public.`);
-    if (topTab === "public") refreshPublic();
+    if (stratTab === "public") refreshPublic();
   };
   /* Delete a strategy (admin action on premium/sample/others' public, or your own). Removes it
      locally and, if it was public, unpublishes it too. */
@@ -1293,14 +1293,14 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     if (s.publicId) { try { await apiUnpublishStrategy(s.publicId); } catch { /* ignore */ } }
     setStrats((p) => p.filter((x) => x.id !== s.id));
     setToast(`"${s.name || "Strategy"}" deleted.`);
-    if (topTab === "public") refreshPublic();
+    if (stratTab === "public") refreshPublic();
   };
   // Clone a public strategy into "My strategies" (editable, inactive).
   const clonePublic = (ps) => {
     const id = "c" + Date.now();
     setStrats((p) => [{ id, name: (ps.name || "Strategy") + " (copy)", by: creator, active: false, alerts: false, cfg: ps.data || ps.cfg || { mode: "builder" }, cap: 100000, symbols: ps.symbols || [], created: Date.now() }, ...p]);
     setToast(`Cloned "${ps.name}" into My strategies.`);
-    setStratTab("mine"); setTopTab("mine");
+    setStratTab("mine"); setTopTab("strategies");
     setTimeout(() => stratsRef.current && stratsRef.current.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   };
   const publicByOptions = useMemo(() => Array.from(new Set(publicList.map((s) => s.owner_name).filter(Boolean))), [publicList]);
@@ -1318,9 +1318,14 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const mineOwn      = perf.filter(({ s }) => s.by === creator && stratInMarket(s));
   const myStrats     = mineOwn;
   /* "Deployed" spans EVERY type (Mine, Premium, Sample, Public), split into Active
-     (running now) and Inactive, each shown with its type + state tag — market-filtered. */
-  const deployedActive   = strats.filter((s) => s.active && stratInMarket(s)).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
-  const deployedInactive = strats.filter((s) => !s.active && stratInMarket(s)).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
+     (running now) and Inactive, each shown with its type + state tag — market-filtered.
+     In REAL mode we additionally show only strategies that TRIGGERED AN ENTRY TODAY — a
+     strategy still waiting for its signal today is hidden from the Real deployed list. */
+  const startOfToday = new Date(new Date().setHours(0, 0, 0, 0)).getTime();
+  const triggeredToday = (s) => (trades || []).some((t) => (t.strategyId === s.id || t.strategy === s.name) && !!t.real && (t.entryAt || 0) >= startOfToday);
+  const realGate = (s) => appMode !== "real" || triggeredToday(s);
+  const deployedActive   = strats.filter((s) => s.active && stratInMarket(s) && realGate(s)).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
+  const deployedInactive = strats.filter((s) => !s.active && stratInMarket(s) && realGate(s)).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
   const myActive     = deployedActive;
   const myInactive   = deployedInactive;
   const byOptions = ["All", "Matrix", "You", "Community"];
@@ -1633,7 +1638,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
 
       {/* TOP SELECTOR — one place to switch between building, samples, and your own. */}
       <div className="hide-scroll" style={{ display: "flex", gap: 7, marginTop: 18, overflowX: "auto" }}>
-        {[["build", "Build"], ["deployed", "Deployed"], ["sample", `Samples`], ["premium", `Premium`], ["public", "Public"], ["mine", `Mine`], ["pnl", "P&L"]].map(([k, label]) => (
+        {[["build", "Build"], ["strategies", "Strategies"], ["pnl", "P&L"]].map(([k, label]) => (
           <button
             key={k}
             onClick={() => setTopTab(k)}
@@ -1862,16 +1867,22 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       {/* SAMPLES + MY STRATEGIES — driven by the TOP selector now, not a second tab row. */}
       {topTab === "pnl" && <StrategyPnLView strats={strats} trades={trades} market={market} />}
 
-      {topTab !== "build" && topTab !== "pnl" && (<>
+      {topTab === "strategies" && (<>
       <div ref={stratsRef} className="disp" style={{ fontWeight: 700, fontSize: 18, margin: "28px 2px 4px", scrollMarginTop: 80 }}>Strategies</div>
       <div className="gold-line" style={{ width: 44, margin: "0 0 14px 2px", borderRadius: 2 }} />
 
+      {/* Sub-sections under Strategies */}
+      <div className="hide-scroll" style={{ display: "flex", gap: 7, marginBottom: 14, overflowX: "auto" }}>
+        {[["deployed", "Deployed"], ["sample", "Samples"], ["premium", "Premium"], ["public", "Public"], ["mine", "Mine"]].map(([k, label]) => (
+          <button key={k} onClick={() => setStratTab(k)} className="tap disp" style={{ flex: "0 0 auto", borderRadius: 999, padding: "7px 14px", fontWeight: 800, fontSize: 11.5, whiteSpace: "nowrap", border: "1px solid " + (stratTab === k ? "var(--primary)" : "var(--line)"), background: stratTab === k ? "var(--primary)" : "var(--surface)", color: stratTab === k ? "#fff" : "var(--ink)" }}>{label}</button>
+        ))}
+      </div>
 
-      {topTab === "sample" ? (
+      {stratTab === "sample" ? (
         sampleStrats.length === 0
           ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No sample strategies for this market.</div>
           : sampleStrats.map(({ s }) => <SampleStrategyCard key={s.id} s={s} market={market} onActivate={useTemplateStrategy} onClone={cloneStrategy} onEdit={isAdmin ? loadForEdit : undefined} canBacktest={canBacktest} onConnect={onConnectBroker} />)
-      ) : topTab === "premium" ? (
+      ) : stratTab === "premium" ? (
         <>
           <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 2px 8px" }}>
             <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.5, flex: 1 }}>
@@ -1888,7 +1899,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No premium strategies available.</div>
             : premiumStrats.map((s) => <PremiumStrategyCard key={s.id} s={s} active={activeInMarket(s)} market={market} onToggle={(rs, size, opts) => togglePremiumHere(s.id, rs, size, opts)} onEdit={isAdmin ? loadForEdit : undefined} canBacktest={canBacktest} onConnect={onConnectBroker} />)}
         </>
-      ) : topTab === "public" ? (
+      ) : stratTab === "public" ? (
         <>
           <div style={{ fontSize: 11.5, color: "var(--muted)", margin: "0 2px 10px", lineHeight: 1.5 }}>
             Strategies shared by the community. Clone one to make it yours.
@@ -1928,7 +1939,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                 </div>
               ))}
         </>
-      ) : topTab === "deployed" ? (
+      ) : stratTab === "deployed" ? (
         <>
           {/* DEPLOYED — every strategy (any type), split Active / Inactive. */}
           <div style={{ display: "flex", gap: 7, marginBottom: 12 }}>
