@@ -1,12 +1,30 @@
 <svg width="64" height="64" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <circle cx="50" cy="50" r="47" fill="none" stroke="#888" stroke-width="4"/>
-  <path d="M32 66 V34 L50 54 L68 34 V66" stroke="#888" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <style>
-    @media (prefers-color-scheme: dark) {
-      circle, path { stroke: #eee; }
-    }
-    @media (prefers-color-scheme: light) {
-      circle, path { stroke: #1a1a1d; }
-    }
-  </style>
+  <defs>
+    <linearGradient id="mfav" x1="50" y1="14" x2="50" y2="90" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.4" stop-color="#e9ebee"/>
+      <stop offset="0.65" stop-color="#b8bcc4"/>
+      <stop offset="1" stop-color="#8c9099"/>
+    </linearGradient>
+    <linearGradient id="mfavbeam" x1="50" y1="16" x2="50" y2="90" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="mfavdot" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <!-- dark rounded tile, matching the app icon -->
+  <rect x="2" y="2" width="96" height="96" rx="22" fill="#0b0b0d"/>
+  <!-- the twin-blade M -->
+  <path d="M18 20 L50 38 L82 20 L82 72 L74 86 L62 72 L50 58 L38 72 L26 86 L18 72 Z"
+        fill="url(#mfav)" stroke="#5f636c" stroke-width="1.2" stroke-linejoin="round"/>
+  <!-- vertical light beam -->
+  <rect x="49.2" y="16" width="1.6" height="74" fill="url(#mfavbeam)"/>
+  <!-- glowing core dot -->
+  <circle cx="50" cy="48" r="6" fill="url(#mfavdot)"/>
+  <circle cx="50" cy="48" r="2.1" fill="#ffffff"/>
 </svg>

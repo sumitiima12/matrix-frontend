@@ -39,7 +39,8 @@ function mockFor(pathname, url) {
   if (pathname.includes("/api/news")) return { news: [{ sym: "RELIANCE.NS", t: "Reliance posts record quarter", d: Date.now(), src: "Test", url: "#" }], count: 1 };
   if (pathname.endsWith("/api/fundamentals")) return FUNDAMENTALS;
   if (pathname.endsWith("/api/earnings")) return { upcoming: [{ sym: "AAPL", date: new Date(Date.now() + 3 * 864e5).toISOString().slice(0, 10), epsEst: 1.5 }], recent: [{ sym: "TCS", date: new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10) }] };
-  if (pathname.endsWith("/api/app-settings")) return { settings: { allowRealMode: false, allowBrokerConnect: { IN: false, US: false, Crypto: false, Commodity: false } } };
+  // Permissive so the full UI renders in tests (Indian tab shown, nothing gated).
+  if (pathname.endsWith("/api/app-settings")) return { settings: { allowRealMode: { IN: true, US: true, Crypto: true, Commodity: true }, allowBrokerConnect: { IN: true, US: true, Crypto: true, Commodity: true }, allowVirtual: { IN: true, Global: true }, showIndianWithoutBroker: true } };
   if (pathname.endsWith("/api/broker/status")) return { brokers: {}, tradingEnabled: false, staticIp: "203.0.113.10" };
   if (pathname.endsWith("/api/broker/connect-info")) return { staticIp: "203.0.113.10" };
   if (pathname.endsWith("/api/public-strategies")) return { strategies: [] };

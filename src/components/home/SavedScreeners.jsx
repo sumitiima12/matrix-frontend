@@ -4,6 +4,7 @@ import { CUR, DAY, chgColor, fmt, lsGet, lsSet } from "../../lib/format";
 import { indValue } from "../../domain/screener";
 import { marketOpen } from "../../domain/api";
 import { saveScreenersRemote, loadScreenersRemote } from "../../services/tradeService";
+import ExitOptimizer from "./ExitOptimizer";
 import { Pencil, Trash2 } from "lucide-react";
 
 /* MY SCREENERS — the carousels for screeners the user built and saved under "Create your own screener".
@@ -55,6 +56,13 @@ function SavedRow({ scr, market, mode, list, onOpen, onScreenerBuy, onDelete, on
   const ovQty = (sym) => (ov[sym] && ov[sym].qty != null) ? ov[sym].qty : qtyDefault(market);
   const setOvField = (sym, field, val) => setOv((o) => {
     const next = { ...o, [sym]: { ...(o[sym] || {}), [field]: val === "" ? undefined : +val } };
+    const all = loadSaved().map((s) => s.id === scr.id ? { ...s, ov: next } : s); saveSaved(all);
+    return next;
+  });
+  /* Apply the optimiser's ideal SL/TP to EVERY selected symbol in this screener at once. */
+  const applyIdeal = (sl, tp) => setOv((o) => {
+    const next = { ...o };
+    (scr.selSyms || []).forEach((sym) => { next[sym] = { ...(next[sym] || {}), sl, tp }; });
     const all = loadSaved().map((s) => s.id === scr.id ? { ...s, ov: next } : s); saveSaved(all);
     return next;
   });
@@ -142,6 +150,20 @@ function SavedRow({ scr, market, mode, list, onOpen, onScreenerBuy, onDelete, on
         </div>
       ) : (
         <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 10 }}>No symbols currently matching the entry criteria.</div>
+      )}
+
+      {/* Ideal SL/TP optimiser — available to every user for their own screeners. Applies the ideal
+          pair to all selected symbols at once. */}
+      {(scr.selSyms || []).length > 0 && (
+        <ExitOptimizer
+          mode="metric"
+          entry={scr.entry}
+          tf="1d"
+          appSyms={scr.selSyms}
+          currentSl={ovSL((scr.selSyms || [])[0])}
+          currentTp={ovTP((scr.selSyms || [])[0])}
+          onApply={(sl, tp) => applyIdeal(sl, tp)}
+        />
       )}
 
       {/* Footer — date range + Live P&L (only when Auto-Buy is on) */}

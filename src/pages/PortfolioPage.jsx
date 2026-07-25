@@ -19,24 +19,30 @@ const qtyText = (q, sym) => (marketOf(sym) === "Crypto" ? +(+q || 0).toFixed(2) 
 /* Server-side auto-exits the engine is watching for this user. Read-only + cancel. Shows
    whether the engine is actually armed (AUTO_EXIT_LIVE) so the user is never misled into
    thinking a stop is live when the server is only in dry-run. */
-function AutoExitsCard({ userId }) {
+function AutoExitsCard({ userId, heldSyms = null }) {
   const [data, setData] = useState({ positions: [], engineLive: false });
+  const [open, setOpen] = useState(false);   // collapsed by default
   const refresh = () => { if (userId) loadAutoExits(userId).then(setData); };
   useEffect(() => { refresh(); const id = setInterval(refresh, 20000); return () => clearInterval(id); /* eslint-disable-next-line */ }, [userId]);
-  const active = (data.positions || []).filter((p) => p.status === "open" || p.status === "closing");
-  if (!userId || !active.length) return null;
+  // An auto-exit only makes sense against a real HELD position. Exclude rejected/never-filled orders
+  // (no holding) by keeping only positions whose symbol is actually in the holdings book.
+  const isHeld = (p) => { if (!heldSyms) return true; const s = String(p.symbol || "").toUpperCase(); return heldSyms.has(p.symbol) || [...heldSyms].some((sy) => sy && s.includes(String(sy).toUpperCase())); };
+  const active = (data.positions || []).filter((p) => (p.status === "open" || p.status === "closing") && !p.rejected && isHeld(p));
+  // No holdings → nothing to protect, so don't show the card at all.
+  if (!userId || !active.length || !heldSyms || heldSyms.size === 0) return null;
   const doCancel = async (id) => { await cancelAutoExit(userId, id); refresh(); };
   return (
     <div className="card" style={{ padding: 14, marginTop: 10, border: "1px solid var(--line)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+      <div onClick={() => setOpen((v) => !v)} className="tap" style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <ShieldCheck size={16} color={data.engineLive ? "var(--up)" : "var(--muted)"} />
-        <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>Auto-exits</div>
+        <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>Auto-exits <span style={{ color: "var(--muted)", fontWeight: 700 }}>· {active.length}</span></div>
         <span className="pill" style={{ marginLeft: "auto", fontSize: 9, fontWeight: 800, padding: "3px 8px", background: data.engineLive ? "var(--up-soft)" : "var(--elev)", color: data.engineLive ? "var(--up)" : "var(--muted)" }}>
           {data.engineLive ? "ARMED" : "DRY-RUN"}
         </span>
+        <ChevronRight size={15} style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform .15s", color: "var(--muted)" }} />
       </div>
-      {!data.engineLive && <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 8, lineHeight: 1.5 }}>Engine is in dry-run — it logs but won't place real exits until AUTO_EXIT_LIVE is enabled on the server.</div>}
-      {active.map((p) => (
+      {open && !data.engineLive && <div style={{ fontSize: 10.5, color: "var(--muted)", margin: "8px 0", lineHeight: 1.5 }}>Engine is in dry-run — it logs but won't place real exits until AUTO_EXIT_LIVE is enabled on the server.</div>}
+      {open && active.map((p) => (
         <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: "1px solid var(--line)" }}>
           <div style={{ minWidth: 0 }}>
             <div className="disp" style={{ fontWeight: 700, fontSize: 12.5 }}>{p.symbol} <span style={{ color: "var(--muted)", fontWeight: 600 }}>· {p.broker}</span></div>
@@ -370,7 +376,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
           </div>
         </div>
 
-        <AutoExitsCard userId={userId} />
+        <AutoExitsCard userId={userId} heldSyms={new Set((hold || []).filter((h) => h.qty).map((h) => h.sym))} />
 
         {realHealth && (
           <div className="card" style={{ padding: 15, marginTop: 10 }}>

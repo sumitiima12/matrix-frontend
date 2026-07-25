@@ -780,13 +780,14 @@ function CompareRow({ s, td, opts }) {
   return (
     <tr>
       <td style={{ ...td, textAlign: "left", fontWeight: 800 }}>{s.name}</td>
-      {loading ? <td style={{ ...td, color: "var(--muted)" }} colSpan={7}>backtesting…</td>
-        : !stats || !stats.trades ? <td style={{ ...td, color: "var(--muted)" }} colSpan={7}>{stats ? "no trades" : "no data"}</td>
+      {loading ? <td style={{ ...td, color: "var(--muted)" }} colSpan={8}>backtesting…</td>
+        : !stats || !stats.trades ? <td style={{ ...td, color: "var(--muted)" }} colSpan={8}>{stats ? "no trades" : "no data"}</td>
         : <>
             <td style={td}>{stats.trades}</td>
             <td style={{ ...td, color: "var(--up)" }}>{stats.wins}</td>
             <td style={{ ...td, color: "var(--down)" }}>{stats.losses}</td>
             <td style={td}>{stats.losses > 0 ? (stats.wins / stats.losses).toFixed(2) : (stats.wins > 0 ? "∞" : "—")}</td>
+            <td style={{ ...td, color: (stats.winRate ?? 0) >= 50 ? "var(--up)" : "var(--down)" }}>{stats.winRate != null ? stats.winRate.toFixed(0) + "%" : "—"}</td>
             <td style={{ ...td, color: "var(--up)" }}>{stats.tpHit}</td>
             <td style={{ ...td, color: "var(--down)" }}>{stats.slHit}</td>
             <td style={c(stats.retPct)}>{(stats.retPct >= 0 ? "+" : "") + (stats.retPct || 0).toFixed(1)}%</td>
@@ -803,7 +804,7 @@ function ComparisonTable({ strats }) {
       <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 440 }}>
         <thead><tr>
           <th style={{ ...th, textAlign: "left" }}>Strategy</th>
-          <th style={th}>Trades</th><th style={th}>Wins</th><th style={th}>Loss</th><th style={th}>W/L</th>
+          <th style={th}>Trades</th><th style={th}>Wins</th><th style={th}>Loss</th><th style={th}>W/L</th><th style={th}>Win %</th>
           <th style={th}>Target</th><th style={th}>SL Hit</th><th style={th}>Return</th>
         </tr></thead>
         <tbody>{strats.map((s) => <CompareRow key={s.id} s={s} td={td} />)}</tbody>
@@ -820,7 +821,8 @@ function BacktestPanel({ strats, market = "IN" }) {
   const [tf, setTf] = useState("5m");
   const [days, setDays] = useState(180);
   const [sym, setSym] = useState(DEF_SYM[market] || "NIFTY50");
-  useEffect(() => { setSym(DEF_SYM[market] || "NIFTY50"); /* eslint-disable-next-line */ }, [market]);
+  const [run, setRun] = useState(null);   // committed { tf, days, sym } — set only on "Backtest Now"
+  useEffect(() => { setSym(DEF_SYM[market] || "NIFTY50"); setRun(null); /* eslint-disable-next-line */ }, [market]);
   const symOptions = useMemo(() => (UNIVERSE[market] || []).map((s) => s.sym), [market]);
   const TF_OPTS = [["5m", "5 min"], ["15m", "15 min"], ["30m", "30 min"], ["1h", "1 hour"], ["1d", "1 day"]];
   const PERIODS = [[5, "5 days"], [30, "1 month"], [90, "3 months"], [180, "6 months"], [365, "1 year"]];
@@ -846,15 +848,20 @@ function BacktestPanel({ strats, market = "IN" }) {
           <select aria-label="Period" value={days} onChange={(e) => setDays(+e.target.value)} style={sel}>{PERIODS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
         </label>
       </div>
-      {!strats.length ? <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>No premium strategies to backtest.</div> : (
+      {/* Backtesting runs ONLY on this tap — never automatically while you change filters. */}
+      <button onClick={() => setRun({ tf, days, sym })} disabled={!strats.length} className="tap disp" style={{ width: "100%", marginBottom: 12, border: "none", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 800, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", background: strats.length ? "var(--primary)" : "var(--elev)", color: strats.length ? "var(--on-primary)" : "var(--muted)", cursor: strats.length ? "pointer" : "not-allowed" }}>
+        <Activity size={16} /> Backtest Now
+      </button>
+      {!strats.length ? <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>No premium strategies to backtest.</div>
+        : !run ? <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px", textAlign: "center" }}>Set the symbol, timeframe and period, then tap <b>Backtest Now</b>.</div> : (
         <div className="card" style={{ padding: "6px 10px", overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 500 }}>
             <thead><tr>
               <th style={{ ...th, textAlign: "left" }}>Strategy</th>
-              <th style={th}>Trades</th><th style={th}>Wins</th><th style={th}>Loss</th><th style={th}>W/L</th>
+              <th style={th}>Trades</th><th style={th}>Wins</th><th style={th}>Loss</th><th style={th}>W/L</th><th style={th}>Win %</th>
               <th style={th}>Target</th><th style={th}>SL Hit</th><th style={th}>Return</th>
             </tr></thead>
-            <tbody>{strats.map((s) => <CompareRow key={s.id + tf + days + sym} s={s} td={td} opts={{ tf, days, sym }} />)}</tbody>
+            <tbody>{strats.map((s) => <CompareRow key={s.id + run.tf + run.days + run.sym} s={s} td={td} opts={{ tf: run.tf, days: run.days, sym: run.sym }} />)}</tbody>
           </table>
         </div>
       )}

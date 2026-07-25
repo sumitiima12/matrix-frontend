@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { adminListUsers, adminGetUser, adminSetBlocked, adminResetPin, adminPendingUsers, adminApproveUser, adminDeleteUser, adminClearVirtual } from "../../services/adminService";
+import { adminListUsers, adminGetUser, adminSetBlocked, adminResetPin, adminPendingUsers, adminApproveUser, adminDeleteUser, adminClearVirtual, adminClearTradesByType } from "../../services/adminService";
 import { apiListIdeas, apiReviewIdea } from "../../domain/api";
 import { tradesToCSV, downloadCSV, tradeFilename } from "../../lib/csv";
 
@@ -45,6 +45,14 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
     if (typeof window !== "undefined" && !window.confirm(`Delete ALL virtual (paper) trade history for ${phone}? Real broker trades are not affected. This cannot be undone.`)) return;
     setBusy(true);
     try { const r = await adminClearVirtual(userId, adminKey, phone); setErr(null); alert(`Cleared ${r.removed != null ? r.removed : ""} virtual trade${r.removed === 1 ? "" : "s"}.`); }
+    catch (e) { setErr(String(e.message || e)); }
+    finally { setBusy(false); }
+  };
+  // Clear ONE trade type's virtual history (Manual / Auto Buy / Screener / Automate). Real trades untouched.
+  const clearType = async (phone, tradeType, label) => {
+    if (typeof window !== "undefined" && !window.confirm(`Delete ${label} virtual trade data for ${phone}? Real broker trades are not affected. This cannot be undone.`)) return;
+    setBusy(true);
+    try { const r = await adminClearTradesByType(userId, adminKey, phone, tradeType); setErr(null); alert(`Cleared ${r.removed != null ? r.removed : ""} ${label} trade${r.removed === 1 ? "" : "s"}.`); if (selected && selected.phone === phone) await openUser(phone); }
     catch (e) { setErr(String(e.message || e)); }
     finally { setBusy(false); }
   };
@@ -151,14 +159,6 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
               >
                 Reset PIN
               </button>
-              <button
-                onClick={() => clearVirtual(selected.phone)}
-                disabled={busy}
-                className="tap disp"
-                style={{ marginLeft: 8, border: "1px solid var(--down)", borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: 12, cursor: "pointer", background: "transparent", color: "var(--down)", opacity: busy ? 0.6 : 1 }}
-              >
-                Clear virtual trades
-              </button>
             </div>
             {selected.user.blocked && (
               <div style={{ fontSize: 10.5, color: "var(--down)", fontWeight: 700, marginTop: 8 }}>This user is BLOCKED and cannot log in.</div>
@@ -174,6 +174,25 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
             >
               Delete this account permanently
             </button>
+          </div>
+
+          {/* Clear trade data — per type (Manual / Auto Buy / Screener / Automate). Virtual only; real
+              broker trades are never touched. Lets the admin reset one bucket's dashboard at a time. */}
+          <div style={card}>
+            <div className="disp" style={{ fontWeight: 800, fontSize: 13, marginBottom: 4 }}>Clear trade data</div>
+            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10, lineHeight: 1.5 }}>Wipes VIRTUAL (paper) trades for the chosen type. Real broker trades are never affected.</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {[["Manual", "Manual"], ["Auto Buy", "Auto Buy"], ["Screener Auto Buy", "Screener"], ["Automate", "Automate"]].map(([tt, label]) => (
+                <button key={tt} onClick={() => clearType(selected.phone, tt, label)} disabled={busy} className="tap disp"
+                  style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: 11.5, cursor: "pointer", background: "var(--elev)", color: "var(--ink)", opacity: busy ? 0.6 : 1 }}>
+                  Clear {label}
+                </button>
+              ))}
+              <button onClick={() => clearVirtual(selected.phone)} disabled={busy} className="tap disp"
+                style={{ border: "1px solid var(--down)", borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: 11.5, cursor: "pointer", background: "transparent", color: "var(--down)", opacity: busy ? 0.6 : 1 }}>
+                Clear ALL virtual
+              </button>
+            </div>
           </div>
 
           {/* Onboarding answers / profile */}

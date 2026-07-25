@@ -26,9 +26,13 @@ export default function WhyPanel({ s, market = "IN", context, onClose, onOpenSto
   const [analysis, setAnalysis] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(false);
+  const [shown, setShown] = useState(false);   // drives the slide-up entrance
 
   const tags = computeTags(s);
   const sig = techSignal(s);
+
+  // Slide the sheet up on mount (one frame later so the transition actually runs).
+  useEffect(() => { const id = requestAnimationFrame(() => setShown(true)); return () => cancelAnimationFrame(id); }, []);
 
   useEffect(() => {
     let stop = false;
@@ -43,7 +47,7 @@ export default function WhyPanel({ s, market = "IN", context, onClose, onOpenSto
 
   return (
     <>
-      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 120 }} />
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 120, opacity: shown ? 1 : 0, transition: "opacity .28s ease" }} />
       <div
         className="glass"
         style={{
@@ -51,6 +55,8 @@ export default function WhyPanel({ s, market = "IN", context, onClose, onOpenSto
           background: "var(--surface)", borderRadius: "22px 22px 0 0", zIndex: 121,
           maxHeight: "88vh", overflowY: "auto", padding: "16px 18px 28px",
           boxShadow: "0 -16px 44px rgba(0,0,0,.28)",
+          transform: shown ? "translateY(0)" : "translateY(100%)",
+          transition: "transform .3s cubic-bezier(.22,.61,.36,1)",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
@@ -120,15 +126,17 @@ export default function WhyPanel({ s, market = "IN", context, onClose, onOpenSto
           </div>
         )}
 
-        {/* The model's reading of that evidence. Secondary, on purpose. */}
-        <div style={{ marginTop: 20 }}>
-          {busy && <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Reading the evidence…</div>}
+        {/* The model's reading of that evidence. Secondary, on purpose. While it loads we reserve the
+            space with a skeleton so the sheet opens at its full height and doesn't jump/expand when the
+            analysis lands — the transition is smooth. */}
+        <div style={{ marginTop: 20, minHeight: busy ? 200 : 0, transition: "min-height .25s ease" }}>
+          {busy && <LoadingAnalysis />}
           {err && !busy && (
             <div style={{ fontSize: 12.5, color: "var(--muted)" }}>
               The AI reading is unavailable right now — the measured evidence above is unaffected.
             </div>
           )}
-          {analysis && !busy && <ResearchVerdict a={analysis} market={market} />}
+          {analysis && !busy && <div className="mx fade"><ResearchVerdict a={analysis} market={market} /></div>}
         </div>
 
         {onOpenStock && (
@@ -139,5 +147,26 @@ export default function WhyPanel({ s, market = "IN", context, onClose, onOpenSto
         )}
       </div>
     </>
+  );
+}
+
+/* Loading placeholder for the AI verdict — a labelled header plus shimmering skeleton lines. Because it
+   occupies roughly the height of the real verdict, the sheet opens at full size and the actual analysis
+   fades in without the panel jumping taller. */
+function LoadingAnalysis() {
+  const bar = (w) => (
+    <div style={{ height: 12, width: w, borderRadius: 6, background: "linear-gradient(90deg, var(--elev) 25%, rgba(0,0,0,.06) 37%, var(--elev) 63%)", backgroundSize: "400% 100%", animation: "mxShimmer 1.3s ease infinite" }} />
+  );
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: "var(--muted)", fontWeight: 700 }}>
+        <span style={{ width: 13, height: 13, borderRadius: "50%", border: "2px solid var(--line)", borderTopColor: "var(--primary)", display: "inline-block", animation: "mxSpin .8s linear infinite" }} />
+        Loading full analysis…
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
+        {bar("92%")}{bar("100%")}{bar("84%")}{bar("70%")}{bar("96%")}{bar("60%")}
+      </div>
+      <style>{"@keyframes mxShimmer{0%{background-position:100% 0}100%{background-position:-100% 0}}@keyframes mxSpin{to{transform:rotate(360deg)}}"}</style>
+    </div>
   );
 }

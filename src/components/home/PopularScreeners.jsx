@@ -5,6 +5,8 @@ import { scanScreener, marketOpen } from "../../domain/api";
 import Section from "../common/Section";
 import CustomScreener from "./CustomScreener";
 import MyScreeners from "./SavedScreeners";
+import ExitOptimizer from "./ExitOptimizer";
+import MultiSelect from "../common/MultiSelect";
 import { CondBuilder2, IndicatorDefs, TFS } from "../../pages/Automation";
 import { defOperands } from "../../domain/strategyLang";
 import { Pencil, SlidersHorizontal } from "lucide-react";
@@ -42,6 +44,8 @@ const SCREENERS = [
 ];
 
 const capDefault = (m) => (m === "US" || m === "Crypto") ? "1000" : "100000";
+// Per-symbol quantity default: crypto is a USD notional (100), everything else is 1 unit/share.
+const qtyDefaultFor = (m) => (m === "Crypto" ? 100 : 1);
 const GRAD = "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)";
 
 function ScreenerRow({ screener, market, isAdmin = false, onOpen, onBuy, onAutoBuy, onScreenerBuy, liveTick = 0 }) {
@@ -63,12 +67,17 @@ function ScreenerRow({ screener, market, isAdmin = false, onOpen, onBuy, onAutoB
   const eDefs = (ovr && ovr.defs) || screener.defs;
   const eEntry = (ovr && ovr.entry) || screener.entry;
   const eTf = (ovr && ovr.tf) || screener.tf;
-  const cfgSig = useMemo(() => JSON.stringify({ d: eDefs, e: eEntry, t: eTf }), [eDefs, eEntry, eTf]);
+  // Admin curation: an explicit symbol basket, per-symbol qty/SL/TP overrides, and a publish flag.
+  const eSel = (ovr && Array.isArray(ovr.selSyms)) ? ovr.selSyms : [];
+  const eOv = (ovr && ovr.ov) || {};
+  const published = !(ovr && ovr.published === false);
+  const cfgSig = useMemo(() => JSON.stringify({ d: eDefs, e: eEntry, t: eTf, s: eSel }), [eDefs, eEntry, eTf, eSel]);
   const saveEdit = () => {
     const next = {
       name: (edit.name || "").trim() || screener.name,
       sl: +edit.sl || 0.4, tp: +edit.tp || 1.0,
       defs: edit.defs, entry: edit.entry, exit: edit.exit, tf: edit.tf || screener.tf,
+      selSyms: edit.selSyms || [], ov: edit.ov || {}, published: edit.published !== false,
     };
     setOvr(next); lsSet(EDK, next); setEdit(null);
   };
@@ -77,13 +86,15 @@ function ScreenerRow({ screener, market, isAdmin = false, onOpen, onBuy, onAutoB
     defs: (eDefs || []).map((d) => ({ ...d, id: d.id || Date.now() + Math.random(), tf: d.tf || eTf || "5m" })),
     entry: (eEntry || []).map((c) => ({ ...c })),
     exit: ((ovr && ovr.exit) || screener.exit || []).map((c) => ({ ...c })),
+    selSyms: [...eSel], ov: { ...eOv }, published,
   });
   const editOperands = useMemo(() => ["Price", "Volume", ...defOperands((edit && edit.defs) || [])], [edit]);
 
   // Live scan for THIS market's universe.
   useEffect(() => {
     let stop = false;
-    const syms = (UNIVERSE[market] || []).map((s) => s.sym).slice(0, 40);
+    // Admin-curated basket if set, else the market's universe (capped for cost).
+    const syms = eSel.length ? eSel : (UNIVERSE[market] || []).map((s) => s.sym).slice(0, 40);
     setCapital(lsGet(`mx_scrcap_${market}`, capDefault(market)));
     setAutoOn(lsGet(`mx_scrauto_${screener.key}_${market}`, false));
     if (!syms.length) { setMatches([]); return undefined; }
@@ -97,8 +108,12 @@ function ScreenerRow({ screener, market, isAdmin = false, onOpen, onBuy, onAutoB
 
   const capNum = Math.max(1, parseInt(capital) || Number(capDefault(market)));
   const perCap = capNum / Math.max(1, matches.length);
-  const cardSL = (sym) => (ov[sym] && ov[sym].sl != null) ? ov[sym].sl : defSL;
-  const cardTP = (sym) => (ov[sym] && ov[sym].tp != null) ? ov[sym].tp : defTP;
+  // Effective SL/TP/qty: the user's on-card tweak (session), else the admin's saved per-symbol override,
+  // else the default. A curated basket carries explicit per-symbol quantities.
+  const cardSL = (sym) => (ov[sym] && ov[sym].sl != null) ? ov[sym].sl : (eOv[sym] && eOv[sym].sl != null) ? eOv[sym].sl : defSL;
+  const cardTP = (sym) => (ov[sym] && ov[sym].tp != null) ? ov[sym].tp : (eOv[sym] && eOv[sym].tp != null) ? eOv[sym].tp : defTP;
+  const cardQty = (sym) => (eOv[sym] && eOv[sym].qty != null) ? eOv[sym].qty : qtyDefaultFor(market);
+  const useBasketQty = eSel.length > 0;   // curated basket → explicit per-symbol qty (not capital-split)
   const setCardOv = (sym, field, val) => setOv((o) => ({ ...o, [sym]: { ...(o[sym] || {}), [field]: val === "" ? undefined : +val } }));
 
   // Live P&L: each matched symbol treated as bought with perCap at its entry price.
@@ -121,8 +136,11 @@ function ScreenerRow({ screener, market, isAdmin = false, onOpen, onBuy, onAutoB
       const inst = ALL.find((a) => a.sym === m.sym);
       if (!inst) return;
       const price = priceOf(m.sym) || m.entryPrice;
-      const qty = market === "Crypto" ? +(perCap / price).toFixed(6) : Math.max(1, Math.floor(perCap / price));
-      (onScreenerBuy || onAutoBuy || onBuy)(inst, qty, { tp: cardTP(m.sym), sl: cardSL(m.sym), strategy: screener.name });
+      // Curated basket → the admin's explicit per-symbol qty (crypto qty is a USD notional → coins).
+      // Otherwise fall back to the capital-split behaviour.
+      const notional = useBasketQty ? cardQty(m.sym) : perCap;
+      const qty = market === "Crypto" ? +(notional / price).toFixed(6) : Math.max(1, Math.floor(useBasketQty ? cardQty(m.sym) : (perCap / price)));
+      (onScreenerBuy || onAutoBuy || onBuy)(inst, qty, { tp: cardTP(m.sym), sl: cardSL(m.sym), strategy: dispName });
     });
     lsSet(key, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -132,13 +150,20 @@ function ScreenerRow({ screener, market, isAdmin = false, onOpen, onBuy, onAutoB
   const cur = CUR[market] || "₹";
   const inBox = { width: 42, textAlign: "center", border: "1px solid var(--line)", background: "var(--elev)", borderRadius: 7, padding: "4px 3px", fontWeight: 800, fontSize: 11, color: "var(--ink)" };
 
+  // Unpublished screeners are hidden from regular users; admins still see them (with a badge) so they
+  // can edit and re-publish.
+  if (!published && !isAdmin) return null;
+
   return (
-    <div className="card" style={{ marginTop: 12, padding: 12, background: "var(--elev)" }}>
+    <div className="card" style={{ marginTop: 12, padding: 12, background: "var(--elev)", opacity: published ? 1 : 0.75 }}>
       {/* Header — screener name (left), Auto-Buy toggle + admin edit (right) */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
         <div style={{ minWidth: 0 }}>
-          <div className="disp" style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.15, color: "var(--ink)" }}>{dispName}</div>
-          <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 2, fontWeight: 600 }}>{eTf} · {matches.length} live</div>
+          <div className="disp" style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.15, color: "var(--ink)", display: "flex", alignItems: "center", gap: 7 }}>
+            {dispName}
+            {!published && <span className="pill" style={{ fontSize: 8, fontWeight: 800, padding: "2px 7px", background: "var(--down-soft, rgba(232,72,85,.14))", color: "var(--down)" }}>UNPUBLISHED</span>}
+          </div>
+          <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 2, fontWeight: 600 }}>{eTf} · {matches.length} live{eSel.length ? ` · ${eSel.length} symbols` : ""}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           <label className="tap" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, fontWeight: 800, color: "var(--ink)" }}>
@@ -155,6 +180,13 @@ function ScreenerRow({ screener, market, isAdmin = false, onOpen, onBuy, onAutoB
       {isAdmin && edit && (
         <div style={{ marginTop: 10, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: 12, color: "var(--ink)" }}>
           <input value={edit.name} onChange={(e) => setEdit((s) => ({ ...s, name: e.target.value }))} placeholder="Screener name" className="no-ring" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 9px", fontSize: 12.5, fontWeight: 600, background: "var(--elev)", color: "var(--ink)", marginBottom: 8 }} />
+          {/* Publish toggle — unpublished screeners are hidden from users. */}
+          <label className="tap" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, padding: "8px 10px", border: "1px solid var(--line)", borderRadius: 9, background: "var(--elev)" }}>
+            <span style={{ fontSize: 12, fontWeight: 800 }}>{edit.published !== false ? "Published" : "Unpublished"} <span style={{ fontWeight: 600, color: "var(--muted)", fontSize: 10.5 }}>— {edit.published !== false ? "visible to users" : "hidden from users"}</span></span>
+            <span onClick={() => setEdit((s) => ({ ...s, published: !(s.published !== false) }))} style={{ width: 40, height: 23, borderRadius: 999, background: edit.published !== false ? "#22C55E" : "var(--line)", position: "relative", flexShrink: 0, transition: "background .2s" }}>
+              <span style={{ position: "absolute", top: 2, left: edit.published !== false ? 19 : 2, width: 19, height: 19, borderRadius: 999, background: "#fff", transition: "left .2s" }} />
+            </span>
+          </label>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
             <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 800 }}>Default SL%</span>
             <input value={edit.sl} onChange={(e) => setEdit((s) => ({ ...s, sl: e.target.value.replace(/[^0-9.]/g, "") }))} inputMode="decimal" className="no-ring mono" style={inBox} />
@@ -171,6 +203,48 @@ function ScreenerRow({ screener, market, isAdmin = false, onOpen, onBuy, onAutoB
           <CondBuilder2 label="Entry signal — when a symbol qualifies" conds={edit.entry || []} setConds={(u) => setEdit((s) => ({ ...s, entry: typeof u === "function" ? u(s.entry || []) : u }))} operands={editOperands} />
           <div style={{ height: 12 }} />
           <CondBuilder2 label="Exit signal — when to close" conds={edit.exit || []} setConds={(u) => setEdit((s) => ({ ...s, exit: typeof u === "function" ? u(s.exit || []) : u }))} operands={editOperands} />
+
+          {/* Symbol basket — pick specific symbols (like Build a screener). Empty = scan the whole market.
+              Each chosen symbol gets its own quantity / SL / TP. */}
+          <div style={{ height: 14 }} />
+          <div className="disp" style={{ fontWeight: 800, fontSize: 12.5, marginBottom: 6 }}>Symbols</div>
+          <MultiSelect label="Symbols" options={(UNIVERSE[market] || []).map((s) => s.sym)} value={edit.selSyms || []} onChange={(v) => setEdit((s) => ({ ...s, selSyms: v }))} allLabel="Whole market" />
+          {(edit.selSyms || []).length > 0 && (
+            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 7 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 8.5, color: "var(--muted)", fontWeight: 800, paddingLeft: 2 }}>
+                <span style={{ flex: 1 }}>SYMBOL</span>
+                <span style={{ width: 52, textAlign: "center" }}>{market === "Crypto" ? "AMT $" : "QTY"}</span>
+                <span style={{ width: 48, textAlign: "center" }}>SL %</span>
+                <span style={{ width: 48, textAlign: "center" }}>TP %</span>
+              </div>
+              {(edit.selSyms || []).map((sym) => {
+                const row = (edit.ov || {})[sym] || {};
+                const setF = (field, val) => setEdit((s) => ({ ...s, ov: { ...(s.ov || {}), [sym]: { ...((s.ov || {})[sym] || {}), [field]: val === "" ? undefined : +val } } }));
+                return (
+                  <div key={sym} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span className="disp" style={{ flex: 1, fontSize: 12, fontWeight: 700, color: "var(--ink)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sym}</span>
+                    <input value={row.qty != null ? row.qty : qtyDefaultFor(market)} onChange={(e) => setF("qty", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={{ ...inBox, width: 52 }} />
+                    <input value={row.sl != null ? row.sl : (edit.sl || 0.4)} onChange={(e) => setF("sl", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={{ ...inBox, width: 48 }} />
+                    <input value={row.tp != null ? row.tp : (edit.tp || 1.0)} onChange={(e) => setF("tp", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={{ ...inBox, width: 48 }} />
+                  </div>
+                );
+              })}
+              <div style={{ fontSize: 9.5, color: "var(--muted)", lineHeight: 1.5, marginTop: 2 }}>Defaults: {market === "Crypto" ? "$100 amount" : "qty 1"} · 0.4% SL · 1% TP. {market === "Crypto" ? "Crypto amount is USD notional." : ""}</div>
+            </div>
+          )}
+
+          {/* Ideal SL/TP for this Popular screener — grid-search over its entry rule's past signals.
+              Apply drops the ideal pair into the default SL/TP above (Save changes to publish it). */}
+          <div style={{ height: 12 }} />
+          <ExitOptimizer
+            defs={edit.defs}
+            entry={edit.entry}
+            tf={edit.tf || screener.tf}
+            appSyms={(edit.selSyms && edit.selSyms.length) ? edit.selSyms.slice(0, 8) : (UNIVERSE[market] || []).map((s) => s.sym).slice(0, 8)}
+            currentSl={edit.sl}
+            currentTp={edit.tp}
+            onApply={(sl, tp) => setEdit((s) => ({ ...s, sl, tp }))}
+          />
 
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
             <button onClick={saveEdit} className="tap disp" style={{ flex: 1, border: "none", borderRadius: 10, padding: "10px 12px", fontSize: 12.5, fontWeight: 800, background: "var(--primary)", color: "var(--on-primary)" }}>Save changes</button>

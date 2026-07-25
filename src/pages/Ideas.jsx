@@ -9,6 +9,7 @@ import MiniCandles from "../components/charts/MiniCandles";
 import { selStyle } from "../components/common/styles";
 import BuyButton from "../components/common/BuyButton";
 import TagRow from "../components/common/TagRow";
+import MultiSelect from "../components/common/MultiSelect";
 
 /**
  * Ideas — trade ideas published by Matrix, scored against real candles.
@@ -16,13 +17,16 @@ import TagRow from "../components/common/TagRow";
 
 function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, market = "IN" }) {
   const capDefault = (m) => (m === "Crypto" || m === "US" ? 1000 : 100000);   // crypto/US in USD
-  const [postedBy, setPostedBy] = useState("Neo");
+  // Capital presets are market-aware: USD ladders for crypto/US, INR ladders for IN/Commodity.
+  const capOptions = (m) => (m === "Crypto" || m === "US") ? [1000, 5000, 10000, 50000] : [50000, 100000, 500000, 1000000];
+  const [postedBy, setPostedBy] = useState("All");
   const [range, setRange] = useState(365);
   const [cap, setCap] = useState(capDefault(market));
-  const [symF, setSymF] = useState("All");
+  const [symFs, setSymFs] = useState([]);   // multi-select symbol filter ([] = all)
   // Each market carries its own sensible per-idea capital + currency; reset on market switch.
-  useEffect(() => { setCap(capDefault(market)); }, [market]);
+  useEffect(() => { setCap(capDefault(market)); setSymFs([]); }, [market]);
   const postedByOptions = useMemo(() => ["All", ...Array.from(new Set(ideas.map((i) => i.by).filter(Boolean)))], [ideas]);
+  const symOptions = useMemo(() => Array.from(new Set(ideas.map((i) => i.sym).filter(Boolean))), [ideas]);
   // Outcomes are resolved against REAL candles (async). Until the history lands we
   // show nothing rather than a guess.
   const [outcomes, setOutcomes] = useState({});
@@ -47,7 +51,7 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
     .map((id) => ({ id, o: outcomes[id.sym] }))
     .filter(({ id, o }) => o &&
       (postedBy === "All" || id.by === postedBy) &&
-      (symF === "All" || id.sym === symF) &&
+      (symFs.length === 0 || symFs.includes(id.sym)) &&
       ((id.publishedAt || 0) >= signupCutoff) &&
       o.daysAgo <= range);
   const n = all.length;                                   // every idea is an assumed trade
@@ -95,19 +99,23 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
         <div className="disp" style={{ fontWeight: 700, fontSize: 15 }}>Ideas Dashboard</div>
         <span style={{ fontSize: 10.5, opacity: .85, marginRight: 34 }}>{periodLabel}</span>
       </div>
-      <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 6, color: netPnl >= 0 ? "var(--up)" : "var(--down)" }}>{netPnl >= 0 ? "+" : ""}{fmt(netPnl, market)}</div>
+      {/* Filters sit directly under the title, above the numbers. Options are plain ids (no "Posted by:"
+          prefix); symbols are multi-select; capital ladder is market-aware. */}
+      <div style={{ display: "flex", gap: 7, marginTop: 10, flexWrap: "wrap" }}>
+        <select aria-label="Posted by" value={postedBy} onChange={(e) => setPostedBy(e.target.value)} style={sel}>{postedByOptions.map((b) => <option key={b} value={b}>{b}</option>)}</select>
+        <select aria-label="Range" value={range} onChange={(e) => setRange(+e.target.value)} style={sel}><option value={30}>30d</option><option value={90}>3m</option><option value={180}>6m</option><option value={365}>12m</option></select>
+        <select aria-label="Capital" value={cap} onChange={(e) => setCap(+e.target.value)} style={sel}>{capOptions(market).map((c) => <option key={c} value={c}>{fmt(c, market)}</option>)}</select>
+      </div>
+      <div style={{ marginTop: 7 }}>
+        <MultiSelect label="Symbols" options={symOptions} value={symFs} onChange={setSymFs} allLabel="All symbols" />
+      </div>
+      <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 12, color: netPnl >= 0 ? "var(--up)" : "var(--down)" }}>{netPnl >= 0 ? "+" : ""}{fmt(netPnl, market)}</div>
       <div style={{ fontSize: 11, opacity: .85, marginTop: -2 }}>If every idea was traded with {fmt(cap, market)} · {openN} still open</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
         <Stat k="Returns %" v={(avg >= 0 ? "+" : "") + avg.toFixed(2) + "%"} c={avg >= 0 ? "var(--up)" : "var(--down)"} />
         <Stat k="Win rate" v={n ? winRate.toFixed(0) + "%" : "—"} />
         <Stat k="Win / Loss" v={wins + " : " + losses} />
         <Stat k="Trades" v={n} />
-      </div>
-      <div style={{ display: "flex", gap: 7, marginTop: 12, flexWrap: "wrap" }}>
-        <select aria-label="Posted by" value={postedBy} onChange={(e) => setPostedBy(e.target.value)} style={sel}>{postedByOptions.map((b) => <option key={b} value={b}>Posted by: {b}</option>)}</select>
-        <select aria-label="Range" value={range} onChange={(e) => setRange(+e.target.value)} style={sel}><option value={30}>30d</option><option value={90}>3m</option><option value={180}>6m</option><option value={365}>12m</option></select>
-        <select aria-label="Capital" value={cap} onChange={(e) => setCap(+e.target.value)} style={sel}><option value={50000}>Capital: ₹50k</option><option value={100000}>Capital: ₹1L</option><option value={500000}>Capital: ₹5L</option><option value={1000000}>Capital: ₹10L</option></select>
-        <select aria-label="Symbol" value={symF} onChange={(e) => setSymF(e.target.value)} style={sel}><option value="All">Symbol: All</option>{ALL.map((a) => <option key={a.sym} value={a.sym}>{a.sym}</option>)}</select>
       </div>
     </div>
   );
@@ -119,7 +127,7 @@ function CommunityIdeas({ market, me, isAdmin, adminKey = "", onOpen }) {
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [fBy, setFBy] = useState("");
-  const [fSym, setFSym] = useState("");
+  const [fSyms, setFSyms] = useState([]);   // multi-select symbol filter ([] = all)
   const [sym, setSym] = useState("");
   const [dir, setDir] = useState("Long");
   const [note, setNote] = useState("");
@@ -131,11 +139,12 @@ function CommunityIdeas({ market, me, isAdmin, adminKey = "", onOpen }) {
   const [busy, setBusy] = useState(false);
   const [posted, setPosted] = useState(false);
   const symOptions = useMemo(() => (UNIVERSE[market] || []).map((s) => s.sym), [market]);
-  const refresh = () => { setLoading(true); apiListIdeas({ symbol: fSym, by: fBy, adminKey: isAdmin ? adminKey : "" }).then((l) => { setList(Array.isArray(l) ? l : []); setLoading(false); }); };
-  useEffect(() => { refresh(); /* eslint-disable-next-line */ }, [fSym, fBy]);
-  const marketList = list.filter((i) => marketOf(i.symbol) === market);
-  const byOptions = useMemo(() => Array.from(new Set(marketList.map((i) => i.owner_name).filter(Boolean))), [list, market]);
-  const symFilterOptions = useMemo(() => Array.from(new Set(marketList.map((i) => i.symbol))), [list, market]);
+  const refresh = () => { setLoading(true); apiListIdeas({ by: fBy, adminKey: isAdmin ? adminKey : "" }).then((l) => { setList(Array.isArray(l) ? l : []); setLoading(false); }); };
+  useEffect(() => { refresh(); /* eslint-disable-next-line */ }, [fBy]);
+  const marketList = list.filter((i) => marketOf(i.symbol) === market && (fSyms.length === 0 || fSyms.includes(i.symbol)));
+  const marketAll = useMemo(() => list.filter((i) => marketOf(i.symbol) === market), [list, market]);
+  const byOptions = useMemo(() => Array.from(new Set(marketAll.map((i) => i.owner_name).filter(Boolean))), [marketAll]);
+  const symFilterOptions = useMemo(() => Array.from(new Set(marketAll.map((i) => i.symbol))), [marketAll]);
   const addTag = () => { const t = tagIn.trim().replace(/^#/, "").slice(0, 24); if (t && tags.length < 4 && !tags.includes(t)) setTags([...tags, t]); setTagIn(""); };
   const onShot = (e) => {
     const f = e.target.files && e.target.files[0]; if (!f) return;
@@ -189,9 +198,9 @@ function CommunityIdeas({ market, me, isAdmin, adminKey = "", onOpen }) {
       )}
       {posted && <div className="card" style={{ padding: 11, marginBottom: 10, background: "var(--up-soft)", color: "var(--up)", fontSize: 12, fontWeight: 700, textAlign: "center" }}>Idea submitted — it'll appear once an admin approves it.</div>}
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
-        <select value={fSym} onChange={(e) => setFSym(e.target.value)} aria-label="Symbol filter" style={sel}><option value="">Symbol: All</option>{symFilterOptions.map((s) => <option key={s} value={s}>{s}</option>)}</select>
-        <select value={fBy} onChange={(e) => setFBy(e.target.value)} aria-label="Posted by filter" style={sel}><option value="">Posted by: All</option>{byOptions.map((b) => <option key={b} value={b}>{b}</option>)}</select>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 6 }}>
+        <MultiSelect label="Symbols" options={symFilterOptions} value={fSyms} onChange={setFSyms} allLabel="All symbols" />
+        <select value={fBy} onChange={(e) => setFBy(e.target.value)} aria-label="Posted by filter" style={sel}><option value="">All posters</option>{byOptions.map((b) => <option key={b} value={b}>{b}</option>)}</select>
       </div>
 
       {loading ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 10 }}>Loading ideas…</div>

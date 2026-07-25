@@ -82,6 +82,21 @@ export async function scanMomentum({ tf, pct, dir, bars, syms }) {
     return (d.matches || []).map((m) => ({ ...m, sym: bySy.get(m.sym) || m.sym }));
   } catch { return []; }
 }
+/* Optimise exits — the SL/TP pair that would have MAXIMISED expectancy on this screener/strategy's OWN
+   past entry signals (a grid sweep over real candles), with an out-of-sample check. `mode:"metric"`
+   evaluates My-Screener metric conditions candle-by-candle; otherwise it uses the candle entry chain
+   (Popular screeners / builder strategies). Returns { entries, best, current, oos, top }. */
+export async function optimizeExits({ mode, defs, entry, tf, appSyms, currentSl, currentTp }) {
+  if (!BACKEND_URL || !appSyms || !appSyms.length || !entry || !entry.length) return null;
+  try {
+    const ySyms = appSyms.map(yahooSymbol);
+    const r = await fetch(`${BACKEND_URL}/api/optimize-exits`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode, defs, entry, tf, symbols: ySyms, currentSl, currentTp }),
+    });
+    return await r.json().catch(() => null);
+  } catch { return null; }
+}
 export const aiInterpretStrategyAI = (text) => interpretStrategyAI(text);
 export const aiInterpretStrategy = (text) => interpretStrategy(text);
 export const aiMarketBrief = (facts) => marketBrief(facts);
