@@ -46,6 +46,10 @@ export function useBacktestStats(strat, opts = {}) {
   const tfOverride = ALLOWED_TF.has(opts.tf) ? opts.tf : null;
   const days = Number(opts.days) || 0;
   const symOverride = opts.sym || null;
+  // Per-trade sizing for absolute P&L (backtest panel): qty (shares) or amount (USD, crypto).
+  const qty = opts.qty != null ? opts.qty : null;
+  const amount = opts.amount != null ? opts.amount : null;
+  const sizeMarket = opts.market || null;
 
   useEffect(() => {
     let stop = false;
@@ -75,16 +79,28 @@ export function useBacktestStats(strat, opts = {}) {
            warm up properly — and count every trade it takes. Intraday history is already a short,
            recent window, so there's no separate sub-window to carve out. */
         const trades = [];
-        let pnl = 0;
+        let capPnl = 0;
         let usable = 0;
         sets.forEach((c) => {
           if (!c || c.length < 30) return;
           usable += 1;
           const r = backtest(cfg, c, 1, tf);
-          r.trades.forEach((t) => { trades.push(t); pnl += perSym * t.ret; });
+          r.trades.forEach((t) => { trades.push(t); capPnl += perSym * t.ret; });
         });
 
         if (!usable) { setState({ loading: false, stats: null }); return; }
+
+        /* Absolute P&L sizing: when a per-trade size is supplied (the backtest panel's Qty / USD-amount
+           filter), size each trade explicitly — shares × (exit − entry) for stocks/commodities, or a
+           USD notional × return for crypto. With no size, fall back to the capital-split model the
+           strategy cards use. Return % is unaffected by sizing (it's the sum of per-trade returns). */
+        const hasSize = qty != null || amount != null;
+        let pnl = capPnl;
+        if (hasSize) {
+          pnl = sizeMarket === "Crypto"
+            ? (Number(amount) || 0) * trades.reduce((a, t) => a + (t.ret || 0), 0)
+            : (Number(qty) || 0) * trades.reduce((a, t) => a + ((t.exit || 0) - (t.entry || 0)), 0);
+        }
 
         const period = periodLabel(sets);
 
@@ -108,7 +124,7 @@ export function useBacktestStats(strat, opts = {}) {
             tpHit,
             winRate: (wins / trades.length) * 100,
             pnl,
-            retPct: (pnl / cap) * 100,
+            retPct: (capPnl / cap) * 100,
             symbols: usable,
             tf,
             period,
@@ -119,7 +135,7 @@ export function useBacktestStats(strat, opts = {}) {
 
     return () => { stop = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [strat && strat.id, tfOverride, days, symOverride]);
+  }, [strat && strat.id, tfOverride, days, symOverride, qty, amount, sizeMarket]);
 
   return state;
 }

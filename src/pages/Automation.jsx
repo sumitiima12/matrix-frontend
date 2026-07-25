@@ -871,6 +871,10 @@ function exportBacktestCsv({ results, order, labelHeader, meta, filename }) {
 function BacktestPanel({ strats, market = "IN" }) {
   const DEF_SYM = { US: "SPX", IN: "NIFTY50", Crypto: "BTC", Commodity: "GOLD", FNO: "NIFTY50" };
   const [view, setView] = useState("perSymbol");   // perSymbol | perStrategy
+  // Position sizing for absolute P&L: crypto = USD amount (default 100), everything else = quantity (default 1).
+  const isCrypto = market === "Crypto";
+  const [size, setSize] = useState(isCrypto ? "100" : "1");
+  const sizing = () => (isCrypto ? { amount: Number(size) || 0, market } : { qty: Number(size) || 0, market });
   const symOptions = useMemo(() => (UNIVERSE[market] || []).map((s) => s.sym), [market]);
   const stratNames = useMemo(() => strats.map((s) => s.name), [strats]);
   const TF_OPTS = [["5m", "5 min"], ["15m", "15 min"], ["30m", "30 min"], ["1h", "1 hour"], ["1d", "1 day"]];
@@ -900,8 +904,17 @@ function BacktestPanel({ strats, market = "IN" }) {
   useEffect(() => {
     setSym(DEF_SYM[market] || "NIFTY50"); setRun(null); setPickStrats([]);
     setPRun(null); setPSyms([]); setPStratId(strats[0] ? strats[0].id : ""); setResults({});
+    setSize(market === "Crypto" ? "100" : "1");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [market]);
+
+  // Qty / USD-amount input, rendered inside each tab's filter row.
+  const sizeField = (
+    <label style={{ flex: "1 1 30%", minWidth: 100 }}>
+      <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>{isCrypto ? "AMOUNT (USD)" : "QTY"}</div>
+      <input value={size} onChange={(e) => setSize(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={{ ...sel, textAlign: "center" }} />
+    </label>
+  );
 
   const exportBtn = (onClick) => (
     <button onClick={onClick} className="tap disp" style={{ border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", borderRadius: 9, padding: "6px 11px", fontWeight: 800, fontSize: 11, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5 }}>⬇ Export CSV</button>
@@ -945,13 +958,14 @@ function BacktestPanel({ strats, market = "IN" }) {
               <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>PERIOD</div>
               <select aria-label="Period" value={days} onChange={(e) => setDays(+e.target.value)} style={sel}>{PERIODS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
             </label>
+            {sizeField}
           </div>
           {/* Strategy filter — empty = all (Select All). */}
           <div style={{ marginBottom: 12 }}>
             <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>STRATEGIES</div>
             <MultiSelect label="Strategies" options={stratNames} value={pickStrats} onChange={setPickStrats} allLabel="All strategies" />
           </div>
-          <button onClick={() => { setResults({}); setRun({ tf, days, sym, names: pickStrats.length ? pickStrats : stratNames }); }} disabled={!strats.length} className="tap disp" style={{ width: "100%", marginBottom: 12, border: "none", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 800, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", background: strats.length ? "var(--primary)" : "var(--elev)", color: strats.length ? "var(--on-primary)" : "var(--muted)", cursor: strats.length ? "pointer" : "not-allowed" }}>
+          <button onClick={() => { setResults({}); setRun({ tf, days, sym, names: pickStrats.length ? pickStrats : stratNames, ...sizing() }); }} disabled={!strats.length} className="tap disp" style={{ width: "100%", marginBottom: 12, border: "none", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 800, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", background: strats.length ? "var(--primary)" : "var(--elev)", color: strats.length ? "var(--on-primary)" : "var(--muted)", cursor: strats.length ? "pointer" : "not-allowed" }}>
             <Activity size={16} /> Backtest Now
           </button>
           {!strats.length ? <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>No premium strategies to backtest.</div>
@@ -959,11 +973,11 @@ function BacktestPanel({ strats, market = "IN" }) {
             <div className="card" style={{ padding: "6px 10px", overflowX: "auto" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 4px 8px", gap: 8 }}>
                 <div className="disp" style={{ fontSize: 12, fontWeight: 800 }}>{run.sym} · {run.tf} · {run.names.length} strategies</div>
-                {exportBtn(() => exportBacktestCsv({ results, order: runSymRows.map((s) => s.name), labelHeader: "Strategy", meta: [["Symbol", run.sym], ["Timeframe", run.tf], ["Period (days)", run.days]], filename: `matrix-backtest-${run.sym}-${run.tf}-${run.days}d.csv` }))}
+                {exportBtn(() => exportBacktestCsv({ results, order: runSymRows.map((s) => s.name), labelHeader: "Strategy", meta: [["Symbol", run.sym], ["Timeframe", run.tf], ["Period (days)", run.days], [isCrypto ? "Amount (USD)" : "Qty", size]], filename: `matrix-backtest-${run.sym}-${run.tf}-${run.days}d.csv` }))}
               </div>
               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 500 }}>
                 <Head />
-                <tbody>{runSymRows.map((s) => <CompareRow key={s.id + run.tf + run.days + run.sym} s={s} td={td} opts={{ tf: run.tf, days: run.days, sym: run.sym }} onReport={report} market={market} />)}</tbody>
+                <tbody>{runSymRows.map((s) => <CompareRow key={s.id + run.tf + run.days + run.sym} s={s} td={td} opts={{ tf: run.tf, days: run.days, sym: run.sym, qty: run.qty, amount: run.amount, market: run.market }} onReport={report} market={market} />)}</tbody>
               </table>
             </div>
           )}
@@ -988,13 +1002,14 @@ function BacktestPanel({ strats, market = "IN" }) {
               <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>PERIOD</div>
               <select aria-label="Period" value={pDays} onChange={(e) => setPDays(+e.target.value)} style={sel}>{PERIODS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
             </label>
+            {sizeField}
           </div>
           {/* Symbol filter — empty = all (Select All). */}
           <div style={{ marginBottom: 12 }}>
             <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>SYMBOLS</div>
             <MultiSelect label="Symbols" options={symOptions} value={pSyms} onChange={setPSyms} allLabel="All symbols" />
           </div>
-          <button onClick={() => { if (pStratId) { setResults({}); setPRun({ tf: pTf, days: pDays, syms: pSyms.length ? pSyms : symOptions, id: pStratId }); } }} disabled={!strats.length || !pStratId} className="tap disp" style={{ width: "100%", marginBottom: 12, border: "none", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 800, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", background: (strats.length && pStratId) ? "var(--primary)" : "var(--elev)", color: (strats.length && pStratId) ? "var(--on-primary)" : "var(--muted)", cursor: (strats.length && pStratId) ? "pointer" : "not-allowed" }}>
+          <button onClick={() => { if (pStratId) { setResults({}); setPRun({ tf: pTf, days: pDays, syms: pSyms.length ? pSyms : symOptions, id: pStratId, ...sizing() }); } }} disabled={!strats.length || !pStratId} className="tap disp" style={{ width: "100%", marginBottom: 12, border: "none", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 800, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", background: (strats.length && pStratId) ? "var(--primary)" : "var(--elev)", color: (strats.length && pStratId) ? "var(--on-primary)" : "var(--muted)", cursor: (strats.length && pStratId) ? "pointer" : "not-allowed" }}>
             <Activity size={16} /> Backtest Now
           </button>
           {!strats.length ? <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>No premium strategies to backtest.</div>
@@ -1002,11 +1017,11 @@ function BacktestPanel({ strats, market = "IN" }) {
             <div className="card" style={{ padding: "6px 10px", overflowX: "auto" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 4px 8px", gap: 8 }}>
                 <div className="disp" style={{ fontSize: 12, fontWeight: 800 }}>{pStrat.name} · {pRun.syms.length} symbols</div>
-                {exportBtn(() => exportBacktestCsv({ results, order: pRun.syms, labelHeader: "Symbol", meta: [["Strategy", pStrat.name], ["Timeframe", pRun.tf], ["Period (days)", pRun.days]], filename: `matrix-backtest-${(pStrat.name || "strategy").replace(/[^a-z0-9]+/gi, "_")}-${pRun.tf}-${pRun.days}d.csv` }))}
+                {exportBtn(() => exportBacktestCsv({ results, order: pRun.syms, labelHeader: "Symbol", meta: [["Strategy", pStrat.name], ["Timeframe", pRun.tf], ["Period (days)", pRun.days], [isCrypto ? "Amount (USD)" : "Qty", size]], filename: `matrix-backtest-${(pStrat.name || "strategy").replace(/[^a-z0-9]+/gi, "_")}-${pRun.tf}-${pRun.days}d.csv` }))}
               </div>
               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 500 }}>
                 <Head />
-                <tbody>{pRun.syms.map((sy) => <SymbolRow key={pStrat.id + pRun.tf + pRun.days + sy} strat={pStrat} sym={sy} td={td} opts={{ tf: pRun.tf, days: pRun.days }} onReport={report} market={market} />)}</tbody>
+                <tbody>{pRun.syms.map((sy) => <SymbolRow key={pStrat.id + pRun.tf + pRun.days + sy} strat={pStrat} sym={sy} td={td} opts={{ tf: pRun.tf, days: pRun.days, qty: pRun.qty, amount: pRun.amount, market: pRun.market }} onReport={report} market={market} />)}</tbody>
               </table>
             </div>
           )}
