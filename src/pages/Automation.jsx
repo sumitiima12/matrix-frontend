@@ -903,21 +903,24 @@ function exportBacktestCsv({ results, order, labelHeader, meta, filename }) {
   downloadCSV(filename, lines.join("\n"));
 }
 
-/* PER-STRATEGY ideal SL/TP for ONE symbol (used in the Backtest "Per Symbol" view). For each strategy
-   it grid-searches the ideal exits on the selected symbol and lists them; "Apply all" writes each
-   strategy's ideal back onto its config. Capped for cost. */
-const PSO_CAP = 10;
+/* PER-STRATEGY ideal SL/TP for ONE symbol (Backtest "Per Symbol" view). For each strategy it
+   grid-searches the ideal exits on the selected symbol and shows an Earlier-vs-Now table (win rate,
+   SL/TP hits, P&L, return). "Apply all" writes each strategy's ideal back onto its config. */
+const oPct = (x) => (x == null || isNaN(x)) ? "—" : (x >= 0 ? "+" : "") + Number(x).toFixed(1) + "%";
+const oWr = (x) => (x == null || isNaN(x)) ? "—" : Number(x).toFixed(0) + "%";
+const oAmt = (x) => (x == null || isNaN(x)) ? "—" : (x >= 0 ? "+" : "") + Number(x).toFixed(2);
+const oCnt = (x) => (x == null || isNaN(x)) ? "—" : String(x);
 function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits }) {
   const [objective, setObjective] = useState("pnl");
   const [state, setState] = useState({ loading: false, rows: null, ran: false });
-  const eligible = (strats || []).filter((s) => s.cfg && (s.cfg.entry || []).length > 0).slice(0, PSO_CAP);
+  const eligible = (strats || []).filter((s) => s.cfg && (s.cfg.entry || []).length > 0);   // ALL eligible strategies
   const run = async (obj = objective) => {
     if (!sym || !eligible.length) { setState({ loading: false, ran: true, rows: [] }); return; }
     setState({ loading: true, rows: null, ran: true });
     const rows = await Promise.all(eligible.map(async (s) => {
       try {
         const res = await optimizeExits({ mode: s.cfg.mode === "metric" ? "metric" : undefined, defs: s.cfg.defs || [], entry: s.cfg.entry, tf, appSyms: [sym], currentSl: s.cfg.sl != null ? Number(s.cfg.sl) : null, currentTp: s.cfg.tp != null ? Number(s.cfg.tp) : null, objective: obj });
-        return { s, best: res && res.best ? res.best : null };
+        return { s, best: res && res.best ? res.best : null, current: res ? res.current : null, curSl: s.cfg.sl, curTp: s.cfg.tp };
       } catch { return { s, best: null }; }
     }));
     setState({ loading: false, ran: true, rows });
@@ -928,34 +931,58 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits }) {
   const objBtn = (k, label) => (
     <button key={k} onClick={() => pick(k)} className="tap" style={{ flex: 1, padding: "6px 8px", fontSize: 10.5, fontWeight: 800, border: "none", borderRadius: 7, background: objective === k ? "var(--primary)" : "transparent", color: objective === k ? "var(--on-primary)" : "var(--muted)" }}>{label}</button>
   );
-  const hd = { fontSize: 8.5, color: "var(--muted)", fontWeight: 800 };
+  const th = { fontSize: 8.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", padding: "6px 6px", textAlign: "center", whiteSpace: "nowrap" };
+  const td = { fontSize: 11, fontWeight: 700, padding: "7px 6px", textAlign: "center", borderTop: "1px solid var(--line)", whiteSpace: "nowrap" };
+  const grp = { ...th, background: "var(--elev)", borderRadius: 6 };
+  const metricCells = (m, isNow) => m ? [
+    <td key="w" style={td}>{oWr(m.winRate)}</td>,
+    <td key="s" style={{ ...td, color: "var(--down)" }}>{oCnt(m.slHit)}</td>,
+    <td key="t" style={{ ...td, color: "var(--up)" }}>{oCnt(m.tpHit)}</td>,
+    <td key="p" style={{ ...td, color: (m.pnl || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{oAmt(m.pnl)}</td>,
+    <td key="r" style={{ ...td, color: (m.retPct || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{oPct(m.retPct)}</td>,
+  ] : [<td key="e" style={{ ...td, color: "var(--muted)" }} colSpan={5}>—</td>];
   return (
     <div style={{ marginBottom: 12, border: "1px solid var(--line)", borderRadius: 12, padding: 12, background: "var(--elev)" }}>
-      <div className="disp" style={{ fontSize: 11.5, fontWeight: 800, color: "var(--ink)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}><Sparkles size={13} color="#7C3AED" /> Find ideal SL / TP per strategy — {sym}</div>
       <div className="pill" style={{ display: "inline-flex", background: "var(--surface)", border: "1px solid var(--line)", padding: 3, width: "100%", marginBottom: 8 }}>
         {objBtn("winrate", "Optimize Win rate")}
         {objBtn("pnl", "Optimize P&L")}
       </div>
       <button onClick={() => run()} disabled={loading || !eligible.length} className="tap" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 9, padding: "8px 12px", fontSize: 11, fontWeight: 800, opacity: (loading || !eligible.length) ? 0.6 : 1 }}>
-        <Sparkles size={12} color="#7C3AED" /> {loading ? "Optimising…" : "Find ideal SL / TP"}
+        <Sparkles size={12} color="#7C3AED" /> {loading ? `Optimising ${eligible.length} strategies…` : `Find ideal SL / TP per strategy — ${sym}`}
       </button>
       {ran && !loading && (good.length === 0
         ? <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>Not enough past entry signals on {sym} to optimise these strategies.</div>
         : <div style={{ marginTop: 10 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 2px 4px" }}>
-              <span style={{ ...hd, flex: 1 }}>STRATEGY</span><span style={{ ...hd, width: 46, textAlign: "center", color: "var(--down)" }}>SL</span><span style={{ ...hd, width: 46, textAlign: "center", color: "var(--up)" }}>TP</span><span style={{ ...hd, width: 44, textAlign: "right" }}>WIN</span><span style={{ ...hd, width: 52, textAlign: "right" }}>RET</span>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ borderCollapse: "collapse", minWidth: 720, width: "100%" }}>
+                <thead>
+                  <tr>
+                    <th style={{ ...th, textAlign: "left" }} rowSpan={2}>Strategy</th>
+                    <th style={grp} colSpan={2} rowSpan={2}>Ideal<br/>SL / TP</th>
+                    <th style={{ ...grp, color: "var(--muted)" }} colSpan={5}>Earlier</th>
+                    <th style={{ ...grp, color: "var(--primary)" }} colSpan={5}>Now</th>
+                  </tr>
+                  <tr>
+                    {["Win", "SL hit", "TP hit", "P&L", "Ret"].map((h) => <th key={"e" + h} style={th}>{h}</th>)}
+                    {["Win", "SL hit", "TP hit", "P&L", "Ret"].map((h) => <th key={"n" + h} style={th}>{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {good.map((r) => (
+                    <tr key={r.s.id}>
+                      <td style={{ ...td, textAlign: "left", fontWeight: 800 }}>{r.s.name}</td>
+                      <td style={{ ...td, color: "var(--down)" }}>{r.best.sl}%</td>
+                      <td style={{ ...td, color: "var(--up)" }}>{r.best.tp}%</td>
+                      {metricCells(r.current, false)}
+                      {metricCells(r.best, true)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            {good.map((r) => (
-              <div key={r.s.id} style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--surface)", borderRadius: 8, padding: "6px 9px", marginBottom: 5 }}>
-                <span className="disp" style={{ flex: 1, fontSize: 11.5, fontWeight: 700, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.s.name}</span>
-                <span className="mono" style={{ width: 46, textAlign: "center", fontSize: 11.5, fontWeight: 800, color: "var(--down)" }}>{r.best.sl}%</span>
-                <span className="mono" style={{ width: 46, textAlign: "center", fontSize: 11.5, fontWeight: 800, color: "var(--up)" }}>{r.best.tp}%</span>
-                <span className="mono" style={{ width: 44, textAlign: "right", fontSize: 10.5, fontWeight: 700, color: "var(--muted)" }}>{r.best.winRate != null ? r.best.winRate.toFixed(0) + "%" : "—"}</span>
-                <span className="mono" style={{ width: 52, textAlign: "right", fontSize: 10.5, fontWeight: 700, color: (r.best.retPct || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{(r.best.retPct >= 0 ? "+" : "") + (r.best.retPct || 0).toFixed(1) + "%"}</span>
-              </div>
-            ))}
+            <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 6, fontStyle: "italic" }}>Earlier = each strategy's current SL/TP · Now = ideal. P&L is per 1 unit/contract. Backtested, not a guarantee.</div>
             {onApplyExits && (
-              <button onClick={() => good.forEach((r) => onApplyExits(r.s.id, r.best.sl, r.best.tp))} className="tap" style={{ marginTop: 6, width: "100%", border: "none", background: "#7C3AED", color: "#fff", borderRadius: 9, padding: "9px 0", fontSize: 11.5, fontWeight: 800 }}>
+              <button onClick={() => good.forEach((r) => onApplyExits(r.s.id, r.best.sl, r.best.tp))} className="tap" style={{ marginTop: 8, width: "100%", border: "none", background: "#7C3AED", color: "#fff", borderRadius: 9, padding: "9px 0", fontSize: 11.5, fontWeight: 800 }}>
                 Apply ideal SL / TP to {good.length} strateg{good.length > 1 ? "ies" : "y"}
               </button>
             )}
@@ -1122,7 +1149,7 @@ function BacktestPanel({ strats, market = "IN", onApplyExits }) {
               signals on the chosen symbols. Apply writes the pair back onto the strategy. */}
           {curStrat && curCfg && (curCfg.entry || []).length > 0 && (
             <div style={{ marginBottom: 12, border: "1px solid var(--line)", borderRadius: 12, padding: "4px 12px 12px", background: "var(--elev)" }}>
-              <div className="disp" style={{ fontSize: 11.5, fontWeight: 800, color: "var(--ink)", margin: "10px 0 2px", display: "flex", alignItems: "center", gap: 6 }}><Sparkles size={13} color="#7C3AED" /> Find ideal SL / TP — {curStrat.name}</div>
+              <div className="disp" style={{ fontSize: 11.5, fontWeight: 800, color: "var(--ink)", margin: "10px 0 2px", display: "flex", alignItems: "center", gap: 6 }}><Sparkles size={13} color="#7C3AED" /> Exit optimiser — {curStrat.name}</div>
               <ExitOptimizer
                 defs={curCfg.defs || []}
                 entry={curCfg.entry}
