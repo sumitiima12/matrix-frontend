@@ -775,7 +775,7 @@ function CollapsibleList({ items, render, initial = 3, reverse = true }) {
 /* One row of the strategy-comparison table. Reuses useBacktestStats — the SAME hook the premium
    cards use — so opening the table doesn't fire a fresh burst of history requests (results are
    already cached from the cards). Columns: trades / wins / losses / target-hits / SL-hits / return. */
-function CompareRow({ s, td, opts, onReport }) {
+function CompareRow({ s, td, opts, onReport, market = "IN" }) {
   const { loading, stats } = useBacktestStats(s, opts);
   // Report finished stats up to the panel so it can export the whole table to CSV.
   useEffect(() => { if (onReport && !loading) onReport(s.name, stats); /* eslint-disable-next-line */ }, [loading, stats]);
@@ -789,16 +789,16 @@ function CompareRow({ s, td, opts, onReport }) {
             <td style={td}>{stats.trades}</td>
             <td style={{ ...td, color: "var(--up)" }}>{stats.wins}</td>
             <td style={{ ...td, color: "var(--down)" }}>{stats.losses}</td>
-            <td style={td}>{stats.losses > 0 ? (stats.wins / stats.losses).toFixed(2) : (stats.wins > 0 ? "∞" : "—")}</td>
             <td style={{ ...td, color: (stats.winRate ?? 0) >= 50 ? "var(--up)" : "var(--down)" }}>{stats.winRate != null ? stats.winRate.toFixed(0) + "%" : "—"}</td>
             <td style={{ ...td, color: "var(--up)" }}>{stats.tpHit}</td>
             <td style={{ ...td, color: "var(--down)" }}>{stats.slHit}</td>
             <td style={c(stats.retPct)}>{(stats.retPct >= 0 ? "+" : "") + (stats.retPct || 0).toFixed(1)}%</td>
+            <td style={c(stats.pnl)}>{stats.pnl == null ? "—" : (stats.pnl >= 0 ? "+" : "") + fmt(stats.pnl, market)}</td>
           </>}
     </tr>
   );
 }
-function ComparisonTable({ strats }) {
+function ComparisonTable({ strats, market = "IN" }) {
   if (!strats.length) return <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>No strategies to compare for this market.</div>;
   const th = { fontSize: 9, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".03em", padding: "7px 5px", textAlign: "center", whiteSpace: "nowrap" };
   const td = { fontSize: 11.5, fontWeight: 700, padding: "8px 5px", textAlign: "center", borderTop: "1px solid var(--line)", whiteSpace: "nowrap" };
@@ -807,10 +807,10 @@ function ComparisonTable({ strats }) {
       <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 440 }}>
         <thead><tr>
           <th style={{ ...th, textAlign: "left" }}>Strategy</th>
-          <th style={th}>Trades</th><th style={th}>Wins</th><th style={th}>Loss</th><th style={th}>W/L</th><th style={th}>Win %</th>
-          <th style={th}>Target</th><th style={th}>SL Hit</th><th style={th}>Return</th>
+          <th style={th}>Trades</th><th style={th}>Wins</th><th style={th}>Loss</th><th style={th}>Win %</th>
+          <th style={th}>Target</th><th style={th}>SL Hit</th><th style={th}>Return</th><th style={th}>P&amp;L</th>
         </tr></thead>
-        <tbody>{strats.map((s) => <CompareRow key={s.id} s={s} td={td} />)}</tbody>
+        <tbody>{strats.map((s) => <CompareRow key={s.id} s={s} td={td} market={market} />)}</tbody>
       </table>
     </div>
   );
@@ -818,7 +818,7 @@ function ComparisonTable({ strats }) {
 
 /* One row per SYMBOL for a FIXED strategy (the "Per Strategy" view — the transpose of CompareRow).
    Reuses the exact same useBacktestStats hook, overriding the symbol. */
-function SymbolRow({ strat, sym, td, opts, onReport }) {
+function SymbolRow({ strat, sym, td, opts, onReport, market = "IN" }) {
   const { loading, stats } = useBacktestStats(strat, { ...opts, sym });
   useEffect(() => { if (onReport && !loading) onReport(sym, stats); /* eslint-disable-next-line */ }, [loading, stats]);
   const c = (v) => ({ ...td, color: v >= 0 ? "var(--up)" : "var(--down)" });
@@ -831,11 +831,11 @@ function SymbolRow({ strat, sym, td, opts, onReport }) {
             <td style={td}>{stats.trades}</td>
             <td style={{ ...td, color: "var(--up)" }}>{stats.wins}</td>
             <td style={{ ...td, color: "var(--down)" }}>{stats.losses}</td>
-            <td style={td}>{stats.losses > 0 ? (stats.wins / stats.losses).toFixed(2) : (stats.wins > 0 ? "∞" : "—")}</td>
             <td style={{ ...td, color: (stats.winRate ?? 0) >= 50 ? "var(--up)" : "var(--down)" }}>{stats.winRate != null ? stats.winRate.toFixed(0) + "%" : "—"}</td>
             <td style={{ ...td, color: "var(--up)" }}>{stats.tpHit}</td>
             <td style={{ ...td, color: "var(--down)" }}>{stats.slHit}</td>
             <td style={c(stats.retPct)}>{(stats.retPct >= 0 ? "+" : "") + (stats.retPct || 0).toFixed(1)}%</td>
+            <td style={c(stats.pnl)}>{stats.pnl == null ? "—" : (stats.pnl >= 0 ? "+" : "") + fmt(stats.pnl, market)}</td>
           </>}
     </tr>
   );
@@ -843,16 +843,16 @@ function SymbolRow({ strat, sym, td, opts, onReport }) {
 
 /* Backtest → CSV. `results` maps row label → stats (collected as each row finishes). `order` is the
    row order to emit. `labelHeader` is "Strategy" or "Symbol". */
-const BT_COLS = ["Trades", "Wins", "Loss", "W/L", "Win %", "Target", "SL Hit", "Return %"];
+const BT_COLS = ["Trades", "Wins", "Loss", "Win %", "Target", "SL Hit", "Return %", "P&L"];
 const csvEsc = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
 function statCells(st) {
   if (!st) return ["", "", "", "", "", "", "", ""];
-  const wl = st.losses > 0 ? (st.wins / st.losses).toFixed(2) : (st.wins > 0 ? "Inf" : "-");
   return [
-    st.trades || 0, st.wins || 0, st.losses || 0, wl,
+    st.trades || 0, st.wins || 0, st.losses || 0,
     st.winRate != null ? st.winRate.toFixed(0) + "%" : "-",
     st.tpHit || 0, st.slHit || 0,
     (st.retPct >= 0 ? "+" : "") + (st.retPct || 0).toFixed(1) + "%",
+    st.pnl == null ? "" : (st.pnl >= 0 ? "+" : "") + Math.round(st.pnl),
   ];
 }
 function exportBacktestCsv({ results, order, labelHeader, meta, filename }) {
@@ -910,8 +910,8 @@ function BacktestPanel({ strats, market = "IN" }) {
   const Head = () => (
     <thead><tr>
       <th style={{ ...th, textAlign: "left" }}>{view === "perSymbol" ? "Strategy" : "Symbol"}</th>
-      <th style={th}>Trades</th><th style={th}>Wins</th><th style={th}>Loss</th><th style={th}>W/L</th><th style={th}>Win %</th>
-      <th style={th}>Target</th><th style={th}>SL Hit</th><th style={th}>Return</th>
+      <th style={th}>Trades</th><th style={th}>Wins</th><th style={th}>Loss</th><th style={th}>Win %</th>
+      <th style={th}>Target</th><th style={th}>SL Hit</th><th style={th}>Return</th><th style={th}>P&amp;L</th>
     </tr></thead>
   );
 
@@ -963,7 +963,7 @@ function BacktestPanel({ strats, market = "IN" }) {
               </div>
               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 500 }}>
                 <Head />
-                <tbody>{runSymRows.map((s) => <CompareRow key={s.id + run.tf + run.days + run.sym} s={s} td={td} opts={{ tf: run.tf, days: run.days, sym: run.sym }} onReport={report} />)}</tbody>
+                <tbody>{runSymRows.map((s) => <CompareRow key={s.id + run.tf + run.days + run.sym} s={s} td={td} opts={{ tf: run.tf, days: run.days, sym: run.sym }} onReport={report} market={market} />)}</tbody>
               </table>
             </div>
           )}
@@ -1006,7 +1006,7 @@ function BacktestPanel({ strats, market = "IN" }) {
               </div>
               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 500 }}>
                 <Head />
-                <tbody>{pRun.syms.map((sy) => <SymbolRow key={pStrat.id + pRun.tf + pRun.days + sy} strat={pStrat} sym={sy} td={td} opts={{ tf: pRun.tf, days: pRun.days }} onReport={report} />)}</tbody>
+                <tbody>{pRun.syms.map((sy) => <SymbolRow key={pStrat.id + pRun.tf + pRun.days + sy} strat={pStrat} sym={sy} td={td} opts={{ tf: pRun.tf, days: pRun.days }} onReport={report} market={market} />)}</tbody>
               </table>
             </div>
           )}
@@ -2099,7 +2099,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           </div>
           {/* One-tap comparison table: every premium strategy for THIS market, backtested on the same
               window, side by side. Runs on your real broker data via the same cached backtests. */}
-          {compareOpen && <ComparisonTable strats={premiumStrats.filter((s) => (s.market || marketOf((s.symbols || [])[0])) === market)} />}
+          {compareOpen && <ComparisonTable strats={premiumStrats.filter((s) => (s.market || marketOf((s.symbols || [])[0])) === market)} market={market} />}
           {premiumStrats.length === 0
             ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No premium strategies available.</div>
             : premiumStrats.map((s) => <PremiumStrategyCard key={s.id} s={s} active={activeInMarket(s)} market={market} onToggle={(rs, size, opts) => togglePremiumHere(s.id, rs, size, opts)} onEdit={isAdmin ? loadForEdit : undefined} canBacktest={canBacktest} onConnect={onConnectBroker} />)}
