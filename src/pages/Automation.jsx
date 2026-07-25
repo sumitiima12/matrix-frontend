@@ -813,57 +813,162 @@ function ComparisonTable({ strats }) {
   );
 }
 
-/* ADMIN BACKTESTING PANEL — every premium strategy backtested on a chosen timeframe + period, side by
-   side. Reuses the same useBacktestStats hook (via CompareRow) but overrides tf and trims to the
-   selected window. */
+/* One row per SYMBOL for a FIXED strategy (the "Per Strategy" view — the transpose of CompareRow).
+   Reuses the exact same useBacktestStats hook, overriding the symbol. */
+function SymbolRow({ strat, sym, td, opts }) {
+  const { loading, stats } = useBacktestStats(strat, { ...opts, sym });
+  const c = (v) => ({ ...td, color: v >= 0 ? "var(--up)" : "var(--down)" });
+  return (
+    <tr>
+      <td style={{ ...td, textAlign: "left", fontWeight: 800 }}>{sym}</td>
+      {loading ? <td style={{ ...td, color: "var(--muted)" }} colSpan={8}>backtesting…</td>
+        : !stats || !stats.trades ? <td style={{ ...td, color: "var(--muted)" }} colSpan={8}>{stats ? "no trades" : "no data"}</td>
+        : <>
+            <td style={td}>{stats.trades}</td>
+            <td style={{ ...td, color: "var(--up)" }}>{stats.wins}</td>
+            <td style={{ ...td, color: "var(--down)" }}>{stats.losses}</td>
+            <td style={td}>{stats.losses > 0 ? (stats.wins / stats.losses).toFixed(2) : (stats.wins > 0 ? "∞" : "—")}</td>
+            <td style={{ ...td, color: (stats.winRate ?? 0) >= 50 ? "var(--up)" : "var(--down)" }}>{stats.winRate != null ? stats.winRate.toFixed(0) + "%" : "—"}</td>
+            <td style={{ ...td, color: "var(--up)" }}>{stats.tpHit}</td>
+            <td style={{ ...td, color: "var(--down)" }}>{stats.slHit}</td>
+            <td style={c(stats.retPct)}>{(stats.retPct >= 0 ? "+" : "") + (stats.retPct || 0).toFixed(1)}%</td>
+          </>}
+    </tr>
+  );
+}
+
+/* ADMIN BACKTESTING PANEL — two views:
+   • Per Symbol  : one symbol × many strategies (with a strategy multi-select filter, all by default).
+   • Per Strategy: one strategy × many symbols (symbol multi-select, all by default) — the transpose.
+   Both reuse useBacktestStats and only run on the "Backtest Now" tap, never automatically. */
 function BacktestPanel({ strats, market = "IN" }) {
   const DEF_SYM = { US: "SPX", IN: "NIFTY50", Crypto: "BTC", Commodity: "GOLD", FNO: "NIFTY50" };
-  const [tf, setTf] = useState("5m");
-  const [days, setDays] = useState(180);
-  const [sym, setSym] = useState(DEF_SYM[market] || "NIFTY50");
-  const [run, setRun] = useState(null);   // committed { tf, days, sym } — set only on "Backtest Now"
-  useEffect(() => { setSym(DEF_SYM[market] || "NIFTY50"); setRun(null); /* eslint-disable-next-line */ }, [market]);
+  const [view, setView] = useState("perSymbol");   // perSymbol | perStrategy
   const symOptions = useMemo(() => (UNIVERSE[market] || []).map((s) => s.sym), [market]);
+  const stratNames = useMemo(() => strats.map((s) => s.name), [strats]);
   const TF_OPTS = [["5m", "5 min"], ["15m", "15 min"], ["30m", "30 min"], ["1h", "1 hour"], ["1d", "1 day"]];
   const PERIODS = [[5, "5 days"], [30, "1 month"], [90, "3 months"], [180, "6 months"], [365, "1 year"]];
   const sel = { ...selStyle, flex: "1 1 0", minWidth: 0, fontSize: 12 };
   const th = { fontSize: 9, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".03em", padding: "7px 5px", textAlign: "center", whiteSpace: "nowrap" };
   const td = { fontSize: 11.5, fontWeight: 700, padding: "8px 5px", textAlign: "center", borderTop: "1px solid var(--line)", whiteSpace: "nowrap" };
+
+  // ---- Per Symbol: one symbol, many strategies (strategy multi-select filter, all by default) ----
+  const [tf, setTf] = useState("5m");
+  const [days, setDays] = useState(180);
+  const [sym, setSym] = useState(DEF_SYM[market] || "NIFTY50");
+  const [pickStrats, setPickStrats] = useState([]);           // [] = all strategies
+  const [run, setRun] = useState(null);                       // committed { tf, days, sym, names }
+
+  // ---- Per Strategy: one strategy, many symbols (symbol multi-select, all by default) ----
+  const [pStratId, setPStratId] = useState(strats[0] ? strats[0].id : "");
+  const [pTf, setPTf] = useState("5m");
+  const [pDays, setPDays] = useState(180);
+  const [pSyms, setPSyms] = useState([]);                     // [] = all symbols
+  const [pRun, setPRun] = useState(null);                     // committed { tf, days, syms, id }
+
+  useEffect(() => {
+    setSym(DEF_SYM[market] || "NIFTY50"); setRun(null); setPickStrats([]);
+    setPRun(null); setPSyms([]); setPStratId(strats[0] ? strats[0].id : "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [market]);
+
+  const Head = () => (
+    <thead><tr>
+      <th style={{ ...th, textAlign: "left" }}>{view === "perSymbol" ? "Strategy" : "Symbol"}</th>
+      <th style={th}>Trades</th><th style={th}>Wins</th><th style={th}>Loss</th><th style={th}>W/L</th><th style={th}>Win %</th>
+      <th style={th}>Target</th><th style={th}>SL Hit</th><th style={th}>Return</th>
+    </tr></thead>
+  );
+
+  const runSymRows = run ? strats.filter((s) => run.names.includes(s.name)) : [];
+  const pStrat = pRun ? strats.find((s) => s.id === pRun.id) : null;
+
   return (
     <div className="fade">
-      <div style={{ fontSize: 11.5, color: "var(--muted)", margin: "0 2px 10px", lineHeight: 1.5 }}>
-        Backtest of every premium strategy on real candles for the selected timeframe and period. Results are hindsight, not a promise.
+      {/* View tabs */}
+      <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3, marginBottom: 12 }}>
+        {[["perSymbol", "Per Symbol"], ["perStrategy", "Per Strategy"]].map(([k, l]) => (
+          <button key={k} onClick={() => setView(k)} className="pill tap disp" style={{ padding: "6px 16px", fontSize: 12, fontWeight: 800, border: "none", background: view === k ? "var(--primary)" : "transparent", color: view === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
+        ))}
       </div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-        <label style={{ flex: "1 1 30%", minWidth: 100 }}>
-          <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>SYMBOL</div>
-          <select aria-label="Symbol" value={sym} onChange={(e) => setSym(e.target.value)} style={sel}>{symOptions.map((s) => <option key={s} value={s}>{s}</option>)}</select>
-        </label>
-        <label style={{ flex: "1 1 30%", minWidth: 100 }}>
-          <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>TIMEFRAME</div>
-          <select aria-label="Timeframe" value={tf} onChange={(e) => setTf(e.target.value)} style={sel}>{TF_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-        </label>
-        <label style={{ flex: "1 1 30%", minWidth: 100 }}>
-          <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>PERIOD</div>
-          <select aria-label="Period" value={days} onChange={(e) => setDays(+e.target.value)} style={sel}>{PERIODS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-        </label>
-      </div>
-      {/* Backtesting runs ONLY on this tap — never automatically while you change filters. */}
-      <button onClick={() => setRun({ tf, days, sym })} disabled={!strats.length} className="tap disp" style={{ width: "100%", marginBottom: 12, border: "none", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 800, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", background: strats.length ? "var(--primary)" : "var(--elev)", color: strats.length ? "var(--on-primary)" : "var(--muted)", cursor: strats.length ? "pointer" : "not-allowed" }}>
-        <Activity size={16} /> Backtest Now
-      </button>
-      {!strats.length ? <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>No premium strategies to backtest.</div>
-        : !run ? <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px", textAlign: "center" }}>Set the symbol, timeframe and period, then tap <b>Backtest Now</b>.</div> : (
-        <div className="card" style={{ padding: "6px 10px", overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 500 }}>
-            <thead><tr>
-              <th style={{ ...th, textAlign: "left" }}>Strategy</th>
-              <th style={th}>Trades</th><th style={th}>Wins</th><th style={th}>Loss</th><th style={th}>W/L</th><th style={th}>Win %</th>
-              <th style={th}>Target</th><th style={th}>SL Hit</th><th style={th}>Return</th>
-            </tr></thead>
-            <tbody>{strats.map((s) => <CompareRow key={s.id + run.tf + run.days + run.sym} s={s} td={td} opts={{ tf: run.tf, days: run.days, sym: run.sym }} />)}</tbody>
-          </table>
-        </div>
+
+      {view === "perSymbol" ? (
+        <>
+          <div style={{ fontSize: 11.5, color: "var(--muted)", margin: "0 2px 10px", lineHeight: 1.5 }}>
+            Backtest the chosen strategies on one symbol over the selected timeframe and period. Results are hindsight, not a promise.
+          </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+            <label style={{ flex: "1 1 30%", minWidth: 100 }}>
+              <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>SYMBOL</div>
+              <select aria-label="Symbol" value={sym} onChange={(e) => setSym(e.target.value)} style={sel}>{symOptions.map((s) => <option key={s} value={s}>{s}</option>)}</select>
+            </label>
+            <label style={{ flex: "1 1 30%", minWidth: 100 }}>
+              <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>TIMEFRAME</div>
+              <select aria-label="Timeframe" value={tf} onChange={(e) => setTf(e.target.value)} style={sel}>{TF_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+            </label>
+            <label style={{ flex: "1 1 30%", minWidth: 100 }}>
+              <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>PERIOD</div>
+              <select aria-label="Period" value={days} onChange={(e) => setDays(+e.target.value)} style={sel}>{PERIODS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+            </label>
+          </div>
+          {/* Strategy filter — empty = all (Select All). */}
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>STRATEGIES</div>
+            <MultiSelect label="Strategies" options={stratNames} value={pickStrats} onChange={setPickStrats} allLabel="All strategies" />
+          </div>
+          <button onClick={() => setRun({ tf, days, sym, names: pickStrats.length ? pickStrats : stratNames })} disabled={!strats.length} className="tap disp" style={{ width: "100%", marginBottom: 12, border: "none", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 800, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", background: strats.length ? "var(--primary)" : "var(--elev)", color: strats.length ? "var(--on-primary)" : "var(--muted)", cursor: strats.length ? "pointer" : "not-allowed" }}>
+            <Activity size={16} /> Backtest Now
+          </button>
+          {!strats.length ? <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>No premium strategies to backtest.</div>
+            : !run ? <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px", textAlign: "center" }}>Pick a symbol, timeframe, period and strategies, then tap <b>Backtest Now</b>.</div> : (
+            <div className="card" style={{ padding: "6px 10px", overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 500 }}>
+                <Head />
+                <tbody>{runSymRows.map((s) => <CompareRow key={s.id + run.tf + run.days + run.sym} s={s} td={td} opts={{ tf: run.tf, days: run.days, sym: run.sym }} />)}</tbody>
+              </table>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div style={{ fontSize: 11.5, color: "var(--muted)", margin: "0 2px 10px", lineHeight: 1.5 }}>
+            Backtest ONE strategy across many symbols over the selected timeframe and period. Results are hindsight, not a promise.
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>STRATEGY</div>
+            <select aria-label="Strategy" value={pStratId} onChange={(e) => setPStratId(e.target.value)} style={{ ...sel, width: "100%" }}>
+              {strats.length ? strats.map((s) => <option key={s.id} value={s.id}>{s.name}</option>) : <option value="">No strategies</option>}
+            </select>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+            <label style={{ flex: "1 1 45%", minWidth: 110 }}>
+              <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>TIMEFRAME</div>
+              <select aria-label="Timeframe" value={pTf} onChange={(e) => setPTf(e.target.value)} style={sel}>{TF_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+            </label>
+            <label style={{ flex: "1 1 45%", minWidth: 110 }}>
+              <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>PERIOD</div>
+              <select aria-label="Period" value={pDays} onChange={(e) => setPDays(+e.target.value)} style={sel}>{PERIODS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+            </label>
+          </div>
+          {/* Symbol filter — empty = all (Select All). */}
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>SYMBOLS</div>
+            <MultiSelect label="Symbols" options={symOptions} value={pSyms} onChange={setPSyms} allLabel="All symbols" />
+          </div>
+          <button onClick={() => pStratId && setPRun({ tf: pTf, days: pDays, syms: pSyms.length ? pSyms : symOptions, id: pStratId })} disabled={!strats.length || !pStratId} className="tap disp" style={{ width: "100%", marginBottom: 12, border: "none", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 800, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", background: (strats.length && pStratId) ? "var(--primary)" : "var(--elev)", color: (strats.length && pStratId) ? "var(--on-primary)" : "var(--muted)", cursor: (strats.length && pStratId) ? "pointer" : "not-allowed" }}>
+            <Activity size={16} /> Backtest Now
+          </button>
+          {!strats.length ? <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>No premium strategies to backtest.</div>
+            : !pRun || !pStrat ? <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px", textAlign: "center" }}>Pick a strategy, timeframe, period and symbols, then tap <b>Backtest Now</b>.</div> : (
+            <div className="card" style={{ padding: "6px 10px", overflowX: "auto" }}>
+              <div className="disp" style={{ fontSize: 12, fontWeight: 800, padding: "4px 4px 2px" }}>{pStrat.name} · {pRun.syms.length} symbols</div>
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 500 }}>
+                <Head />
+                <tbody>{pRun.syms.map((sy) => <SymbolRow key={pStrat.id + pRun.tf + pRun.days + sy} strat={pStrat} sym={sy} td={td} opts={{ tf: pRun.tf, days: pRun.days }} />)}</tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
