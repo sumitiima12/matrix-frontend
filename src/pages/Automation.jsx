@@ -20,7 +20,7 @@ import ExitOptimizer from "../components/home/ExitOptimizer";
 import { selStyle } from "../components/common/styles";
 import { downloadCSV } from "../lib/csv";
 import { brokerSymbol } from "../domain/brokerSymbols";
-import { registerAutoBuy, loadAutoBuys, pauseAutoBuy, cancelAutoBuy, setAutoBuyLive } from "../services/brokerService";
+import { registerAutoBuy, loadAutoBuys, pauseAutoBuy, cancelAutoBuy, closeAutoBuy, updateAutoBuy, setAutoBuyLive } from "../services/brokerService";
 
 /**
  * Automation — visual strategy builder, plain-English rules, and backtesting on REAL candles.
@@ -646,6 +646,27 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, market = "IN", canBa
 /* Manager for strategies armed for real-money auto-buy — filtered to the CURRENT market,
    with each strategy's name, live P&L, and pause/cancel. An admin can flip the whole engine
    between LIVE and DRY-RUN here (no server env change needed). */
+/* Inline SL/TP editor for a live position — two small inputs and a Save that appears only when a value
+   changed. Used by both the Real Live and Virtual Live rows. */
+function SlTpEditor({ sl, tp, onSave }) {
+  const [s, setS] = useState(sl != null ? String(sl) : "");
+  const [t, setT] = useState(tp != null ? String(tp) : "");
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setS(sl != null ? String(sl) : ""); setT(tp != null ? String(tp) : ""); }, [sl, tp]);
+  const dirty = String(sl == null ? "" : sl) !== s || String(tp == null ? "" : tp) !== t;
+  const box = { width: 42, textAlign: "center", border: "1px solid var(--line)", background: "var(--elev)", borderRadius: 6, padding: "3px 2px", fontWeight: 800, fontSize: 10.5, color: "var(--ink)" };
+  const save = async () => { setSaving(true); try { await onSave({ sl: s === "" ? 0 : Number(s), tp: t === "" ? 0 : Number(t) }); } finally { setSaving(false); } };
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 5 }}>
+      <input value={s} onChange={(e) => setS(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={box} aria-label="Stop loss %" />
+      <span style={{ fontSize: 8.5, color: "var(--down)", fontWeight: 800 }}>% SL</span>
+      <input value={t} onChange={(e) => setT(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={box} aria-label="Take profit %" />
+      <span style={{ fontSize: 8.5, color: "var(--up)", fontWeight: 800 }}>% TP</span>
+      {dirty && <button onClick={save} disabled={saving} className="tap" style={{ border: "none", background: "var(--primary)", color: "var(--on-primary)", borderRadius: 6, padding: "3px 8px", fontSize: 9, fontWeight: 800 }}>{saving ? "…" : "Save"}</button>}
+    </div>
+  );
+}
+
 function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" }) {
   const [data, setData] = useState({ strategies: [], engineLive: false });
   const [busy, setBusy] = useState(false);
@@ -670,6 +691,21 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
     await cancelAutoBuy(userId, s.id);
     refresh();
   };
+  /* Stop = CLOSE the position now: a reduce-only market SELL that flattens it at the broker, then stops
+     the strategy. Real money moves, so we confirm first. */
+  const doClose = async (s) => {
+    if (typeof window !== "undefined" && !window.confirm(`Close ${s.name || s.symbol} now?\n\nThis places a market SELL to flatten the position at ${s.broker}. This cannot be undone.`)) return;
+    setData((d) => ({ ...d, strategies: (d.strategies || []).map((x) => x.id === s.id ? { ...x, inPosition: false, status: "cancelled" } : x) }));
+    try { const r = await closeAutoBuy(userId, s.id); if (r && r.dryRun) alert("Engine is in dry-run — position marked closed, no real order was placed."); }
+    catch (e) { alert(String(e.message || e)); }
+    refresh();
+  };
+  /* Persist a new SL/TP to the strategy AND its open managed position (exit engine acts on it). */
+  const doUpdate = async (s, { sl, tp }) => {
+    setData((d) => ({ ...d, strategies: (d.strategies || []).map((x) => x.id === s.id ? { ...x, sl, tp } : x) }));
+    try { await updateAutoBuy(userId, s.id, { sl, tp }); } catch (e) { alert(String(e.message || e)); }
+    refresh();
+  };
   const toggleLive = async () => {
     if (!isAdmin || !adminKey) return;
     setBusy(true);
@@ -690,7 +726,7 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
     <div className="card" style={{ padding: 14, marginBottom: 12, border: "1px solid var(--down)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <Bolt size={15} color="var(--down)" />
-        <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>Live</div>
+        <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>Real Live</div>
         {isAdmin && adminKey
           ? <button onClick={toggleLive} disabled={busy} className="tap disp" style={{ marginLeft: "auto", fontSize: 9, fontWeight: 800, padding: "4px 10px", borderRadius: 999, border: "1px solid " + (data.engineLive ? "var(--down)" : "var(--line)"), background: data.engineLive ? "var(--down-soft)" : "var(--elev)", color: data.engineLive ? "var(--down)" : "var(--muted)" }}>{busy ? "…" : (data.engineLive ? "● TRADING LIVE — tap to pause" : "DRY-RUN — tap to GO LIVE")}</button>
           : <span className="pill" style={{ marginLeft: "auto", fontSize: 9, fontWeight: 800, padding: "3px 8px", background: data.engineLive ? "var(--down-soft)" : "var(--elev)", color: data.engineLive ? "var(--down)" : "var(--muted)" }}>{data.engineLive ? "TRADING LIVE" : "DRY-RUN"}</span>}
@@ -711,7 +747,9 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
           <div style={{ minWidth: 0 }}>
             <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{s.name || s.symbol} {s.status === "paused" && <span style={{ color: "var(--muted)", fontWeight: 700 }}>· paused</span>}</div>
             <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600, marginTop: 1 }}>{s.symbol} · {s.broker}</div>
-            <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>{ccy}{s.notional} / trade · {s.tp ? `TP ${s.tp}% ` : ""}{s.sl ? `SL ${s.sl}%` : ""}</div>
+            <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>{ccy}{s.notional} / trade</div>
+            {/* Editable SL/TP — persisted to the strategy + its open position (exit engine acts on it). */}
+            <SlTpEditor sl={s.sl} tp={s.tp} onSave={(v) => doUpdate(s, v)} />
             {/* Order status of the last attempt — a rejected order shows WHY (e.g. insufficient
                 balance), so it's never mistaken for a silent no-op. */}
             {s.lastOrderStatus === "rejected" && (
@@ -745,7 +783,7 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
                     : <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }} title="Buys automatically when your entry rule fires on live candles.">waiting for entry</div>}
             <div style={{ display: "flex", gap: 6 }}>
               <button onClick={() => doPause(s)} className="tap" style={{ border: "1px solid " + (s.status === "active" ? "var(--line)" : "var(--up)"), background: s.status === "active" ? "transparent" : "var(--up-soft)", color: s.status === "active" ? "var(--muted)" : "var(--up)", borderRadius: 8, padding: "3px 9px", fontSize: 10, fontWeight: 800 }}>{s.status === "active" ? "❚❚ Pause" : "▶ Start"}</button>
-              <button onClick={() => doCancel(s)} className="tap" style={{ border: "1px solid var(--down)", background: "transparent", color: "var(--down)", borderRadius: 8, padding: "3px 8px", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 2 }}><X size={10} /> Stop</button>
+              <button onClick={() => doClose(s)} className="tap" title="Close the position now (market sell) and stop the strategy" style={{ border: "1px solid var(--down)", background: "var(--down-soft)", color: "var(--down)", borderRadius: 8, padding: "3px 8px", fontSize: 10, fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 2 }}><X size={10} /> Stop &amp; sell</button>
             </div>
           </div>
         </div>
@@ -1104,7 +1142,7 @@ function StrategyPnLView({ strats, trades, market, onDelete }) {
     </div>
   );
 }
-export default function Automation({ market = "IN", appMode = "virtual", onRecord, trades = [], strats = [], setStrats, onExitAll, me = null, isAdmin = false, userId = null, brokerFor = null, adminKey = "", onConnectBroker = null }) {
+export default function Automation({ market = "IN", appMode = "virtual", onRecord, trades = [], strats = [], setStrats, onExitAll, onCloseStrategy = null, me = null, isAdmin = false, userId = null, brokerFor = null, adminKey = "", onConnectBroker = null }) {
   /* Backtesting Indian stocks needs real history, which — for compliance — can only come from the
      user's OWN connected broker (or the owner's house feed). Crypto (Delta) and US (Yahoo) have
      usable public/delayed feeds, so those don't require a broker. */
@@ -1843,12 +1881,19 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
            it taking new signals; Stop removes it from the deployed list (deactivates it). Both just
            flip flags on the local strategy — there's no broker involved in paper mode. */
         const vPause = (s) => setStrats((p) => p.map((x) => x.id === s.id ? { ...x, paused: !x.paused } : x));
-        const vStop = (s) => setStrats((p) => p.map((x) => x.id === s.id ? { ...x, active: false } : x));
+        /* Stop = close the open paper position(s) at the live price (realising P&L), then deactivate. */
+        const vStop = (s) => {
+          if (typeof window !== "undefined" && !window.confirm(`Close ${s.name || (s.symbols && s.symbols[0]) || "this strategy"} now? This sells its open paper position at the live price.`)) return;
+          if (onCloseStrategy) onCloseStrategy(s.id);
+          else setStrats((p) => p.map((x) => x.id === s.id ? { ...x, active: false } : x));
+        };
+        /* Edit SL/TP → persisted onto the strategy's exit config so the paper exit engine uses them. */
+        const vUpdate = (s, { sl, tp }) => setStrats((p) => p.map((x) => x.id === s.id ? { ...x, cfg: { ...(x.cfg || {}), sl: sl || null, tp: tp || null } } : x));
         return (
           <div className="card" style={{ padding: 14, marginTop: 12, border: "1px solid var(--primary)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
               <Sparkles size={15} color="var(--primary)" />
-              <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>Live</div>
+              <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>Virtual Live</div>
               <span className="pill" style={{ marginLeft: "auto", fontSize: 9, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: "var(--muted)" }}>PAPER</span>
             </div>
             <CollapsibleList items={vd} initial={5} reverse={false} render={({ s, p }) => (
@@ -1857,6 +1902,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                   <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{s.name || (s.symbols && s.symbols[0]) || "Strategy"}{s.paused && <span style={{ color: "var(--muted)", fontWeight: 700 }}> · paused</span>}</div>
                   <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600, marginTop: 1 }}>{(s.symbols || []).join(", ") || "—"} · Created by {creatorOf(s)}</div>
                   <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>{p.positions} position{p.positions === 1 ? "" : "s"}{p.open ? ` · ${p.open} open` : ""}{p.winRate != null ? ` · ${p.winRate.toFixed(0)}% win` : ""}</div>
+                  <SlTpEditor sl={s.cfg && s.cfg.sl != null ? s.cfg.sl : null} tp={s.cfg && s.cfg.tp != null ? s.cfg.tp : null} onSave={(v) => vUpdate(s, v)} />
                 </div>
                 <div style={{ marginLeft: "auto", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
                   {/* Show combined realised + unrealised P&L whenever the strategy holds ANY position. */}
@@ -1868,7 +1914,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
                     <button onClick={() => vPause(s)} className="tap" style={{ border: "1px solid " + (s.paused ? "var(--up)" : "var(--line)"), background: s.paused ? "var(--up-soft)" : "transparent", color: s.paused ? "var(--up)" : "var(--muted)", borderRadius: 8, padding: "3px 9px", fontSize: 10, fontWeight: 800 }}>{s.paused ? "▶ Start" : "❚❚ Pause"}</button>
-                    <button onClick={() => vStop(s)} className="tap" style={{ border: "1px solid var(--down)", background: "transparent", color: "var(--down)", borderRadius: 8, padding: "3px 8px", fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 2 }}><X size={10} /> Stop</button>
+                    <button onClick={() => vStop(s)} className="tap" title="Sell the open paper position now and stop the strategy" style={{ border: "1px solid var(--down)", background: "var(--down-soft)", color: "var(--down)", borderRadius: 8, padding: "3px 8px", fontSize: 10, fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 2 }}><X size={10} /> Stop &amp; sell</button>
                   </div>
                 </div>
               </div>

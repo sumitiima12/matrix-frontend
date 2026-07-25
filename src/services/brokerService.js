@@ -353,6 +353,22 @@ export async function cancelAutoBuy(userId, id) {
   if (!BACKEND_URL) return;
   try { await fetch(`${BACKEND_URL}/api/autobuy/cancel`, { method: "POST", headers: { "Content-Type": "application/json", ...tokenHdr(), "X-User-Id": String(userId || "") }, body: JSON.stringify({ id }) }); } catch { /* ignore */ }
 }
+/** Close a live position NOW — reduce-only market sell that flattens it and stops the strategy. */
+export async function closeAutoBuy(userId, id) {
+  if (!BACKEND_URL) throw new Error("no-backend");
+  const r = await fetch(`${BACKEND_URL}/api/autobuy/close`, { method: "POST", headers: { "Content-Type": "application/json", ...tokenHdr(), "X-User-Id": String(userId || "") }, body: JSON.stringify({ id }) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || d.error) throw new Error(d.error || "Couldn't close the position");
+  return d;
+}
+/** Update a live strategy's SL/TP — persisted to the strategy and its open managed position. */
+export async function updateAutoBuy(userId, id, { sl, tp } = {}) {
+  if (!BACKEND_URL) throw new Error("no-backend");
+  const r = await fetch(`${BACKEND_URL}/api/autobuy/update`, { method: "POST", headers: { "Content-Type": "application/json", ...tokenHdr(), "X-User-Id": String(userId || "") }, body: JSON.stringify({ id, sl, tp }) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || d.error) throw new Error(d.error || "Couldn't update SL/TP");
+  return d;
+}
 /** Admin flips the whole auto-buy engine LIVE / dry-run at runtime. */
 export async function setAutoBuyLive(adminKey, on) {
   if (!BACKEND_URL) return { ok: false };

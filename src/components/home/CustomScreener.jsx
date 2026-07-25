@@ -120,21 +120,30 @@ function FilterRows({ conds, setConds, placeholder, allowEmpty = false }) {
 const OPT_CAP = 20;
 function PerSymbolOptimizer({ entry, syms, market, onApplyAll }) {
   const [state, setState] = useState({ loading: false, rows: null, ran: false });
-  const run = async () => {
+  const [objective, setObjective] = useState("pnl");   // "pnl" | "winrate"
+  const run = async (obj = objective) => {
     if (!entry || !entry.length || !syms || !syms.length) { setState({ loading: false, ran: true, rows: [] }); return; }
     setState({ loading: true, rows: null, ran: true });
     const capped = syms.slice(0, OPT_CAP);
     const rows = await Promise.all(capped.map(async (sym) => {
-      try { const res = await optimizeExits({ mode: "metric", entry, tf: "1d", appSyms: [sym] }); return { sym, best: res && res.best ? res.best : null }; }
+      try { const res = await optimizeExits({ mode: "metric", entry, tf: "1d", appSyms: [sym], objective: obj }); return { sym, best: res && res.best ? res.best : null }; }
       catch { return { sym, best: null }; }
     }));
     setState({ loading: false, ran: true, rows });
   };
+  const pickObjective = (obj) => { setObjective(obj); if (state.ran && !state.loading) run(obj); };
   const { loading, rows, ran } = state;
   const good = (rows || []).filter((r) => r.best);
+  const objBtn = (k, label) => (
+    <button key={k} onClick={() => pickObjective(k)} className="tap" style={{ flex: 1, padding: "6px 8px", fontSize: 10.5, fontWeight: 800, border: "none", borderRadius: 7, background: objective === k ? "var(--primary)" : "transparent", color: objective === k ? "var(--on-primary)" : "var(--muted)" }}>{label}</button>
+  );
   return (
     <div style={{ marginTop: 14, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
-      <button onClick={run} disabled={loading || !entry.length || !syms.length} className="tap"
+      <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3, width: "100%", marginBottom: 8 }}>
+        {objBtn("winrate", "Optimize Win rate")}
+        {objBtn("pnl", "Optimize P&L")}
+      </div>
+      <button onClick={() => run()} disabled={loading || !entry.length || !syms.length} className="tap"
         style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 9, padding: "8px 12px", fontSize: 11.5, fontWeight: 800, opacity: (loading || !entry.length || !syms.length) ? 0.6 : 1 }}>
         <Sparkles size={13} color="#7C3AED" /> {loading ? "Optimising…" : "Find ideal SL / TP per symbol"}
       </button>
