@@ -9,7 +9,7 @@ import { chgColor, clamp, fmt, pct } from "../lib/format";
 import { useBacktestStats } from "../hooks/useBacktestStats";
 import { SMAarr, EMAarr, RSIarr, MACDarr, BBarr, CCIarr, ATRarr, VWAParr, ADXarr, CF } from "../lib/series";
 import { ALL, UNIVERSE, marketOf } from "../domain/universe";
-import { apiListPublicStrategies, apiPublishStrategy, apiUnpublishStrategy, aiInterpretStrategyAI } from "../domain/api";
+import { apiListPublicStrategies, apiPublishStrategy, apiUnpublishStrategy, aiInterpretStrategyAI, optimizeExits } from "../domain/api";
 import { humanizeStrategy, humanizeCond, PATTERN_EXPLAIN, patternsInConds, suggestStrategy } from "../domain/strategyLang";
 /* Neo's plain-English read-back of a set of conditions: "a Cup & Handle forms, and RSI is below 40". */
 const neoReads = (conds) => (conds || []).map((c, i) => `${i ? (c.gate === "OR" ? "or " : "and ") : ""}${humanizeCond(c)}`).join(", ");
@@ -281,10 +281,10 @@ const IND_PARAMS = {
   Stoch: [["smoothK", "Smooth %K", "3"], ["smoothD", "Smooth %D", "3"]],
   Supertrend: [["mult", "Multiplier", "3"]],
 };
-export function IndicatorDefs({ defs, setDefs }) {
+export function IndicatorDefs({ defs, setDefs, defaultTf = "1D" }) {
   const [openId, setOpenId] = useState(null);   // which indicator's settings panel is expanded
   const upd = (id, k, v) => setDefs((p) => p.map((d) => d.id === id ? { ...d, [k]: v } : d));
-  const add = () => setDefs((p) => [...p, { id: Date.now(), type: "EMA", len: "20", tf: "1D", name: "IND" + (p.length + 1) }]);
+  const add = () => setDefs((p) => [...p, { id: Date.now(), type: "EMA", len: "20", tf: defaultTf, name: "IND" + (p.length + 1) }]);
   return (
     <div>
       <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 10, lineHeight: 1.5, background: "var(--elev)", border: "1px solid var(--line)", borderRadius: 10, padding: "8px 10px" }}>
@@ -903,6 +903,67 @@ function exportBacktestCsv({ results, order, labelHeader, meta, filename }) {
   downloadCSV(filename, lines.join("\n"));
 }
 
+/* PER-STRATEGY ideal SL/TP for ONE symbol (used in the Backtest "Per Symbol" view). For each strategy
+   it grid-searches the ideal exits on the selected symbol and lists them; "Apply all" writes each
+   strategy's ideal back onto its config. Capped for cost. */
+const PSO_CAP = 10;
+function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits }) {
+  const [objective, setObjective] = useState("pnl");
+  const [state, setState] = useState({ loading: false, rows: null, ran: false });
+  const eligible = (strats || []).filter((s) => s.cfg && (s.cfg.entry || []).length > 0).slice(0, PSO_CAP);
+  const run = async (obj = objective) => {
+    if (!sym || !eligible.length) { setState({ loading: false, ran: true, rows: [] }); return; }
+    setState({ loading: true, rows: null, ran: true });
+    const rows = await Promise.all(eligible.map(async (s) => {
+      try {
+        const res = await optimizeExits({ mode: s.cfg.mode === "metric" ? "metric" : undefined, defs: s.cfg.defs || [], entry: s.cfg.entry, tf, appSyms: [sym], currentSl: s.cfg.sl != null ? Number(s.cfg.sl) : null, currentTp: s.cfg.tp != null ? Number(s.cfg.tp) : null, objective: obj });
+        return { s, best: res && res.best ? res.best : null };
+      } catch { return { s, best: null }; }
+    }));
+    setState({ loading: false, ran: true, rows });
+  };
+  const pick = (obj) => { setObjective(obj); if (state.ran && !state.loading) run(obj); };
+  const { loading, rows, ran } = state;
+  const good = (rows || []).filter((r) => r.best);
+  const objBtn = (k, label) => (
+    <button key={k} onClick={() => pick(k)} className="tap" style={{ flex: 1, padding: "6px 8px", fontSize: 10.5, fontWeight: 800, border: "none", borderRadius: 7, background: objective === k ? "var(--primary)" : "transparent", color: objective === k ? "var(--on-primary)" : "var(--muted)" }}>{label}</button>
+  );
+  const hd = { fontSize: 8.5, color: "var(--muted)", fontWeight: 800 };
+  return (
+    <div style={{ marginBottom: 12, border: "1px solid var(--line)", borderRadius: 12, padding: 12, background: "var(--elev)" }}>
+      <div className="disp" style={{ fontSize: 11.5, fontWeight: 800, color: "var(--ink)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}><Sparkles size={13} color="#7C3AED" /> Find ideal SL / TP per strategy — {sym}</div>
+      <div className="pill" style={{ display: "inline-flex", background: "var(--surface)", border: "1px solid var(--line)", padding: 3, width: "100%", marginBottom: 8 }}>
+        {objBtn("winrate", "Optimize Win rate")}
+        {objBtn("pnl", "Optimize P&L")}
+      </div>
+      <button onClick={() => run()} disabled={loading || !eligible.length} className="tap" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 9, padding: "8px 12px", fontSize: 11, fontWeight: 800, opacity: (loading || !eligible.length) ? 0.6 : 1 }}>
+        <Sparkles size={12} color="#7C3AED" /> {loading ? "Optimising…" : "Find ideal SL / TP"}
+      </button>
+      {ran && !loading && (good.length === 0
+        ? <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>Not enough past entry signals on {sym} to optimise these strategies.</div>
+        : <div style={{ marginTop: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 2px 4px" }}>
+              <span style={{ ...hd, flex: 1 }}>STRATEGY</span><span style={{ ...hd, width: 46, textAlign: "center", color: "var(--down)" }}>SL</span><span style={{ ...hd, width: 46, textAlign: "center", color: "var(--up)" }}>TP</span><span style={{ ...hd, width: 44, textAlign: "right" }}>WIN</span><span style={{ ...hd, width: 52, textAlign: "right" }}>RET</span>
+            </div>
+            {good.map((r) => (
+              <div key={r.s.id} style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--surface)", borderRadius: 8, padding: "6px 9px", marginBottom: 5 }}>
+                <span className="disp" style={{ flex: 1, fontSize: 11.5, fontWeight: 700, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.s.name}</span>
+                <span className="mono" style={{ width: 46, textAlign: "center", fontSize: 11.5, fontWeight: 800, color: "var(--down)" }}>{r.best.sl}%</span>
+                <span className="mono" style={{ width: 46, textAlign: "center", fontSize: 11.5, fontWeight: 800, color: "var(--up)" }}>{r.best.tp}%</span>
+                <span className="mono" style={{ width: 44, textAlign: "right", fontSize: 10.5, fontWeight: 700, color: "var(--muted)" }}>{r.best.winRate != null ? r.best.winRate.toFixed(0) + "%" : "—"}</span>
+                <span className="mono" style={{ width: 52, textAlign: "right", fontSize: 10.5, fontWeight: 700, color: (r.best.retPct || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{(r.best.retPct >= 0 ? "+" : "") + (r.best.retPct || 0).toFixed(1) + "%"}</span>
+              </div>
+            ))}
+            {onApplyExits && (
+              <button onClick={() => good.forEach((r) => onApplyExits(r.s.id, r.best.sl, r.best.tp))} className="tap" style={{ marginTop: 6, width: "100%", border: "none", background: "#7C3AED", color: "#fff", borderRadius: 9, padding: "9px 0", fontSize: 11.5, fontWeight: 800 }}>
+                Apply ideal SL / TP to {good.length} strateg{good.length > 1 ? "ies" : "y"}
+              </button>
+            )}
+          </div>)}
+    </div>
+  );
+}
+
 /* ADMIN BACKTESTING PANEL — two views:
    • Per Symbol  : one symbol × many strategies (with a strategy multi-select filter, all by default).
    • Per Strategy: one strategy × many symbols (symbol multi-select, all by default) — the transpose.
@@ -1006,6 +1067,12 @@ function BacktestPanel({ strats, market = "IN", onApplyExits }) {
             <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>STRATEGIES</div>
             <MultiSelect label="Strategies" options={stratNames} value={pickStrats} onChange={setPickStrats} allLabel="All strategies" />
           </div>
+
+          {/* Ideal SL/TP for EACH strategy on the selected symbol. */}
+          {strats.length > 0 && (
+            <PerSymbolStrategyOptimizer strats={pickStrats.length ? strats.filter((s) => pickStrats.includes(s.name)) : strats} sym={sym} tf={tf} onApplyExits={onApplyExits} />
+          )}
+
           <button onClick={() => { setResults({}); setRun({ tf, days, sym, names: pickStrats.length ? pickStrats : stratNames, ...sizing() }); }} disabled={!strats.length} className="tap disp" style={{ width: "100%", marginBottom: 12, border: "none", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 800, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", background: strats.length ? "var(--primary)" : "var(--elev)", color: strats.length ? "var(--on-primary)" : "var(--muted)", cursor: strats.length ? "pointer" : "not-allowed" }}>
             <Activity size={16} /> Backtest Now
           </button>
@@ -1050,26 +1117,28 @@ function BacktestPanel({ strats, market = "IN", onApplyExits }) {
             <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>SYMBOLS</div>
             <MultiSelect label="Symbols" options={symOptions} value={pSyms} onChange={setPSyms} allLabel="All symbols" />
           </div>
-          <button onClick={() => { if (pStratId) { setResults({}); setPRun({ tf: pTf, days: pDays, syms: pSyms.length ? pSyms : symOptions, id: pStratId, ...sizing() }); } }} disabled={!strats.length || !pStratId} className="tap disp" style={{ width: "100%", marginBottom: 12, border: "none", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 800, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", background: (strats.length && pStratId) ? "var(--primary)" : "var(--elev)", color: (strats.length && pStratId) ? "var(--on-primary)" : "var(--muted)", cursor: (strats.length && pStratId) ? "pointer" : "not-allowed" }}>
-            <Activity size={16} /> Backtest Now
-          </button>
 
           {/* Ideal SL/TP optimiser for the selected strategy — grid-search over its own past entry
               signals on the chosen symbols. Apply writes the pair back onto the strategy. */}
-          {curStrat && curCfg && Array.isArray(curCfg.entry) && curCfg.entry.length > 0 && (
-            <div style={{ marginBottom: 12, border: "1px solid var(--line)", borderRadius: 12, padding: "4px 12px 12px" }}>
-              <div className="disp" style={{ fontSize: 11.5, fontWeight: 800, color: "var(--muted)", margin: "10px 0 2px" }}>Ideal SL / TP — {curStrat.name}</div>
+          {curStrat && curCfg && (curCfg.entry || []).length > 0 && (
+            <div style={{ marginBottom: 12, border: "1px solid var(--line)", borderRadius: 12, padding: "4px 12px 12px", background: "var(--elev)" }}>
+              <div className="disp" style={{ fontSize: 11.5, fontWeight: 800, color: "var(--ink)", margin: "10px 0 2px", display: "flex", alignItems: "center", gap: 6 }}><Sparkles size={13} color="#7C3AED" /> Find ideal SL / TP — {curStrat.name}</div>
               <ExitOptimizer
                 defs={curCfg.defs || []}
                 entry={curCfg.entry}
                 tf={pTf}
                 appSyms={pSyms.length ? pSyms.slice(0, 8) : symOptions.slice(0, 8)}
-                currentSl={curCfg.sl != null ? curCfg.sl : null}
-                currentTp={curCfg.tp != null ? curCfg.tp : null}
+                currentSl={curCfg.sl != null ? Number(curCfg.sl) : null}
+                currentTp={curCfg.tp != null ? Number(curCfg.tp) : null}
                 onApply={onApplyExits ? (sl, tp) => onApplyExits(curStrat.id, sl, tp) : undefined}
               />
             </div>
           )}
+
+          <button onClick={() => { if (pStratId) { setResults({}); setPRun({ tf: pTf, days: pDays, syms: pSyms.length ? pSyms : symOptions, id: pStratId, ...sizing() }); } }} disabled={!strats.length || !pStratId} className="tap disp" style={{ width: "100%", marginBottom: 12, border: "none", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 800, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", background: (strats.length && pStratId) ? "var(--primary)" : "var(--elev)", color: (strats.length && pStratId) ? "var(--on-primary)" : "var(--muted)", cursor: (strats.length && pStratId) ? "pointer" : "not-allowed" }}>
+            <Activity size={16} /> Backtest Now
+          </button>
+
           {!strats.length ? <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>No premium strategies to backtest.</div>
             : !pRun || !pStrat ? <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px", textAlign: "center" }}>Pick a strategy, timeframe, period and symbols, then tap <b>Backtest Now</b>.</div> : (
             <div className="card" style={{ padding: "6px 10px", overflowX: "auto" }}>
@@ -1190,10 +1259,10 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const creator = me || "You";   // the "created by" tag for anything this user makes
   const [mode, setMode] = useState("plain");   // plain English is the default entry point
   const [defs, setDefs] = useState([
-    { id: 1, type: "EMA", len: "50", tf: "1D", name: "EMA1" },
-    { id: 2, type: "EMA", len: "200", tf: "1D", name: "EMA2" },
-    { id: 3, type: "RSI", len: "14", tf: "15m", name: "RSI1" },
-    { id: 4, type: "MACD", len: "", tf: "3m", name: "MACD1" },
+    { id: 1, type: "EMA", len: "50", tf: "5m", name: "EMA1" },
+    { id: 2, type: "EMA", len: "200", tf: "5m", name: "EMA2" },
+    { id: 3, type: "RSI", len: "14", tf: "5m", name: "RSI1" },
+    { id: 4, type: "MACD", len: "", tf: "5m", name: "MACD1" },
   ]);
   const operands = useMemo(() => ["Price", "Volume", ...defOperands(defs)], [defs]);
   const [entryConds, setEntryConds] = useState([
@@ -1473,7 +1542,9 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     const cfg = t.cfg || {};
     setMode("builder");
     setShowBuilder(true);
-    setDefs((cfg.defs || []).map((d, i) => ({ id: Date.now() + i, tf: d.tf || "1D", ...d })));
+    // Every template indicator adopts the timeframe the user has selected in Step 1 (not the template's
+    // own tf), so a 5-minute strategy doesn't silently load indicators on the daily chart.
+    setDefs((cfg.defs || []).map((d, i) => ({ ...d, id: Date.now() + i, tf })));
     setEntryConds((cfg.entry || []).map((c) => ({ ...c })));
     setExitConds((cfg.exit || []).map((c) => ({ ...c })));
     if (cfg.sl != null) setSl(String(cfg.sl));
@@ -2010,7 +2081,16 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                   <span className="pill gold-text" style={{ fontWeight: 800, fontSize: 12 }}>STEP 1</span> Your indicators
                 </div>
                 <div className="gold-line" style={{ width: 40, margin: "10px 0 14px", borderRadius: 2 }} />
-                <IndicatorDefs defs={defs} setDefs={setDefs} />
+                {/* Timeframe — the default for every indicator. Changing it re-times all indicators to it,
+                    just like the Plain-English builder's timeframe. */}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                  <span style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 800 }}>Timeframe</span>
+                  <select aria-label="Timeframe" value={tf} onChange={(e) => { const v = e.target.value; setTf(v); setDefs((p) => p.map((d) => ({ ...d, tf: v }))); }} style={{ ...selStyle, flex: "0 0 auto", width: "auto", fontSize: 12.5, fontWeight: 700 }}>
+                    {TFS.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                  <span style={{ fontSize: 10, color: "var(--muted)" }}>applies to all indicators</span>
+                </div>
+                <IndicatorDefs defs={defs} setDefs={setDefs} defaultTf={tf} />
               </div>
             </>
           )}
