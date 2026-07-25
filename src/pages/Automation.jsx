@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { defOperands, chainCode, IND_CATALOG, TEMPLATES, detectTf, detectAllTfs, tfMinutes } from "../domain/strategyLang";
 import { backtest, parseRules } from "../domain/backtest";
 import { stratPerf } from "../domain/strategies";
@@ -17,6 +17,7 @@ import { useCandles } from "../hooks/useCandles";
 import OptionLeg from "../components/common/OptionLeg";
 import MultiSelect from "../components/common/MultiSelect";
 import { selStyle } from "../components/common/styles";
+import { downloadCSV } from "../lib/csv";
 import { brokerSymbol } from "../domain/brokerSymbols";
 import { registerAutoBuy, loadAutoBuys, pauseAutoBuy, cancelAutoBuy, setAutoBuyLive } from "../services/brokerService";
 
@@ -774,8 +775,10 @@ function CollapsibleList({ items, render, initial = 3, reverse = true }) {
 /* One row of the strategy-comparison table. Reuses useBacktestStats — the SAME hook the premium
    cards use — so opening the table doesn't fire a fresh burst of history requests (results are
    already cached from the cards). Columns: trades / wins / losses / target-hits / SL-hits / return. */
-function CompareRow({ s, td, opts }) {
+function CompareRow({ s, td, opts, onReport }) {
   const { loading, stats } = useBacktestStats(s, opts);
+  // Report finished stats up to the panel so it can export the whole table to CSV.
+  useEffect(() => { if (onReport && !loading) onReport(s.name, stats); /* eslint-disable-next-line */ }, [loading, stats]);
   const c = (v) => ({ ...td, color: v >= 0 ? "var(--up)" : "var(--down)" });
   return (
     <tr>
@@ -815,8 +818,9 @@ function ComparisonTable({ strats }) {
 
 /* One row per SYMBOL for a FIXED strategy (the "Per Strategy" view — the transpose of CompareRow).
    Reuses the exact same useBacktestStats hook, overriding the symbol. */
-function SymbolRow({ strat, sym, td, opts }) {
+function SymbolRow({ strat, sym, td, opts, onReport }) {
   const { loading, stats } = useBacktestStats(strat, { ...opts, sym });
+  useEffect(() => { if (onReport && !loading) onReport(sym, stats); /* eslint-disable-next-line */ }, [loading, stats]);
   const c = (v) => ({ ...td, color: v >= 0 ? "var(--up)" : "var(--down)" });
   return (
     <tr>
@@ -835,6 +839,29 @@ function SymbolRow({ strat, sym, td, opts }) {
           </>}
     </tr>
   );
+}
+
+/* Backtest → CSV. `results` maps row label → stats (collected as each row finishes). `order` is the
+   row order to emit. `labelHeader` is "Strategy" or "Symbol". */
+const BT_COLS = ["Trades", "Wins", "Loss", "W/L", "Win %", "Target", "SL Hit", "Return %"];
+const csvEsc = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
+function statCells(st) {
+  if (!st) return ["", "", "", "", "", "", "", ""];
+  const wl = st.losses > 0 ? (st.wins / st.losses).toFixed(2) : (st.wins > 0 ? "Inf" : "-");
+  return [
+    st.trades || 0, st.wins || 0, st.losses || 0, wl,
+    st.winRate != null ? st.winRate.toFixed(0) + "%" : "-",
+    st.tpHit || 0, st.slHit || 0,
+    (st.retPct >= 0 ? "+" : "") + (st.retPct || 0).toFixed(1) + "%",
+  ];
+}
+function exportBacktestCsv({ results, order, labelHeader, meta, filename }) {
+  const lines = [];
+  meta.forEach(([k, v]) => lines.push([csvEsc(k), csvEsc(v)].join(",")));
+  if (meta.length) lines.push("");
+  lines.push([labelHeader, ...BT_COLS].map(csvEsc).join(","));
+  order.forEach((label) => lines.push([label, ...statCells(results[label])].map(csvEsc).join(",")));
+  downloadCSV(filename, lines.join("\n"));
 }
 
 /* ADMIN BACKTESTING PANEL — two views:
@@ -866,11 +893,19 @@ function BacktestPanel({ strats, market = "IN" }) {
   const [pSyms, setPSyms] = useState([]);                     // [] = all symbols
   const [pRun, setPRun] = useState(null);                     // committed { tf, days, syms, id }
 
+  // Collected per-row stats for CSV export (label -> stats). Cleared whenever a fresh run starts.
+  const [results, setResults] = useState({});
+  const report = useCallback((label, stats) => setResults((r) => (r[label] === stats ? r : { ...r, [label]: stats })), []);
+
   useEffect(() => {
     setSym(DEF_SYM[market] || "NIFTY50"); setRun(null); setPickStrats([]);
-    setPRun(null); setPSyms([]); setPStratId(strats[0] ? strats[0].id : "");
+    setPRun(null); setPSyms([]); setPStratId(strats[0] ? strats[0].id : ""); setResults({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [market]);
+
+  const exportBtn = (onClick) => (
+    <button onClick={onClick} className="tap disp" style={{ border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", borderRadius: 9, padding: "6px 11px", fontWeight: 800, fontSize: 11, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5 }}>⬇ Export CSV</button>
+  );
 
   const Head = () => (
     <thead><tr>
@@ -916,15 +951,19 @@ function BacktestPanel({ strats, market = "IN" }) {
             <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>STRATEGIES</div>
             <MultiSelect label="Strategies" options={stratNames} value={pickStrats} onChange={setPickStrats} allLabel="All strategies" />
           </div>
-          <button onClick={() => setRun({ tf, days, sym, names: pickStrats.length ? pickStrats : stratNames })} disabled={!strats.length} className="tap disp" style={{ width: "100%", marginBottom: 12, border: "none", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 800, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", background: strats.length ? "var(--primary)" : "var(--elev)", color: strats.length ? "var(--on-primary)" : "var(--muted)", cursor: strats.length ? "pointer" : "not-allowed" }}>
+          <button onClick={() => { setResults({}); setRun({ tf, days, sym, names: pickStrats.length ? pickStrats : stratNames }); }} disabled={!strats.length} className="tap disp" style={{ width: "100%", marginBottom: 12, border: "none", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 800, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", background: strats.length ? "var(--primary)" : "var(--elev)", color: strats.length ? "var(--on-primary)" : "var(--muted)", cursor: strats.length ? "pointer" : "not-allowed" }}>
             <Activity size={16} /> Backtest Now
           </button>
           {!strats.length ? <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>No premium strategies to backtest.</div>
             : !run ? <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px", textAlign: "center" }}>Pick a symbol, timeframe, period and strategies, then tap <b>Backtest Now</b>.</div> : (
             <div className="card" style={{ padding: "6px 10px", overflowX: "auto" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 4px 8px", gap: 8 }}>
+                <div className="disp" style={{ fontSize: 12, fontWeight: 800 }}>{run.sym} · {run.tf} · {run.names.length} strategies</div>
+                {exportBtn(() => exportBacktestCsv({ results, order: runSymRows.map((s) => s.name), labelHeader: "Strategy", meta: [["Symbol", run.sym], ["Timeframe", run.tf], ["Period (days)", run.days]], filename: `matrix-backtest-${run.sym}-${run.tf}-${run.days}d.csv` }))}
+              </div>
               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 500 }}>
                 <Head />
-                <tbody>{runSymRows.map((s) => <CompareRow key={s.id + run.tf + run.days + run.sym} s={s} td={td} opts={{ tf: run.tf, days: run.days, sym: run.sym }} />)}</tbody>
+                <tbody>{runSymRows.map((s) => <CompareRow key={s.id + run.tf + run.days + run.sym} s={s} td={td} opts={{ tf: run.tf, days: run.days, sym: run.sym }} onReport={report} />)}</tbody>
               </table>
             </div>
           )}
@@ -955,16 +994,19 @@ function BacktestPanel({ strats, market = "IN" }) {
             <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>SYMBOLS</div>
             <MultiSelect label="Symbols" options={symOptions} value={pSyms} onChange={setPSyms} allLabel="All symbols" />
           </div>
-          <button onClick={() => pStratId && setPRun({ tf: pTf, days: pDays, syms: pSyms.length ? pSyms : symOptions, id: pStratId })} disabled={!strats.length || !pStratId} className="tap disp" style={{ width: "100%", marginBottom: 12, border: "none", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 800, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", background: (strats.length && pStratId) ? "var(--primary)" : "var(--elev)", color: (strats.length && pStratId) ? "var(--on-primary)" : "var(--muted)", cursor: (strats.length && pStratId) ? "pointer" : "not-allowed" }}>
+          <button onClick={() => { if (pStratId) { setResults({}); setPRun({ tf: pTf, days: pDays, syms: pSyms.length ? pSyms : symOptions, id: pStratId }); } }} disabled={!strats.length || !pStratId} className="tap disp" style={{ width: "100%", marginBottom: 12, border: "none", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 800, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", background: (strats.length && pStratId) ? "var(--primary)" : "var(--elev)", color: (strats.length && pStratId) ? "var(--on-primary)" : "var(--muted)", cursor: (strats.length && pStratId) ? "pointer" : "not-allowed" }}>
             <Activity size={16} /> Backtest Now
           </button>
           {!strats.length ? <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>No premium strategies to backtest.</div>
             : !pRun || !pStrat ? <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px", textAlign: "center" }}>Pick a strategy, timeframe, period and symbols, then tap <b>Backtest Now</b>.</div> : (
             <div className="card" style={{ padding: "6px 10px", overflowX: "auto" }}>
-              <div className="disp" style={{ fontSize: 12, fontWeight: 800, padding: "4px 4px 2px" }}>{pStrat.name} · {pRun.syms.length} symbols</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 4px 8px", gap: 8 }}>
+                <div className="disp" style={{ fontSize: 12, fontWeight: 800 }}>{pStrat.name} · {pRun.syms.length} symbols</div>
+                {exportBtn(() => exportBacktestCsv({ results, order: pRun.syms, labelHeader: "Symbol", meta: [["Strategy", pStrat.name], ["Timeframe", pRun.tf], ["Period (days)", pRun.days]], filename: `matrix-backtest-${(pStrat.name || "strategy").replace(/[^a-z0-9]+/gi, "_")}-${pRun.tf}-${pRun.days}d.csv` }))}
+              </div>
               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 500 }}>
                 <Head />
-                <tbody>{pRun.syms.map((sy) => <SymbolRow key={pStrat.id + pRun.tf + pRun.days + sy} strat={pStrat} sym={sy} td={td} opts={{ tf: pRun.tf, days: pRun.days }} />)}</tbody>
+                <tbody>{pRun.syms.map((sy) => <SymbolRow key={pStrat.id + pRun.tf + pRun.days + sy} strat={pStrat} sym={sy} td={td} opts={{ tf: pRun.tf, days: pRun.days }} onReport={report} />)}</tbody>
               </table>
             </div>
           )}
