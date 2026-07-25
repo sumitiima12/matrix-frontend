@@ -12,7 +12,7 @@ const PCHG_TFS = [["3m", "3 min"], ["5m", "5 min"], ["15m", "15 min"], ["30m", "
 const pcSig = (f) => `${f.tf || "5m"}|${f.o}|${f.v}`;
 import { selStyle } from "../common/styles";
 import { addSavedScreener, updateSavedScreener } from "./SavedScreeners";
-import { ChevronDown, ChevronUp, Filter, Plus, Save, Sparkles, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Filter, Plus, Save, Sparkles, Square, Trash2 } from "lucide-react";
 
 /* CREATE YOUR OWN SCREENER — the second tab of "Screener".
    Built on the SAME metric engine as the Screener that used to sit below Trending (RSI, EMA, MACD,
@@ -59,7 +59,7 @@ async function interpretConds(text) {
 
 /* One editable list of metric conditions (used for both Entry and Exit) — mirrors the old Screener row,
    including the "Or write a prompt" box below Add condition. */
-function FilterRows({ conds, setConds, placeholder }) {
+function FilterRows({ conds, setConds, placeholder, allowEmpty = false }) {
   const upd = (i, k, v) => setConds((p) => p.map((f, j) => j === i ? { ...f, [k]: v } : f));
   const add = () => setConds((p) => [...p, normF({ m: "ema20", o: ">", rhsType: "indicator", rhs: "ema50" })]);
   const del = (i) => setConds((p) => p.filter((_, j) => j !== i));
@@ -84,7 +84,7 @@ function FilterRows({ conds, setConds, placeholder }) {
             {(f.m === PCHG || (f.rhsType || "value") === "value")
               ? <input value={f.v} onChange={(e) => upd(i, "v", e.target.value)} style={{ ...selStyle, flex: "0 0 70px" }} className="no-ring" placeholder={f.m === PCHG ? "%" : "value"} />
               : <select aria-label="Compare against" value={f.rhs || "sma50"} onChange={(e) => upd(i, "rhs", e.target.value)} style={{ ...selStyle, flex: 1, minWidth: 0 }}>{SCR_METRICS.filter(([k]) => k !== PCHG).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>}
-            <button onClick={() => del(i)} disabled={conds.length === 1} className="tap" style={{ border: "none", background: "transparent", flex: "0 0 auto", opacity: conds.length === 1 ? 0.3 : 1 }}><Trash2 size={16} color="var(--down)" /></button>
+            <button onClick={() => del(i)} disabled={!allowEmpty && conds.length === 1} className="tap" style={{ border: "none", background: "transparent", flex: "0 0 auto", opacity: (!allowEmpty && conds.length === 1) ? 0.3 : 1 }}><Trash2 size={16} color="var(--down)" /></button>
           </div>
           <div style={{ display: "flex", gap: 7, alignItems: "center", marginTop: 7 }}>
             {f.m === PCHG ? (
@@ -195,9 +195,13 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
   }, [entry, selSyms, liveTick, market]);
 
   // Which SELECTED symbols meet the ENTRY rules right now — recomputed live off the snapshot + momentum.
-  const matched = useMemo(() => selSyms.filter((sym) => { const s = bySym.get(sym); return s && passes(s, entry, pcHits); }),
+  // With NO entry conditions there is nothing to match on, so the result is empty (never "everything").
+  const matched = useMemo(() => (entry.length === 0 ? [] : selSyms.filter((sym) => { const s = bySym.get(sym); return s && passes(s, entry, pcHits); })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [selSyms, entry, bySym, liveTick, pcHits]);
+
+  // If every entry condition is deleted, stop the screener and clear its results automatically.
+  useEffect(() => { if (entry.length === 0 && ran) setRan(false); }, [entry.length, ran]);
 
   // Capture an entry price the first time a symbol qualifies; drop it when it stops qualifying.
   useEffect(() => {
@@ -251,7 +255,9 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
   };
   const dt = (t) => t ? new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
   const inBox = { width: 46, textAlign: "center", border: "1px solid var(--line)", background: "var(--elev)", borderRadius: 7, padding: "5px 3px", fontWeight: 800, fontSize: 11.5, color: "var(--ink)" };
-  const isMatch = (sym) => matched.includes(sym);
+  // Results only exist while the screener is RUNNING. Stopping (or deleting all entry rules) clears them.
+  const isMatch = (sym) => ran && matched.includes(sym);
+  const canRun = selSyms.length > 0 && entry.length > 0;
 
   return (
     <div className="card" style={{ marginTop: 12, padding: 14 }}>
@@ -286,7 +292,8 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
 
       {/* Entry rules */}
       <div className="disp" style={{ fontWeight: 800, fontSize: 13.5, margin: "18px 0 8px" }}>Entry conditions <span style={{ fontWeight: 600, fontSize: 11, color: "var(--muted)" }}>— when to buy</span></div>
-      <FilterRows conds={entry} setConds={(u) => { setEntry(u); setSelRec(null); }} placeholder="e.g. RSI under 40 and MACD bullish and price above 50-DMA" />
+      <FilterRows conds={entry} setConds={(u) => { setEntry(u); setSelRec(null); }} placeholder="e.g. RSI under 40 and MACD bullish and price above 50-DMA" allowEmpty />
+      {entry.length === 0 && <div style={{ fontSize: 11, color: "var(--down)", marginTop: 8, fontWeight: 600 }}>Add at least one entry condition — with none, the screener has nothing to match and shows no results.</div>}
 
       {/* Exit rules — only asked for (and required) when Auto-Buy is on. */}
       {autoOn && (
@@ -358,8 +365,9 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
         </>
       )}
 
-      <button onClick={() => setRan(true)} disabled={!selSyms.length} className="tap disp" style={{ marginTop: 16, width: "100%", border: "none", borderRadius: 14, padding: 13, fontSize: 13.5, fontWeight: 800, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", background: selSyms.length ? "var(--primary)" : "var(--elev)", color: selSyms.length ? "var(--on-primary)" : "var(--muted)", cursor: selSyms.length ? "pointer" : "not-allowed", opacity: selSyms.length ? 1 : 0.7 }}>
-        <Filter size={16} /> Run screener
+      {/* Run ⇄ Stop. Running shows live results; Stop clears them. Disabled with no symbols or no entry rule. */}
+      <button onClick={() => setRan((r) => !r)} disabled={!ran && !canRun} className="tap disp" style={{ marginTop: 16, width: "100%", border: "none", borderRadius: 14, padding: 13, fontSize: 13.5, fontWeight: 800, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", background: ran ? "var(--down)" : (canRun ? "var(--primary)" : "var(--elev)"), color: ran ? "#fff" : (canRun ? "var(--on-primary)" : "var(--muted)"), cursor: (ran || canRun) ? "pointer" : "not-allowed", opacity: (ran || canRun) ? 1 : 0.7 }}>
+        {ran ? <><Square size={15} /> Stop screener</> : <><Filter size={16} /> Run screener</>}
       </button>
       {ran && (
         <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 10, textAlign: "center" }}>
