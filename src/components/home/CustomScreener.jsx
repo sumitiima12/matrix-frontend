@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ALL, UNIVERSE } from "../../domain/universe";
 import { CUR, chgColor, fmt, lsGet, lsSet } from "../../lib/format";
 import { METRICS, OPS, indValue, parseScreen } from "../../domain/screener";
-import { marketOpen, aiInterpretScreen, scanMomentum } from "../../domain/api";
+import { marketOpen, aiInterpretScreen, scanMomentum, optimizeExits } from "../../domain/api";
 
 /* Screener metrics = the daily-snapshot set PLUS "Price change %", which is evaluated on real candles
    over a chosen window (3m … 1d) via the momentum scan rather than the daily snapshot. */
@@ -114,6 +114,61 @@ function FilterRows({ conds, setConds, placeholder, allowEmpty = false }) {
   );
 }
 
+/* PER-SYMBOL SL/TP optimiser — for EACH selected symbol, grid-search the screener's entry rule over
+   that symbol's own past signals and report its ideal stop-loss / take-profit. "Apply all" writes each
+   symbol's ideal into its per-symbol SL/TP. Capped for cost; extra symbols are skipped with a note. */
+const OPT_CAP = 20;
+function PerSymbolOptimizer({ entry, syms, market, onApplyAll }) {
+  const [state, setState] = useState({ loading: false, rows: null, ran: false });
+  const run = async () => {
+    if (!entry || !entry.length || !syms || !syms.length) { setState({ loading: false, ran: true, rows: [] }); return; }
+    setState({ loading: true, rows: null, ran: true });
+    const capped = syms.slice(0, OPT_CAP);
+    const rows = await Promise.all(capped.map(async (sym) => {
+      try { const res = await optimizeExits({ mode: "metric", entry, tf: "1d", appSyms: [sym] }); return { sym, best: res && res.best ? res.best : null }; }
+      catch { return { sym, best: null }; }
+    }));
+    setState({ loading: false, ran: true, rows });
+  };
+  const { loading, rows, ran } = state;
+  const good = (rows || []).filter((r) => r.best);
+  return (
+    <div style={{ marginTop: 14, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+      <button onClick={run} disabled={loading || !entry.length || !syms.length} className="tap"
+        style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 9, padding: "8px 12px", fontSize: 11.5, fontWeight: 800, opacity: (loading || !entry.length || !syms.length) ? 0.6 : 1 }}>
+        <Sparkles size={13} color="#7C3AED" /> {loading ? "Optimising…" : "Find ideal SL / TP per symbol"}
+      </button>
+      {ran && !loading && (
+        <div style={{ marginTop: 10 }}>
+          {good.length === 0
+            ? <div style={{ fontSize: 10.5, color: "var(--muted)", lineHeight: 1.5 }}>Not enough past entry signals to optimise for the selected symbols. Try a looser entry or symbols with more history.</div>
+            : <>
+                <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 8.5, color: "var(--muted)", fontWeight: 800, padding: "0 2px" }}>
+                    <span style={{ flex: 1 }}>SYMBOL</span><span style={{ width: 54, textAlign: "center", color: "var(--down)" }}>IDEAL SL</span><span style={{ width: 54, textAlign: "center", color: "var(--up)" }}>IDEAL TP</span><span style={{ width: 58, textAlign: "right" }}>WIN</span>
+                  </div>
+                  {good.map((r) => (
+                    <div key={r.sym} style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--elev)", borderRadius: 8, padding: "6px 9px" }}>
+                      <span className="disp" style={{ flex: 1, fontSize: 12, fontWeight: 700, color: "var(--ink)" }}>{r.sym}</span>
+                      <span className="mono" style={{ width: 54, textAlign: "center", fontSize: 12, fontWeight: 800, color: "var(--down)" }}>{r.best.sl}%</span>
+                      <span className="mono" style={{ width: 54, textAlign: "center", fontSize: 12, fontWeight: 800, color: "var(--up)" }}>{r.best.tp}%</span>
+                      <span className="mono" style={{ width: 58, textAlign: "right", fontSize: 10.5, fontWeight: 700, color: "var(--muted)" }}>{r.best.winRate != null ? r.best.winRate.toFixed(0) + "%" : "—"}</span>
+                    </div>
+                  ))}
+                </div>
+                {syms.length > OPT_CAP && <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 6 }}>Optimised the first {OPT_CAP} of {syms.length} selected symbols.</div>}
+                <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 6, fontStyle: "italic" }}>Backtested on past entries — not a guarantee of future results.</div>
+                <button onClick={() => onApplyAll(good.map((r) => ({ sym: r.sym, sl: r.best.sl, tp: r.best.tp })))} className="tap"
+                  style={{ marginTop: 10, width: "100%", border: "none", background: "#7C3AED", color: "#fff", borderRadius: 9, padding: "9px 0", fontSize: 11.5, fontWeight: 800 }}>
+                  Apply ideal SL / TP to {good.length} symbol{good.length > 1 ? "s" : ""}
+                </button>
+              </>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CustomScreener({ market, mode = "virtual", list = [], onOpen, onScreenerBuy, liveTick = 0, editing = null, onDoneEditing }) {
   const LSK = `mx_customscr_${market}`;
   const saved = useMemo(() => lsGet(LSK, null) || {}, [LSK, market]);
@@ -168,6 +223,8 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
   const ovTP = (sym) => (ov[sym] && ov[sym].tp != null) ? ov[sym].tp : 1.0;
   const ovQty = (sym) => (ov[sym] && ov[sym].qty != null) ? ov[sym].qty : qtyDefault(market);
   const setOvField = (sym, field, val) => setOv((o) => ({ ...o, [sym]: { ...(o[sym] || {}), [field]: val === "" ? undefined : +val } }));
+  /* Apply the per-symbol optimiser's ideal SL/TP into each symbol's override at once. */
+  const applyPerSymbol = (listOut) => setOv((o) => { const next = { ...o }; (listOut || []).forEach(({ sym, sl, tp }) => { next[sym] = { ...(next[sym] || {}), sl, tp }; }); return next; });
 
   const allSelected = symbolOptions.length > 0 && selSyms.length === symbolOptions.length;
   const toggleSym = (sym) => setSelSyms((p) => p.includes(sym) ? p.filter((x) => x !== sym) : [...p, sym]);
@@ -363,6 +420,11 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
             })}
           </div>
         </>
+      )}
+
+      {/* Ideal SL/TP per selected symbol — available once symbols and an entry rule are set. */}
+      {!!selSyms.length && entry.length > 0 && (
+        <PerSymbolOptimizer entry={entry} syms={selSyms} market={market} onApplyAll={applyPerSymbol} />
       )}
 
       {/* Run ⇄ Stop. Running shows live results; Stop clears them. Disabled with no symbols or no entry rule. */}

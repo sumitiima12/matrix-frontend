@@ -2071,6 +2071,21 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             {showBt && (
               <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
                 <BacktestResult cfg={cfg} blocked={!canBacktest} onConnect={onConnectBroker} />
+                {/* Ideal SL/TP for this strategy — grid-search over its past entry signals. Apply fills
+                    the Stop loss / Take profit fields above. */}
+                {cfg.entry && cfg.entry.length > 0 && (
+                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+                    <ExitOptimizer
+                      defs={cfg.defs || []}
+                      entry={cfg.entry}
+                      tf={cfg.tf || "5m"}
+                      appSyms={deploySyms.length ? deploySyms : DEPLOY_OPTIONS.slice(0, 3)}
+                      currentSl={sl ? Number(sl) : null}
+                      currentTp={tp ? Number(tp) : null}
+                      onApply={(bsl, btp) => { setSl(String(bsl)); setTp(String(btp)); }}
+                    />
+                  </div>
+                )}
               </div>
             )}
 
