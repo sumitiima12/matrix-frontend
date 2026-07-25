@@ -2172,12 +2172,12 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       {topTab === "strategies" && (<>
       {/* Sub-sections under Strategies — shown directly (no redundant "Strategies" heading). */}
       <div ref={stratsRef} className="hide-scroll" style={{ display: "flex", gap: 7, margin: "18px 0 14px", scrollMarginTop: 80, overflowX: "auto" }}>
-        {[["deployed", "Deployed"], ["sample", "Samples"], ["premium", "Premium"], ["public", "Public"], ["mine", "Mine"], ...(isAdmin ? [["backtest", "Backtesting"]] : [])].map(([k, label]) => (
+        {[["deployed", "Deployed"], ["sample", "Samples"], ["premium", "Premium"], ["public", "Public"], ["mine", "Mine"], ["backtest", "Backtesting"]].map(([k, label]) => (
           <button key={k} onClick={() => setStratTab(k)} className="tap disp" style={{ flex: "0 0 auto", borderRadius: 999, padding: "7px 14px", fontWeight: 800, fontSize: 11.5, whiteSpace: "nowrap", border: "1px solid " + (stratTab === k ? "var(--primary)" : "var(--line)"), background: stratTab === k ? "var(--primary)" : "var(--surface)", color: stratTab === k ? "#fff" : "var(--ink)" }}>{label}</button>
         ))}
       </div>
 
-      {isAdmin && stratTab === "backtest" ? (
+      {stratTab === "backtest" ? (
         <BacktestPanel strats={premiumStrats} market={market} onApplyExits={(id, sl, tp) => setStrats((p) => p.map((s) => s.id === id ? { ...s, cfg: { ...(s.cfg || {}), sl, tp } } : s))} />
       ) : stratTab === "sample" ? (
         sampleStrats.length === 0
