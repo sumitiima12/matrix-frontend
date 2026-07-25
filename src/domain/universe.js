@@ -147,7 +147,6 @@ const US_STOCKS = [
   index("SPX", "S&P 500", "Index"),
   index("NDX", "Nasdaq 100", "Index"),
   index("DJI", "Dow Jones", "Index"),
-  index("VIX", "CBOE Volatility Index", "Volatility"),
   stock("AAPL", "Apple", "Tech"),
   stock("MSFT", "Microsoft", "Software"),
   stock("NVDA", "NVIDIA", "Semiconductors"),

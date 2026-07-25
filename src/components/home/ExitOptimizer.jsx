@@ -70,7 +70,7 @@ export default function ExitOptimizer({ mode, defs, entry, tf, appSyms, currentS
         }}
       >
         <Sparkles size={13} color="#7C3AED" />
-        {loading ? "Optimising…" : "Find ideal SL / TP"}
+        {loading ? "Optimising…" : "Optimize SL & TP"}
       </button>
 
       {ran && !loading && (!best) && (

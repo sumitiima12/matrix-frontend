@@ -37,7 +37,7 @@ import PopularScreeners from "../components/home/PopularScreeners";
    no BTC/NIFTY under Commodity). */
 const STRIP_BY_MARKET = {
   IN: [["NIFTY50", "NIFTY 50"], ["SENSEX", "SENSEX"], ["BANKNIFTY", "BANK NIFTY"], ["FINNIFTY", "FIN NIFTY"], ["INDIAVIX", "INDIA VIX"]],
-  US: [["SPX", "S&P 500"], ["NDX", "NASDAQ"], ["DJI", "DOW"], ["VIX", "VIX"]],
+  US: [["SPX", "S&P 500"], ["NDX", "NASDAQ"], ["DJI", "DOW"]],
   Crypto: [["BTC", "BTC"], ["ETH", "ETH"], ["SOL", "SOL"], ["BNB", "BNB"], ["XRP", "XRP"], ["DOGE", "DOGE"]],
   Commodity: [["GOLD", "GOLD"], ["SILVER", "SILVER"], ["CRUDEOIL", "CRUDE"], ["ALUMINIUM", "ALUMINIUM"]],
 };
@@ -63,16 +63,16 @@ function GlobalStrip({ market = "IN" }) {
 }
 
 function MarketPulseStrip({ market, list, onOpen, liveTick = 0 }) {
-  // Crypto has no volatility index to show, so the first cell leads with ETH instead of India VIX.
-  const vixSym = market === "Crypto" ? "ETH" : market === "US" ? "VIX" : "INDIAVIX";
+  // Crypto has no volatility index, so it leads with ETH. US no longer lists VIX, so it leads with
+  // NASDAQ (a normal asset). Indian/Commodity lead with India VIX.
+  const vixSym = market === "Crypto" ? "ETH" : market === "US" ? "NDX" : "INDIAVIX";
   const idxSym = market === "US" ? "SPX" : market === "Crypto" ? "BTC" : market === "Commodity" ? "GOLD" : "NIFTY50";
   const vix = ALL.find((a) => a.sym === vixSym) || ALL.find((a) => a.sym === "INDIAVIX");
   const idx = ALL.find((a) => a.sym === idxSym) || ALL[0];
   const idxLabel = market === "US" ? "S&P 500" : market === "Crypto" ? "BTC" : market === "Commodity" ? "GOLD" : "NIFTY 50";
-  // It said "VIX" even when showing INDIAVIX. Name the thing we are actually showing.
-  const vixLabel = market === "Crypto" ? "ETH" : market === "US" ? "VIX" : "INDIA VIX";
-  // VIX is inverted (up = fear = bad); ETH is a normal asset (up = green). Don't flip ETH's colour.
-  const vixInverted = market !== "Crypto";
+  const vixLabel = market === "Crypto" ? "ETH" : market === "US" ? "NASDAQ" : "INDIA VIX";
+  // India VIX is inverted (up = fear = bad); ETH and NASDAQ are normal assets (up = green).
+  const vixInverted = market !== "Crypto" && market !== "US";
   /**
    * HOT STOCKS — what is moving most RIGHT NOW.
    *

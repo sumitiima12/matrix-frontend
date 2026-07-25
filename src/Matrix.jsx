@@ -249,9 +249,16 @@ function seededStrats(saved) {
   const seedIds = new Set(SEED_STRATS.map((s) => s.id));
   const merged = SEED_STRATS.map((seed) => {
     const prev = byId.get(seed.id);
-    return prev
-      ? { ...seed, active: !!prev.active, alerts: !!prev.alerts, symbols: prev.symbols && prev.symbols.length ? prev.symbols : seed.symbols, cap: prev.cap || seed.cap, tf: prev.tf || seed.tf }
-      : { ...seed };
+    if (!prev) return { ...seed };
+    // Refresh curated fields (rules, name, description) from the seed, but PRESERVE the user's own
+    // runtime state (active/alerts/symbols) AND their SL/TP + timeframe edits — those are per-user
+    // overrides that must survive the session, not reset to the seed default.
+    const utf = prev.tf || (prev.cfg && prev.cfg.tf) || seed.tf || (seed.cfg && seed.cfg.tf);
+    const cfg = { ...(seed.cfg || {}) };
+    if (prev.cfg && prev.cfg.sl != null) cfg.sl = prev.cfg.sl;
+    if (prev.cfg && prev.cfg.tp != null) cfg.tp = prev.cfg.tp;
+    if (utf) { cfg.tf = utf; cfg.defs = (cfg.defs || []).map((d) => ({ ...d, tf: utf })); }
+    return { ...seed, cfg, active: !!prev.active, alerts: !!prev.alerts, symbols: prev.symbols && prev.symbols.length ? prev.symbols : seed.symbols, cap: prev.cap || seed.cap, tf: utf };
   });
   const userOwn = savedArr.filter((s) => !seedIds.has(s.id));
   return [...userOwn, ...merged];
