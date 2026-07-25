@@ -16,6 +16,7 @@ const neoReads = (conds) => (conds || []).map((c, i) => `${i ? (c.gate === "OR" 
 import { useCandles } from "../hooks/useCandles";
 import OptionLeg from "../components/common/OptionLeg";
 import MultiSelect from "../components/common/MultiSelect";
+import ExitOptimizer from "../components/home/ExitOptimizer";
 import { selStyle } from "../components/common/styles";
 import { downloadCSV } from "../lib/csv";
 import { brokerSymbol } from "../domain/brokerSymbols";
@@ -868,7 +869,7 @@ function exportBacktestCsv({ results, order, labelHeader, meta, filename }) {
    • Per Symbol  : one symbol × many strategies (with a strategy multi-select filter, all by default).
    • Per Strategy: one strategy × many symbols (symbol multi-select, all by default) — the transpose.
    Both reuse useBacktestStats and only run on the "Backtest Now" tap, never automatically. */
-function BacktestPanel({ strats, market = "IN" }) {
+function BacktestPanel({ strats, market = "IN", onApplyExits }) {
   const DEF_SYM = { US: "SPX", IN: "NIFTY50", Crypto: "BTC", Commodity: "GOLD", FNO: "NIFTY50" };
   const [view, setView] = useState("perSymbol");   // perSymbol | perStrategy
   // Position sizing for absolute P&L: crypto = USD amount (default 100), everything else = quantity (default 1).
@@ -930,6 +931,8 @@ function BacktestPanel({ strats, market = "IN" }) {
 
   const runSymRows = run ? strats.filter((s) => run.names.includes(s.name)) : [];
   const pStrat = pRun ? strats.find((s) => s.id === pRun.id) : null;
+  const curStrat = strats.find((s) => s.id === pStratId) || null;   // selected strategy (for the optimiser)
+  const curCfg = curStrat && curStrat.cfg;
 
   return (
     <div className="fade">
@@ -1012,6 +1015,23 @@ function BacktestPanel({ strats, market = "IN" }) {
           <button onClick={() => { if (pStratId) { setResults({}); setPRun({ tf: pTf, days: pDays, syms: pSyms.length ? pSyms : symOptions, id: pStratId, ...sizing() }); } }} disabled={!strats.length || !pStratId} className="tap disp" style={{ width: "100%", marginBottom: 12, border: "none", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 800, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", background: (strats.length && pStratId) ? "var(--primary)" : "var(--elev)", color: (strats.length && pStratId) ? "var(--on-primary)" : "var(--muted)", cursor: (strats.length && pStratId) ? "pointer" : "not-allowed" }}>
             <Activity size={16} /> Backtest Now
           </button>
+
+          {/* Ideal SL/TP optimiser for the selected strategy — grid-search over its own past entry
+              signals on the chosen symbols. Apply writes the pair back onto the strategy. */}
+          {curStrat && curCfg && Array.isArray(curCfg.entry) && curCfg.entry.length > 0 && (
+            <div style={{ marginBottom: 12, border: "1px solid var(--line)", borderRadius: 12, padding: "4px 12px 12px" }}>
+              <div className="disp" style={{ fontSize: 11.5, fontWeight: 800, color: "var(--muted)", margin: "10px 0 2px" }}>Ideal SL / TP — {curStrat.name}</div>
+              <ExitOptimizer
+                defs={curCfg.defs || []}
+                entry={curCfg.entry}
+                tf={pTf}
+                appSyms={pSyms.length ? pSyms.slice(0, 8) : symOptions.slice(0, 8)}
+                currentSl={curCfg.sl != null ? curCfg.sl : null}
+                currentTp={curCfg.tp != null ? curCfg.tp : null}
+                onApply={onApplyExits ? (sl, tp) => onApplyExits(curStrat.id, sl, tp) : undefined}
+              />
+            </div>
+          )}
           {!strats.length ? <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px" }}>No premium strategies to backtest.</div>
             : !pRun || !pStrat ? <div style={{ fontSize: 12, color: "var(--muted)", padding: "10px 2px", textAlign: "center" }}>Pick a strategy, timeframe, period and symbols, then tap <b>Backtest Now</b>.</div> : (
             <div className="card" style={{ padding: "6px 10px", overflowX: "auto" }}>
@@ -2097,7 +2117,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       </div>
 
       {isAdmin && stratTab === "backtest" ? (
-        <BacktestPanel strats={premiumStrats} market={market} />
+        <BacktestPanel strats={premiumStrats} market={market} onApplyExits={(id, sl, tp) => setStrats((p) => p.map((s) => s.id === id ? { ...s, cfg: { ...(s.cfg || {}), sl, tp } } : s))} />
       ) : stratTab === "sample" ? (
         sampleStrats.length === 0
           ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No sample strategies for this market.</div>
