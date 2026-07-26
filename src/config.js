@@ -11,7 +11,7 @@
    It is the single most important line in this file, which is why it is no longer
    shipped blank. Override with VITE_BACKEND_URL if you prefer an env var. */
 export const BACKEND_URL =
-  (import.meta.env && import.meta.env.VITE_BACKEND_URL) || "https://matrix-qp1i.onrender.com";
+  (import.meta.env && import.meta.env.VITE_BACKEND_URL) || "https://matrix-backend-wcev.onrender.com";
 
 export const isLive = () => Boolean(BACKEND_URL);
 

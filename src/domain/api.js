@@ -99,13 +99,13 @@ export async function optimizeExits({ mode, defs, entry, tf, appSyms, currentSl,
 }
 /* Optimise the INDICATOR lengths + a shared timeframe (≤1h) that maximise win rate or P&L on the
    strategy's own past entry signals. Returns { best:{defs,tf,winRate,pnl,retPct,...}, current, changes }. */
-export async function optimizeIndicators({ mode, defs, entry, tf, appSyms, currentSl, currentTp, objective = "pnl" }) {
+export async function optimizeIndicators({ mode, defs, entry, tf, appSyms, currentSl, currentTp, objective = "pnl", lockTf = null }) {
   if (!BACKEND_URL || !appSyms || !appSyms.length || !entry || !entry.length || !defs || !defs.length) return null;
   try {
     const ySyms = appSyms.map(yahooSymbol);
     const r = await fetch(`${BACKEND_URL}/api/optimize-indicators`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode, defs, entry, tf, symbols: ySyms, currentSl, currentTp, objective }),
+      body: JSON.stringify({ mode, defs, entry, tf, symbols: ySyms, currentSl, currentTp, objective, ...(lockTf ? { lockTf } : {}) }),
     });
     return await r.json().catch(() => null);
   } catch { return null; }

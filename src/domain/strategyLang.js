@@ -222,8 +222,17 @@ function computeIndicator(d, attr, c, closes, vols) {
       }
       return out;
     }
-    /* PRICE CHANGE % over `len` bars: (close / close[i-len] - 1) × 100. len=1 is the last-candle move. */
-    case "PriceChange": { const n = Math.max(1, len); return closes.map((v, i) => (i >= n && closes[i - n]) ? (v / closes[i - n] - 1) * 100 : NaN); }
+    /* PRICE CHANGE % over a window: (close / close[i-n] - 1) × 100. `n` is a bar count (len, default 1),
+       but if the def carries `winMin` (a window in MINUTES, e.g. "up 2% in last 5 mins") we convert that
+       to a bar count from the candles' own spacing — so it means the same thing on any base timeframe. */
+    case "PriceChange": {
+      let n = Math.max(1, len);
+      if (d.winMin && c.length > 2) {
+        const barMin = Math.max(1, Math.round((c[c.length - 1].t - c[0].t) / (c.length - 1) / 60000));
+        n = Math.max(1, Math.round(Number(d.winMin) / barMin));
+      }
+      return closes.map((v, i) => (i >= n && closes[i - n]) ? (v / closes[i - n] - 1) * 100 : NaN);
+    }
     /* DAY CHANGE %: move since the OPEN of the current trading day (resets each UTC date). */
     case "DayChange": {
       const out = new Array(c.length);
@@ -233,6 +242,20 @@ function computeIndicator(d, attr, c, closes, vols) {
         const key = dt.getUTCFullYear() + "-" + dt.getUTCMonth() + "-" + dt.getUTCDate();
         if (key !== dayKey) { dayKey = key; dayOpen = c[i].o; }
         out[i] = dayOpen ? (c[i].c / dayOpen - 1) * 100 : NaN;
+      }
+      return out;
+    }
+    /* DAY CHANGE vs PREVIOUS CLOSE %: (close / previous-trading-day's-close - 1) × 100. This is the
+       "up 10% from last day's close" a trader means — a gap-inclusive move, not intraday-from-open. */
+    case "DayChangePrevClose": {
+      const out = new Array(c.length);
+      let dayKey = null, prevClose = NaN, runningLast = NaN;
+      for (let i = 0; i < c.length; i++) {
+        const dt = new Date(c[i].t);
+        const key = dt.getUTCFullYear() + "-" + dt.getUTCMonth() + "-" + dt.getUTCDate();
+        if (key !== dayKey) { dayKey = key; prevClose = Number.isFinite(runningLast) ? runningLast : c[i].o; }
+        out[i] = prevClose ? (c[i].c / prevClose - 1) * 100 : NaN;
+        runningLast = c[i].c;
       }
       return out;
     }
@@ -366,7 +389,8 @@ export const IND_CATALOG = [
   { type: "Supertrend", label: "Supertrend", needsLen: true, attrs: ["line", "dir"] },
   { type: "DMA", label: "DMA (displaced MA)", needsLen: true, attrs: [] },
   { type: "Volume", label: "Volume", needsLen: false, attrs: [] },
-  { type: "DayChange", label: "Day change %", needsLen: false, attrs: [] },
+  { type: "DayChange", label: "Day change % (from today's open)", needsLen: false, attrs: [] },
+  { type: "DayChangePrevClose", label: "Day change % (from previous close)", needsLen: false, attrs: [] },
   { type: "PriceChange", label: "Price change % (over N bars)", needsLen: true, attrs: [] },
   { type: "CurrentCandle", label: "Current candle", needsLen: false, attrs: ["open", "high", "low", "close"] },
   { type: "PrevCandle", label: "Previous candle", needsLen: false, attrs: ["open", "high", "low", "close"] },
@@ -510,6 +534,33 @@ export function interpretText(text) {
     }
   }
 
+  // 0b. PERCENTAGE-MOVE phrases — a direction word plus a percent, optionally scoped to a window or the
+  //     previous day's close. "up 10% from last day close" is a gap-inclusive day move; "up 2% in the
+  //     last 5 mins" is a short-window price move; a bare "up 3% today" is the intraday move from the
+  //     open. Consumed BEFORE the word parser so the number isn't mistaken for a price level.
+  {
+    const dir = "(up|gain(?:ed|s|ing)?|ros(?:e|en)|rise[sn]?|rising|rall(?:y|ied|ies)|surg(?:e|ed|es)|jump(?:ed|s|ing)?|higher|advanc\\w*|spik\\w*|pump\\w*|down|fell|fall(?:s|en|ing)?|drop(?:ped|s|ping)?|declin\\w*|lower|lost|los(?:e|es|ing)|sink|sank|plunge\\w*|dump\\w*|crash\\w*)";
+    const pmRe = new RegExp("\\b" + dir + "\\b[^.,;]{0,40}?(\\d+(?:\\.\\d+)?)\\s*%", "i");
+    const mm = work.match(pmRe);
+    if (mm) {
+      const isDown = /^(down|fell|fall|drop|declin|lower|lost|los|sink|sank|plunge|dump|crash)/.test(mm[1].toLowerCase());
+      const op = isDown ? "<" : ">";
+      const val = isDown ? String(-Math.abs(parseFloat(mm[2]))) : mm[2];
+      const winM = work.match(/\b(?:in|over|within|last|past|during)\s+(?:the\s+)?(?:last\s+|past\s+)?(\d+)\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours)\b/i);
+      const prevM = work.match(/\b(?:from|vs|versus|since|above|below|off)?\s*(?:the\s+)?(?:previous|prev|last|prior|yesterday(?:'s)?)\s+(?:day'?s?\s+)?(?:closing|close)\b/i)
+                 || work.match(/\bfrom\s+(?:last|previous|prior|yesterday(?:'s)?)\s+day(?:'s)?\b/i);
+      let def, la;
+      if (winM) { const n = parseInt(winM[1], 10); const u = winM[2][0].toLowerCase(); def = { type: "PriceChange", name: "PriceChange", winMin: u === "h" ? n * 60 : n, len: "1" }; la = "PriceChange"; }
+      else if (prevM) { def = { type: "DayChangePrevClose", name: "DayChangePrevClose" }; la = "DayChangePrevClose"; }
+      else { def = { type: "DayChange", name: "DayChange" }; la = "DayChange"; }
+      pushDefs([def]);
+      conds.push({ la, op, b: val, bType: "num", gate: conds.length ? "AND" : undefined });
+      work = work.replace(mm[0], " ");
+      if (winM) work = work.replace(winM[0], " ");
+      if (prevM) work = work.replace(prevM[0], " ");
+    }
+  }
+
   // 0. Compound phrases (golden cross, oversold, MACD turns bullish, bounce off support…).
   for (const pr of PHRASE_RULES) {
     if (pr.re.test(work)) {
@@ -563,7 +614,7 @@ export function interpretText(text) {
   }
   // Drop clauses that are only filler left over after a phrase/pattern was consumed ("when price",
   // "on", "then") — they aren't real unparsed conditions and shouldn't raise a warning.
-  const FILLER = /^(?:when|then|if|on|at|in|a|an|the|is|are|was|be|it|its|and|or|buy|sell|enter|exit|go|long|short|price|of|to|from|for|with|that|this|now|forms?|forming|appears?|appearing|shows?|showing|candle|candles|candlestick|pattern|patterns|signal|line|band|near)$/i;
+  const FILLER = /^(?:when|then|if|on|at|in|a|an|the|is|are|was|be|it|its|and|or|buy|sell|enter|exit|go|long|short|price|of|to|from|for|with|that|this|now|forms?|forming|appears?|appearing|shows?|showing|candle|candles|candlestick|pattern|patterns|signal|line|band|near|stock|stocks|share|shares|already|atleast|at\s*least|by|up|down|close|closing|open|opening|day|days|previous|prev|prior|yesterday|last|min|mins|minute|minutes|hour|hours|hr|hrs|over|within|past|during|move[sd]?|moving|return|returns?)$/i;
   const cleanUnparsed = unparsed.filter((u) => /[a-z0-9]/i.test(u) && u.split(/\s+/).some((w) => w && !FILLER.test(w)));
   return { conds, defs, unparsed: cleanUnparsed };
 }
@@ -831,8 +882,9 @@ function humanIndicator(def) {
     case "ATR": return `ATR`;
     case "VWAP": return `VWAP`;
     case "Volume": return `volume`;
-    case "DayChange": return `day change %`;
-    case "PriceChange": return `price change % over ${def.len || 1} bars`;
+    case "DayChange": return `day change % (from today's open)`;
+    case "DayChangePrevClose": return `day change % vs previous close`;
+    case "PriceChange": return def.winMin ? `price change % over the last ${def.winMin} min` : `price change % over ${def.len || 1} bars`;
     default: return `${def.type}${L}`;
   }
 }

@@ -2,11 +2,12 @@ import React, { useState } from "react";
 import { optimizeExits } from "../../domain/api";
 import { Sparkles } from "lucide-react";
 
-/* ExitOptimizer — "Find ideal SL/TP".
-   Runs the backend grid sweep (SL × TP) over this screener/strategy's OWN past entry signals and
-   reports the pair that best meets the chosen OBJECTIVE (win rate or P&L), alongside the CURRENT pair,
-   so the user sees Earlier vs Now across win rate, SL hit, TP hit, P&L and return. `mode="metric"` for
-   My-Screener metric conditions; otherwise the candle entry chain. Long-only; validated out-of-sample.
+/* ExitOptimizer — "Optimize SL & TP".
+   ONE optimiser with TWO options: Optimize Win rate, Optimize P&L. Tapping an option runs the backend
+   grid sweep (SL × TP) over this screener/strategy's OWN past entry signals and reports the pair that
+   best meets that objective, alongside the CURRENT pair — so the user sees Earlier vs Now across win
+   rate, SL hit, TP hit, P&L and return. `mode="metric"` for My-Screener metric conditions; otherwise
+   the candle entry chain. Long-only; validated out-of-sample.
 
    Props: { mode, defs, entry, tf, appSyms, currentSl, currentTp, onApply(sl, tp) } */
 const wr = (x) => (x == null || isNaN(x)) ? "—" : Number(x).toFixed(0) + "%";
@@ -16,9 +17,10 @@ const cnt = (x) => (x == null || isNaN(x)) ? "—" : String(x);
 
 export default function ExitOptimizer({ mode, defs, entry, tf, appSyms, currentSl, currentTp, onApply }) {
   const [state, setState] = useState({ loading: false, res: null, ran: false });
-  const [objective, setObjective] = useState("pnl");   // "pnl" | "winrate"
+  const [objective, setObjective] = useState(null);   // null until the user picks an option
 
-  const run = async (obj = objective) => {
+  const run = async (obj) => {
+    setObjective(obj);
     if (!entry || !entry.length || !appSyms || !appSyms.length) {
       setState({ loading: false, ran: true, res: { entries: 0 } });
       return;
@@ -27,7 +29,6 @@ export default function ExitOptimizer({ mode, defs, entry, tf, appSyms, currentS
     const res = await optimizeExits({ mode, defs, entry, tf, appSyms, currentSl, currentTp, objective: obj });
     setState({ loading: false, ran: true, res });
   };
-  const pickObjective = (obj) => { setObjective(obj); if (state.ran && !state.loading) run(obj); };
 
   const { loading, res, ran } = state;
   const best = res && res.best;
@@ -36,8 +37,14 @@ export default function ExitOptimizer({ mode, defs, entry, tf, appSyms, currentS
 
   const cellL = { fontSize: 9.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.3 };
   const num = { fontWeight: 800, fontSize: 12, color: "var(--ink)" };
-  const objBtn = (k, label) => (
-    <button key={k} onClick={() => pickObjective(k)} className="tap" style={{ flex: 1, padding: "6px 8px", fontSize: 10.5, fontWeight: 800, border: "none", borderRadius: 7, background: objective === k ? "var(--primary)" : "transparent", color: objective === k ? "var(--on-primary)" : "var(--muted)" }}>{label}</button>
+  // Two options. Tapping one runs the optimiser for that objective (and highlights it).
+  const optBtn = (k, label) => (
+    <button key={k} onClick={() => run(k)} disabled={loading} className="tap disp" style={{
+      flex: 1, padding: "10px 8px", fontSize: 11.5, fontWeight: 800, borderRadius: 10, cursor: "pointer",
+      border: "1px solid " + (objective === k ? "#7C3AED" : "var(--line)"),
+      background: objective === k ? "#7C3AED" : "var(--surface)",
+      color: objective === k ? "#fff" : "var(--ink)", opacity: loading ? 0.6 : 1,
+    }}>{label}</button>
   );
 
   // Comparison rows: Win rate, SL hit, TP hit, P&L, Return %.
@@ -50,28 +57,15 @@ export default function ExitOptimizer({ mode, defs, entry, tf, appSyms, currentS
   ] : [];
 
   return (
-    <div style={{ marginTop: 10 }}>
-      {/* Objective toggle — optimise for the highest win rate, or the biggest P&L. */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3, flex: "1 1 200px", minWidth: 0 }}>
-          {objBtn("winrate", "Optimize Win rate")}
-          {objBtn("pnl", "Optimize P&L")}
-        </div>
+    <div style={{ marginTop: 6 }}>
+      <div className="disp" style={{ fontSize: 13, fontWeight: 800, color: "var(--ink)", display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+        <Sparkles size={14} color="#7C3AED" /> Optimize SL &amp; TP
       </div>
-
-      <button
-        onClick={() => run()}
-        disabled={loading}
-        className="tap"
-        style={{
-          marginTop: 8, display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--line)",
-          background: "var(--surface)", color: "var(--ink)", borderRadius: 9, padding: "7px 11px",
-          fontSize: 10.5, fontWeight: 800, opacity: loading ? 0.6 : 1,
-        }}
-      >
-        <Sparkles size={13} color="#7C3AED" />
-        {loading ? "Optimising…" : "Optimize SL & TP"}
-      </button>
+      <div style={{ display: "flex", gap: 8 }}>
+        {optBtn("winrate", "Optimize Win rate")}
+        {optBtn("pnl", "Optimize P&L")}
+      </div>
+      {loading && <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8 }}>Optimising on real candles…</div>}
 
       {ran && !loading && (!best) && (
         <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>

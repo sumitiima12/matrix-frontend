@@ -34,7 +34,7 @@ export async function interpretStrategyAI(text) {
     const d = await r.json().catch(() => ({}));
     if (!r.ok) return null;
     if (!Array.isArray(d.entry) && !Array.isArray(d.exit)) return null;
-    return { entry: d.entry || [], exit: d.exit || [], defs: d.defs || [] };
+    return { entry: d.entry || [], exit: d.exit || [], defs: d.defs || [], ...(d.sl != null ? { sl: d.sl } : {}), ...(d.tp != null ? { tp: d.tp } : {}) };
   } catch { return null; }
 }
 

@@ -793,7 +793,10 @@ function AppInner() {
     lsSet("mx_state_" + userId, snap);
     if (BACKEND_URL && auth && getAuthToken() && remoteHydrated) {
       clearTimeout(stateSaveTimer.current);
-      stateSaveTimer.current = setTimeout(() => { apiSaveState(userId, snap).catch(() => {}); }, 1200);
+      // 4s debounce (was 1.2s): the server copy only needs to be eventually-consistent, and localStorage
+      // already holds the live copy — a longer debounce collapses bursts of edits into one write, cutting
+      // DB data-transfer during active use without any user-visible difference.
+      stateSaveTimer.current = setTimeout(() => { apiSaveState(userId, snap).catch(() => {}); }, 4000);
     }
   }, [portfolio, walletMap, watchlists, profile, onboardSkipped, deposits, strats, autoOnMap, deployCapMap, hydratedUser, userId, remoteHydrated, auth]);
   useEffect(() => { if (hydratedUser === userId) lsSet("mx_trades_" + userId, trades); }, [trades, hydratedUser, userId]);
