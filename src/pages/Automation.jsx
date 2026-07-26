@@ -1218,6 +1218,95 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits }) {
   );
 }
 
+/* PER-SYMBOL INDICATOR OPTIMISER — the "Optimize Indicators" analogue of PerSymbolStrategyOptimizer.
+   For EVERY eligible strategy it searches the best indicator lengths + timeframe (≤1h) on the chosen
+   symbol, shows Earlier vs Now (win rate / P&L / return) plus the per-indicator change, and applies all
+   at once. */
+function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators }) {
+  const [objective, setObjective] = useState("pnl");
+  const [state, setState] = useState({ loading: false, rows: null, ran: false });
+  const [applied, setApplied] = useState(false);
+  const eligible = (strats || []).filter((s) => s.cfg && (s.cfg.entry || []).length > 0 && (s.cfg.defs || []).some((d) => Number(d && d.len) > 0));
+  const iwr = (x) => (x == null || isNaN(x)) ? "—" : Number(x).toFixed(0) + "%";
+  const ipct = (x) => (x == null || isNaN(x)) ? "—" : (x >= 0 ? "+" : "") + Number(x).toFixed(1) + "%";
+  const iamt = (x) => (x == null || isNaN(x)) ? "—" : (x >= 0 ? "+" : "") + Number(x).toFixed(2);
+  const run = async (obj = objective) => {
+    if (!sym || !eligible.length) { setState({ loading: false, ran: true, rows: [] }); return; }
+    setApplied(false);
+    setState({ loading: true, rows: null, ran: true });
+    const rows = await Promise.all(eligible.map(async (s) => {
+      try {
+        const res = await optimizeIndicators({ mode: s.cfg.mode === "metric" ? "metric" : undefined, defs: s.cfg.defs || [], entry: s.cfg.entry, tf, appSyms: [sym], currentSl: s.cfg.sl != null ? Number(s.cfg.sl) : null, currentTp: s.cfg.tp != null ? Number(s.cfg.tp) : null, objective: obj });
+        return { s, best: res && res.best ? res.best : null, current: res ? res.current : null, changes: (res && res.changes) || [] };
+      } catch { return { s, best: null }; }
+    }));
+    setState({ loading: false, ran: true, rows });
+  };
+  const pick = (obj) => { setObjective(obj); if (state.ran && !state.loading) run(obj); };
+  const { loading, rows, ran } = state;
+  const good = (rows || []).filter((r) => r.best);
+  const applyAll = () => { good.forEach((r) => onApplyIndicators && onApplyIndicators(r.s.id, r.best.defs, r.best.tf)); setApplied(true); };
+  const objBtn = (k, label) => (
+    <button key={k} onClick={() => pick(k)} className="tap" style={{ flex: 1, padding: "6px 8px", fontSize: 10.5, fontWeight: 800, border: "none", borderRadius: 7, background: objective === k ? "var(--primary)" : "transparent", color: objective === k ? "var(--on-primary)" : "var(--muted)" }}>{label}</button>
+  );
+  const sepL = { borderLeft: "2px solid var(--muted)" };
+  const th = { fontSize: 8.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", padding: "6px 6px", textAlign: "center", whiteSpace: "nowrap" };
+  const td = { fontSize: 11, fontWeight: 700, padding: "7px 6px", textAlign: "center", borderTop: "1px solid var(--line)", whiteSpace: "nowrap" };
+  const grp = { ...th, background: "var(--elev)", padding: "6px 6px" };
+  const mCells = (m, key) => m ? [
+    <td key={key + "w"} style={{ ...td, ...sepL }}>{iwr(m.winRate)}</td>,
+    <td key={key + "p"} style={{ ...td, color: (m.pnl || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{iamt(m.pnl)}</td>,
+    <td key={key + "r"} style={{ ...td, color: (m.retPct || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{ipct(m.retPct)}</td>,
+  ] : [<td key={key + "e"} style={{ ...td, ...sepL, color: "var(--muted)" }} colSpan={3}>—</td>];
+  return (
+    <div style={{ marginBottom: 12, border: "1px solid var(--line)", borderRadius: 12, padding: 12, background: "var(--elev)" }}>
+      <div className="pill" style={{ display: "inline-flex", background: "var(--surface)", border: "1px solid var(--line)", padding: 3, width: "100%", marginBottom: 8 }}>
+        {objBtn("winrate", "Optimize Win rate")}
+        {objBtn("pnl", "Optimize P&L")}
+      </div>
+      <button onClick={() => run()} disabled={loading || !eligible.length} className="tap" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 9, padding: "8px 12px", fontSize: 11, fontWeight: 800, opacity: (loading || !eligible.length) ? 0.6 : 1 }}>
+        <Sparkles size={12} color="#0EA5E9" /> {loading ? `Optimising ${eligible.length} strategies…` : `Optimize Indicators per strategy — ${sym}`}
+      </button>
+      {ran && !loading && (good.length === 0
+        ? <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>Not enough past entry signals on {sym} to optimise these strategies' indicators.</div>
+        : <div style={{ marginTop: 10 }}>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ borderCollapse: "collapse", minWidth: 720, width: "100%" }}>
+                <thead>
+                  <tr>
+                    <th style={{ ...th, textAlign: "left" }} rowSpan={2}>Strategy</th>
+                    <th style={{ ...grp, ...sepL, color: "#0EA5E9" }} rowSpan={2}>Optimized indicators</th>
+                    <th style={{ ...grp, ...sepL, color: "var(--muted)" }} colSpan={3}>Earlier</th>
+                    <th style={{ ...grp, ...sepL, color: "var(--primary)" }} colSpan={3}>Now</th>
+                  </tr>
+                  <tr>
+                    {["Win", "P&L", "Ret"].map((h, i) => <th key={"e" + h} style={i === 0 ? { ...th, ...sepL } : th}>{h}</th>)}
+                    {["Win", "P&L", "Ret"].map((h, i) => <th key={"n" + h} style={i === 0 ? { ...th, ...sepL } : th}>{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {good.map((r) => (
+                    <tr key={r.s.id}>
+                      <td style={{ ...td, textAlign: "left", fontWeight: 800 }}>{r.s.name}</td>
+                      <td style={{ ...td, ...sepL, textAlign: "left", whiteSpace: "normal", maxWidth: 220, fontWeight: 600, color: "var(--muted)", fontSize: 9.5 }}>{(r.changes && r.changes.length) ? r.changes.map((c) => `${c.name}: ${c.fromLen ?? "—"}@${c.fromTf}→${c.toLen}@${c.toTf}`).join(" · ") : `unchanged @ ${r.best.tf}`}</td>
+                      {mCells(r.current, "e")}
+                      {mCells(r.best, "n")}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 6, fontStyle: "italic" }}>Earlier = each strategy's current indicators · Now = at the tuned lengths + timeframe (SL/TP held fixed). Backtested, not a guarantee.</div>
+            {onApplyIndicators && (
+              <button onClick={applyAll} disabled={applied} className="tap" style={{ marginTop: 8, width: "100%", border: "none", background: applied ? "var(--up)" : "#0EA5E9", color: "#fff", borderRadius: 9, padding: "9px 0", fontSize: 11.5, fontWeight: 800, opacity: applied ? 0.95 : 1 }}>
+                {applied ? `✓ Indicators applied to ${good.length} strateg${good.length > 1 ? "ies" : "y"}` : `Apply optimized indicators to ${good.length} strateg${good.length > 1 ? "ies" : "y"}`}
+              </button>
+            )}
+          </div>)}
+    </div>
+  );
+}
+
 /* INDICATOR OPTIMISER — the "Optimize Indicators" analogue of ExitOptimizer. Searches the indicator
    LENGTHS + a shared timeframe (≤1h) that maximise win rate or P&L on the strategy's own past entry
    signals, then reports Earlier vs Now and applies the tuned defs (+ tf) to the strategy on Apply.
@@ -1416,6 +1505,10 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators 
           {/* Ideal SL/TP for EACH strategy on the selected symbol. */}
           {strats.length > 0 && (
             <PerSymbolStrategyOptimizer strats={pickStrats.length ? strats.filter((s) => pickStrats.includes(s.name)) : strats} sym={sym} tf={tf} onApplyExits={onApplyExits} />
+          )}
+          {/* Ideal INDICATORS (lengths + timeframe) for EACH strategy on the selected symbol. */}
+          {strats.length > 0 && (
+            <PerSymbolIndicatorOptimizer strats={pickStrats.length ? strats.filter((s) => pickStrats.includes(s.name)) : strats} sym={sym} tf={tf} onApplyIndicators={onApplyIndicators} />
           )}
 
           <button onClick={() => { setResults({}); setRun({ tf, days, sym, names: pickStrats.length ? pickStrats : stratNames, ...sizing() }); }} disabled={!strats.length} className="tap disp" style={{ width: "100%", marginBottom: 12, border: "none", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 800, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", background: strats.length ? "var(--primary)" : "var(--elev)", color: strats.length ? "var(--on-primary)" : "var(--muted)", cursor: strats.length ? "pointer" : "not-allowed" }}>
@@ -2230,6 +2323,22 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
               <button key={x} onClick={() => updateStrat(s.id, { tf: x })} className="pill tap disp" style={{ flex: "0 0 auto", padding: "6px 13px", fontSize: 11.5, fontWeight: 700, border: "1px solid " + ((s.tf || "5m") === x ? "var(--primary)" : "var(--line)"), background: (s.tf || "5m") === x ? "var(--primary)" : "var(--surface)", color: (s.tf || "5m") === x ? "var(--on-primary)" : "var(--ink)" }}>{x}</button>
             ))}
           </div>
+          {/* Optimize SL & TP and Optimize Indicators for this deployed strategy — applied to this
+              strategy's own config (per-user), on its first symbol. */}
+          {(() => {
+            const eTf = s.tf || (s.cfg && s.cfg.tf) || "5m";
+            const eCfg = { ...(s.cfg || {}), tf: eTf };
+            const eSym = (s.symbols || [])[0];
+            return (
+              <div style={{ marginTop: 12 }}>
+                <CardOptimizeButton cfg={eCfg} sym={eSym} tf={eTf} sl={(s.cfg && s.cfg.sl) || ""} tp={(s.cfg && s.cfg.tp) || ""}
+                  setSl={(v) => updateStrat(s.id, { cfg: { ...(s.cfg || {}), sl: String(v) } })}
+                  setTp={(v) => updateStrat(s.id, { cfg: { ...(s.cfg || {}), tp: String(v) } })} />
+                <CardIndicatorOptimizeButton cfg={eCfg} sym={eSym} tf={eTf} sl={(s.cfg && s.cfg.sl) || ""} tp={(s.cfg && s.cfg.tp) || ""}
+                  onApply={(defs, ntf) => updateStrat(s.id, { cfg: { ...(s.cfg || {}), defs: defs.map((d) => ({ ...d, tf: ntf })), tf: ntf }, tf: ntf })} />
+              </div>
+            );
+          })()}
           <button onClick={() => setEditStrat(null)} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--primary)", color: "#fff", border: "none", borderRadius: 11, padding: 10, fontWeight: 700, fontSize: 12.5 }}>Done</button>
         </div>
       )}
@@ -2598,6 +2707,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                     the Stop loss / Take profit fields above. */}
                 {cfg.entry && cfg.entry.length > 0 && (
                   <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+                    <div className="disp" style={{ fontSize: 11.5, fontWeight: 800, color: "var(--ink)", margin: "0 0 2px", display: "flex", alignItems: "center", gap: 6 }}><Sparkles size={13} color="#7C3AED" /> Optimize SL &amp; TP</div>
                     <ExitOptimizer
                       defs={cfg.defs || []}
                       entry={cfg.entry}
@@ -2606,6 +2716,18 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                       currentSl={sl ? Number(sl) : null}
                       currentTp={tp ? Number(tp) : null}
                       onApply={(bsl, btp) => { setSl(String(bsl)); setTp(String(btp)); }}
+                    />
+                    {/* Optimize the indicator lengths + timeframe (≤1h) for the chosen objective. Apply
+                        writes the tuned lengths and timeframe straight back into the builder above. */}
+                    <div className="disp" style={{ fontSize: 11.5, fontWeight: 800, color: "var(--ink)", margin: "16px 0 2px", display: "flex", alignItems: "center", gap: 6 }}><Sparkles size={13} color="#0EA5E9" /> Optimize Indicators</div>
+                    <IndicatorOptimizer
+                      defs={cfg.defs || []}
+                      entry={cfg.entry}
+                      tf={cfg.tf || "5m"}
+                      appSyms={deploySyms.length ? deploySyms.slice(0, 4) : DEPLOY_OPTIONS.slice(0, 4)}
+                      currentSl={sl ? Number(sl) : null}
+                      currentTp={tp ? Number(tp) : null}
+                      onApply={(nd, ntf) => { setDefs((nd || []).map((d, i) => ({ ...d, id: d.id || i + 1, tf: ntf }))); setTf(ntf); }}
                     />
                   </div>
                 )}
