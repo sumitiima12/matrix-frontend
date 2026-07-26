@@ -252,10 +252,12 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
     .map((h) => {
       const m = marketOf(h.sym);
       const cur = priceSnap[h.sym] != null ? priceSnap[h.sym] : h.buy;   // frozen until next buy/sell
+      // SHORT positions profit when price FALLS, so their P&L is the inverse of a long's.
+      const dir = (h.side === "SELL" || h.short) ? -1 : 1;
       const inv = h.buy * h.qty, val = cur * h.qty;
-      const pl = val - inv, plp = (cur / h.buy - 1) * 100;
+      const pl = dir * (val - inv), plp = dir * (cur / h.buy - 1) * 100;
       const days = Math.max(1, Math.round((Date.now() - h.date) / 86400000)) || 1;
-      return { ...h, m, cur, inv, val, pl, plp, days };
+      return { ...h, m, cur, inv, val, pl, plp, days, short: dir < 0 };
     });
   const totalVal = rows.reduce((a, r) => a + r.val, 0);
   const totalInv = rows.reduce((a, r) => a + r.inv, 0);
@@ -432,6 +434,9 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
                 <div>
                   <div className="disp" style={{ fontWeight: 800, fontSize: 13.5, display: "flex", alignItems: "center", gap: 6 }}>
                     {h.sym}
+                    {(h.short || h.side === "SELL") && (
+                      <span style={{ fontSize: 8, fontWeight: 800, padding: "2px 6px", borderRadius: 6, background: "var(--down-soft)", color: "var(--down)", letterSpacing: ".03em" }}>SHORT</span>
+                    )}
                     {h.source === "positions" && (
                       <span style={{ fontSize: 8, fontWeight: 800, padding: "2px 6px", borderRadius: 6, background: "var(--elev)", color: "var(--muted)", letterSpacing: ".03em" }}>POSITION</span>
                     )}

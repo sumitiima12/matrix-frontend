@@ -66,8 +66,18 @@ export function evaluate({ cfg, candles: raw, position, price, now = Date.now() 
   const slPct = cfg.sl != null ? Math.abs(Number(cfg.sl)) / 100 : null;
   const tpPct = cfg.tp != null ? Math.abs(Number(cfg.tp)) / 100 : null;
 
-  if (slPct != null && ret <= -slPct) return { action: "SELL", reason: `Stop-loss hit (${(ret * 100).toFixed(1)}%)` };
-  if (tpPct != null && ret >= tpPct)  return { action: "SELL", reason: `Target hit (+${(ret * 100).toFixed(1)}%)` };
+  /* SHORT strategies profit when the price FALLS, so the stop/target directions invert:
+     the stop triggers when price rises past +SL%, the target when price drops past −TP%.
+     A long strategy is the mirror. `action:"SELL"` here means "CLOSE the position" — the
+     execution layer turns that into a cover-BUY for a short, or a sell for a long. */
+  const short = cfg && cfg.side === "SELL";
+  if (short) {
+    if (slPct != null && ret >= slPct)  return { action: "SELL", reason: `Stop-loss hit (+${(ret * 100).toFixed(1)}%)` };
+    if (tpPct != null && ret <= -tpPct) return { action: "SELL", reason: `Target hit (${(ret * 100).toFixed(1)}%)` };
+  } else {
+    if (slPct != null && ret <= -slPct) return { action: "SELL", reason: `Stop-loss hit (${(ret * 100).toFixed(1)}%)` };
+    if (tpPct != null && ret >= tpPct)  return { action: "SELL", reason: `Target hit (+${(ret * 100).toFixed(1)}%)` };
+  }
 
   let exit = false;
   try { exit = Boolean(chainEval(cfg.exit, i, get)); } catch { exit = false; }
@@ -104,6 +114,11 @@ export function runOnce({ strats, getCandles, getStock, getChain, positions, cap
   (strats || []).filter((s) => s.active).forEach((strat) => {
     const syms = strat.symbols || [];
     if (!syms.length) return;
+
+    /* SHORT strategy? Entry opens a short (a SELL order), exit COVERS it (a BUY order).
+       Direction is carried on the cfg so backtests, the exit engine and the order path
+       all agree. Long strategies are unchanged. */
+    const short = !!(strat.cfg && strat.cfg.side === "SELL") || strat.side === "SELL";
 
     /* Caps, with the documented defaults. maxTrades counts FRESH entries in the day;
        maxReentries counts entries on a symbol the strategy has already traded and exited
@@ -190,6 +205,7 @@ export function runOnce({ strats, getCandles, getStock, getChain, positions, cap
             strategy: strat.name,
             strategyId: strat.id,
             market: "IN",                        // options file under Indian. There is no F&O market.
+            ...(short ? { side: "SELL", short: true } : {}),   // short = SELL-to-open (option writing)
           });
 
           next[key] = {
@@ -236,6 +252,7 @@ export function runOnce({ strats, getCandles, getStock, getChain, positions, cap
           product: strat.buyType === "NRML" ? "NRML" : "MIS",   // Intraday -> MIS
           orderType: isLimit ? "LIMIT" : "MARKET",
           ...(limitPrice != null ? { limitPrice } : {}),
+          ...(short ? { side: "SELL", short: true } : {}),      // short strategy opens a short
         });
         next[key] = { qty, entry: stock.price, at: Date.now() };
         count.entries += 1;
@@ -259,26 +276,24 @@ export function runOnce({ strats, getCandles, getStock, getChain, positions, cap
             return;
           }
 
-          onSell(
-            { ...stock, sym: position.optSymbol, price: live.ltp, isOpt: true, lot: position.lotSize, under: sym },
-            position.qty,
-            { tradeType: "Automate", strategy: strat.name, strategyId: strat.id, market: "IN" }
-          );
+          const optExitStock = { ...stock, sym: position.optSymbol, price: live.ltp, isOpt: true, lot: position.lotSize, under: sym };
+          const optExitOpts = { tradeType: "Automate", strategy: strat.name, strategyId: strat.id, market: "IN" };
+          // A short option position is CLOSED by BUYING it back (cover); a long by selling.
+          if (short) onBuy(optExitStock, position.qty, { ...optExitOpts, side: "BUY" });
+          else onSell(optExitStock, position.qty, optExitOpts);
           delete next[key];
           next[exitedKey] = today;
-          log.push({ sym, strat: strat.name, action: "SELL", qty: position.qty, price: live.ltp, contract: position.optSymbol, reason: intent.reason });
+          log.push({ sym, strat: strat.name, action: short ? "COVER" : "SELL", qty: position.qty, price: live.ltp, contract: position.optSymbol, reason: intent.reason });
           return;
         }
 
-        onSell(stock, position.qty, {
-          tradeType: "Automate",
-          strategy: strat.name,
-          strategyId: strat.id,
-          market: "IN",
-        });
+        const exitOpts = { tradeType: "Automate", strategy: strat.name, strategyId: strat.id, market: "IN" };
+        // Close a short by BUYING to cover; close a long by SELLING.
+        if (short) onBuy(stock, position.qty, { ...exitOpts, side: "BUY" });
+        else onSell(stock, position.qty, exitOpts);
         delete next[key];
         next[exitedKey] = today;
-        log.push({ sym, strat: strat.name, action: "SELL", qty: position.qty, price: stock.price, reason: intent.reason });
+        log.push({ sym, strat: strat.name, action: short ? "COVER" : "SELL", qty: position.qty, price: stock.price, reason: intent.reason });
       }
     });
   });

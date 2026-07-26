@@ -9,7 +9,7 @@ import { chgColor, clamp, fmt, pct } from "../lib/format";
 import { useBacktestStats } from "../hooks/useBacktestStats";
 import { SMAarr, EMAarr, RSIarr, MACDarr, BBarr, CCIarr, ATRarr, VWAParr, ADXarr, CF } from "../lib/series";
 import { ALL, UNIVERSE, marketOf } from "../domain/universe";
-import { apiListPublicStrategies, apiPublishStrategy, apiUnpublishStrategy, aiInterpretStrategyAI, optimizeExits } from "../domain/api";
+import { apiListPublicStrategies, apiPublishStrategy, apiUnpublishStrategy, aiInterpretStrategyAI, optimizeExits, optimizeIndicators } from "../domain/api";
 import { humanizeStrategy, humanizeCond, PATTERN_EXPLAIN, patternsInConds, suggestStrategy } from "../domain/strategyLang";
 /* Neo's plain-English read-back of a set of conditions: "a Cup & Handle forms, and RSI is below 40". */
 const neoReads = (conds) => (conds || []).map((c, i) => `${i ? (c.gate === "OR" ? "or " : "and ") : ""}${humanizeCond(c)}`).join(", ");
@@ -32,6 +32,23 @@ function btPeriodStr(stats) {
   const p = stats && stats.period;
   if (!p) return "the available history";
   return `${p.n} ${p.unit}${p.n === 1 ? "" : "s"}`;
+}
+
+/* Buy (long) vs Sell (short) toggle for the Samples / Premium sections. "Buy" shows the standard
+   long strategies; "Sell" shows their short mirrors (same setup, opposite direction). */
+function DirToggle({ dir, setDir }) {
+  return (
+    <div style={{ display: "flex", gap: 6, background: "var(--elev)", border: "1px solid var(--line)", borderRadius: 12, padding: 4, marginBottom: 12 }}>
+      {[["buy", "Buy", "var(--up)"], ["sell", "Sell", "var(--down)"]].map(([k, label, col]) => (
+        <button key={k} onClick={() => setDir(k)} className="tap disp" style={{
+          flex: 1, borderRadius: 9, padding: "8px 4px", fontWeight: 800, fontSize: 12, cursor: "pointer",
+          border: "none",
+          background: dir === k ? col : "transparent",
+          color: dir === k ? "#fff" : "var(--muted)",
+        }}>{label}</button>
+      ))}
+    </div>
+  );
 }
 
 function BacktestResult({ cfg, defaultSym, blocked = false, onConnect, defaultTf = "5m" }) {
@@ -459,23 +476,75 @@ function DeploySizeField({ market, value, onChange }) {
 function creatorOf(s) { return (s && (s.premium || s.by === "Matrix")) ? "Neo" : ((s && s.by) || "You"); }
 /* Editable Stop-loss / Target on a strategy card. Defaults come from the strategy (0.5% / 1.5% if it
    carries none); the user can change them before deploying and the chosen values ride along on activate. */
+/* Objective sub-toggle shared by the card optimisers: maximise win rate, or P&L (default). */
+function ObjSubToggle({ objective, setObjective }) {
+  const btn = (k, label) => (
+    <button key={k} onClick={() => setObjective(k)} className="tap" style={{ flex: 1, padding: "5px 6px", fontSize: 10, fontWeight: 800, border: "none", borderRadius: 7, background: objective === k ? "var(--primary)" : "transparent", color: objective === k ? "var(--on-primary)" : "var(--muted)" }}>{label}</button>
+  );
+  return (
+    <div className="pill" style={{ display: "flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3, marginTop: 8 }}>
+      {btn("winrate", "Optimize Win rate")}
+      {btn("pnl", "Optimize P&L")}
+    </div>
+  );
+}
+
 /* "Optimize SL & TP" for a single strategy card — grid-searches the ideal exits on the card's symbol
-   and writes them into the SL/TP fields. Turns into "SL & TP optimized" once applied. */
+   and writes them into the SL/TP fields. Objective sub-options (Win rate / P&L, default P&L). Turns
+   into "SL & TP optimized" once applied. */
 function CardOptimizeButton({ cfg, sym, tf = "5m", sl, tp, setSl, setTp }) {
   const [st, setSt] = useState({ loading: false, done: false, none: false });
+  const [objective, setObjective] = useState("pnl");
   const canOpt = !!(cfg && (cfg.entry || []).length > 0 && sym);
   const run = async () => {
     if (!canOpt) return;
     setSt({ loading: true, done: false, none: false });
-    const res = await optimizeExits({ mode: cfg.mode === "metric" ? "metric" : undefined, defs: cfg.defs || [], entry: cfg.entry, tf, appSyms: [sym], currentSl: sl ? Number(sl) : null, currentTp: tp ? Number(tp) : null, objective: "pnl" }).catch(() => null);
+    const res = await optimizeExits({ mode: cfg.mode === "metric" ? "metric" : undefined, defs: cfg.defs || [], entry: cfg.entry, tf, appSyms: [sym], currentSl: sl ? Number(sl) : null, currentTp: tp ? Number(tp) : null, objective }).catch(() => null);
     const best = res && res.best ? res.best : null;
     if (best) { setSl(String(best.sl)); setTp(String(best.tp)); }
     setSt({ loading: false, done: !!best, none: !best });
   };
   return (
-    <button onClick={run} disabled={st.loading || !canOpt} className="tap disp" style={{ width: "100%", marginTop: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid " + (st.done ? "var(--up)" : "var(--line)"), background: st.done ? "var(--up-soft)" : "var(--surface)", color: st.done ? "var(--up)" : "var(--ink)", borderRadius: 11, padding: "9px 12px", fontWeight: 800, fontSize: 12, cursor: canOpt ? "pointer" : "not-allowed", opacity: (st.loading || !canOpt) ? 0.6 : 1 }}>
-      <Sparkles size={14} color={st.done ? "var(--up)" : "#7C3AED"} /> {st.loading ? "Optimising…" : st.done ? "✓ SL & TP optimized" : st.none ? "Not enough data — retry" : "Optimize SL & TP"}
-    </button>
+    <div>
+      <ObjSubToggle objective={objective} setObjective={(o) => { setObjective(o); setSt({ loading: false, done: false, none: false }); }} />
+      <button onClick={run} disabled={st.loading || !canOpt} className="tap disp" style={{ width: "100%", marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid " + (st.done ? "var(--up)" : "var(--line)"), background: st.done ? "var(--up-soft)" : "var(--surface)", color: st.done ? "var(--up)" : "var(--ink)", borderRadius: 11, padding: "9px 12px", fontWeight: 800, fontSize: 12, cursor: canOpt ? "pointer" : "not-allowed", opacity: (st.loading || !canOpt) ? 0.6 : 1 }}>
+        <Sparkles size={14} color={st.done ? "var(--up)" : "#7C3AED"} /> {st.loading ? "Optimising…" : st.done ? "✓ SL & TP optimized" : st.none ? "Not enough data — retry" : "Optimize SL & TP"}
+      </button>
+    </div>
+  );
+}
+
+/* "Optimize Indicators" for a strategy card — searches the indicator LENGTHS and a shared timeframe
+   (≤1h) that maximise win rate or P&L on the card's symbol, then applies them to the user's copy of
+   the strategy (defs + tf). Objective sub-options (Win rate / P&L, default P&L). */
+function CardIndicatorOptimizeButton({ cfg, sym, tf = "5m", sl, tp, onApply }) {
+  const [st, setSt] = useState({ loading: false, done: false, none: false, changes: null });
+  const [objective, setObjective] = useState("pnl");
+  const numericDefs = (cfg && (cfg.defs || []).some((d) => Number(d && d.len) > 0));
+  const canOpt = !!(cfg && (cfg.entry || []).length > 0 && sym && numericDefs);
+  const run = async () => {
+    if (!canOpt) return;
+    setSt({ loading: true, done: false, none: false, changes: null });
+    const res = await optimizeIndicators({ mode: cfg.mode === "metric" ? "metric" : undefined, defs: cfg.defs || [], entry: cfg.entry, tf, appSyms: [sym], currentSl: sl ? Number(sl) : null, currentTp: tp ? Number(tp) : null, objective }).catch(() => null);
+    const best = res && res.best ? res.best : null;
+    if (best && onApply) onApply(best.defs, best.tf);
+    setSt({ loading: false, done: !!best, none: !best, changes: (res && res.changes) || null });
+  };
+  return (
+    <div style={{ marginTop: 8 }}>
+      <ObjSubToggle objective={objective} setObjective={(o) => { setObjective(o); setSt({ loading: false, done: false, none: false, changes: null }); }} />
+      <button onClick={run} disabled={st.loading || !canOpt} className="tap disp" title={!numericDefs ? "This strategy has no tunable indicator lengths" : undefined} style={{ width: "100%", marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid " + (st.done ? "var(--up)" : "var(--line)"), background: st.done ? "var(--up-soft)" : "var(--surface)", color: st.done ? "var(--up)" : "var(--ink)", borderRadius: 11, padding: "9px 12px", fontWeight: 800, fontSize: 12, cursor: canOpt ? "pointer" : "not-allowed", opacity: (st.loading || !canOpt) ? 0.6 : 1 }}>
+        <Sparkles size={14} color={st.done ? "var(--up)" : "#0EA5E9"} /> {st.loading ? "Optimising…" : st.done ? "✓ Indicators optimized" : st.none ? "Not enough data — retry" : "Optimize Indicators"}
+      </button>
+      {st.done && st.changes && st.changes.length > 0 && (
+        <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>
+          {st.changes.map((c) => `${c.name}: ${c.fromLen ?? "—"}→${c.toLen} @ ${c.toTf}`).join(" · ")}
+        </div>
+      )}
+      {st.done && st.changes && st.changes.length === 0 && (
+        <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 6 }}>Current indicator settings are already optimal for this objective.</div>
+      )}
+    </div>
   );
 }
 
@@ -574,10 +643,11 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, onPersist, market 
       <DeploySizeField market={market} value={size} onChange={setSize} />
       <StratSLTP sl={sl} tp={tp} setSl={setSl} setTp={setTp} />
       <CardOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} setSl={setSl} setTp={setTp} />
+      <CardIndicatorOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} onApply={(defs, newTf) => { onPersist && onPersist(s.id, { defs, tf: newTf }); setTfSel(newTf); }} />
 
       {/* User edit — Symbol + Timeframe. */}
       <button onClick={() => setShowEdit((v) => !v)} className="tap disp" style={{ width: "100%", marginTop: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--line)", background: showEdit ? "var(--elev)" : "transparent", color: "var(--ink)", borderRadius: 11, padding: "8px 12px", fontWeight: 800, fontSize: 12 }}>
-        <SlidersHorizontal size={13} /> {showEdit ? "Hide" : "Edit symbol / timeframe"}{symSel && !showEdit ? ` · ${symSel} · ${tfSel}` : ""}
+        <SlidersHorizontal size={13} /> {showEdit ? "Hide" : "Change Symbol/Timeframe"}
       </button>
       {showEdit && <CardSymTfPanel market={market} sym={symSel} setSym={setSymSel} tf={tfSel} setTf={setTfSel} />}
 
@@ -675,10 +745,11 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, onPersist, onClone, 
       <DeploySizeField market={market} value={size} onChange={setSize} />
       <StratSLTP sl={sl} tp={tp} setSl={setSl} setTp={setTp} />
       <CardOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} setSl={setSl} setTp={setTp} />
+      <CardIndicatorOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} onApply={(defs, newTf) => { onPersist && onPersist(s.id, { defs, tf: newTf }); setTfSel(newTf); }} />
 
       {/* User edit — Symbol + Timeframe (rules stay hidden; admin edits rules via the pencil below). */}
       <button onClick={() => setShowEdit((v) => !v)} className="tap disp" style={{ width: "100%", marginTop: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--line)", background: showEdit ? "var(--elev)" : "transparent", color: "var(--ink)", borderRadius: 11, padding: "8px 12px", fontWeight: 800, fontSize: 12 }}>
-        <SlidersHorizontal size={13} /> {showEdit ? "Hide" : "Edit symbol / timeframe"}{symSel && !showEdit ? ` · ${symSel} · ${tfSel}` : ""}
+        <SlidersHorizontal size={13} /> {showEdit ? "Hide" : "Change Symbol/Timeframe"}
       </button>
       {showEdit && <CardSymTfPanel market={market} sym={symSel} setSym={setSymSel} tf={tfSel} setTf={setTfSel} />}
 
@@ -935,9 +1006,10 @@ function CopyStrategyCard({ s, active, onToggle, onPersist, onDelete, market = "
       <DeploySizeField market={market} value={size} onChange={setSize} />
       <StratSLTP sl={sl} tp={tp} setSl={setSl} setTp={setTp} />
       <CardOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} setSl={setSl} setTp={setTp} />
+      <CardIndicatorOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} onApply={(defs, newTf) => { onPersist && onPersist(s.id, { defs, tf: newTf }); setTfSel(newTf); }} />
 
       <button onClick={() => setShowEdit((v) => !v)} className="tap disp" style={{ width: "100%", marginTop: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--line)", background: showEdit ? "var(--elev)" : "transparent", color: "var(--ink)", borderRadius: 11, padding: "8px 12px", fontWeight: 800, fontSize: 12 }}>
-        <SlidersHorizontal size={13} /> {showEdit ? "Hide" : "Edit symbol / timeframe"}{symSel && !showEdit ? ` · ${symSel} · ${tfSel}` : ""}
+        <SlidersHorizontal size={13} /> {showEdit ? "Hide" : "Change Symbol/Timeframe"}
       </button>
       {showEdit && <CardSymTfPanel market={market} sym={symSel} setSym={setSymSel} tf={tfSel} setTf={setTfSel} />}
 
@@ -1146,11 +1218,102 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits }) {
   );
 }
 
+/* INDICATOR OPTIMISER — the "Optimize Indicators" analogue of ExitOptimizer. Searches the indicator
+   LENGTHS + a shared timeframe (≤1h) that maximise win rate or P&L on the strategy's own past entry
+   signals, then reports Earlier vs Now and applies the tuned defs (+ tf) to the strategy on Apply.
+   Props: { defs, entry, mode, tf, appSyms, currentSl, currentTp, onApply(defs, tf) } */
+function IndicatorOptimizer({ defs, entry, mode, tf, appSyms, currentSl, currentTp, onApply }) {
+  const [state, setState] = useState({ loading: false, res: null, ran: false, applied: false });
+  const [objective, setObjective] = useState("pnl");
+  const iwr = (x) => (x == null || isNaN(x)) ? "—" : Number(x).toFixed(0) + "%";
+  const ipct = (x) => (x == null || isNaN(x)) ? "—" : (x >= 0 ? "+" : "") + Number(x).toFixed(1) + "%";
+  const iamt = (x) => (x == null || isNaN(x)) ? "—" : (x >= 0 ? "+" : "") + Number(x).toFixed(2);
+  const numeric = (defs || []).some((d) => Number(d && d.len) > 0);
+  const run = async (obj = objective) => {
+    if (!entry || !entry.length || !appSyms || !appSyms.length || !numeric) { setState({ loading: false, ran: true, res: { entries: 0 }, applied: false }); return; }
+    setState({ loading: true, res: null, ran: true, applied: false });
+    const res = await optimizeIndicators({ mode, defs, entry, tf, appSyms, currentSl, currentTp, objective: obj });
+    setState({ loading: false, ran: true, res, applied: false });
+  };
+  const pickObjective = (obj) => { setObjective(obj); if (state.ran && !state.loading) run(obj); };
+  const { loading, res, ran, applied } = state;
+  const best = res && res.best;
+  const cur = res && res.current;
+  const changes = (res && res.changes) || [];
+  const cellL = { fontSize: 9.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.3 };
+  const num = { fontWeight: 800, fontSize: 12, color: "var(--ink)" };
+  const objBtn = (k, label) => (
+    <button key={k} onClick={() => pickObjective(k)} className="tap" style={{ flex: 1, padding: "6px 8px", fontSize: 10.5, fontWeight: 800, border: "none", borderRadius: 7, background: objective === k ? "var(--primary)" : "transparent", color: objective === k ? "var(--on-primary)" : "var(--muted)" }}>{label}</button>
+  );
+  const rows = best ? [
+    { k: "Win rate", e: cur ? iwr(cur.winRate) : "—", n: iwr(best.winRate) },
+    { k: "P&L", e: cur ? iamt(cur.pnl) : "—", n: iamt(best.pnl), nColor: best.pnl >= 0 ? "var(--up)" : "var(--down)" },
+    { k: "Return %", e: cur ? ipct(cur.retPct) : "—", n: ipct(best.retPct), nColor: best.retPct >= 0 ? "var(--up)" : "var(--down)" },
+  ] : [];
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3, width: "100%" }}>
+        {objBtn("winrate", "Optimize Win rate")}
+        {objBtn("pnl", "Optimize P&L")}
+      </div>
+      <button onClick={() => run()} disabled={loading || !numeric} className="tap" title={!numeric ? "This strategy has no tunable indicator lengths" : undefined}
+        style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 9, padding: "7px 11px", fontSize: 10.5, fontWeight: 800, opacity: (loading || !numeric) ? 0.6 : 1 }}>
+        <Sparkles size={13} color="#0EA5E9" />
+        {loading ? "Optimising…" : "Optimize Indicators"}
+      </button>
+      {ran && !loading && !best && (
+        <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>
+          {!numeric ? "This strategy has no tunable indicator lengths (e.g. MACD/VWAP only)." : `Not enough past entry signals to optimise${res && res.entries != null ? ` (${res.entries} found)` : ""}. Add symbols with more history, then retry.`}
+        </div>
+      )}
+      {ran && !loading && best && (
+        <div style={{ marginTop: 10, border: "1px solid var(--line)", borderRadius: 11, padding: 11, background: "var(--surface)" }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+            <div className="disp" style={{ fontWeight: 800, fontSize: 12.5, color: "var(--ink)" }}>Ideal indicators · {objective === "winrate" ? "max win rate" : "max P&L"}</div>
+            <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>{best.trades} past trades · tf {best.tf}</div>
+          </div>
+          {changes.length > 0 ? (
+            <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+              {changes.map((c) => (
+                <div key={c.name} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, gap: 8 }}>
+                  <span style={{ color: "var(--muted)", fontWeight: 700 }}>{c.name}</span>
+                  <span className="mono" style={{ fontWeight: 800, color: "var(--ink)" }}>{c.fromLen ?? "—"} @ {c.fromTf} → {c.toLen} @ {c.toTf}</span>
+                </div>
+              ))}
+            </div>
+          ) : <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8 }}>Current indicator settings are already optimal for this objective.</div>}
+          <div style={{ marginTop: 10, borderTop: "1px solid var(--line)", paddingTop: 9 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr 1fr", gap: 5, alignItems: "center" }}>
+              <div />
+              <div style={{ ...cellL, textAlign: "right" }}>Earlier</div>
+              <div style={{ ...cellL, textAlign: "right" }}>Now</div>
+              {rows.map((r) => (
+                <React.Fragment key={r.k}>
+                  <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 800 }}>{r.k}</div>
+                  <div className="mono" style={{ ...num, textAlign: "right", color: "var(--muted)" }}>{r.e}</div>
+                  <div className="mono" style={{ ...num, textAlign: "right", color: r.nColor || "var(--ink)" }}>{r.n}</div>
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+          <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 6, lineHeight: 1.5, fontStyle: "italic" }}>Backtested on past entries with the current SL/TP — not a guarantee. P&L is per 1 unit / contract.</div>
+          {onApply && changes.length > 0 && (
+            <button onClick={() => { onApply(best.defs, best.tf); setState((s) => ({ ...s, applied: true })); }} className="tap"
+              style={{ marginTop: 10, width: "100%", border: "none", background: applied ? "var(--up)" : "#0EA5E9", color: "#fff", borderRadius: 9, padding: "9px 0", fontSize: 11.5, fontWeight: 800 }}>
+              {applied ? "✓ Indicators applied" : "Apply optimized indicators"}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ADMIN BACKTESTING PANEL — two views:
    • Per Symbol  : one symbol × many strategies (with a strategy multi-select filter, all by default).
    • Per Strategy: one strategy × many symbols (symbol multi-select, all by default) — the transpose.
    Both reuse useBacktestStats and only run on the "Backtest Now" tap, never automatically. */
-function BacktestPanel({ strats, market = "IN", onApplyExits }) {
+function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators }) {
   const DEF_SYM = { US: "SPX", IN: "NIFTY50", Crypto: "BTC", Commodity: "GOLD", FNO: "NIFTY50" };
   const [view, setView] = useState("perSymbol");   // perSymbol | perStrategy
   // Position sizing for absolute P&L: crypto = USD amount (default 100), everything else = quantity (default 1).
@@ -1313,6 +1476,18 @@ function BacktestPanel({ strats, market = "IN", onApplyExits }) {
                 currentSl={curCfg.sl != null ? Number(curCfg.sl) : null}
                 currentTp={curCfg.tp != null ? Number(curCfg.tp) : null}
                 onApply={onApplyExits ? (sl, tp) => onApplyExits(curStrat.id, sl, tp) : undefined}
+              />
+              {/* Optimize Indicators — tune indicator lengths + timeframe (≤1h) for win rate or P&L. */}
+              <div className="disp" style={{ fontSize: 11.5, fontWeight: 800, color: "var(--ink)", margin: "14px 0 2px", display: "flex", alignItems: "center", gap: 6 }}><Sparkles size={13} color="#0EA5E9" /> Indicator optimiser — {curStrat.name}</div>
+              <IndicatorOptimizer
+                defs={curCfg.defs || []}
+                entry={curCfg.entry}
+                mode={curCfg.mode === "metric" ? "metric" : undefined}
+                tf={pTf}
+                appSyms={pSyms.length ? pSyms.slice(0, 4) : symOptions.slice(0, 4)}
+                currentSl={curCfg.sl != null ? Number(curCfg.sl) : null}
+                currentTp={curCfg.tp != null ? Number(curCfg.tp) : null}
+                onApply={onApplyIndicators ? (nd, ntf) => onApplyIndicators(curStrat.id, nd, ntf) : undefined}
               />
             </div>
           )}
@@ -1772,11 +1947,14 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const updateStrat = (id, patch) => setStrats((p) => p.map((s) => s.id === id ? { ...s, ...patch } : s));
   /* Persist a card's SL/TP/symbol/timeframe edit onto the user's OWN copy of the strategy (per-user,
      saved with the rest of app state). The timeframe re-times every indicator. Rules are untouched. */
-  const persistCard = (id, { sl, tp, symbol, tf, name }) => setStrats((p) => p.map((s) => {
+  const persistCard = (id, { sl, tp, symbol, tf, name, defs }) => setStrats((p) => p.map((s) => {
     if (s.id !== id) return s;
     const cfg = { ...(s.cfg || {}) };
     if (sl != null && sl !== "") cfg.sl = String(sl);
     if (tp != null && tp !== "") cfg.tp = String(tp);
+    // Optimize Indicators writes new indicator lengths (and a tf) — set defs first so the tf remap below
+    // keeps the tuned lengths and just stamps the timeframe onto them.
+    if (defs) cfg.defs = defs.map((d) => ({ ...d }));
     if (tf) { cfg.tf = tf; cfg.defs = (cfg.defs || []).map((d) => ({ ...d, tf })); }
     return { ...s, cfg, ...(name != null ? { name } : {}), ...(symbol ? { symbols: [symbol] } : {}), ...(tf ? { tf } : {}) };
   }));
@@ -1827,6 +2005,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
        MINE    (created by the user): scored on their ACTUAL closed trades. A
                 strategy with no closed trades shows "—", not a made-up win rate. */
   const [stratTab, setStratTab] = useState("deployed");   // sub-tab under "Strategies": deployed | sample | premium | public | mine
+  const [dir, setDir] = useState("buy");   // Buy (long) | Sell (short mirror) — filters Samples & Premium
   const [topTab, setTopTab] = useState("build");   // build | sample | premium | public | mine
   const [compareOpen, setCompareOpen] = useState(false);   // premium "Compare all" backtest table
 
@@ -1876,6 +2055,10 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   // Premium strategies are shown in EVERY market (not market-filtered) and are locked:
   // name + description only, activate + backtest, no template/edit.
   const premiumStrats = strats.filter((s) => s.premium);
+  // Buy (long) vs Sell (short mirror) split — a strategy carries side:"SELL" on its short mirror.
+  const isShortStrat = (s) => s.side === "SELL" || (s.cfg && s.cfg.side === "SELL");
+  const sampleShown  = sampleStrats.filter(({ s }) => dir === "sell" ? isShortStrat(s) : !isShortStrat(s));
+  const premiumShown = premiumStrats.filter((s) => dir === "sell" ? isShortStrat(s) : !isShortStrat(s));
   /* A strategy belongs to the market of the symbol it's deployed on. So a crypto strategy
      doesn't show under US. Strategies with no symbol yet appear in every market. */
   const stratInMarket = (s) => { const sy = (s.symbols || [])[0]; return !sy || marketOf(sy) === market; };
@@ -2210,7 +2393,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
 
       {/* TOP SELECTOR — one place to switch between building, samples, and your own. */}
       <div className="hide-scroll" style={{ display: "flex", gap: 7, marginTop: 18, overflowX: "auto" }}>
-        {[["build", "Build"], ["strategies", "Strategies"], ["pnl", "P&L"]].map(([k, label]) => (
+        {[["build", "Build"], ["strategies", "Strategies"], ["pnl", "P&L"], ["backtest", "Backtesting"]].map(([k, label]) => (
           <button
             key={k}
             onClick={() => setTopTab(k)}
@@ -2463,10 +2646,16 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       {/* SAMPLES + MY STRATEGIES — driven by the TOP selector now, not a second tab row. */}
       {topTab === "pnl" && <StrategyPnLView strats={strats} trades={trades} market={market} onDelete={deleteStrategy} />}
 
+      {topTab === "backtest" && (
+        <div style={{ marginTop: 16 }}>
+          <BacktestPanel strats={premiumStrats} market={market} onApplyExits={(id, sl, tp) => setStrats((p) => p.map((s) => s.id === id ? { ...s, cfg: { ...(s.cfg || {}), sl, tp } } : s))} onApplyIndicators={(id, defs, tf) => persistCard(id, { defs, tf })} />
+        </div>
+      )}
+
       {topTab === "strategies" && (<>
       {/* Sub-sections under Strategies — shown directly (no redundant "Strategies" heading). */}
       <div ref={stratsRef} className="hide-scroll" style={{ display: "flex", gap: 7, margin: "18px 0 14px", scrollMarginTop: 80, overflowX: "auto" }}>
-        {[["deployed", "Deployed"], ["sample", "Samples"], ["premium", "Premium"], ["public", "Public"], ["mine", "Mine"], ["copies", "My Copies"], ["backtest", "Backtesting"]].map(([k, label]) => (
+        {[["deployed", "Deployed"], ["sample", "Samples"], ["premium", "Premium"], ["public", "Public"], ["mine", "Mine"], ["copies", "My Copies"]].map(([k, label]) => (
           <button key={k} onClick={() => setStratTab(k)} className="tap disp" style={{ flex: "0 0 auto", borderRadius: 999, padding: "7px 14px", fontWeight: 800, fontSize: 11.5, whiteSpace: "nowrap", border: "1px solid " + (stratTab === k ? "var(--primary)" : "var(--line)"), background: stratTab === k ? "var(--primary)" : "var(--surface)", color: stratTab === k ? "#fff" : "var(--ink)" }}>{label}</button>
         ))}
       </div>
@@ -2474,14 +2663,20 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       {stratTab === "backtest" ? (
         <BacktestPanel strats={premiumStrats} market={market} onApplyExits={(id, sl, tp) => setStrats((p) => p.map((s) => s.id === id ? { ...s, cfg: { ...(s.cfg || {}), sl, tp } } : s))} />
       ) : stratTab === "sample" ? (
-        sampleStrats.length === 0
-          ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No sample strategies for this market.</div>
-          : sampleStrats.map(({ s }) => <SampleStrategyCard key={s.id} s={s} market={market} onActivate={useTemplateStrategy} onClone={cloneStrategy} onEdit={isAdmin ? loadForEdit : undefined} onPersist={persistCard} canBacktest={canBacktest} onConnect={onConnectBroker} />)
+        <>
+          <DirToggle dir={dir} setDir={setDir} />
+          {sampleShown.length === 0
+            ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>{dir === "sell" ? "No short (Sell) sample strategies for this market." : "No sample strategies for this market."}</div>
+            : sampleShown.map(({ s }) => <SampleStrategyCard key={s.id} s={s} market={market} onActivate={useTemplateStrategy} onClone={cloneStrategy} onEdit={isAdmin ? loadForEdit : undefined} onPersist={persistCard} canBacktest={canBacktest} onConnect={onConnectBroker} />)}
+        </>
       ) : stratTab === "premium" ? (
         <>
+          <DirToggle dir={dir} setDir={setDir} />
           <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 2px 8px" }}>
             <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.5, flex: 1 }}>
-              Matrix's curated strategies — available in every market. Activate to run them live, or backtest first. Their rules are locked.
+              {dir === "sell"
+                ? "Short mirrors of Matrix's curated strategies — they profit when the setup breaks down. Shorting executes on crypto and Indian options; elsewhere it runs in paper. Rules are locked."
+                : "Matrix's curated strategies — available in every market. Activate to run them live, or backtest first. Their rules are locked."}
             </div>
             <button onClick={() => setCompareOpen((v) => !v)} className="tap disp" style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 5, border: "1px solid " + (compareOpen ? "var(--primary)" : "var(--line)"), background: compareOpen ? "var(--primary-soft)" : "var(--surface)", color: compareOpen ? "var(--primary)" : "var(--ink)", borderRadius: 10, padding: "7px 11px", fontWeight: 800, fontSize: 11.5 }}>
               <ListChecks size={14} /> {compareOpen ? "Hide table" : "Compare all"}
@@ -2489,10 +2684,10 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           </div>
           {/* One-tap comparison table: every premium strategy for THIS market, backtested on the same
               window, side by side. Runs on your real broker data via the same cached backtests. */}
-          {compareOpen && <ComparisonTable strats={premiumStrats.filter((s) => (s.market || marketOf((s.symbols || [])[0])) === market)} market={market} />}
-          {premiumStrats.length === 0
+          {compareOpen && <ComparisonTable strats={premiumShown.filter((s) => (s.market || marketOf((s.symbols || [])[0])) === market)} market={market} />}
+          {premiumShown.length === 0
             ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No premium strategies available.</div>
-            : premiumStrats.map((s) => <PremiumStrategyCard key={s.id} s={s} active={activeInMarket(s)} market={market} onToggle={(rs, size, opts) => togglePremiumHere(s.id, rs, size, opts)} onEdit={isAdmin ? loadForEdit : undefined} onPersist={persistCard} onClone={clonePremium} canBacktest={canBacktest} onConnect={onConnectBroker} />)}
+            : premiumShown.map((s) => <PremiumStrategyCard key={s.id} s={s} active={activeInMarket(s)} market={market} onToggle={(rs, size, opts) => togglePremiumHere(s.id, rs, size, opts)} onEdit={isAdmin ? loadForEdit : undefined} onPersist={persistCard} onClone={clonePremium} canBacktest={canBacktest} onConnect={onConnectBroker} />)}
         </>
       ) : stratTab === "copies" ? (
         myCopies.length === 0

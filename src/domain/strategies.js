@@ -307,6 +307,30 @@ SEED_STRATS.forEach((s) => {
   if (PREMIUM_DESC[s.id]) { s.premium = true; s.desc = PREMIUM_DESC[s.id]; }
 });
 
+/* ── SHORT MIRRORS ────────────────────────────────────────────────────────────
+   For every Buy strategy above, generate a mirror that trades the SAME setup in the
+   OPPOSITE direction (a short). Same rules, indicators, symbols and market — only the
+   direction flips. The automation engine reads `cfg.side:"SELL"` to open a short on
+   entry, cover on exit, and invert the SL/TP. These are surfaced under the "Sell"
+   toggle in Automate & Screener; they default inactive like every other seed.
+   `-sell` id suffix keeps them distinct and per-user activation/persistence works
+   unchanged. Shorting itself is only executable where the app allows it (crypto and
+   Indian options); the risk engine still gates non-shortable markets. */
+const SHORT_MIRRORS = SEED_STRATS.map((s) => ({
+  ...s,
+  id: `${s.id}-sell`,
+  name: `${s.name} -Sell`,
+  side: "SELL",
+  active: false,
+  cfg: {
+    ...(s.cfg || {}),
+    side: "SELL",
+    defs: (s.cfg && s.cfg.defs) ? s.cfg.defs.map((d) => ({ ...d })) : [],
+  },
+  ...(s.desc ? { desc: `Short mirror — profits when this setup breaks down instead of up. ${s.desc}` } : {}),
+}));
+SEED_STRATS.push(...SHORT_MIRRORS);
+
 export const ACTIVATE_SYMS = [...new Set(ALL.map((x) => x.sym))];
 
 /**

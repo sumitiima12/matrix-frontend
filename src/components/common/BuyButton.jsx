@@ -50,7 +50,10 @@ export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1,
   const dec = (e) => { e.stopPropagation(); setVal((q) => Math.max(step, (Number(q) || step) - step)); };
   const inc = (e) => { e.stopPropagation(); setVal((q) => (Number(q) || 0) + step); };
 
-  const commit = (e) => {
+  // SELL (short) is offered only where the app supports it: CRYPTO (Delta futures) and INDIAN OPTIONS.
+  // Stocks and commodities stay Buy-only.
+  const canShort = isCrypto || Boolean(s?.isOpt);
+  const commit = (side) => (e) => {
     e.stopPropagation();
     if (!onBuy || !priced) return;
     const amount = Number(val) || 0;
@@ -58,7 +61,7 @@ export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1,
     // Crypto: convert the dollar amount to units at the live price. Fractional is allowed.
     const qty = isCrypto ? +(amount / s.price).toFixed(6) : amount;
     if (qty <= 0) return;
-    onBuy(s, qty, { ...opts, amount: isCrypto ? amount : undefined });
+    onBuy(s, qty, { ...opts, amount: isCrypto ? amount : undefined, ...(side === "SELL" ? { side: "SELL", short: true } : {}) });
     setVal(step);
   };
 
@@ -122,7 +125,7 @@ export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1,
       </div>
 
       <button
-        onClick={commit}
+        onClick={commit("BUY")}
         disabled={!priced}
         className="tap disp"
         title={priced ? (isCrypto ? `${label} $${val} of ${s.sym} (~${(Number(val) / s.price).toFixed(6)})` : `${label} ${val} × ${s.sym} = ${fmt(total, market)}`) : "No live price yet"}
@@ -139,11 +142,32 @@ export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1,
           opacity: priced ? 1 : 0.75,
         }}
       >
-        {/* Just "Buy" — no price on the button (keeps every card tidy and prevents the label
-            overflowing narrow Trending cards). The amount at stake is shown in the confirm sheet
-            and in the button's title tooltip. */}
         {label}
       </button>
+
+      {/* SELL (short) — crypto & Indian options only. */}
+      {canShort && (
+        <button
+          onClick={commit("SELL")}
+          disabled={!priced}
+          className="tap disp"
+          title={priced ? `Short ${isCrypto ? `$${val} of` : `${val} ×`} ${s.sym}` : "No live price yet"}
+          style={{
+            padding: fullWidth ? "10px 16px" : "6px 13px",
+            borderRadius: fullWidth ? 11 : 9,
+            border: "none",
+            fontSize: fullWidth ? 13 : 11.5,
+            fontWeight: 800, whiteSpace: "nowrap",
+            flex: fullWidth ? "1 1 auto" : "0 0 auto",
+            cursor: priced ? "pointer" : "not-allowed",
+            background: priced ? "var(--down)" : (light ? "rgba(255,255,255,.14)" : "var(--elev)"),
+            color: priced ? "#fff" : "var(--muted)",
+            opacity: priced ? 1 : 0.75,
+          }}
+        >
+          Sell
+        </button>
+      )}
     </div>
   );
 }

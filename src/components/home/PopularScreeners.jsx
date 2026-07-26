@@ -43,15 +43,32 @@ const SCREENERS = [
   },
 ];
 
+/* Buy (long) vs Sell (short) toggle — mirrors the Automate Samples/Premium toggle. In "Sell"
+   mode a Popular screener shorts its matches instead of buying them (same setup, opposite side). */
+function ScreenerDirToggle({ dir, setDir }) {
+  return (
+    <div style={{ display: "flex", gap: 6, background: "var(--elev)", border: "1px solid var(--line)", borderRadius: 12, padding: 4, margin: "8px 0 4px" }}>
+      {[["buy", "Buy", "var(--up)"], ["sell", "Sell", "var(--down)"]].map(([k, label, col]) => (
+        <button key={k} onClick={() => setDir(k)} className="tap disp" style={{
+          flex: 1, borderRadius: 9, padding: "8px 4px", fontWeight: 800, fontSize: 12, cursor: "pointer", border: "none",
+          background: dir === k ? col : "transparent", color: dir === k ? "#fff" : "var(--muted)",
+        }}>{label}</button>
+      ))}
+    </div>
+  );
+}
+
 const capDefault = (m) => (m === "US" || m === "Crypto") ? "1000" : "100000";
 // Per-symbol quantity default: crypto is a USD notional (100), everything else is 1 unit/share.
 const qtyDefaultFor = (m) => (m === "Crypto" ? 100 : 1);
 const GRAD = "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)";
 
-function ScreenerRow({ screener, market, isAdmin = false, onOpen, onBuy, onAutoBuy, onScreenerBuy, liveTick = 0 }) {
+function ScreenerRow({ screener, market, isAdmin = false, onOpen, onBuy, onAutoBuy, onScreenerBuy, liveTick = 0, side = "BUY" }) {
+  const short = side === "SELL";
   const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a ? a.price : null; };
   const [matches, setMatches] = useState([]);
-  const [autoOn, setAutoOn] = useState(() => lsGet(`mx_scrauto_${screener.key}_${market}`, false));
+  const autoKey = `mx_scrauto_${screener.key}_${market}${short ? "_sell" : ""}`;
+  const [autoOn, setAutoOn] = useState(() => lsGet(autoKey, false));
   const [period, setPeriod] = useState("today");
   const [capital, setCapital] = useState(() => lsGet(`mx_scrcap_${market}`, capDefault(market)));
   const [ov, setOv] = useState({});   // per-symbol { sl, tp } override
@@ -60,7 +77,7 @@ function ScreenerRow({ screener, market, isAdmin = false, onOpen, onBuy, onAutoB
   const EDK = `mx_popedit_${screener.key}`;
   const [edit, setEdit] = useState(null);   // null | { name, sl, tp, defs, entry, exit, tf } while the panel is open
   const [ovr, setOvr] = useState(() => lsGet(EDK, {}));
-  const dispName = (ovr && ovr.name) || screener.name;
+  const dispName = ((ovr && ovr.name) || screener.name) + (short ? " -Sell" : "");
   const defSL = (ovr && ovr.sl != null) ? ovr.sl : 0.4;
   const defTP = (ovr && ovr.tp != null) ? ovr.tp : 1.0;
   // Effective scan config — admin's edited rules if present, else the built-in screener definition.
@@ -96,7 +113,7 @@ function ScreenerRow({ screener, market, isAdmin = false, onOpen, onBuy, onAutoB
     // Admin-curated basket if set, else the market's universe (capped for cost).
     const syms = eSel.length ? eSel : (UNIVERSE[market] || []).map((s) => s.sym).slice(0, 40);
     setCapital(lsGet(`mx_scrcap_${market}`, capDefault(market)));
-    setAutoOn(lsGet(`mx_scrauto_${screener.key}_${market}`, false));
+    setAutoOn(lsGet(autoKey, false));
     if (!syms.length) { setMatches([]); return undefined; }
     let h = 0; for (let i = 0; i < cfgSig.length; i++) h = (h * 31 + cfgSig.charCodeAt(i)) | 0;
     scanScreener({ key: `${screener.key}:${(h >>> 0).toString(36)}`, defs: eDefs, entry: eEntry, tf: eTf, appSyms: syms })
@@ -130,7 +147,7 @@ function ScreenerRow({ screener, market, isAdmin = false, onOpen, onBuy, onAutoB
   useEffect(() => {
     if (!autoOn || !(onScreenerBuy || onAutoBuy || onBuy) || !matches.length) return;
     if (!marketOpen(market)) return;
-    const key = `mx_scrbuy_${screener.key}_${market}_${DAY}`;
+    const key = `mx_scrbuy_${screener.key}_${market}${short ? "_sell" : ""}_${DAY}`;
     if (lsGet(key, false)) return;
     matches.forEach((m) => {
       const inst = ALL.find((a) => a.sym === m.sym);
@@ -140,7 +157,8 @@ function ScreenerRow({ screener, market, isAdmin = false, onOpen, onBuy, onAutoB
       // Otherwise fall back to the capital-split behaviour.
       const notional = useBasketQty ? cardQty(m.sym) : perCap;
       const qty = market === "Crypto" ? +(notional / price).toFixed(6) : Math.max(1, Math.floor(useBasketQty ? cardQty(m.sym) : (perCap / price)));
-      (onScreenerBuy || onAutoBuy || onBuy)(inst, qty, { tp: cardTP(m.sym), sl: cardSL(m.sym), strategy: dispName });
+      // In "Sell" mode the screener SHORTS its matches instead of buying (same setup, opposite side).
+      (onScreenerBuy || onAutoBuy || onBuy)(inst, qty, { tp: cardTP(m.sym), sl: cardSL(m.sym), strategy: dispName, ...(short ? { side: "SELL", short: true } : {}) });
     });
     lsSet(key, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -307,6 +325,7 @@ function ScreenerRow({ screener, market, isAdmin = false, onOpen, onBuy, onAutoB
 
 export default function PopularScreeners({ market, mode = "virtual", list = [], isAdmin = false, onOpen, onBuy, onAutoBuy, onScreenerBuy, liveTick = 0 }) {
   const [tab, setTab] = useState("custom");   // "custom" | "popular" | "mine" — Build-a-screener is the default
+  const [dir, setDir] = useState("buy");   // Buy (long) | Sell (short) for Popular Screeners
   const [editing, setEditing] = useState(null);   // a saved screener loaded into the builder for editing
   // Not for Commodity (thin universe / no 5m intraday screening there).
   if (market === "Commodity") return null;
@@ -322,9 +341,13 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
         </div>
       </div>
 
-      {tab === "popular" && SCREENERS.map((s) => (
-        <ScreenerRow key={s.key} screener={s} market={market} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} liveTick={liveTick} />
-      ))}
+      {tab === "popular" && <>
+        <ScreenerDirToggle dir={dir} setDir={setDir} />
+        {dir === "sell" && <div style={{ fontSize: 10.5, color: "var(--muted)", lineHeight: 1.5, margin: "0 2px 8px" }}>Sell mode shorts each match instead of buying it. Shorting executes on crypto and Indian options; elsewhere it runs in paper.</div>}
+        {SCREENERS.map((s) => (
+          <ScreenerRow key={s.key + dir} screener={s} market={market} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} liveTick={liveTick} side={dir === "sell" ? "SELL" : "BUY"} />
+        ))}
+      </>}
       {tab === "custom" && <CustomScreener market={market} mode={mode} list={list} onOpen={onOpen} onScreenerBuy={onScreenerBuy} liveTick={liveTick} editing={editing} onDoneEditing={() => setEditing(null)} />}
       {tab === "mine" && <MyScreeners market={market} mode={mode} list={list} onOpen={onOpen} onScreenerBuy={onScreenerBuy} onEdit={startEdit} liveTick={liveTick} />}
     </Section>

@@ -257,6 +257,9 @@ function seededStrats(saved) {
     const cfg = { ...(seed.cfg || {}) };
     if (prev.cfg && prev.cfg.sl != null) cfg.sl = prev.cfg.sl;
     if (prev.cfg && prev.cfg.tp != null) cfg.tp = prev.cfg.tp;
+    // Preserve the user's tuned INDICATOR lengths (from "Optimize Indicators") so they survive a
+    // reload — otherwise the defs would reset to the seed's default lengths every session.
+    if (prev.cfg && Array.isArray(prev.cfg.defs) && prev.cfg.defs.length) cfg.defs = prev.cfg.defs.map((d) => ({ ...d }));
     if (utf) { cfg.tf = utf; cfg.defs = (cfg.defs || []).map((d) => ({ ...d, tf: utf })); }
     return { ...seed, cfg, active: !!prev.active, alerts: !!prev.alerts, symbols: prev.symbols && prev.symbols.length ? prev.symbols : seed.symbols, cap: prev.cap || seed.cap, tf: utf };
   });
@@ -515,10 +518,12 @@ function AppInner() {
   };
   const buyStockNow  = (stock, qty = 1, opts = {}) => {
     if (!auth) { setBuyToast({ t: "Log in to trade — buying needs an account." }); setLoginOpen(true); return false; }
+    // A Sell/short intent (crypto & Indian options) rides in on opts.side; everything else is a BUY.
+    const side = opts.side === "SELL" ? "SELL" : "BUY";
     // REAL mode -> real broker order (auto-buy included); otherwise the paper book.
-    if (mode === "real") { placeRealMarketOrder(stock, "BUY", qty, opts.product || "CNC", opts); return true; }
+    if (mode === "real") { placeRealMarketOrder(stock, side, qty, opts.product || "CNC", opts); return true; }
     if (virtualBlocked(marketOf(stock.sym) || market)) { setBuyToast({ t: "Paper trading isn't enabled for this market.", e: true }); return false; }
-    placeOrder({ stock, side: "BUY",  qty, opts }); return true;
+    placeOrder({ stock, side, qty, opts }); return true;
   };
   const sellStockNow = (stock, qty = 1, opts = {}) => { placeOrder({ stock, side: "SELL", qty, opts }); return true; };
   /* Arm a stop-loss / take-profit / trailing-stop on an EXISTING real holding (from My

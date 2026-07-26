@@ -93,71 +93,71 @@ export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, us
     const fill = res.avgPrice ?? price ?? (heldNow ? (heldNow.buy ?? heldNow.avg) : null) ?? 0;
     const cost = fill * qty;
 
-    // 4 ── PORTFOLIO UPDATE.
+    // 4 ── PORTFOLIO UPDATE. Supports LONG and SHORT positions:
+    //   BUY  → cover an open short (books P&L), else open/add a long.
+    //   SELL → close a long you hold (books P&L), else open/add a short.
+    const matchMkt = (h) => h.sym === stock.sym && (h.market || marketOf(h.sym)) === market;
+    const isShort = (h) => h.side === "SELL" || h.short;
+    const newLong = (q, price0) => ({
+      sym: stock.sym, qty: q, buy: price0, date: Date.now(), market: opts.market || market || "IN",
+      isOpt: Boolean(stock.isOpt), under: stock.under || null,
+      product: opts.product === "MIS" ? "MIS" : "CNC", boughtAt: Date.now(),
+      tradeType: opts.tradeType || "Manual", sl: opts.sl ?? null, tp: opts.tp ?? null, tsl: opts.tsl ?? null,
+    });
+    let realized = null;                 // P&L booked by this order (only when it CLOSES a position)
+    let openEntry = fill;                // entry price to journal (the position's original entry on a close)
+    const existing = portfolio.find(matchMkt);
+
     if (side === "BUY") {
-      adjustWallet(market, -cost);
-      setPortfolio((p) => {
-        const held = p.find((h) => h.sym === stock.sym);
-        if (held) {
-          const totalQty = held.qty + qty;
-          const avg = (held.buy * held.qty + fill * qty) / totalQty;
-          return p.map((h) => (h.sym === stock.sym
-            ? {
-                ...h, qty: totalQty, buy: +avg.toFixed(2),
-                // Adding intraday to a delivery holding would make the whole position
-                // subject to square-off. Delivery wins; intraday never escalates.
-                product: h.product === "MIS" && opts.product === "MIS" ? "MIS" : (h.product || "CNC"),
-                boughtAt: h.boughtAt || Date.now(),
-                sl: opts.sl ?? h.sl, tp: opts.tp ?? h.tp, tsl: opts.tsl ?? h.tsl,
-              }
-            : h));
-        }
-        return [...p, {
-          sym: stock.sym, qty, buy: fill, date: Date.now(),
-          market,
-          /* STORE THE MARKET ON THE HOLDING.
-             The portfolio used to work out a holding's market by looking its SYMBOL up in
-             the universe. That breaks for options: "NSE:NIFTY26JUL24050CE" is a broker
-             contract string, not a universe entry, so marketOf() returns nothing and the
-             position matches no tab — you would own it and never see it. The market you
-             traded in is a fact known at order time; record it rather than re-derive it. */
-          /* The order's own market wins: an automation option passes market:"IN"
-             explicitly, and its symbol ("NSE:NIFTY26JUL24050CE") cannot be looked up in
-             the universe — so if we didn't record it, the position would match no tab. */
-          market: opts.market || market || "IN",
-          isOpt: Boolean(stock.isOpt),
-          under: stock.under || null,
-          /* MIS = intraday (auto-squared-off before the close), CNC = delivery.
-             boughtAt is what the crypto square-off counts 23h45m from, so it must be
-             the real entry time, not the time we happened to notice the position. */
-          product: opts.product === "MIS" ? "MIS" : "CNC",
-          boughtAt: Date.now(),
-          // How this position was acquired. It was already stamped on the TRADE log but
-          // never on the HOLDING, so the portfolio had no way to tell a strategy's
-          // position from one you opened yourself.
-          tradeType: opts.tradeType || "Manual",
-          sl: opts.sl ?? null, tp: opts.tp ?? null, tsl: opts.tsl ?? null,
-        }];
-      });
-    } else {
-      adjustWallet(market, cost);
-      const sellQty = Number(qty) || 0;
-      setPortfolio((p) => p
-        .map((h) => {
-          // Target the exact holding: same symbol AND same market. Falls back to marketOf
-          // when a holding has no explicit market (older positions).
-          const hMarket = h.market || marketOf(h.sym);
-          const isMatch = h.sym === stock.sym && hMarket === market;
-          if (!isMatch) return h;
-          return { ...h, qty: (Number(h.qty) || 0) - sellQty };
-        })
-        .filter((h) => (Number(h.qty) || 0) > 1e-9));   // > tiny epsilon: kills float dust too
+      if (existing && isShort(existing)) {
+        // Cover a short: profit when the cover price is BELOW the short entry.
+        const coverQty = Math.min(qty, existing.qty || 0);
+        realized = (existing.buy - fill) * coverQty; openEntry = existing.buy;
+        adjustWallet(market, realized);
+        setPortfolio((p) => p.map((h) => (matchMkt(h) && isShort(h)) ? { ...h, qty: (Number(h.qty) || 0) - coverQty } : h).filter((h) => (Number(h.qty) || 0) > 1e-9));
+      } else {
+        adjustWallet(market, -cost);
+        setPortfolio((p) => {
+          const held = p.find((h) => matchMkt(h) && !isShort(h));
+          if (held) {
+            const totalQty = held.qty + qty;
+            const avg = (held.buy * held.qty + fill * qty) / totalQty;
+            return p.map((h) => (matchMkt(h) && !isShort(h)) ? { ...h, qty: totalQty, buy: +avg.toFixed(2), product: h.product === "MIS" && opts.product === "MIS" ? "MIS" : (h.product || "CNC"), boughtAt: h.boughtAt || Date.now(), sl: opts.sl ?? h.sl, tp: opts.tp ?? h.tp, tsl: opts.tsl ?? h.tsl } : h);
+          }
+          return [...p, newLong(qty, fill)];
+        });
+      }
+    } else {   // SELL
+      if (existing && !isShort(existing)) {
+        // Close a long: proceeds + P&L (profit when the sell price is ABOVE the buy).
+        const closeQty = Math.min(qty, existing.qty || 0);
+        realized = (fill - existing.buy) * closeQty; openEntry = existing.buy;
+        adjustWallet(market, fill * closeQty);
+        setPortfolio((p) => p.map((h) => (matchMkt(h) && !isShort(h)) ? { ...h, qty: (Number(h.qty) || 0) - closeQty } : h).filter((h) => (Number(h.qty) || 0) > 1e-9));
+      } else {
+        // Open / add a SHORT. Paper margin is ignored (no cash moves on open); P&L books on cover.
+        setPortfolio((p) => {
+          const sh = p.find((h) => matchMkt(h) && isShort(h));
+          if (sh) {
+            const totalQty = sh.qty + qty;
+            const avg = (sh.buy * sh.qty + fill * qty) / totalQty;
+            return p.map((h) => (matchMkt(h) && isShort(h)) ? { ...h, qty: totalQty, buy: +avg.toFixed(2), sl: opts.sl ?? h.sl, tp: opts.tp ?? h.tp } : h);
+          }
+          return [...p, { ...newLong(qty, fill), side: "SELL", short: true }];
+        });
+      }
     }
 
-    // 5 ── TRADE JOURNAL.
+    // 5 ── TRADE JOURNAL. Closing orders carry the realized P&L + the round-trip entry/exit; opening a
+    //     short is flagged so downstream P&L knows the direction.
+    const closing = realized != null;
+    const openedShort = side === "SELL" && !closing;
     const order = recordTrade({
       sym: stock.sym, market, qty, side,
-      entry: fill, entryAt: Date.now(),
+      entry: openEntry, entryAt: Date.now(),
+      ...(closing ? { exit: fill, exitAt: Date.now(), pnl: +realized.toFixed(2), closed: true } : {}),
+      ...(openedShort ? { short: true } : {}),
+      ...(closing && existing && isShort(existing) ? { short: true, coversShort: true } : {}),
       sl: opts.sl ?? null, tp: opts.tp ?? null, tsl: opts.tsl ?? null,
       tradeType: opts.tradeType || "Manual",
       strategy: opts.strategy || null,

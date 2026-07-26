@@ -97,6 +97,19 @@ export async function optimizeExits({ mode, defs, entry, tf, appSyms, currentSl,
     return await r.json().catch(() => null);
   } catch { return null; }
 }
+/* Optimise the INDICATOR lengths + a shared timeframe (≤1h) that maximise win rate or P&L on the
+   strategy's own past entry signals. Returns { best:{defs,tf,winRate,pnl,retPct,...}, current, changes }. */
+export async function optimizeIndicators({ mode, defs, entry, tf, appSyms, currentSl, currentTp, objective = "pnl" }) {
+  if (!BACKEND_URL || !appSyms || !appSyms.length || !entry || !entry.length || !defs || !defs.length) return null;
+  try {
+    const ySyms = appSyms.map(yahooSymbol);
+    const r = await fetch(`${BACKEND_URL}/api/optimize-indicators`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode, defs, entry, tf, symbols: ySyms, currentSl, currentTp, objective }),
+    });
+    return await r.json().catch(() => null);
+  } catch { return null; }
+}
 export const aiInterpretStrategyAI = (text) => interpretStrategyAI(text);
 export const aiInterpretStrategy = (text) => interpretStrategy(text);
 export const aiMarketBrief = (facts) => marketBrief(facts);

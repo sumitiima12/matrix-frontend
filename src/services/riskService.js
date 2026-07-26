@@ -104,8 +104,14 @@ export function validateOrder(order, account) {
   }
 
   if (side === "SELL") {
-    if (!held || (held.qty || 0) < qty) {
-      reasons.push(`Cannot sell ${qty} ${sym} — you hold ${held ? held.qty : 0}.`);
+    // A SELL can now either CLOSE a long you hold, or OPEN/increase a SHORT. Selling more than a long
+    // holding (or holding nothing / a short) opens a short — which, like a buy, needs a live price and
+    // margin. We no longer block "selling more than you hold": the excess is a short entry.
+    const longHeld = held && !(held.side === "SELL" || held.short) ? (held.qty || 0) : 0;
+    const shortQty = Math.max(0, qty - longHeld);
+    if (shortQty > 0) {
+      if (!price || price <= 0 || !Number.isFinite(price)) reasons.push("No live price available to open a short.");
+      else if (shortQty * price > wallet) reasons.push(`Insufficient margin to short: needs ${(shortQty * price).toFixed(2)} but the ${market} wallet holds ${wallet.toFixed(2)}.`);
     }
   }
 
