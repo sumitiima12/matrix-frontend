@@ -81,11 +81,12 @@ export function useBacktestStats(strat, opts = {}) {
         const trades = [];
         let capPnl = 0;
         let usable = 0;
-        sets.forEach((c) => {
+        sets.forEach((c, si) => {
           if (!c || c.length < 30) return;
           usable += 1;
           const r = backtest(cfg, c, 1, tf);
-          r.trades.forEach((t) => { trades.push(t); capPnl += perSym * t.ret; });
+          // Tag each trade with its candle array + symbol so we can resolve entry/exit timestamps later.
+          r.trades.forEach((t) => { trades.push({ ...t, _c: c, _sym: syms[si] }); capPnl += perSym * t.ret; });
         });
 
         if (!usable) { setState({ loading: false, stats: null }); return; }
@@ -128,6 +129,22 @@ export function useBacktestStats(strat, opts = {}) {
         let eq = 0, peak = 0, maxDD = 0;
         for (const p of perTradePnl) { eq += p; if (eq > peak) peak = eq; const dd = peak - eq; if (dd > maxDD) maxDD = dd; }
 
+        /* Detailed trade ledger for the "List of Trades" view: each executed round-trip with its entry
+           and exit timestamps (resolved from the candle it fired on), prices, return % and sized P&L. */
+        const tradeList = trades.map((t, i) => {
+          const c = t._c || [];
+          return {
+            sym: t._sym,
+            entryTime: c[t.entryIdx] ? c[t.entryIdx].t : null,
+            exitTime: c[t.exitIdx] ? c[t.exitIdx].t : null,
+            entryPrice: t.entry,
+            exitPrice: t.exit,
+            retPct: (t.ret || 0) * 100,
+            pnl: perTradePnl[i],
+            reason: t.reason,
+          };
+        });
+
         const period = periodLabel(sets);
 
         if (!trades.length) {
@@ -154,6 +171,7 @@ export function useBacktestStats(strat, opts = {}) {
             // Otherwise fall back to the capital-split model (sum of per-trade returns).
             retPct: hasSize ? (retBase ? (pnl / retBase) * 100 : null) : (capPnl / cap) * 100,
             maxDD,   // absolute currency: deepest peak-to-trough fall of the equity curve
+            tradeList,   // detailed per-trade ledger for the List of Trades view
             symbols: usable,
             tf,
             period,

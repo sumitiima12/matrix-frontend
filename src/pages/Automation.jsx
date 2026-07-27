@@ -83,6 +83,86 @@ function LongShortToggle({ side, setSide, longCount, shortCount }) {
   );
 }
 
+/* LIST OF TRADES — a collapsible ledger of every round-trip a backtest executed: entry & exit
+   date/time, prices, return and (sized) P&L. The button reveals the table; once open it can be
+   exported to CSV. Reused by the strategy-card backtest and the Automate ▸ Backtest rows. */
+function TradeLog({ trades, market = "IN", showSym = false, accent = "#7C3AED" }) {
+  const [open, setOpen] = useState(false);
+  const list = trades || [];
+  const dt = (ms) => {
+    if (!ms) return { d: "—", t: "" };
+    const x = new Date(ms);
+    return { d: x.toLocaleDateString("en-GB"), t: x.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) };
+  };
+  const cols = [];
+  if (showSym) cols.push(["Symbol", (r) => r.sym || ""]);
+  cols.push(["Entry Date", (r) => dt(r.entryTime).d]);
+  cols.push(["Entry Time", (r) => dt(r.entryTime).t]);
+  cols.push(["Exit Date", (r) => dt(r.exitTime).d]);
+  cols.push(["Exit Time", (r) => dt(r.exitTime).t]);
+  cols.push(["Entry Price", (r) => (r.entryPrice != null ? r.entryPrice : "")]);
+  cols.push(["Exit Price", (r) => (r.exitPrice != null ? r.exitPrice : "")]);
+  cols.push(["Return %", (r) => (r.retPct >= 0 ? "+" : "") + (r.retPct || 0).toFixed(2) + "%"]);
+  cols.push(["P&L", (r) => (r.pnl == null ? "" : (r.pnl >= 0 ? "+" : "") + r.pnl.toFixed(2))]);
+  cols.push(["Exit Reason", (r) => r.reason || ""]);
+  const exportCsv = () => {
+    const esc = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
+    const lines = [cols.map((c) => esc(c[0])).join(",")];
+    list.forEach((r) => lines.push(cols.map((c) => esc(c[1](r))).join(",")));
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `trades-${Date.now()}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+  const th = { fontSize: 8.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", padding: "6px 7px", textAlign: "left", whiteSpace: "nowrap" };
+  const td = { fontSize: 10.5, fontWeight: 700, padding: "6px 7px", borderTop: "1px solid var(--line)", whiteSpace: "nowrap" };
+  return (
+    <div style={{ marginTop: 10 }}>
+      <button onClick={() => setOpen((v) => !v)} disabled={!list.length} className="tap disp" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: "8px 13px", fontSize: 11.5, fontWeight: 800, opacity: list.length ? 1 : 0.5, cursor: list.length ? "pointer" : "not-allowed" }}>
+        <ListChecks size={14} color={accent} /> {open ? "Hide" : "List of"} Trades ({list.length})
+      </button>
+      {open && list.length > 0 && (
+        <div style={{ marginTop: 8, border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", background: "var(--elev)" }}>
+            <span style={{ fontSize: 11, fontWeight: 800, color: "var(--muted)" }}>{list.length} trade{list.length === 1 ? "" : "s"}</span>
+            <button onClick={exportCsv} className="tap disp" style={{ border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 8, padding: "5px 10px", fontWeight: 800, fontSize: 10.5, display: "inline-flex", alignItems: "center", gap: 5 }}>⬇ Export CSV</button>
+          </div>
+          <div style={{ overflowX: "auto", maxHeight: 320, overflowY: "auto" }}>
+            <table style={{ borderCollapse: "collapse", width: "100%", minWidth: showSym ? 560 : 500 }}>
+              <thead><tr>
+                <th style={th}>#</th>
+                {showSym && <th style={th}>Symbol</th>}
+                <th style={th}>Entry</th>
+                <th style={th}>Exit</th>
+                <th style={{ ...th, textAlign: "right" }}>Return</th>
+                <th style={{ ...th, textAlign: "right" }}>P&amp;L</th>
+                <th style={th}>Exit</th>
+              </tr></thead>
+              <tbody>
+                {list.map((r, i) => {
+                  const e = dt(r.entryTime), x = dt(r.exitTime);
+                  return (
+                    <tr key={i}>
+                      <td style={{ ...td, color: "var(--muted)" }}>{i + 1}</td>
+                      {showSym && <td style={{ ...td, fontWeight: 800 }}>{r.sym}</td>}
+                      <td style={td}><span style={{ fontWeight: 800 }}>{e.d}</span> <span style={{ color: "var(--muted)" }}>{e.t}</span></td>
+                      <td style={td}><span style={{ fontWeight: 800 }}>{x.d}</span> <span style={{ color: "var(--muted)" }}>{x.t}</span></td>
+                      <td style={{ ...td, textAlign: "right", color: r.retPct >= 0 ? "var(--up)" : "var(--down)" }}>{(r.retPct >= 0 ? "+" : "") + (r.retPct || 0).toFixed(2)}%</td>
+                      <td style={{ ...td, textAlign: "right", color: (r.pnl || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{r.pnl == null ? "—" : (r.pnl >= 0 ? "+" : "") + fmt(r.pnl, market)}</td>
+                      <td style={{ ...td, color: "var(--muted)" }}>{r.reason || "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BacktestResult({ cfg, defaultSym, blocked = false, onConnect, defaultTf = "5m" }) {
   // Default to the symbol the strategy is ACTIVATED on. Backtesting a NIFTY50
   // strategy against RELIANCE by default tests something you never deployed.
@@ -250,17 +330,21 @@ function BacktestResult({ cfg, defaultSym, blocked = false, onConnect, defaultTf
       <div style={{ fontSize: 11.5, color: "var(--ink-soft)", marginTop: 10 }}>
         Strategy <b style={{ color: st.totalRet >= st.bh ? "var(--up)" : "var(--down)" }}>{st.totalRet >= st.bh ? "beat" : "lagged"}</b> buy-and-hold ({(st.bh >= 0 ? "+" : "") + st.bh.toFixed(1)}%). Avg trade {(st.avg >= 0 ? "+" : "") + st.avg.toFixed(2)}%.
       </div>
-      {res.trades.length > 0 && (
-        <div style={{ marginTop: 10 }}>
-          {res.trades.slice(-4).reverse().map((t, i) => (
-            <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 2px", borderBottom: "1px solid var(--line)", fontSize: 12 }}>
-              <span style={{ color: "var(--muted)" }}>Bar {t.entryIdx} → {t.exitIdx} <span className="pill" style={{ fontSize: 9, background: "var(--bg)", padding: "1px 7px", marginLeft: 4 }}>{t.reason}</span></span>
-              <span className="mono" style={{ fontWeight: 800, color: t.ret >= 0 ? "var(--up)" : "var(--down)" }}>{(t.ret * 100 >= 0 ? "+" : "") + (t.ret * 100).toFixed(2)}%</span>
-            </div>
-          ))}
-        </div>
-      )}
-      <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 8 }}>Real market candles · past performance is not a prediction. Not financial advice.</div>
+      {/* List of Trades — every round-trip with real entry/exit date-time, price, return & per-unit P&L.
+          Replaces the old raw "Bar N → M" dump. Exportable to CSV once opened. */}
+      <TradeLog
+        trades={(res.trades || []).map((t) => ({
+          entryTime: data[t.entryIdx] ? data[t.entryIdx].t : null,
+          exitTime: data[t.exitIdx] ? data[t.exitIdx].t : null,
+          entryPrice: t.entry,
+          exitPrice: t.exit,
+          retPct: (t.ret || 0) * 100,
+          pnl: (t.ret || 0) * (t.entry || 0),   // P&L per 1 unit/contract, direction-aware
+          reason: t.reason,
+        }))}
+        market={marketOf(sym)}
+      />
+      <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 8 }}>Real market candles · P&L shown per 1 unit/contract · past performance is not a prediction. Not financial advice.</div>
     </div>
   );
 }
@@ -1080,26 +1164,37 @@ function CopyStrategyCard({ s, active, onToggle, onPersist, onDelete, market = "
    already cached from the cards). Columns: trades / wins / losses / target-hits / SL-hits / return. */
 function CompareRow({ s, td, opts, onReport, market = "IN" }) {
   const { loading, stats } = useBacktestStats(s, opts);
+  const [open, setOpen] = useState(false);
   // Report finished stats up to the panel so it can export the whole table to CSV.
   useEffect(() => { if (onReport && !loading) onReport(s.name, stats); /* eslint-disable-next-line */ }, [loading, stats]);
   const c = (v) => ({ ...td, color: v >= 0 ? "var(--up)" : "var(--down)" });
+  const canExpand = !loading && stats && stats.trades > 0 && (stats.tradeList || []).length > 0;
   return (
-    <tr>
-      <td style={{ ...td, textAlign: "left", fontWeight: 800 }}>{s.name}</td>
-      {loading ? <td style={{ ...td, color: "var(--muted)" }} colSpan={9}>backtesting…</td>
-        : !stats || !stats.trades ? <td style={{ ...td, color: "var(--muted)" }} colSpan={9}>{stats ? "no trades" : "no data"}</td>
-        : <>
-            <td style={td}>{stats.trades}</td>
-            <td style={{ ...td, color: "var(--up)" }}>{stats.wins}</td>
-            <td style={{ ...td, color: "var(--down)" }}>{stats.losses}</td>
-            <td style={{ ...td, color: (stats.winRate ?? 0) >= 50 ? "var(--up)" : "var(--down)" }}>{stats.winRate != null ? stats.winRate.toFixed(0) + "%" : "—"}</td>
-            <td style={{ ...td, color: "var(--up)" }}>{stats.tpHit}</td>
-            <td style={{ ...td, color: "var(--down)" }}>{stats.slHit}</td>
-            <td style={c(stats.retPct)}>{(stats.retPct >= 0 ? "+" : "") + (stats.retPct || 0).toFixed(1)}%</td>
-            <td style={c(stats.pnl)}>{stats.pnl == null ? "—" : (stats.pnl >= 0 ? "+" : "") + fmt(stats.pnl, market)}</td>
-            <td style={{ ...td, color: stats.maxDD > 0 ? "var(--down)" : "var(--muted)" }}>{stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmt(stats.maxDD, market) : fmt(0, market)) : "—"}</td>
-          </>}
-    </tr>
+    <>
+      <tr onClick={canExpand ? () => setOpen((v) => !v) : undefined} style={{ cursor: canExpand ? "pointer" : "default" }}>
+        <td style={{ ...td, textAlign: "left", fontWeight: 800 }}>
+          {canExpand && <span style={{ display: "inline-block", width: 12, color: "var(--muted)", fontSize: 9 }}>{open ? "▾" : "▸"}</span>} {s.name}
+        </td>
+        {loading ? <td style={{ ...td, color: "var(--muted)" }} colSpan={9}>backtesting…</td>
+          : !stats || !stats.trades ? <td style={{ ...td, color: "var(--muted)" }} colSpan={9}>{stats ? "no trades" : "no data"}</td>
+          : <>
+              <td style={td}>{stats.trades}</td>
+              <td style={{ ...td, color: "var(--up)" }}>{stats.wins}</td>
+              <td style={{ ...td, color: "var(--down)" }}>{stats.losses}</td>
+              <td style={{ ...td, color: (stats.winRate ?? 0) >= 50 ? "var(--up)" : "var(--down)" }}>{stats.winRate != null ? stats.winRate.toFixed(0) + "%" : "—"}</td>
+              <td style={{ ...td, color: "var(--up)" }}>{stats.tpHit}</td>
+              <td style={{ ...td, color: "var(--down)" }}>{stats.slHit}</td>
+              <td style={c(stats.retPct)}>{(stats.retPct >= 0 ? "+" : "") + (stats.retPct || 0).toFixed(1)}%</td>
+              <td style={c(stats.pnl)}>{stats.pnl == null ? "—" : (stats.pnl >= 0 ? "+" : "") + fmt(stats.pnl, market)}</td>
+              <td style={{ ...td, color: stats.maxDD > 0 ? "var(--down)" : "var(--muted)" }}>{stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmt(stats.maxDD, market) : fmt(0, market)) : "—"}</td>
+            </>}
+      </tr>
+      {open && canExpand && (
+        <tr><td colSpan={10} style={{ padding: "0 8px 12px", background: "var(--elev)" }}>
+          <TradeLog trades={stats.tradeList} market={market} />
+        </td></tr>
+      )}
+    </>
   );
 }
 function ComparisonTable({ strats, market = "IN" }) {
@@ -1124,25 +1219,36 @@ function ComparisonTable({ strats, market = "IN" }) {
    Reuses the exact same useBacktestStats hook, overriding the symbol. */
 function SymbolRow({ strat, sym, td, opts, onReport, market = "IN" }) {
   const { loading, stats } = useBacktestStats(strat, { ...opts, sym });
+  const [open, setOpen] = useState(false);
   useEffect(() => { if (onReport && !loading) onReport(sym, stats); /* eslint-disable-next-line */ }, [loading, stats]);
   const c = (v) => ({ ...td, color: v >= 0 ? "var(--up)" : "var(--down)" });
+  const canExpand = !loading && stats && stats.trades > 0 && (stats.tradeList || []).length > 0;
   return (
-    <tr>
-      <td style={{ ...td, textAlign: "left", fontWeight: 800 }}>{sym}</td>
-      {loading ? <td style={{ ...td, color: "var(--muted)" }} colSpan={9}>backtesting…</td>
-        : !stats || !stats.trades ? <td style={{ ...td, color: "var(--muted)" }} colSpan={9}>{stats ? "no trades" : "no data"}</td>
-        : <>
-            <td style={td}>{stats.trades}</td>
-            <td style={{ ...td, color: "var(--up)" }}>{stats.wins}</td>
-            <td style={{ ...td, color: "var(--down)" }}>{stats.losses}</td>
-            <td style={{ ...td, color: (stats.winRate ?? 0) >= 50 ? "var(--up)" : "var(--down)" }}>{stats.winRate != null ? stats.winRate.toFixed(0) + "%" : "—"}</td>
-            <td style={{ ...td, color: "var(--up)" }}>{stats.tpHit}</td>
-            <td style={{ ...td, color: "var(--down)" }}>{stats.slHit}</td>
-            <td style={c(stats.retPct)}>{(stats.retPct >= 0 ? "+" : "") + (stats.retPct || 0).toFixed(1)}%</td>
-            <td style={c(stats.pnl)}>{stats.pnl == null ? "—" : (stats.pnl >= 0 ? "+" : "") + fmt(stats.pnl, market)}</td>
-            <td style={{ ...td, color: stats.maxDD > 0 ? "var(--down)" : "var(--muted)" }}>{stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmt(stats.maxDD, market) : fmt(0, market)) : "—"}</td>
-          </>}
-    </tr>
+    <>
+      <tr onClick={canExpand ? () => setOpen((v) => !v) : undefined} style={{ cursor: canExpand ? "pointer" : "default" }}>
+        <td style={{ ...td, textAlign: "left", fontWeight: 800 }}>
+          {canExpand && <span style={{ display: "inline-block", width: 12, color: "var(--muted)", fontSize: 9 }}>{open ? "▾" : "▸"}</span>} {sym}
+        </td>
+        {loading ? <td style={{ ...td, color: "var(--muted)" }} colSpan={9}>backtesting…</td>
+          : !stats || !stats.trades ? <td style={{ ...td, color: "var(--muted)" }} colSpan={9}>{stats ? "no trades" : "no data"}</td>
+          : <>
+              <td style={td}>{stats.trades}</td>
+              <td style={{ ...td, color: "var(--up)" }}>{stats.wins}</td>
+              <td style={{ ...td, color: "var(--down)" }}>{stats.losses}</td>
+              <td style={{ ...td, color: (stats.winRate ?? 0) >= 50 ? "var(--up)" : "var(--down)" }}>{stats.winRate != null ? stats.winRate.toFixed(0) + "%" : "—"}</td>
+              <td style={{ ...td, color: "var(--up)" }}>{stats.tpHit}</td>
+              <td style={{ ...td, color: "var(--down)" }}>{stats.slHit}</td>
+              <td style={c(stats.retPct)}>{(stats.retPct >= 0 ? "+" : "") + (stats.retPct || 0).toFixed(1)}%</td>
+              <td style={c(stats.pnl)}>{stats.pnl == null ? "—" : (stats.pnl >= 0 ? "+" : "") + fmt(stats.pnl, market)}</td>
+              <td style={{ ...td, color: stats.maxDD > 0 ? "var(--down)" : "var(--muted)" }}>{stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmt(stats.maxDD, market) : fmt(0, market)) : "—"}</td>
+            </>}
+      </tr>
+      {open && canExpand && (
+        <tr><td colSpan={10} style={{ padding: "0 8px 12px", background: "var(--elev)" }}>
+          <TradeLog trades={stats.tradeList} market={market} accent="#0EA5E9" />
+        </td></tr>
+      )}
+    </>
   );
 }
 
@@ -1190,8 +1296,8 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits }) {
   const [objective, setObjective] = useState("pnl");
   const [state, setState] = useState({ loading: false, rows: null, ran: false });
   const [applied, setApplied] = useState(false);
-  // Only strategies that actually run on THIS symbol — the existing strategy × symbol combinations.
-  const eligible = (strats || []).filter((s) => s.cfg && (s.cfg.entry || []).length > 0 && stratRunsOnSym(s, sym));
+  // OPTIMIZE runs on ALL strategies against this symbol — you can explore any strategy on any symbol.
+  const eligible = (strats || []).filter((s) => s.cfg && (s.cfg.entry || []).length > 0);
   const run = async (obj = objective) => {
     if (!sym || !eligible.length) { setState({ loading: false, ran: true, rows: [] }); return; }
     setApplied(false);
@@ -1207,7 +1313,10 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits }) {
   const pick = (obj) => { setObjective(obj); if (state.ran && !state.loading) run(obj); };
   const { loading, rows, ran } = state;
   const good = (rows || []).filter((r) => r.best);
-  const applyAll = () => { good.forEach((r) => onApplyExits && onApplyExits(r.s.id, r.best.sl, r.best.tp)); setApplied(true); };
+  // APPLY only writes to the existing strategy × symbol combinations — strategies that actually run on
+  // this symbol. Optimizing MATIC on SOL is fine to look at, but we won't push SOL's SL/TP onto it.
+  const applicable = good.filter((r) => stratRunsOnSym(r.s, sym));
+  const applyAll = () => { applicable.forEach((r) => onApplyExits && onApplyExits(r.s.id, r.best.sl, r.best.tp)); setApplied(true); };
   const objBtn = (k, label) => (
     <button key={k} onClick={() => pick(k)} className="tap" style={{ flex: 1, padding: "6px 8px", fontSize: 10.5, fontWeight: 800, border: "none", borderRadius: 7, background: objective === k ? "var(--primary)" : "transparent", color: objective === k ? "var(--on-primary)" : "var(--muted)" }}>{label}</button>
   );
@@ -1236,7 +1345,7 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits }) {
         </div>
       </div>
       {ran && !loading && (good.length === 0
-        ? <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>{eligible.length === 0 ? `No strategies run on ${sym}, so there's nothing here to optimise or apply. Pick a symbol your strategies actually trade.` : `Not enough past entry signals on ${sym} to optimise these strategies.`}</div>
+        ? <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>Not enough past entry signals on {sym} to optimise these strategies.</div>
         : <div style={{ marginTop: 10 }}>
             <div style={{ overflowX: "auto" }}>
               <table style={{ borderCollapse: "collapse", minWidth: 760, width: "100%" }}>
@@ -1255,23 +1364,30 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {good.map((r) => (
+                  {good.map((r) => {
+                    const onSym = stratRunsOnSym(r.s, sym);
+                    return (
                     <tr key={r.s.id}>
-                      <td style={{ ...td, textAlign: "left", fontWeight: 800 }}>{r.s.name}</td>
+                      <td style={{ ...td, textAlign: "left", fontWeight: 800 }}>
+                        {r.s.name}
+                        {onSym && <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "#7C3AED", background: "var(--primary-soft)", borderRadius: 999, padding: "1px 6px", verticalAlign: "middle" }}>ON {sym}</span>}
+                      </td>
                       <td style={{ ...td, ...sepL, color: "var(--down)", fontWeight: 800 }}>{r.best.sl}%</td>
                       <td style={{ ...td, color: "var(--up)", fontWeight: 800 }}>{r.best.tp}%</td>
                       {metricCells(r.current, "e")}
                       {metricCells(r.best, "n")}
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
             <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 6, fontStyle: "italic" }}>Optimum = the ideal SL/TP · Earlier = each strategy's current SL/TP · Now = at the optimum. P&L is per 1 unit/contract. Backtested, not a guarantee.</div>
-            {onApplyExits && (
-              <button onClick={applyAll} disabled={applied} className="tap" style={{ marginTop: 8, width: "100%", border: "none", background: applied ? "var(--up)" : "#7C3AED", color: "#fff", borderRadius: 9, padding: "9px 0", fontSize: 11.5, fontWeight: 800, opacity: applied ? 0.95 : 1 }}>
-                {applied ? `✓ New SL & TP applied to ${good.length} strateg${good.length > 1 ? "ies" : "y"}` : `Apply ideal SL / TP to ${good.length} strateg${good.length > 1 ? "ies" : "y"}`}
-              </button>
+            {onApplyExits && (applicable.length > 0
+              ? <button onClick={applyAll} disabled={applied} className="tap" style={{ marginTop: 8, width: "100%", border: "none", background: applied ? "var(--up)" : "#7C3AED", color: "#fff", borderRadius: 9, padding: "9px 0", fontSize: 11.5, fontWeight: 800, opacity: applied ? 0.95 : 1 }}>
+                  {applied ? `✓ New SL & TP applied to ${applicable.length} ${sym} strateg${applicable.length > 1 ? "ies" : "y"}` : `Apply ideal SL / TP to ${applicable.length} ${sym} strateg${applicable.length > 1 ? "ies" : "y"}`}
+                </button>
+              : <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>No strategy actually runs on {sym}, so there's nothing to apply — these results are for exploration only. Apply is limited to existing strategy × symbol combinations.</div>
             )}
           </div>)}
     </div>
@@ -1288,8 +1404,8 @@ function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators }) {
   const [applied, setApplied] = useState(false);
   const [lockTf, setLockTf] = useState(false);        // when on, keep this tf fixed; tune only lengths
   const lockable = ["3m", "5m", "15m", "30m", "1h"].includes(String(tf));
-  // Only strategies that actually run on THIS symbol — the existing strategy × symbol combinations.
-  const eligible = (strats || []).filter((s) => s.cfg && (s.cfg.entry || []).length > 0 && (s.cfg.defs || []).some((d) => Number(d && d.len) > 0) && stratRunsOnSym(s, sym));
+  // OPTIMIZE runs on ALL strategies with tunable indicators against this symbol — explore freely.
+  const eligible = (strats || []).filter((s) => s.cfg && (s.cfg.entry || []).length > 0 && (s.cfg.defs || []).some((d) => Number(d && d.len) > 0));
   const iwr = (x) => (x == null || isNaN(x)) ? "—" : Number(x).toFixed(0) + "%";
   const ipct = (x) => (x == null || isNaN(x)) ? "—" : (x >= 0 ? "+" : "") + Number(x).toFixed(1) + "%";
   const iamt = (x) => (x == null || isNaN(x)) ? "—" : (x >= 0 ? "+" : "") + Number(x).toFixed(2);
@@ -1308,7 +1424,9 @@ function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators }) {
   const pick = (obj) => { setObjective(obj); if (state.ran && !state.loading) run(obj); };
   const { loading, rows, ran } = state;
   const good = (rows || []).filter((r) => r.best);
-  const applyAll = () => { good.forEach((r) => onApplyIndicators && onApplyIndicators(r.s.id, r.best.defs, r.best.tf)); setApplied(true); };
+  // APPLY only writes to the existing strategy × symbol combinations — strategies that run on this symbol.
+  const applicable = good.filter((r) => stratRunsOnSym(r.s, sym));
+  const applyAll = () => { applicable.forEach((r) => onApplyIndicators && onApplyIndicators(r.s.id, r.best.defs, r.best.tf)); setApplied(true); };
   const objBtn = (k, label) => (
     <button key={k} onClick={() => pick(k)} className="tap" style={{ flex: 1, padding: "6px 8px", fontSize: 10.5, fontWeight: 800, border: "none", borderRadius: 7, background: objective === k ? "var(--primary)" : "transparent", color: objective === k ? "var(--on-primary)" : "var(--muted)" }}>{label}</button>
   );
@@ -1339,7 +1457,7 @@ function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators }) {
         Lock timeframe to {tf} {lockable ? "(tune indicator lengths only)" : "(only ≤ 1h can be locked)"}
       </label>
       {ran && !loading && (good.length === 0
-        ? <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>{eligible.length === 0 ? `No strategies run on ${sym}, so there's nothing here to optimise or apply. Pick a symbol your strategies actually trade.` : `Not enough past entry signals on ${sym} to optimise these strategies' indicators.`}</div>
+        ? <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>Not enough past entry signals on {sym} to optimise these strategies' indicators.</div>
         : <div style={{ marginTop: 10 }}>
             <div style={{ overflowX: "auto" }}>
               <table style={{ borderCollapse: "collapse", minWidth: 720, width: "100%" }}>
@@ -1356,22 +1474,29 @@ function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {good.map((r) => (
+                  {good.map((r) => {
+                    const onSym = stratRunsOnSym(r.s, sym);
+                    return (
                     <tr key={r.s.id}>
-                      <td style={{ ...td, textAlign: "left", fontWeight: 800 }}>{r.s.name}</td>
+                      <td style={{ ...td, textAlign: "left", fontWeight: 800 }}>
+                        {r.s.name}
+                        {onSym && <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "#0EA5E9", background: "var(--primary-soft)", borderRadius: 999, padding: "1px 6px", verticalAlign: "middle" }}>ON {sym}</span>}
+                      </td>
                       <td style={{ ...td, ...sepL, textAlign: "left", whiteSpace: "normal", maxWidth: 220, fontWeight: 600, color: "var(--muted)", fontSize: 9.5 }}>{(r.changes && r.changes.length) ? r.changes.map((c) => `${c.name}: ${c.fromLen ?? "—"}@${c.fromTf}→${c.toLen}@${c.toTf}`).join(" · ") : `unchanged @ ${r.best.tf}`}</td>
                       {mCells(r.current, "e")}
                       {mCells(r.best, "n")}
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
             <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 6, fontStyle: "italic" }}>Earlier = each strategy's current indicators · Now = at the tuned lengths + timeframe (SL/TP held fixed). Backtested, not a guarantee.</div>
-            {onApplyIndicators && (
-              <button onClick={applyAll} disabled={applied} className="tap" style={{ marginTop: 8, width: "100%", border: "none", background: applied ? "var(--up)" : "#0EA5E9", color: "#fff", borderRadius: 9, padding: "9px 0", fontSize: 11.5, fontWeight: 800, opacity: applied ? 0.95 : 1 }}>
-                {applied ? `✓ Indicators applied to ${good.length} strateg${good.length > 1 ? "ies" : "y"}` : `Apply optimized indicators to ${good.length} strateg${good.length > 1 ? "ies" : "y"}`}
-              </button>
+            {onApplyIndicators && (applicable.length > 0
+              ? <button onClick={applyAll} disabled={applied} className="tap" style={{ marginTop: 8, width: "100%", border: "none", background: applied ? "var(--up)" : "#0EA5E9", color: "#fff", borderRadius: 9, padding: "9px 0", fontSize: 11.5, fontWeight: 800, opacity: applied ? 0.95 : 1 }}>
+                  {applied ? `✓ Indicators applied to ${applicable.length} ${sym} strateg${applicable.length > 1 ? "ies" : "y"}` : `Apply optimized indicators to ${applicable.length} ${sym} strateg${applicable.length > 1 ? "ies" : "y"}`}
+                </button>
+              : <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>No strategy actually runs on {sym}, so there's nothing to apply — these results are for exploration only. Apply is limited to existing strategy × symbol combinations.</div>
             )}
           </div>)}
     </div>
