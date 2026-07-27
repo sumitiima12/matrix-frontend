@@ -115,11 +115,24 @@ export function useBacktestStats(strat, opts = {}) {
           }
         }
 
+        /* MAX DRAWDOWN (absolute currency). Stack each trade's P&L in sequence into an equity curve and
+           track the deepest fall from a running high — that peak-to-trough drop is the worst losing
+           streak a holder would have sat through. Sized the SAME way as `pnl` above so the drawdown is
+           in the same units the P&L is shown in. */
+        const perTradePnl = trades.map((t) => {
+          if (hasSize) {
+            return sizeMarket === "Crypto" ? (Number(amount) || 0) * (t.ret || 0) : (Number(qty) || 0) * ((t.exit || 0) - (t.entry || 0));
+          }
+          return perSym * (t.ret || 0);
+        });
+        let eq = 0, peak = 0, maxDD = 0;
+        for (const p of perTradePnl) { eq += p; if (eq > peak) peak = eq; const dd = peak - eq; if (dd > maxDD) maxDD = dd; }
+
         const period = periodLabel(sets);
 
         if (!trades.length) {
           // The strategy ran but never triggered. That is a real result: say it.
-          setState({ loading: false, stats: { trades: 0, winRate: null, pnl: null, retPct: null, symbols: usable, tf, period } });
+          setState({ loading: false, stats: { trades: 0, winRate: null, pnl: null, retPct: null, maxDD: null, symbols: usable, tf, period } });
           return;
         }
 
@@ -140,6 +153,7 @@ export function useBacktestStats(strat, opts = {}) {
             // With an explicit per-trade size, return % = total P&L ÷ capital deployed on one trade.
             // Otherwise fall back to the capital-split model (sum of per-trade returns).
             retPct: hasSize ? (retBase ? (pnl / retBase) * 100 : null) : (capPnl / cap) * 100,
+            maxDD,   // absolute currency: deepest peak-to-trough fall of the equity curve
             symbols: usable,
             tf,
             period,

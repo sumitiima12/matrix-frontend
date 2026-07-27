@@ -672,6 +672,7 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, onPersist, market 
             <Stat k="TRADES" v={stats.trades} />
             <Stat k="P&L" v={(stats.pnl >= 0 ? "+" : "") + fmt(stats.pnl, market)} c={chgColor(stats.pnl)} />
             <Stat k="RETURN" v={pct(stats.retPct, 1)} c={chgColor(stats.retPct)} />
+            <Stat k="MAX DD" v={stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmt(stats.maxDD, market) : fmt(0, market)) : "—"} c={stats.maxDD > 0 ? "var(--down)" : "var(--muted)"} />
           </div>
           <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.45 }}>
             Backtested on {btPeriodStr(stats)} of real {stats.tf || "5m"} candles across {stats.symbols} symbol{stats.symbols === 1 ? "" : "s"}.
@@ -780,6 +781,7 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, onPersist, onClone, 
           <Stat k="WIN RATE" v={stats.winRate.toFixed(0) + "%"} />
           <Stat k="TRADES" v={stats.trades} />
           <Stat k="RETURN" v={pct(stats.retPct, 1)} c={chgColor(stats.retPct)} />
+          <Stat k="MAX DD" v={stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmt(stats.maxDD, market) : fmt(0, market)) : "—"} c={stats.maxDD > 0 ? "var(--down)" : "var(--muted)"} />
         </div>
       ) : null}
 
@@ -1041,6 +1043,7 @@ function CopyStrategyCard({ s, active, onToggle, onPersist, onDelete, market = "
             <Stat k="WIN RATE" v={stats.winRate.toFixed(0) + "%"} />
             <Stat k="TRADES" v={stats.trades} />
             <Stat k="RETURN" v={pct(stats.retPct, 1)} c={chgColor(stats.retPct)} />
+            <Stat k="MAX DD" v={stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmt(stats.maxDD, market) : fmt(0, market)) : "—"} c={stats.maxDD > 0 ? "var(--down)" : "var(--muted)"} />
           </div>
         ) : null}
 
@@ -1083,8 +1086,8 @@ function CompareRow({ s, td, opts, onReport, market = "IN" }) {
   return (
     <tr>
       <td style={{ ...td, textAlign: "left", fontWeight: 800 }}>{s.name}</td>
-      {loading ? <td style={{ ...td, color: "var(--muted)" }} colSpan={8}>backtesting…</td>
-        : !stats || !stats.trades ? <td style={{ ...td, color: "var(--muted)" }} colSpan={8}>{stats ? "no trades" : "no data"}</td>
+      {loading ? <td style={{ ...td, color: "var(--muted)" }} colSpan={9}>backtesting…</td>
+        : !stats || !stats.trades ? <td style={{ ...td, color: "var(--muted)" }} colSpan={9}>{stats ? "no trades" : "no data"}</td>
         : <>
             <td style={td}>{stats.trades}</td>
             <td style={{ ...td, color: "var(--up)" }}>{stats.wins}</td>
@@ -1094,6 +1097,7 @@ function CompareRow({ s, td, opts, onReport, market = "IN" }) {
             <td style={{ ...td, color: "var(--down)" }}>{stats.slHit}</td>
             <td style={c(stats.retPct)}>{(stats.retPct >= 0 ? "+" : "") + (stats.retPct || 0).toFixed(1)}%</td>
             <td style={c(stats.pnl)}>{stats.pnl == null ? "—" : (stats.pnl >= 0 ? "+" : "") + fmt(stats.pnl, market)}</td>
+            <td style={{ ...td, color: stats.maxDD > 0 ? "var(--down)" : "var(--muted)" }}>{stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmt(stats.maxDD, market) : fmt(0, market)) : "—"}</td>
           </>}
     </tr>
   );
@@ -1108,7 +1112,7 @@ function ComparisonTable({ strats, market = "IN" }) {
         <thead><tr>
           <th style={{ ...th, textAlign: "left" }}>Strategy</th>
           <th style={th}>Trades</th><th style={th}>Wins</th><th style={th}>Loss</th><th style={th}>Win %</th>
-          <th style={th}>Target</th><th style={th}>SL Hit</th><th style={th}>Return</th><th style={th}>P&amp;L</th>
+          <th style={th}>Target</th><th style={th}>SL Hit</th><th style={th}>Return</th><th style={th}>P&amp;L</th><th style={th}>Max DD</th>
         </tr></thead>
         <tbody>{strats.map((s) => <CompareRow key={s.id} s={s} td={td} market={market} />)}</tbody>
       </table>
@@ -1125,8 +1129,8 @@ function SymbolRow({ strat, sym, td, opts, onReport, market = "IN" }) {
   return (
     <tr>
       <td style={{ ...td, textAlign: "left", fontWeight: 800 }}>{sym}</td>
-      {loading ? <td style={{ ...td, color: "var(--muted)" }} colSpan={8}>backtesting…</td>
-        : !stats || !stats.trades ? <td style={{ ...td, color: "var(--muted)" }} colSpan={8}>{stats ? "no trades" : "no data"}</td>
+      {loading ? <td style={{ ...td, color: "var(--muted)" }} colSpan={9}>backtesting…</td>
+        : !stats || !stats.trades ? <td style={{ ...td, color: "var(--muted)" }} colSpan={9}>{stats ? "no trades" : "no data"}</td>
         : <>
             <td style={td}>{stats.trades}</td>
             <td style={{ ...td, color: "var(--up)" }}>{stats.wins}</td>
@@ -1136,6 +1140,7 @@ function SymbolRow({ strat, sym, td, opts, onReport, market = "IN" }) {
             <td style={{ ...td, color: "var(--down)" }}>{stats.slHit}</td>
             <td style={c(stats.retPct)}>{(stats.retPct >= 0 ? "+" : "") + (stats.retPct || 0).toFixed(1)}%</td>
             <td style={c(stats.pnl)}>{stats.pnl == null ? "—" : (stats.pnl >= 0 ? "+" : "") + fmt(stats.pnl, market)}</td>
+            <td style={{ ...td, color: stats.maxDD > 0 ? "var(--down)" : "var(--muted)" }}>{stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmt(stats.maxDD, market) : fmt(0, market)) : "—"}</td>
           </>}
     </tr>
   );
@@ -1143,16 +1148,17 @@ function SymbolRow({ strat, sym, td, opts, onReport, market = "IN" }) {
 
 /* Backtest → CSV. `results` maps row label → stats (collected as each row finishes). `order` is the
    row order to emit. `labelHeader` is "Strategy" or "Symbol". */
-const BT_COLS = ["Trades", "Wins", "Loss", "Win %", "Target", "SL Hit", "Return %", "P&L"];
+const BT_COLS = ["Trades", "Wins", "Loss", "Win %", "Target", "SL Hit", "Return %", "P&L", "Max DD"];
 const csvEsc = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
 function statCells(st) {
-  if (!st) return ["", "", "", "", "", "", "", ""];
+  if (!st) return ["", "", "", "", "", "", "", "", ""];
   return [
     st.trades || 0, st.wins || 0, st.losses || 0,
     st.winRate != null ? st.winRate.toFixed(0) + "%" : "-",
     st.tpHit || 0, st.slHit || 0,
     (st.retPct >= 0 ? "+" : "") + (st.retPct || 0).toFixed(1) + "%",
     st.pnl == null ? "" : (st.pnl >= 0 ? "+" : "") + Math.round(st.pnl),
+    st.maxDD == null ? "" : "-" + Math.round(st.maxDD),
   ];
 }
 function exportBacktestCsv({ results, order, labelHeader, meta, filename }) {
@@ -1563,7 +1569,7 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators 
     <thead><tr>
       <th style={{ ...th, textAlign: "left" }}>{view === "perSymbol" ? "Strategy" : "Symbol"}</th>
       <th style={th}>Trades</th><th style={th}>Wins</th><th style={th}>Loss</th><th style={th}>Win %</th>
-      <th style={th}>Target</th><th style={th}>SL Hit</th><th style={th}>Return</th><th style={th}>P&amp;L</th>
+      <th style={th}>Target</th><th style={th}>SL Hit</th><th style={th}>Return</th><th style={th}>P&amp;L</th><th style={th}>Max DD</th>
     </tr></thead>
   );
 
