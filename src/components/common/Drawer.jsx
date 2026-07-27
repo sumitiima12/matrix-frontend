@@ -170,10 +170,17 @@ export default function Drawer({ s, onClose, onDetails, onBuy, canBuy }) {
           ))}
         </div>
 
-        <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+        {/* Sticky action bar — Buy / Sell / Details stay pinned to the bottom of the sheet while the
+            body scrolls. Sell shows only where shorting is supported (crypto & Indian options). */}
+        <div style={{ position: "sticky", bottom: 0, zIndex: 6, display: "flex", gap: 10, marginTop: 16, paddingTop: 10, paddingBottom: 4, background: "linear-gradient(to top, var(--surface) 78%, transparent)" }}>
           {showBuy && (
           <button onClick={() => { if (onBuy) onBuy(s, 1); onClose(); }} className="tap disp glow" style={{ flex: 1, background: "linear-gradient(120deg,var(--up),#12B98A)", color: "#fff", border: "none", borderRadius: 16, padding: "14px", fontWeight: 800, fontSize: 14.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
             <Plus size={17} /> Buy
+          </button>
+          )}
+          {showBuy && canShort && (
+          <button onClick={() => { if (onBuy) onBuy(s, 1, { side: "SELL", short: true }); onClose(); }} className="tap disp" style={{ flex: 1, background: "var(--down)", color: "#fff", border: "none", borderRadius: 16, padding: "14px", fontWeight: 800, fontSize: 14.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            Sell
           </button>
           )}
           <button onClick={() => onDetails(s)} className="tap disp" style={{ flex: 1, background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 16, padding: "14px", fontWeight: 700, fontSize: 14.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>

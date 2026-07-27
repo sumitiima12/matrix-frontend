@@ -179,13 +179,17 @@ function PerSymbolOptimizer({ entry, syms, market, onApplyAll }) {
 }
 
 export default function CustomScreener({ market, mode = "virtual", list = [], onOpen, onScreenerBuy, liveTick = 0, editing = null, onDoneEditing }) {
-  const LSK = `mx_customscr_${market}`;
-  const saved = useMemo(() => lsGet(LSK, null) || {}, [LSK, market]);
-  const [entry, setEntry] = useState(() => (saved.entry || [{ m: "rsi", o: ">", v: "60" }]).map(normF));
-  const [exit, setExit] = useState(() => (saved.exit || [{ m: "rsi", o: "<", v: "40" }]).map(normF));
-  const [selSyms, setSelSyms] = useState(() => saved.selSyms || []);
-  const [ov, setOv] = useState(() => saved.ov || {});
-  const [autoOn, setAutoOn] = useState(() => lsGet(`${LSK}_auto`, false));
+  const LSK = `mx_customscr_${market}`;   // still used to namespace the once-a-day auto-buy key
+  /* Build-a-screener always starts BLANK in a new session — its state is NOT persisted. (Saved
+     screeners live separately under "My Screeners".) So every fresh visit gets the defaults below and
+     no leftover symbol selection. */
+  const DEF_ENTRY = [{ m: "rsi", o: ">", v: "60" }];
+  const DEF_EXIT = [{ m: "rsi", o: "<", v: "40" }];
+  const [entry, setEntry] = useState(() => DEF_ENTRY.map(normF));
+  const [exit, setExit] = useState(() => DEF_EXIT.map(normF));
+  const [selSyms, setSelSyms] = useState([]);
+  const [ov, setOv] = useState({});
+  const [autoOn, setAutoOn] = useState(false);
   const [period, setPeriod] = useState("today");
   const [selRec, setSelRec] = useState(null);
   const [pickOpen, setPickOpen] = useState(false);
@@ -194,19 +198,14 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
   const [saveNote, setSaveNote] = useState(null);
   const entryPx = useRef({});   // sym -> { px, at } captured when a symbol first meets entry
 
-  // Reload persisted state when the market changes.
+  // Start blank whenever the market changes (and on first mount) — nothing is restored from storage.
   useEffect(() => {
-    const s = lsGet(LSK, null) || {};
-    setEntry((s.entry || [{ m: "rsi", o: ">", v: "60" }]).map(normF));
-    setExit((s.exit || [{ m: "rsi", o: "<", v: "40" }]).map(normF));
-    setSelSyms(s.selSyms || []);
-    setOv(s.ov || {});
-    setAutoOn(lsGet(`${LSK}_auto`, false));
-    setSelRec(null); setRan(false); entryPx.current = {};
+    setEntry(DEF_ENTRY.map(normF));
+    setExit(DEF_EXIT.map(normF));
+    setSelSyms([]); setOv({}); setAutoOn(false);
+    setSelRec(null); setRan(false); setScrName(""); entryPx.current = {};
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [market]);
-
-  useEffect(() => { lsSet(LSK, { entry, exit, selSyms, ov }); }, [LSK, entry, exit, selSyms, ov]);
 
   // When an existing screener is opened for editing, load its config into the builder.
   useEffect(() => {
@@ -330,7 +329,7 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
       {/* Screener Auto-Buy toggle. Date range + Live P&L live in Popular / My Screeners, not here. */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <label className="tap" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 800 }}>
-          <span onClick={() => { const v = !autoOn; setAutoOn(v); lsSet(`${LSK}_auto`, v); }} style={{ width: 38, height: 22, borderRadius: 999, background: autoOn ? "#22C55E" : "var(--line)", position: "relative", flexShrink: 0, transition: "background .2s" }}>
+          <span onClick={() => setAutoOn((v) => !v)} style={{ width: 38, height: 22, borderRadius: 999, background: autoOn ? "#22C55E" : "var(--line)", position: "relative", flexShrink: 0, transition: "background .2s" }}>
             <span style={{ position: "absolute", top: 2, left: autoOn ? 18 : 2, width: 18, height: 18, borderRadius: 999, background: "#fff", transition: "left .2s" }} />
           </span>
           Screener Auto-Buy
@@ -396,9 +395,10 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
         </div>
       )}
 
-      {/* Screened symbols. Always shown once symbols are picked; the SL/TP/quantity columns only appear
-          when Auto-Buy is on (off = a plain list of which symbols meet entry). */}
-      {!!selSyms.length && (
+      {/* Screened symbols. Shown only AFTER the user taps Run screener (so it isn't a stale list on load).
+          Exception: when Auto-Buy is on, the SL/TP/quantity table is shown up front so it can be
+          configured before running. */}
+      {!!selSyms.length && (autoOn || ran) && (
         <>
           <div className="disp" style={{ fontWeight: 800, fontSize: 13.5, margin: "18px 0 4px" }}>{autoOn ? "Stop-loss, target & quantity" : "Screened symbols"}</div>
           {autoOn && <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 8 }}>Defaults 0.4% SL / 1% TP · {isCrypto ? "amount in " + cur : "quantity"} per trade.</div>}

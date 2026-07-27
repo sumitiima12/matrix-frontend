@@ -596,7 +596,7 @@ function TrendingRow({ s, market, onOpen, onBuy, onWhy }) {
 
       {onBuy && (
         <div style={{ marginTop: "auto", paddingTop: 11 }} onClick={(e) => e.stopPropagation()}>
-          <BuyButton s={s} market={market} onBuy={onBuy} lot={s.lot || 1} fullWidth />
+          <BuyButton s={s} market={market} onBuy={onBuy} lot={s.lot || 1} fullWidth allowSell={false} />
         </div>
       )}
     </div>
@@ -1281,6 +1281,9 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     opts={{ tp: s.pickTpPct, sl: s.pickSlPct, tradeType: "Manual" }}
                     variant="solid"
                     fullWidth
+                    /* Picks are directional: a bearish pick shows Sell, otherwise Buy. Picks are
+                       bullish by construction today, so this is Buy unless a short pick is flagged. */
+                    only={(s.pickDir === "short" || s.bias === "bearish" || s.bearish) ? "sell" : "buy"}
                   />
                 </div>
                 {onWhy && (

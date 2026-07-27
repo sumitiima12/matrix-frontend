@@ -33,7 +33,7 @@ export const BuyGateContext = React.createContext(null);
  *                  the rest. Card sections (Picks, Ideas, Trending) use this so the
  *                  call to action is one consistent full-width bar.
  */
-export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1, variant = "solid", label = "Buy", fullWidth = false }) {
+export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1, variant = "solid", label = "Buy", fullWidth = false, allowSell = true, only = null }) {
   /* CRYPTO trades by AMOUNT (USD), not share quantity: you buy "$10 of BTC", and we convert
      amount → units at the live price (a small fill-price variation is expected and fine).
      Everything else trades by quantity/lots as before. */
@@ -52,7 +52,13 @@ export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1,
 
   // SELL (short) is offered only where the app supports it: CRYPTO (Delta futures) and INDIAN OPTIONS.
   // Stocks and commodities stay Buy-only.
+  // `allowSell=false` hides Sell entirely (e.g. Trending). `only` forces a single side: "buy" or
+  // "sell" (e.g. Top Picks show Buy for bullish, Sell for bearish). If "sell" is asked but the
+  // instrument can't be shorted, we fall back to Buy so there's always an action.
   const canShort = isCrypto || Boolean(s?.isOpt);
+  const wantSell = only === "sell";
+  const showSell = (wantSell || only == null) && allowSell && canShort;
+  const showBuy = only == null ? true : (only === "buy" || (wantSell && !canShort));
   const commit = (side) => (e) => {
     e.stopPropagation();
     if (!onBuy || !priced) return;
@@ -124,6 +130,7 @@ export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1,
         </button>
       </div>
 
+      {showBuy && (
       <button
         onClick={commit("BUY")}
         disabled={!priced}
@@ -144,9 +151,10 @@ export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1,
       >
         {label}
       </button>
+      )}
 
       {/* SELL (short) — crypto & Indian options only. */}
-      {canShort && (
+      {showSell && (
         <button
           onClick={commit("SELL")}
           disabled={!priced}
