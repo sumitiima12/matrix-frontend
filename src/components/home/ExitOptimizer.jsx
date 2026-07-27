@@ -69,7 +69,7 @@ export default function ExitOptimizer({ mode, defs, entry, tf, appSyms, currentS
 
       {ran && !loading && (!best) && (
         <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>
-          Not enough past entry signals to optimise{res && res.entries != null ? ` (${res.entries} found)` : ""}. Add symbols with more history or a looser entry, then try again.
+          Not enough historical signals to backtest this{res && res.entries != null ? ` (${res.entries} found)` : ""} — try a higher timeframe, more symbols, or a looser entry, then run again. (This optimises on price history, not your own trades.)
         </div>
       )}
 

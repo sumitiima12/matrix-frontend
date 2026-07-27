@@ -34,6 +34,17 @@ function btPeriodStr(stats) {
   return `${p.n} ${p.unit}${p.n === 1 ? "" : "s"}`;
 }
 
+/* A labeled divider that heads the "Long" and "Short" groups inside each strategy tab. */
+function SectionHead({ label, color, count }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "16px 2px 8px" }}>
+      <span style={{ fontSize: 12.5, fontWeight: 800, color, letterSpacing: 0.2 }}>{label}</span>
+      {count != null && <span style={{ fontSize: 10.5, fontWeight: 800, color: "var(--muted)", background: "var(--elev)", borderRadius: 999, padding: "1px 8px" }}>{count}</span>}
+      <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
+    </div>
+  );
+}
+
 /* Buy (long) vs Sell (short) toggle for the Samples / Premium sections. "Buy" shows the standard
    long strategies; "Sell" shows their short mirrors (same setup, opposite direction). */
 function DirToggle({ dir, setDir }) {
@@ -499,9 +510,9 @@ function CardOptimizeButton({ cfg, sym, tf = "5m", sl, tp, setSl, setTp }) {
     <div style={{ marginTop: 8 }}>
       <div className="disp" style={{ fontSize: 12, fontWeight: 800, color: "var(--ink)", display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}><Sparkles size={13} color="#7C3AED" /> Optimize SL &amp; TP</div>
       <div style={{ display: "flex", gap: 6 }}>{optBtn("winrate", "Optimize Win rate")}{optBtn("pnl", "Optimize P&L")}</div>
-      {st.loading && <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 6 }}>Optimising on real candles…</div>}
+      {st.loading && <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 6 }}>Backtesting on historical candles…</div>}
       {st.done && <div style={{ fontSize: 9.5, color: "var(--up)", marginTop: 6, fontWeight: 700 }}>✓ Optimized → SL {sl}% / TP {tp}%</div>}
-      {st.none && <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 6 }}>Not enough past signals — try another symbol.</div>}
+      {st.none && <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 6 }}>Couldn't fetch enough price history for {sym || "this symbol"} on {tf} — try a higher timeframe or another symbol.</div>}
     </div>
   );
 }
@@ -539,7 +550,7 @@ function CardIndicatorOptimizeButton({ cfg, sym, tf = "5m", sl, tp, onApply }) {
       {st.done && st.changes && st.changes.length === 0 && (
         <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 6 }}>Current indicators are already optimal for this objective.</div>
       )}
-      {st.none && <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 6 }}>Not enough past signals — try another symbol.</div>}
+      {st.none && <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 6 }}>Couldn't fetch enough price history for {sym || "this symbol"} on {tf} — try a higher timeframe or another symbol.</div>}
     </div>
   );
 }
@@ -647,29 +658,29 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, onPersist, market 
       </button>
       {showEdit && <CardSymTfPanel market={market} sym={symSel} setSym={setSymSel} tf={tfSel} setTf={setTfSel} />}
 
-      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+      <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
         <button
           onClick={() => setBt((v) => !v)}
           className="tap disp"
-          style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: bt ? "var(--elev)" : "transparent", color: "var(--ink)", borderRadius: 11, padding: "10px 13px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
+          style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: bt ? "var(--elev)" : "transparent", color: "var(--ink)", borderRadius: 11, padding: "10px 12px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}
         >
           <Activity size={14} /> Test
         </button>
         {onClone && (
           <button onClick={() => onClone(s)} className="tap disp"
-            style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 11, padding: "10px 13px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>
+            style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 11, padding: "10px 12px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>
             <Copy size={14} /> Clone
           </button>
         )}
         {onEdit && (
-          <button onClick={() => onEdit(s)} className="tap disp" title="Admin: edit rules & indicators"
-            style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 11, padding: "10px 13px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>
-            <Pencil size={14} /> Rules
+          <button onClick={() => onEdit(s)} className="tap disp" title="Edit rules & indicators (admin)" aria-label="Edit rules"
+            style={{ flex: "0 0 auto", display: "grid", placeItems: "center", border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 11, padding: "10px 12px", cursor: "pointer" }}>
+            <Pencil size={15} />
           </button>
         )}
         {onActivate && (
           <button onClick={() => onActivate(s, size, { sl, tp, tf: tfSel, symbol: symSel })} className="tap disp"
-            style={{ flex: 1, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>
+            style={{ flex: "1 1 120px", minWidth: 110, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" }}>
             Use
           </button>
         )}
@@ -749,30 +760,30 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, onPersist, onClone, 
       </button>
       {showEdit && <CardSymTfPanel market={market} sym={symSel} setSym={setSymSel} tf={tfSel} setTf={setTfSel} />}
 
-      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+      <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
         <button
           onClick={() => setBt((v) => !v)}
           className="tap disp"
-          style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: bt ? "var(--elev)" : "transparent", color: "var(--ink)", borderRadius: 11, padding: "10px 14px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
+          style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: bt ? "var(--elev)" : "transparent", color: "var(--ink)", borderRadius: 11, padding: "10px 12px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}
         >
           <Activity size={14} /> Backtest
         </button>
         {onClone && (
           <button onClick={() => onClone(s)} className="tap disp" title="Make an editable copy (rules stay locked)"
-            style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 11, padding: "10px 13px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>
+            style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 11, padding: "10px 12px", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>
             <Copy size={14} /> Clone
           </button>
         )}
         {onEdit && (
-          <button onClick={() => onEdit(s)} className="tap disp" title="Admin: edit rules & indicators"
-            style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 11, padding: "10px 13px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>
-            <Pencil size={14} /> Rules
+          <button onClick={() => onEdit(s)} className="tap disp" title="Edit rules & indicators (admin)" aria-label="Edit rules"
+            style={{ flex: "0 0 auto", display: "grid", placeItems: "center", border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 11, padding: "10px 12px", cursor: "pointer" }}>
+            <Pencil size={15} />
           </button>
         )}
         <button
           onClick={() => onToggle(symSel, size, { sl, tp, tf: tfSel })}
           className="tap disp"
-          style={{ flex: 1, border: "1px solid " + (active ? "var(--up)" : "var(--primary)"), background: active ? "var(--up-soft)" : "var(--primary)", color: active ? "var(--up)" : "#fff", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
+          style={{ flex: "1 1 120px", minWidth: 110, border: "1px solid " + (active ? "var(--up)" : "var(--primary)"), background: active ? "var(--up-soft)" : "var(--primary)", color: active ? "var(--up)" : "#fff", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" }}
         >
           {active ? "✓ Activated" : "Activate"}
         </button>
@@ -1009,11 +1020,11 @@ function CopyStrategyCard({ s, active, onToggle, onPersist, onDelete, market = "
       </button>
       {showEdit && <CardSymTfPanel market={market} sym={symSel} setSym={setSymSel} tf={tfSel} setTf={setTfSel} />}
 
-      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-        <button onClick={() => setBt((v) => !v)} className="tap disp" style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: bt ? "var(--elev)" : "transparent", color: "var(--ink)", borderRadius: 11, padding: "10px 14px", fontWeight: 800, fontSize: 12.5 }}>
+      <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+        <button onClick={() => setBt((v) => !v)} className="tap disp" style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: bt ? "var(--elev)" : "transparent", color: "var(--ink)", borderRadius: 11, padding: "10px 12px", fontWeight: 800, fontSize: 12 }}>
           <Activity size={14} /> Backtest
         </button>
-        <button onClick={() => onToggle(symSel, size, { sl, tp, tf: tfSel })} className="tap disp" style={{ flex: 1, border: "1px solid " + (active ? "var(--up)" : "var(--primary)"), background: active ? "var(--up-soft)" : "var(--primary)", color: active ? "var(--up)" : "#fff", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5 }}>
+        <button onClick={() => onToggle(symSel, size, { sl, tp, tf: tfSel })} className="tap disp" style={{ flex: "1 1 120px", minWidth: 110, border: "1px solid " + (active ? "var(--up)" : "var(--primary)"), background: active ? "var(--up-soft)" : "var(--primary)", color: active ? "var(--up)" : "#fff", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, whiteSpace: "nowrap" }}>
           {active ? "✓ Deployed" : "Deploy"}
         </button>
       </div>
@@ -1369,7 +1380,7 @@ function IndicatorOptimizer({ defs, entry, mode, tf, appSyms, currentSl, current
       {loading && <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8 }}>Searching indicator lengths &amp; timeframes on real candles…</div>}
       {ran && !loading && !best && (
         <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>
-          {!numeric ? "This strategy has no tunable indicator lengths (e.g. MACD/VWAP only)." : `Not enough past entry signals to optimise${res && res.entries != null ? ` (${res.entries} found)` : ""}. Add symbols with more history, then retry.`}
+          {!numeric ? "This strategy has no tunable indicator lengths (e.g. MACD/VWAP only)." : `Not enough historical signals to backtest this${res && res.entries != null ? ` (${res.entries} found)` : ""} — try a higher timeframe or more symbols. (Optimises on price history, not your own trades.)`}
         </div>
       )}
       {ran && !loading && best && (
@@ -2076,6 +2087,22 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     if (activeInMarket(s)) return { ...s, active: false };
     return { ...s, active: true, cfg: withSLTP(s.cfg, opts), ...(opts && opts.tf ? { tf: opts.tf } : {}), ...(relSym ? { symbols: [relSym] } : {}), ...(size != null ? { qty: size, cap: size } : {}) };
   }));
+  /* Bulk activate/deactivate every strategy in a section (Premium / Mine / My Copies). Activating snaps
+     each to a symbol relevant to the current market and carries its saved qty. */
+  const bulkSetActive = (items, on) => {
+    const rows = (items || []).map((x) => (x && x.s) ? x.s : x);
+    const ids = new Set(rows.map((s) => s.id));
+    if (on && typeof window !== "undefined" && !window.confirm(`Activate all ${ids.size} strategies? They'll place orders when their rules trigger.`)) return;
+    setStrats((p) => p.map((s) => ids.has(s.id) ? { ...s, active: on } : s));
+    setToast(on ? `Activated ${ids.size} strategies` : `Deactivated ${ids.size} strategies`);
+  };
+  /* Two-button bar shown atop a strategy section. */
+  const BulkBar = ({ items }) => (
+    <div style={{ display: "flex", gap: 8, margin: "4px 0 6px" }}>
+      <button onClick={() => bulkSetActive(items, true)} disabled={!items.length} className="tap disp" style={{ flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11.5, border: "none", background: items.length ? "linear-gradient(120deg,var(--up),#0EA968)" : "var(--elev)", color: items.length ? "#fff" : "var(--muted)", cursor: items.length ? "pointer" : "not-allowed" }}>Activate All</button>
+      <button onClick={() => bulkSetActive(items, false)} disabled={!items.length} className="tap disp" style={{ flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11.5, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", cursor: items.length ? "pointer" : "not-allowed" }}>Deactivate All</button>
+    </div>
+  );
   const toggleAlerts = (s) => { const willOn = !s.alerts; setStrats((p) => p.map((x) => x.id === s.id ? { ...x, alerts: willOn } : x)); if (willOn) fireAlert(s); };
   const updateStrat = (id, patch) => setStrats((p) => p.map((s) => s.id === id ? { ...s, ...patch } : s));
   /* Persist a card's SL/TP/symbol/timeframe edit onto the user's OWN copy of the strategy (per-user,
@@ -2138,7 +2165,6 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
        MINE    (created by the user): scored on their ACTUAL closed trades. A
                 strategy with no closed trades shows "—", not a made-up win rate. */
   const [stratTab, setStratTab] = useState("deployed");   // sub-tab under "Strategies": deployed | sample | premium | public | mine
-  const [dir, setDir] = useState("buy");   // Buy (long) | Sell (short mirror) — filters Samples & Premium
   const [topTab, setTopTab] = useState("build");   // build | sample | premium | public | mine
   const [compareOpen, setCompareOpen] = useState(false);   // premium "Compare all" backtest table
 
@@ -2188,10 +2214,12 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   // Premium strategies are shown in EVERY market (not market-filtered) and are locked:
   // name + description only, activate + backtest, no template/edit.
   const premiumStrats = strats.filter((s) => s.premium);
-  // Buy (long) vs Sell (short mirror) split — a strategy carries side:"SELL" on its short mirror.
+  // Long vs Short split — a strategy carries side:"SELL" on its short mirror. Each strategy tab
+  // shows a "Long" group and a "Short" group so the two directions never mix together.
   const isShortStrat = (s) => s.side === "SELL" || (s.cfg && s.cfg.side === "SELL");
-  const sampleShown  = sampleStrats.filter(({ s }) => dir === "sell" ? isShortStrat(s) : !isShortStrat(s));
-  const premiumShown = premiumStrats.filter((s) => dir === "sell" ? isShortStrat(s) : !isShortStrat(s));
+  const longOf  = (arr, sel = (x) => x) => arr.filter((x) => !isShortStrat(sel(x)));
+  const shortOf = (arr, sel = (x) => x) => arr.filter((x) => isShortStrat(sel(x)));
+  const perfSel = (x) => x.s;   // sampleStrats/mineOwn/myCopies items are { s, p }
   /* A strategy belongs to the market of the symbol it's deployed on. So a crypto strategy
      doesn't show under US. Strategies with no symbol yet appear in every market. */
   const stratInMarket = (s) => { const sy = (s.symbols || [])[0]; return !sy || marketOf(sy) === market; };
@@ -2200,6 +2228,12 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const myStrats     = mineOwn;
   // "My Copies" = the user's copies of Premium strategies — rules hidden, name/symbol/tf/SL/TP editable.
   const myCopies     = perf.filter(({ s }) => s.copy && stratInMarket(s));
+  // Long/Short groups per tab.
+  const sampleLong = longOf(sampleStrats, perfSel), sampleShort = shortOf(sampleStrats, perfSel);
+  const premiumLong = longOf(premiumStrats), premiumShort = shortOf(premiumStrats);
+  const mineLong = longOf(mineOwn, perfSel), mineShort = shortOf(mineOwn, perfSel);
+  const copiesLong = longOf(myCopies, perfSel), copiesShort = shortOf(myCopies, perfSel);
+  const emptyNote = { fontSize: 11.5, color: "var(--muted)", margin: "2px 2px 6px" };
   /* "Deployed" spans EVERY type (Mine, Premium, Sample, Public), split into Active
      (running now) and Inactive, each shown with its type + state tag — market-filtered.
      Every active/armed strategy shows here (including a just-activated premium that hasn't
@@ -2824,36 +2858,50 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       {stratTab === "backtest" ? (
         <BacktestPanel strats={premiumStrats} market={market} onApplyExits={(id, sl, tp) => setStrats((p) => p.map((s) => s.id === id ? { ...s, cfg: { ...(s.cfg || {}), sl, tp } } : s))} />
       ) : stratTab === "sample" ? (
-        <>
-          <DirToggle dir={dir} setDir={setDir} />
-          {sampleShown.length === 0
-            ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>{dir === "sell" ? "No short (Sell) sample strategies for this market." : "No sample strategies for this market."}</div>
-            : sampleShown.map(({ s }) => <SampleStrategyCard key={s.id} s={s} market={market} onActivate={useTemplateStrategy} onClone={cloneStrategy} onEdit={isAdmin ? loadForEdit : undefined} onPersist={persistCard} canBacktest={canBacktest} onConnect={onConnectBroker} />)}
-        </>
+        (() => {
+          const renderS = ({ s }) => <SampleStrategyCard key={s.id} s={s} market={market} onActivate={useTemplateStrategy} onClone={cloneStrategy} onEdit={isAdmin ? loadForEdit : undefined} onPersist={persistCard} canBacktest={canBacktest} onConnect={onConnectBroker} />;
+          if (!sampleLong.length && !sampleShort.length) return <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No sample strategies for this market.</div>;
+          return (<>
+            <BulkBar items={[...sampleLong, ...sampleShort]} />
+            <SectionHead label="▲ Long" color="var(--up)" count={sampleLong.length} />
+            {sampleLong.length ? sampleLong.map(renderS) : <div style={emptyNote}>No long samples.</div>}
+            <SectionHead label="▼ Short" color="var(--down)" count={sampleShort.length} />
+            {sampleShort.length ? sampleShort.map(renderS) : <div style={emptyNote}>No short samples.</div>}
+          </>);
+        })()
       ) : stratTab === "premium" ? (
         <>
-          <DirToggle dir={dir} setDir={setDir} />
           <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 2px 8px" }}>
             <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.5, flex: 1 }}>
-              {dir === "sell"
-                ? "Short mirrors of Matrix's curated strategies — they profit when the setup breaks down. Shorting executes on crypto and Indian options; elsewhere it runs in paper. Rules are locked."
-                : "Matrix's curated strategies — available in every market. Activate to run them live, or backtest first. Their rules are locked."}
+              Matrix's curated strategies — Long run standard; Short are their mirror setups (profit when the setup breaks down; shorting executes on crypto &amp; Indian options, paper elsewhere). Rules are locked.
             </div>
             <button onClick={() => setCompareOpen((v) => !v)} className="tap disp" style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 5, border: "1px solid " + (compareOpen ? "var(--primary)" : "var(--line)"), background: compareOpen ? "var(--primary-soft)" : "var(--surface)", color: compareOpen ? "var(--primary)" : "var(--ink)", borderRadius: 10, padding: "7px 11px", fontWeight: 800, fontSize: 11.5 }}>
               <ListChecks size={14} /> {compareOpen ? "Hide table" : "Compare all"}
             </button>
           </div>
-          {/* One-tap comparison table: every premium strategy for THIS market, backtested on the same
-              window, side by side. Runs on your real broker data via the same cached backtests. */}
-          {compareOpen && <ComparisonTable strats={premiumShown.filter((s) => (s.market || marketOf((s.symbols || [])[0])) === market)} market={market} />}
-          {premiumShown.length === 0
+          {compareOpen && <ComparisonTable strats={premiumLong.filter((s) => (s.market || marketOf((s.symbols || [])[0])) === market)} market={market} />}
+          {(!premiumLong.length && !premiumShort.length)
             ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No premium strategies available.</div>
-            : premiumShown.map((s) => <PremiumStrategyCard key={s.id} s={s} active={activeInMarket(s)} market={market} onToggle={(rs, size, opts) => togglePremiumHere(s.id, rs, size, opts)} onEdit={isAdmin ? loadForEdit : undefined} onPersist={persistCard} onClone={clonePremium} canBacktest={canBacktest} onConnect={onConnectBroker} />)}
+            : (<>
+                <BulkBar items={[...premiumLong, ...premiumShort]} />
+                <SectionHead label="▲ Long" color="var(--up)" count={premiumLong.length} />
+                {premiumLong.length ? premiumLong.map((s) => <PremiumStrategyCard key={s.id} s={s} active={activeInMarket(s)} market={market} onToggle={(rs, size, opts) => togglePremiumHere(s.id, rs, size, opts)} onEdit={isAdmin ? loadForEdit : undefined} onPersist={persistCard} onClone={clonePremium} canBacktest={canBacktest} onConnect={onConnectBroker} />) : <div style={emptyNote}>No long strategies.</div>}
+                <SectionHead label="▼ Short" color="var(--down)" count={premiumShort.length} />
+                {premiumShort.length ? premiumShort.map((s) => <PremiumStrategyCard key={s.id} s={s} active={activeInMarket(s)} market={market} onToggle={(rs, size, opts) => togglePremiumHere(s.id, rs, size, opts)} onEdit={isAdmin ? loadForEdit : undefined} onPersist={persistCard} onClone={clonePremium} canBacktest={canBacktest} onConnect={onConnectBroker} />) : <div style={emptyNote}>No short strategies.</div>}
+              </>)}
         </>
       ) : stratTab === "copies" ? (
-        myCopies.length === 0
-          ? <div className="card" style={{ marginTop: 12, padding: 20, textAlign: "center", color: "var(--muted)", fontSize: 12.5, lineHeight: 1.6 }}>No copies yet. Open <b style={{ color: "var(--ink)" }}>Premium</b> and tap <b style={{ color: "var(--ink)" }}>Clone</b> on any strategy to make an editable copy here.</div>
-          : myCopies.map(({ s }) => <CopyStrategyCard key={s.id} s={s} active={s.active} market={market} onToggle={(rs, size, opts) => togglePremiumHere(s.id, rs, size, opts)} onPersist={persistCard} onDelete={deleteStrategy} canBacktest={canBacktest} onConnect={onConnectBroker} />)
+        (() => {
+          const renderC = ({ s }) => <CopyStrategyCard key={s.id} s={s} active={s.active} market={market} onToggle={(rs, size, opts) => togglePremiumHere(s.id, rs, size, opts)} onPersist={persistCard} onDelete={deleteStrategy} canBacktest={canBacktest} onConnect={onConnectBroker} />;
+          if (!copiesLong.length && !copiesShort.length) return <div className="card" style={{ marginTop: 12, padding: 20, textAlign: "center", color: "var(--muted)", fontSize: 12.5, lineHeight: 1.6 }}>No copies yet. Open <b style={{ color: "var(--ink)" }}>Premium</b> and tap <b style={{ color: "var(--ink)" }}>Clone</b> on any strategy to make an editable copy here.</div>;
+          return (<>
+            <BulkBar items={[...copiesLong, ...copiesShort]} />
+            <SectionHead label="▲ Long" color="var(--up)" count={copiesLong.length} />
+            {copiesLong.length ? copiesLong.map(renderC) : <div style={emptyNote}>No long copies.</div>}
+            <SectionHead label="▼ Short" color="var(--down)" count={copiesShort.length} />
+            {copiesShort.length ? copiesShort.map(renderC) : <div style={emptyNote}>No short copies.</div>}
+          </>);
+        })()
       ) : stratTab === "public" ? (
         <>
           <div style={{ fontSize: 11.5, color: "var(--muted)", margin: "0 2px 10px", lineHeight: 1.5 }}>
@@ -2940,9 +2988,14 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           You haven't created a strategy yet. Build one from the Build tab, or start from a sample.
         </div>
       ) : (
-        /* MINE — only strategies this user created; each card carries its Active/Inactive tag. */
+        /* MINE — only strategies this user created, split into Long and Short; each card carries its
+           Active/Inactive tag. */
         <>
-          <CollapsibleList items={mineOwn} render={({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>} />
+          <BulkBar items={mineOwn} />
+          <SectionHead label="▲ Long" color="var(--up)" count={mineLong.length} />
+          {mineLong.length ? <CollapsibleList items={mineLong} render={({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>} /> : <div style={emptyNote}>No long strategies.</div>}
+          <SectionHead label="▼ Short" color="var(--down)" count={mineShort.length} />
+          {mineShort.length ? <CollapsibleList items={mineShort} render={({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>} /> : <div style={emptyNote}>No short strategies.</div>}
         </>
       )}
       </>)}
