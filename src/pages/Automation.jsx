@@ -504,12 +504,15 @@ function CardOptimizeButton({ cfg, sym, tf = "5m", sl, tp, setSl, setTp }) {
     setSt({ loading: false, done: !!best, none: !best });
   };
   const optBtn = (k, label) => (
-    <button key={k} onClick={() => run(k)} disabled={st.loading || !canOpt} className="tap disp" style={{ flex: 1, padding: "9px 8px", fontSize: 11, fontWeight: 800, borderRadius: 10, border: "1px solid " + (objective === k ? "#7C3AED" : "var(--line)"), background: objective === k ? "#7C3AED" : "var(--surface)", color: objective === k ? "#fff" : "var(--ink)", cursor: canOpt ? "pointer" : "not-allowed", opacity: (st.loading || !canOpt) ? 0.6 : 1 }}>{label}</button>
+    <button key={k} onClick={() => run(k)} disabled={st.loading || !canOpt} className="tap disp" style={{ flex: "1 1 90px", padding: "9px 8px", fontSize: 11, fontWeight: 800, borderRadius: 10, border: "1px solid " + (objective === k ? "#7C3AED" : "var(--line)"), background: objective === k ? "#7C3AED" : "var(--surface)", color: objective === k ? "#fff" : "var(--ink)", cursor: canOpt ? "pointer" : "not-allowed", opacity: (st.loading || !canOpt) ? 0.6 : 1 }}>{label}</button>
   );
   return (
     <div style={{ marginTop: 8 }}>
-      <div className="disp" style={{ fontSize: 12, fontWeight: 800, color: "var(--ink)", display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}><Sparkles size={13} color="#7C3AED" /> Optimize SL &amp; TP</div>
-      <div style={{ display: "flex", gap: 6 }}>{optBtn("winrate", "Optimize Win rate")}{optBtn("pnl", "Optimize P&L")}</div>
+      {/* Title + its two objective buttons on one line. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <div className="disp" style={{ fontSize: 12, fontWeight: 800, color: "var(--ink)", display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto" }}><Sparkles size={13} color="#7C3AED" /> Optimize SL &amp; TP</div>
+        {optBtn("winrate", "Win rate")}{optBtn("pnl", "P&L")}
+      </div>
       {st.loading && <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 6 }}>Backtesting on historical candles…</div>}
       {st.done && <div style={{ fontSize: 9.5, color: "var(--up)", marginTop: 6, fontWeight: 700 }}>✓ Optimized → SL {sl}% / TP {tp}%</div>}
       {st.none && <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 6 }}>Couldn't fetch enough price history for {sym || "this symbol"} on {tf} — try a higher timeframe or another symbol.</div>}
@@ -523,24 +526,34 @@ function CardOptimizeButton({ cfg, sym, tf = "5m", sl, tp, setSl, setTp }) {
 function CardIndicatorOptimizeButton({ cfg, sym, tf = "5m", sl, tp, onApply }) {
   const [st, setSt] = useState({ loading: false, done: false, none: false, changes: null });
   const [objective, setObjective] = useState(null);
+  const [lockTf, setLockTf] = useState(false);        // when on, keep this tf fixed; tune only lengths
   const numericDefs = (cfg && (cfg.defs || []).some((d) => Number(d && d.len) > 0));
   const canOpt = !!(cfg && (cfg.entry || []).length > 0 && sym && numericDefs);
+  const lockable = ["3m", "5m", "15m", "30m", "1h"].includes(String(tf));   // timeframes the optimiser searches
   const run = async (obj) => {
     if (!canOpt) return;
     setObjective(obj);
     setSt({ loading: true, done: false, none: false, changes: null });
-    const res = await optimizeIndicators({ mode: cfg.mode === "metric" ? "metric" : undefined, defs: cfg.defs || [], entry: cfg.entry, tf, appSyms: [sym], currentSl: sl ? Number(sl) : null, currentTp: tp ? Number(tp) : null, objective: obj }).catch(() => null);
+    const res = await optimizeIndicators({ mode: cfg.mode === "metric" ? "metric" : undefined, defs: cfg.defs || [], entry: cfg.entry, tf, appSyms: [sym], currentSl: sl ? Number(sl) : null, currentTp: tp ? Number(tp) : null, objective: obj, lockTf: (lockTf && lockable) ? tf : null }).catch(() => null);
     const best = res && res.best ? res.best : null;
     if (best && onApply) onApply(best.defs, best.tf);
     setSt({ loading: false, done: !!best, none: !best, changes: (res && res.changes) || null });
   };
   const optBtn = (k, label) => (
-    <button key={k} onClick={() => run(k)} disabled={st.loading || !canOpt} className="tap disp" title={!numericDefs ? "This strategy has no tunable indicator lengths" : undefined} style={{ flex: 1, padding: "9px 8px", fontSize: 11, fontWeight: 800, borderRadius: 10, border: "1px solid " + (objective === k ? "#0EA5E9" : "var(--line)"), background: objective === k ? "#0EA5E9" : "var(--surface)", color: objective === k ? "#fff" : "var(--ink)", cursor: canOpt ? "pointer" : "not-allowed", opacity: (st.loading || !canOpt) ? 0.6 : 1 }}>{label}</button>
+    <button key={k} onClick={() => run(k)} disabled={st.loading || !canOpt} className="tap disp" title={!numericDefs ? "This strategy has no tunable indicator lengths" : undefined} style={{ flex: "1 1 90px", padding: "9px 8px", fontSize: 11, fontWeight: 800, borderRadius: 10, border: "1px solid " + (objective === k ? "#0EA5E9" : "var(--line)"), background: objective === k ? "#0EA5E9" : "var(--surface)", color: objective === k ? "#fff" : "var(--ink)", cursor: canOpt ? "pointer" : "not-allowed", opacity: (st.loading || !canOpt) ? 0.6 : 1 }}>{label}</button>
   );
   return (
     <div style={{ marginTop: 10 }}>
-      <div className="disp" style={{ fontSize: 12, fontWeight: 800, color: "var(--ink)", display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}><Sparkles size={13} color="#0EA5E9" /> Optimize Indicators</div>
-      <div style={{ display: "flex", gap: 6 }}>{optBtn("winrate", "Optimize Win rate")}{optBtn("pnl", "Optimize P&L")}</div>
+      {/* Title + its two objective buttons on one line. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <div className="disp" style={{ fontSize: 12, fontWeight: 800, color: "var(--ink)", display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto" }}><Sparkles size={13} color="#0EA5E9" /> Optimize Indicators</div>
+        {optBtn("winrate", "Win rate")}{optBtn("pnl", "P&L")}
+      </div>
+      {/* Lock timeframe — when on, the optimiser only tunes indicator lengths and keeps this tf fixed. */}
+      <label className="tap" style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 7, fontSize: 10, fontWeight: 700, color: lockable ? "var(--ink)" : "var(--muted)", cursor: lockable ? "pointer" : "not-allowed" }}>
+        <input type="checkbox" checked={lockTf && lockable} disabled={!lockable} onChange={(e) => setLockTf(e.target.checked)} style={{ accentColor: "#0EA5E9", width: 14, height: 14 }} />
+        Lock timeframe to {tf} {lockable ? "(tune lengths only)" : "(only ≤ 1h can be locked)"}
+      </label>
       {st.loading && <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 6 }}>Searching indicator lengths &amp; timeframes…</div>}
       {st.done && st.changes && st.changes.length > 0 && (
         <div style={{ fontSize: 9.5, color: "var(--up)", marginTop: 6, lineHeight: 1.5, fontWeight: 700 }}>
@@ -826,7 +839,7 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
   const [data, setData] = useState({ strategies: [], engineLive: false });
   const [busy, setBusy] = useState(false);
   const refresh = () => { if (userId) loadAutoBuys(userId).then(setData); };
-  useEffect(() => { refresh(); const id = setInterval(refresh, 12000); return () => clearInterval(id); /* eslint-disable-next-line */ }, [userId]);
+  useEffect(() => { refresh(); const id = setInterval(refresh, 30000); return () => clearInterval(id); /* eslint-disable-next-line */ }, [userId]);
   // Only strategies for the market you're on (a crypto auto-buy doesn't show under Indian) AND that
   // actually hold a LIVE position right now — "Live" means in a FILLED trade, not merely armed and
   // waiting. Matching the Virtual "Live" (open>0), we require a real fill, since the server's
@@ -1725,7 +1738,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
      non-clickable "Real Live" instead of "Go Live" and can't be armed a second time. */
   const [armedReal, setArmedReal] = useState([]);
   const refreshArmed = () => { if (userId) loadAutoBuys(userId).then((d) => setArmedReal((d && d.strategies) || [])).catch(() => {}); };
-  useEffect(() => { refreshArmed(); const t = setInterval(refreshArmed, 20000); return () => clearInterval(t); /* eslint-disable-next-line */ }, [userId]);
+  useEffect(() => { refreshArmed(); const t = setInterval(refreshArmed, 30000); return () => clearInterval(t); /* eslint-disable-next-line */ }, [userId]);
   const isArmedReal = (s) => armedReal.some((a) => a && a.status !== "cancelled" && (a.name || "") === (s.name || "") && (!s.symbols || !s.symbols.length || a.symbol === s.symbols[0]));
   async function armLive(s) {
     setLiveMsg(null);

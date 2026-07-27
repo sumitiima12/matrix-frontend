@@ -50,6 +50,8 @@ export default function Drawer({ s, onClose, onDetails, onBuy, canBuy }) {
 
   if (!s) return null;
   const market = marketOf(s.sym);
+  // Sell (short) is offered only where the app supports it: crypto and Indian options.
+  const canShort = market === "Crypto" || Boolean(s.isOpt);
 
   const onTS = (e) => { startY.current = e.touches[0].clientY; };
   const onTM = (e) => { if (startY.current == null) return; setDy(Math.max(0, e.touches[0].clientY - startY.current)); };  // down only
