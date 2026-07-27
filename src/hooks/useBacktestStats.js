@@ -93,13 +93,26 @@ export function useBacktestStats(strat, opts = {}) {
         /* Absolute P&L sizing: when a per-trade size is supplied (the backtest panel's Qty / USD-amount
            filter), size each trade explicitly — shares × (exit − entry) for stocks/commodities, or a
            USD notional × return for crypto. With no size, fall back to the capital-split model the
-           strategy cards use. Return % is unaffected by sizing (it's the sum of per-trade returns). */
+           strategy cards use.
+
+           RETURNS ARE MEASURED ON DEPLOYED CAPITAL. Positions are taken one at a time and the same
+           capital is recycled into the next trade, so the base is ONE trade's deployment — not the sum
+           of every trade's notional. So $100 per trade with +$1,000 total P&L reads as +1000%. */
         const hasSize = qty != null || amount != null;
         let pnl = capPnl;
+        let retBase = null;   // capital the return % is measured against (per-trade deployment)
         if (hasSize) {
-          pnl = sizeMarket === "Crypto"
-            ? (Number(amount) || 0) * trades.reduce((a, t) => a + (t.ret || 0), 0)
-            : (Number(qty) || 0) * trades.reduce((a, t) => a + ((t.exit || 0) - (t.entry || 0)), 0);
+          if (sizeMarket === "Crypto") {
+            const amt = Number(amount) || 0;
+            pnl = amt * trades.reduce((a, t) => a + (t.ret || 0), 0);
+            retBase = amt;
+          } else {
+            const q = Number(qty) || 0;
+            pnl = q * trades.reduce((a, t) => a + ((t.exit || 0) - (t.entry || 0)), 0);
+            // Deployed capital for a stock/commodity trade = shares × entry price (averaged over trades).
+            const avgEntry = trades.length ? trades.reduce((a, t) => a + (t.entry || 0), 0) / trades.length : 0;
+            retBase = q * avgEntry;
+          }
         }
 
         const period = periodLabel(sets);
@@ -124,7 +137,9 @@ export function useBacktestStats(strat, opts = {}) {
             tpHit,
             winRate: (wins / trades.length) * 100,
             pnl,
-            retPct: (capPnl / cap) * 100,
+            // With an explicit per-trade size, return % = total P&L ÷ capital deployed on one trade.
+            // Otherwise fall back to the capital-split model (sum of per-trade returns).
+            retPct: hasSize ? (retBase ? (pnl / retBase) * 100 : null) : (capPnl / cap) * 100,
             symbols: usable,
             tf,
             period,

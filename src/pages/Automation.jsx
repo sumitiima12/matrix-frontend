@@ -62,6 +62,27 @@ function DirToggle({ dir, setDir }) {
   );
 }
 
+/* Long / Short segmented toggle shown ABOVE Activate All in every strategy type. Selecting a side
+   filters the list (and the bulk Activate/Deactivate) to Long or Short strategies. */
+function LongShortToggle({ side, setSide, longCount, shortCount }) {
+  const opts = [["long", "▲ Long", "var(--up)", longCount], ["short", "▼ Short", "var(--down)", shortCount]];
+  return (
+    <div style={{ display: "flex", gap: 6, background: "var(--elev)", border: "1px solid var(--line)", borderRadius: 12, padding: 4, margin: "0 0 10px" }}>
+      {opts.map(([k, label, col, count]) => (
+        <button key={k} onClick={() => setSide(k)} className="tap disp" style={{
+          flex: 1, borderRadius: 9, padding: "8px 4px", fontWeight: 800, fontSize: 12, cursor: "pointer", border: "none",
+          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+          background: side === k ? col : "transparent",
+          color: side === k ? "#fff" : "var(--muted)",
+        }}>
+          {label}
+          {count != null && <span style={{ fontSize: 10, fontWeight: 800, borderRadius: 999, padding: "1px 7px", background: side === k ? "rgba(255,255,255,.22)" : "var(--surface)", color: side === k ? "#fff" : "var(--muted)" }}>{count}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function BacktestResult({ cfg, defaultSym, blocked = false, onConnect, defaultTf = "5m" }) {
   // Default to the symbol the strategy is ACTIVATED on. Backtesting a NIFTY50
   // strategy against RELIANCE by default tests something you never deployed.
@@ -1150,11 +1171,21 @@ const oPct = (x) => (x == null || isNaN(x)) ? "—" : (x >= 0 ? "+" : "") + Numb
 const oWr = (x) => (x == null || isNaN(x)) ? "—" : Number(x).toFixed(0) + "%";
 const oAmt = (x) => (x == null || isNaN(x)) ? "—" : (x >= 0 ? "+" : "") + Number(x).toFixed(2);
 const oCnt = (x) => (x == null || isNaN(x)) ? "—" : String(x);
+/* A strategy "runs on" a symbol only when that symbol is in its configured symbol list. Symbol-agnostic
+   strategies (none listed) are treated as universal. Used to scope the Per-Symbol optimiser so SOL-tuned
+   SL/TP (or indicators) are only ever applied to the strategies that actually trade SOL — never pushed
+   onto every strategy just because they were measured against SOL. */
+function stratRunsOnSym(s, sym) {
+  const syms = (s && (s.symbols || (s.symbol ? [s.symbol] : []))) || [];
+  return syms.length ? syms.includes(sym) : true;
+}
+
 function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits }) {
   const [objective, setObjective] = useState("pnl");
   const [state, setState] = useState({ loading: false, rows: null, ran: false });
   const [applied, setApplied] = useState(false);
-  const eligible = (strats || []).filter((s) => s.cfg && (s.cfg.entry || []).length > 0);   // ALL eligible strategies
+  // Only strategies that actually run on THIS symbol — the existing strategy × symbol combinations.
+  const eligible = (strats || []).filter((s) => s.cfg && (s.cfg.entry || []).length > 0 && stratRunsOnSym(s, sym));
   const run = async (obj = objective) => {
     if (!sym || !eligible.length) { setState({ loading: false, ran: true, rows: [] }); return; }
     setApplied(false);
@@ -1188,15 +1219,18 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits }) {
   ] : [<td key={key + "e"} style={{ ...td, ...sepL, color: "var(--muted)" }} colSpan={5}>—</td>];
   return (
     <div style={{ marginBottom: 12, border: "1px solid var(--line)", borderRadius: 12, padding: 12, background: "var(--elev)" }}>
-      <div className="pill" style={{ display: "inline-flex", background: "var(--surface)", border: "1px solid var(--line)", padding: 3, width: "100%", marginBottom: 8 }}>
-        {objBtn("winrate", "Optimize Win rate")}
-        {objBtn("pnl", "Optimize P&L")}
+      {/* Title + its two objective buttons on ONE line. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <button onClick={() => run()} disabled={loading || !eligible.length} className="tap" style={{ flex: "1 1 190px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 9, padding: "8px 12px", fontSize: 11, fontWeight: 800, opacity: (loading || !eligible.length) ? 0.6 : 1 }}>
+          <Sparkles size={12} color="#7C3AED" /> {loading ? `Optimising ${eligible.length} strategies…` : `Optimize SL & TP per strategy — ${sym}`}
+        </button>
+        <div className="pill" style={{ display: "inline-flex", background: "var(--surface)", border: "1px solid var(--line)", padding: 3, flex: "1 1 150px" }}>
+          {objBtn("winrate", "Win rate")}
+          {objBtn("pnl", "P&L")}
+        </div>
       </div>
-      <button onClick={() => run()} disabled={loading || !eligible.length} className="tap" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 9, padding: "8px 12px", fontSize: 11, fontWeight: 800, opacity: (loading || !eligible.length) ? 0.6 : 1 }}>
-        <Sparkles size={12} color="#7C3AED" /> {loading ? `Optimising ${eligible.length} strategies…` : `Optimize SL & TP per strategy — ${sym}`}
-      </button>
       {ran && !loading && (good.length === 0
-        ? <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>Not enough past entry signals on {sym} to optimise these strategies.</div>
+        ? <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>{eligible.length === 0 ? `No strategies run on ${sym}, so there's nothing here to optimise or apply. Pick a symbol your strategies actually trade.` : `Not enough past entry signals on ${sym} to optimise these strategies.`}</div>
         : <div style={{ marginTop: 10 }}>
             <div style={{ overflowX: "auto" }}>
               <table style={{ borderCollapse: "collapse", minWidth: 760, width: "100%" }}>
@@ -1246,7 +1280,10 @@ function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators }) {
   const [objective, setObjective] = useState("pnl");
   const [state, setState] = useState({ loading: false, rows: null, ran: false });
   const [applied, setApplied] = useState(false);
-  const eligible = (strats || []).filter((s) => s.cfg && (s.cfg.entry || []).length > 0 && (s.cfg.defs || []).some((d) => Number(d && d.len) > 0));
+  const [lockTf, setLockTf] = useState(false);        // when on, keep this tf fixed; tune only lengths
+  const lockable = ["3m", "5m", "15m", "30m", "1h"].includes(String(tf));
+  // Only strategies that actually run on THIS symbol — the existing strategy × symbol combinations.
+  const eligible = (strats || []).filter((s) => s.cfg && (s.cfg.entry || []).length > 0 && (s.cfg.defs || []).some((d) => Number(d && d.len) > 0) && stratRunsOnSym(s, sym));
   const iwr = (x) => (x == null || isNaN(x)) ? "—" : Number(x).toFixed(0) + "%";
   const ipct = (x) => (x == null || isNaN(x)) ? "—" : (x >= 0 ? "+" : "") + Number(x).toFixed(1) + "%";
   const iamt = (x) => (x == null || isNaN(x)) ? "—" : (x >= 0 ? "+" : "") + Number(x).toFixed(2);
@@ -1256,7 +1293,7 @@ function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators }) {
     setState({ loading: true, rows: null, ran: true });
     const rows = await Promise.all(eligible.map(async (s) => {
       try {
-        const res = await optimizeIndicators({ mode: s.cfg.mode === "metric" ? "metric" : undefined, defs: s.cfg.defs || [], entry: s.cfg.entry, tf, appSyms: [sym], currentSl: s.cfg.sl != null ? Number(s.cfg.sl) : null, currentTp: s.cfg.tp != null ? Number(s.cfg.tp) : null, objective: obj });
+        const res = await optimizeIndicators({ mode: s.cfg.mode === "metric" ? "metric" : undefined, defs: s.cfg.defs || [], entry: s.cfg.entry, tf, appSyms: [sym], currentSl: s.cfg.sl != null ? Number(s.cfg.sl) : null, currentTp: s.cfg.tp != null ? Number(s.cfg.tp) : null, objective: obj, lockTf: (lockTf && lockable) ? tf : null });
         return { s, best: res && res.best ? res.best : null, current: res ? res.current : null, changes: (res && res.changes) || [] };
       } catch { return { s, best: null }; }
     }));
@@ -1280,15 +1317,23 @@ function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators }) {
   ] : [<td key={key + "e"} style={{ ...td, ...sepL, color: "var(--muted)" }} colSpan={3}>—</td>];
   return (
     <div style={{ marginBottom: 12, border: "1px solid var(--line)", borderRadius: 12, padding: 12, background: "var(--elev)" }}>
-      <div className="pill" style={{ display: "inline-flex", background: "var(--surface)", border: "1px solid var(--line)", padding: 3, width: "100%", marginBottom: 8 }}>
-        {objBtn("winrate", "Optimize Win rate")}
-        {objBtn("pnl", "Optimize P&L")}
+      {/* Title + its two objective buttons on ONE line. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <button onClick={() => run()} disabled={loading || !eligible.length} className="tap" style={{ flex: "1 1 190px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 9, padding: "8px 12px", fontSize: 11, fontWeight: 800, opacity: (loading || !eligible.length) ? 0.6 : 1 }}>
+          <Sparkles size={12} color="#0EA5E9" /> {loading ? `Optimising ${eligible.length} strategies…` : `Optimize Indicators per strategy — ${sym}`}
+        </button>
+        <div className="pill" style={{ display: "inline-flex", background: "var(--surface)", border: "1px solid var(--line)", padding: 3, flex: "1 1 150px" }}>
+          {objBtn("winrate", "Win rate")}
+          {objBtn("pnl", "P&L")}
+        </div>
       </div>
-      <button onClick={() => run()} disabled={loading || !eligible.length} className="tap" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 9, padding: "8px 12px", fontSize: 11, fontWeight: 800, opacity: (loading || !eligible.length) ? 0.6 : 1 }}>
-        <Sparkles size={12} color="#0EA5E9" /> {loading ? `Optimising ${eligible.length} strategies…` : `Optimize Indicators per strategy — ${sym}`}
-      </button>
+      {/* Lock timeframe — when on, only indicator lengths are tuned and this tf stays fixed. */}
+      <label className="tap" style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 8, fontSize: 10.5, fontWeight: 700, color: lockable ? "var(--ink)" : "var(--muted)", cursor: lockable ? "pointer" : "not-allowed" }}>
+        <input type="checkbox" checked={lockTf && lockable} disabled={!lockable} onChange={(e) => setLockTf(e.target.checked)} style={{ accentColor: "#0EA5E9", width: 15, height: 15 }} />
+        Lock timeframe to {tf} {lockable ? "(tune indicator lengths only)" : "(only ≤ 1h can be locked)"}
+      </label>
       {ran && !loading && (good.length === 0
-        ? <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>Not enough past entry signals on {sym} to optimise these strategies' indicators.</div>
+        ? <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>{eligible.length === 0 ? `No strategies run on ${sym}, so there's nothing here to optimise or apply. Pick a symbol your strategies actually trade.` : `Not enough past entry signals on ${sym} to optimise these strategies' indicators.`}</div>
         : <div style={{ marginTop: 10 }}>
             <div style={{ overflowX: "auto" }}>
               <table style={{ borderCollapse: "collapse", minWidth: 720, width: "100%" }}>
@@ -2182,6 +2227,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
        MINE    (created by the user): scored on their ACTUAL closed trades. A
                 strategy with no closed trades shows "—", not a made-up win rate. */
   const [stratTab, setStratTab] = useState("deployed");   // sub-tab under "Strategies": deployed | sample | premium | public | mine
+  const [lsSide, setLsSide] = useState("long");           // Long / Short filter shown above Activate All in every strategy type
   const [topTab, setTopTab] = useState("build");   // build | sample | premium | public | mine
   const [compareOpen, setCompareOpen] = useState(false);   // premium "Compare all" backtest table
 
@@ -2794,33 +2840,36 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             {showBt && (
               <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
                 <BacktestResult cfg={cfg} blocked={!canBacktest} onConnect={onConnectBroker} />
+              </div>
+            )}
+            {/* Optimizers live OUTSIDE the backtest toggle so they're available in BOTH the Visual
+                builder and Plain English (they run their own backtests server-side). They appear as
+                soon as Neo has read an entry rule from your prose. */}
+            {cfg.entry && cfg.entry.length > 0 && (
+              <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
                 {/* Ideal SL/TP for this strategy — grid-search over its past entry signals. Apply fills
                     the Stop loss / Take profit fields above. */}
-                {cfg.entry && cfg.entry.length > 0 && (
-                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-                    <ExitOptimizer
-                      defs={cfg.defs || []}
-                      entry={cfg.entry}
-                      tf={cfg.tf || "5m"}
-                      appSyms={deploySyms.length ? deploySyms : DEPLOY_OPTIONS.slice(0, 3)}
-                      currentSl={sl ? Number(sl) : null}
-                      currentTp={tp ? Number(tp) : null}
-                      onApply={(bsl, btp) => { setSl(String(bsl)); setTp(String(btp)); }}
-                    />
-                    {/* Optimize the indicator lengths + timeframe (≤1h) for the chosen objective. Apply
-                        writes the tuned lengths and timeframe straight back into the builder above. */}
-                    <div style={{ height: 14 }} />
-                    <IndicatorOptimizer
-                      defs={cfg.defs || []}
-                      entry={cfg.entry}
-                      tf={cfg.tf || "5m"}
-                      appSyms={deploySyms.length ? deploySyms.slice(0, 4) : DEPLOY_OPTIONS.slice(0, 4)}
-                      currentSl={sl ? Number(sl) : null}
-                      currentTp={tp ? Number(tp) : null}
-                      onApply={(nd, ntf) => { setDefs((nd || []).map((d, i) => ({ ...d, id: d.id || i + 1, tf: ntf }))); setTf(ntf); }}
-                    />
-                  </div>
-                )}
+                <ExitOptimizer
+                  defs={cfg.defs || []}
+                  entry={cfg.entry}
+                  tf={cfg.tf || "5m"}
+                  appSyms={deploySyms.length ? deploySyms : DEPLOY_OPTIONS.slice(0, 3)}
+                  currentSl={sl ? Number(sl) : null}
+                  currentTp={tp ? Number(tp) : null}
+                  onApply={(bsl, btp) => { setSl(String(bsl)); setTp(String(btp)); }}
+                />
+                {/* Optimize the indicator lengths + timeframe (≤1h) for the chosen objective. Apply
+                    writes the tuned lengths and timeframe straight back into the builder above. */}
+                <div style={{ height: 14 }} />
+                <IndicatorOptimizer
+                  defs={cfg.defs || []}
+                  entry={cfg.entry}
+                  tf={cfg.tf || "5m"}
+                  appSyms={deploySyms.length ? deploySyms.slice(0, 4) : DEPLOY_OPTIONS.slice(0, 4)}
+                  currentSl={sl ? Number(sl) : null}
+                  currentTp={tp ? Number(tp) : null}
+                  onApply={(nd, ntf) => { setDefs((nd || []).map((d, i) => ({ ...d, id: d.id || i + 1, tf: ntf }))); setTf(ntf); }}
+                />
               </div>
             )}
 
@@ -2878,12 +2927,11 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         (() => {
           const renderS = ({ s }) => <SampleStrategyCard key={s.id} s={s} market={market} onActivate={useTemplateStrategy} onClone={cloneStrategy} onEdit={isAdmin ? loadForEdit : undefined} onPersist={persistCard} canBacktest={canBacktest} onConnect={onConnectBroker} />;
           if (!sampleLong.length && !sampleShort.length) return <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No sample strategies for this market.</div>;
+          const sel = lsSide === "long" ? sampleLong : sampleShort;
           return (<>
-            <BulkBar items={[...sampleLong, ...sampleShort].filter(({ s }) => stratInMarket(s))} />
-            <SectionHead label="▲ Long" color="var(--up)" count={sampleLong.length} />
-            {sampleLong.length ? sampleLong.map(renderS) : <div style={emptyNote}>No long samples.</div>}
-            <SectionHead label="▼ Short" color="var(--down)" count={sampleShort.length} />
-            {sampleShort.length ? sampleShort.map(renderS) : <div style={emptyNote}>No short samples.</div>}
+            <LongShortToggle side={lsSide} setSide={setLsSide} longCount={sampleLong.length} shortCount={sampleShort.length} />
+            <BulkBar items={sel.filter(({ s }) => stratInMarket(s))} />
+            {sel.length ? sel.map(renderS) : <div style={emptyNote}>No {lsSide} samples.</div>}
           </>);
         })()
       ) : stratTab === "premium" ? (
@@ -2899,24 +2947,24 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           {compareOpen && <ComparisonTable strats={premiumLong.filter((s) => (s.market || marketOf((s.symbols || [])[0])) === market)} market={market} />}
           {(!premiumLong.length && !premiumShort.length)
             ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No premium strategies available.</div>
-            : (<>
-                <BulkBar items={[...premiumLong, ...premiumShort].filter(stratInMarket)} />
-                <SectionHead label="▲ Long" color="var(--up)" count={premiumLong.length} />
-                {premiumLong.length ? premiumLong.map((s) => <PremiumStrategyCard key={s.id} s={s} active={activeInMarket(s)} market={market} onToggle={(rs, size, opts) => togglePremiumHere(s.id, rs, size, opts)} onEdit={isAdmin ? loadForEdit : undefined} onPersist={persistCard} onClone={clonePremium} canBacktest={canBacktest} onConnect={onConnectBroker} />) : <div style={emptyNote}>No long strategies.</div>}
-                <SectionHead label="▼ Short" color="var(--down)" count={premiumShort.length} />
-                {premiumShort.length ? premiumShort.map((s) => <PremiumStrategyCard key={s.id} s={s} active={activeInMarket(s)} market={market} onToggle={(rs, size, opts) => togglePremiumHere(s.id, rs, size, opts)} onEdit={isAdmin ? loadForEdit : undefined} onPersist={persistCard} onClone={clonePremium} canBacktest={canBacktest} onConnect={onConnectBroker} />) : <div style={emptyNote}>No short strategies.</div>}
-              </>)}
+            : (() => {
+                const sel = lsSide === "long" ? premiumLong : premiumShort;
+                return (<>
+                  <LongShortToggle side={lsSide} setSide={setLsSide} longCount={premiumLong.length} shortCount={premiumShort.length} />
+                  <BulkBar items={sel.filter(stratInMarket)} />
+                  {sel.length ? sel.map((s) => <PremiumStrategyCard key={s.id} s={s} active={activeInMarket(s)} market={market} onToggle={(rs, size, opts) => togglePremiumHere(s.id, rs, size, opts)} onEdit={isAdmin ? loadForEdit : undefined} onPersist={persistCard} onClone={clonePremium} canBacktest={canBacktest} onConnect={onConnectBroker} />) : <div style={emptyNote}>No {lsSide} strategies.</div>}
+                </>);
+              })()}
         </>
       ) : stratTab === "copies" ? (
         (() => {
           const renderC = ({ s }) => <CopyStrategyCard key={s.id} s={s} active={s.active} market={market} onToggle={(rs, size, opts) => togglePremiumHere(s.id, rs, size, opts)} onPersist={persistCard} onDelete={deleteStrategy} canBacktest={canBacktest} onConnect={onConnectBroker} />;
           if (!copiesLong.length && !copiesShort.length) return <div className="card" style={{ marginTop: 12, padding: 20, textAlign: "center", color: "var(--muted)", fontSize: 12.5, lineHeight: 1.6 }}>No copies yet. Open <b style={{ color: "var(--ink)" }}>Premium</b> and tap <b style={{ color: "var(--ink)" }}>Clone</b> on any strategy to make an editable copy here.</div>;
+          const sel = lsSide === "long" ? copiesLong : copiesShort;
           return (<>
-            <BulkBar items={[...copiesLong, ...copiesShort]} />
-            <SectionHead label="▲ Long" color="var(--up)" count={copiesLong.length} />
-            {copiesLong.length ? copiesLong.map(renderC) : <div style={emptyNote}>No long copies.</div>}
-            <SectionHead label="▼ Short" color="var(--down)" count={copiesShort.length} />
-            {copiesShort.length ? copiesShort.map(renderC) : <div style={emptyNote}>No short copies.</div>}
+            <LongShortToggle side={lsSide} setSide={setLsSide} longCount={copiesLong.length} shortCount={copiesShort.length} />
+            <BulkBar items={sel} />
+            {sel.length ? sel.map(renderC) : <div style={emptyNote}>No {lsSide} copies.</div>}
           </>);
         })()
       ) : stratTab === "public" ? (
@@ -3005,15 +3053,16 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           You haven't created a strategy yet. Build one from the Build tab, or start from a sample.
         </div>
       ) : (
-        /* MINE — only strategies this user created, split into Long and Short; each card carries its
-           Active/Inactive tag. */
-        <>
-          <BulkBar items={mineOwn} />
-          <SectionHead label="▲ Long" color="var(--up)" count={mineLong.length} />
-          {mineLong.length ? <CollapsibleList items={mineLong} render={({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>} /> : <div style={emptyNote}>No long strategies.</div>}
-          <SectionHead label="▼ Short" color="var(--down)" count={mineShort.length} />
-          {mineShort.length ? <CollapsibleList items={mineShort} render={({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>} /> : <div style={emptyNote}>No short strategies.</div>}
-        </>
+        /* MINE — only strategies this user created; a Long / Short toggle above the bulk bar filters
+           the list. Each card carries its own Active/Inactive tag. */
+        (() => {
+          const sel = lsSide === "long" ? mineLong : mineShort;
+          return (<>
+            <LongShortToggle side={lsSide} setSide={setLsSide} longCount={mineLong.length} shortCount={mineShort.length} />
+            <BulkBar items={sel} />
+            {sel.length ? <CollapsibleList items={sel} render={({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>} /> : <div style={emptyNote}>No {lsSide} strategies.</div>}
+          </>);
+        })()
       )}
       </>)}
 
