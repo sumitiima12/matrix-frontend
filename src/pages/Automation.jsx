@@ -2096,13 +2096,17 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     setStrats((p) => p.map((s) => ids.has(s.id) ? { ...s, active: on } : s));
     setToast(on ? `Activated ${ids.size} strategies` : `Deactivated ${ids.size} strategies`);
   };
-  /* Two-button bar shown atop a strategy section. */
-  const BulkBar = ({ items }) => (
-    <div style={{ display: "flex", gap: 8, margin: "4px 0 6px" }}>
-      <button onClick={() => bulkSetActive(items, true)} disabled={!items.length} className="tap disp" style={{ flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11.5, border: "none", background: items.length ? "linear-gradient(120deg,var(--up),#0EA968)" : "var(--elev)", color: items.length ? "#fff" : "var(--muted)", cursor: items.length ? "pointer" : "not-allowed" }}>Activate All</button>
-      <button onClick={() => bulkSetActive(items, false)} disabled={!items.length} className="tap disp" style={{ flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11.5, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", cursor: items.length ? "pointer" : "not-allowed" }}>Deactivate All</button>
-    </div>
-  );
+  /* Two-button bar shown atop a strategy section. `items` is ALREADY scoped to the current market by
+     the caller, so Activate All only arms this market's strategies — never other markets'. */
+  const BulkBar = ({ items }) => {
+    const n = (items || []).length;
+    return (
+      <div style={{ display: "flex", gap: 8, margin: "4px 0 6px" }}>
+        <button onClick={() => bulkSetActive(items, true)} disabled={!n} className="tap disp" style={{ flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11.5, border: "none", background: n ? "linear-gradient(120deg,var(--up),#0EA968)" : "var(--elev)", color: n ? "#fff" : "var(--muted)", cursor: n ? "pointer" : "not-allowed" }}>Activate All{n ? ` (${n})` : ""}</button>
+        <button onClick={() => bulkSetActive(items, false)} disabled={!n} className="tap disp" style={{ flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11.5, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", cursor: n ? "pointer" : "not-allowed" }}>Deactivate All</button>
+      </div>
+    );
+  };
   const toggleAlerts = (s) => { const willOn = !s.alerts; setStrats((p) => p.map((x) => x.id === s.id ? { ...x, alerts: willOn } : x)); if (willOn) fireAlert(s); };
   const updateStrat = (id, patch) => setStrats((p) => p.map((s) => s.id === id ? { ...s, ...patch } : s));
   /* Persist a card's SL/TP/symbol/timeframe edit onto the user's OWN copy of the strategy (per-user,
@@ -2862,7 +2866,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           const renderS = ({ s }) => <SampleStrategyCard key={s.id} s={s} market={market} onActivate={useTemplateStrategy} onClone={cloneStrategy} onEdit={isAdmin ? loadForEdit : undefined} onPersist={persistCard} canBacktest={canBacktest} onConnect={onConnectBroker} />;
           if (!sampleLong.length && !sampleShort.length) return <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No sample strategies for this market.</div>;
           return (<>
-            <BulkBar items={[...sampleLong, ...sampleShort]} />
+            <BulkBar items={[...sampleLong, ...sampleShort].filter(({ s }) => stratInMarket(s))} />
             <SectionHead label="▲ Long" color="var(--up)" count={sampleLong.length} />
             {sampleLong.length ? sampleLong.map(renderS) : <div style={emptyNote}>No long samples.</div>}
             <SectionHead label="▼ Short" color="var(--down)" count={sampleShort.length} />
@@ -2883,7 +2887,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           {(!premiumLong.length && !premiumShort.length)
             ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No premium strategies available.</div>
             : (<>
-                <BulkBar items={[...premiumLong, ...premiumShort]} />
+                <BulkBar items={[...premiumLong, ...premiumShort].filter(stratInMarket)} />
                 <SectionHead label="▲ Long" color="var(--up)" count={premiumLong.length} />
                 {premiumLong.length ? premiumLong.map((s) => <PremiumStrategyCard key={s.id} s={s} active={activeInMarket(s)} market={market} onToggle={(rs, size, opts) => togglePremiumHere(s.id, rs, size, opts)} onEdit={isAdmin ? loadForEdit : undefined} onPersist={persistCard} onClone={clonePremium} canBacktest={canBacktest} onConnect={onConnectBroker} />) : <div style={emptyNote}>No long strategies.</div>}
                 <SectionHead label="▼ Short" color="var(--down)" count={premiumShort.length} />
