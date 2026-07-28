@@ -18,6 +18,7 @@ const cnt = (x) => (x == null || isNaN(x)) ? "—" : String(x);
 export default function ExitOptimizer({ mode, defs, entry, tf, appSyms, currentSl, currentTp, onApply }) {
   const [state, setState] = useState({ loading: false, res: null, ran: false });
   const [objective, setObjective] = useState(null);   // null until the user picks an option
+  const [rrMin, setRrMin] = useState(1.5);            // minimum reward/risk the optimiser must respect
 
   const run = async (obj) => {
     setObjective(obj);
@@ -26,7 +27,7 @@ export default function ExitOptimizer({ mode, defs, entry, tf, appSyms, currentS
       return;
     }
     setState({ loading: true, res: null, ran: true });
-    const res = await optimizeExits({ mode, defs, entry, tf, appSyms, currentSl, currentTp, objective: obj });
+    const res = await optimizeExits({ mode, defs, entry, tf, appSyms, currentSl, currentTp, objective: obj, rrMin });
     setState({ loading: false, ran: true, res });
   };
 
@@ -65,6 +66,13 @@ export default function ExitOptimizer({ mode, defs, entry, tf, appSyms, currentS
         {optBtn("winrate", "Optimize Win rate")}
         {optBtn("pnl", "Optimize P&L")}
       </div>
+      {/* Minimum reward/risk floor: the optimiser only picks a TP that is ≥ this × the SL. */}
+      <label className="tap" style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 8, fontSize: 10.5, fontWeight: 700, color: "var(--muted)", cursor: "pointer" }}>
+        Min reward : risk
+        <select value={String(rrMin)} onChange={(e) => setRrMin(Number(e.target.value))} className="no-ring" style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "4px 8px", background: "var(--elev)", color: "var(--ink)", fontWeight: 800, fontSize: 11 }}>
+          {[["0", "Off"], ["1", "1 : 1"], ["1.5", "1.5 : 1"], ["2", "2 : 1"], ["2.5", "2.5 : 1"], ["3", "3 : 1"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+      </label>
       {loading && <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8 }}>Optimising on real candles…</div>}
 
       {ran && !loading && (!best) && (

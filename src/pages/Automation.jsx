@@ -83,6 +83,20 @@ function LongShortToggle({ side, setSide, longCount, shortCount }) {
   );
 }
 
+/* Minimum reward/risk selector for the SL&TP optimiser. The optimiser will only pick a target that is
+   at least this multiple of the stop (e.g. 1.5 → TP ≥ 1.5× SL), so it can't recommend a poor RR setup.
+   "Off" lets it search the full grid with no floor. */
+function RRMinSelect({ value, onChange }) {
+  return (
+    <label className="tap" style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 7, fontSize: 10.5, fontWeight: 700, color: "var(--muted)", cursor: "pointer" }}>
+      Min reward : risk
+      <select value={String(value)} onChange={(e) => onChange(Number(e.target.value))} className="no-ring" style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "4px 8px", background: "var(--elev)", color: "var(--ink)", fontWeight: 800, fontSize: 11 }}>
+        {[["0", "Off"], ["1", "1 : 1"], ["1.5", "1.5 : 1"], ["2", "2 : 1"], ["2.5", "2.5 : 1"], ["3", "3 : 1"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+    </label>
+  );
+}
+
 /* LIST OF TRADES — a collapsible ledger of every round-trip a backtest executed: entry & exit
    date/time, prices, return and (sized) P&L. The button reveals the table; once open it can be
    exported to CSV. Reused by the strategy-card backtest and the Automate ▸ Backtest rows. */
@@ -598,12 +612,13 @@ function creatorOf(s) { return (s && (s.premium || s.by === "Matrix")) ? "Neo" :
 function CardOptimizeButton({ cfg, sym, tf = "5m", sl, tp, setSl, setTp }) {
   const [st, setSt] = useState({ loading: false, done: false, none: false });
   const [objective, setObjective] = useState(null);
+  const [rrMin, setRrMin] = useState(1.5);   // minimum reward/risk the optimiser must respect
   const canOpt = !!(cfg && (cfg.entry || []).length > 0 && sym);
   const run = async (obj) => {
     if (!canOpt) return;
     setObjective(obj);
     setSt({ loading: true, done: false, none: false });
-    const res = await optimizeExits({ mode: cfg.mode === "metric" ? "metric" : undefined, defs: cfg.defs || [], entry: cfg.entry, tf, appSyms: [sym], currentSl: sl ? Number(sl) : null, currentTp: tp ? Number(tp) : null, objective: obj }).catch(() => null);
+    const res = await optimizeExits({ mode: cfg.mode === "metric" ? "metric" : undefined, defs: cfg.defs || [], entry: cfg.entry, tf, appSyms: [sym], currentSl: sl ? Number(sl) : null, currentTp: tp ? Number(tp) : null, objective: obj, rrMin }).catch(() => null);
     const best = res && res.best ? res.best : null;
     if (best) { setSl(String(best.sl)); setTp(String(best.tp)); }
     setSt({ loading: false, done: !!best, none: !best });
@@ -618,6 +633,7 @@ function CardOptimizeButton({ cfg, sym, tf = "5m", sl, tp, setSl, setTp }) {
         <div className="disp" style={{ fontSize: 12, fontWeight: 800, color: "var(--ink)", display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto" }}><Sparkles size={13} color="#7C3AED" /> Optimize SL &amp; TP</div>
         {optBtn("winrate", "Win rate")}{optBtn("pnl", "P&L")}
       </div>
+      <RRMinSelect value={rrMin} onChange={setRrMin} />
       {st.loading && <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 6 }}>Backtesting on historical candles…</div>}
       {st.done && <div style={{ fontSize: 9.5, color: "var(--up)", marginTop: 6, fontWeight: 700 }}>✓ Optimized → SL {sl}% / TP {tp}%</div>}
       {st.none && <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 6 }}>Couldn't fetch enough price history for {sym || "this symbol"} on {tf} — try a higher timeframe or another symbol.</div>}
@@ -1162,7 +1178,7 @@ function CopyStrategyCard({ s, active, onToggle, onPersist, onDelete, market = "
 /* One row of the strategy-comparison table. Reuses useBacktestStats — the SAME hook the premium
    cards use — so opening the table doesn't fire a fresh burst of history requests (results are
    already cached from the cards). Columns: trades / wins / losses / target-hits / SL-hits / return. */
-function CompareRow({ s, td, opts, onReport, market = "IN" }) {
+function CompareRow({ s, td, opts, onReport, market = "IN", sym, onCreateCopy, copyExists }) {
   const { loading, stats } = useBacktestStats(s, opts);
   const [open, setOpen] = useState(false);
   // Report finished stats up to the panel so it can export the whole table to CSV.
@@ -1191,6 +1207,11 @@ function CompareRow({ s, td, opts, onReport, market = "IN" }) {
       </tr>
       {open && canExpand && (
         <tr><td colSpan={10} style={{ padding: "0 8px 12px", background: "var(--elev)" }}>
+          {onCreateCopy && sym && (
+            copyExists && copyExists(s, sym)
+              ? <div style={{ fontSize: 10, color: "var(--muted)", padding: "8px 2px 0", fontWeight: 700 }}>✓ Saved as “{s.name} - {sym}” in My Copies.</div>
+              : <button onClick={() => onCreateCopy(s, sym)} className="tap disp" style={{ margin: "8px 0 2px", border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 9, padding: "7px 12px", fontWeight: 800, fontSize: 11, display: "inline-flex", alignItems: "center", gap: 5 }}><Plus size={13} /> Create strategy — {s.name} - {sym}</button>
+          )}
           <TradeLog trades={stats.tradeList} market={market} />
         </td></tr>
       )}
@@ -1217,7 +1238,7 @@ function ComparisonTable({ strats, market = "IN" }) {
 
 /* One row per SYMBOL for a FIXED strategy (the "Per Strategy" view — the transpose of CompareRow).
    Reuses the exact same useBacktestStats hook, overriding the symbol. */
-function SymbolRow({ strat, sym, td, opts, onReport, market = "IN" }) {
+function SymbolRow({ strat, sym, td, opts, onReport, market = "IN", onCreateCopy, copyExists }) {
   const { loading, stats } = useBacktestStats(strat, { ...opts, sym });
   const [open, setOpen] = useState(false);
   useEffect(() => { if (onReport && !loading) onReport(sym, stats); /* eslint-disable-next-line */ }, [loading, stats]);
@@ -1245,6 +1266,11 @@ function SymbolRow({ strat, sym, td, opts, onReport, market = "IN" }) {
       </tr>
       {open && canExpand && (
         <tr><td colSpan={10} style={{ padding: "0 8px 12px", background: "var(--elev)" }}>
+          {onCreateCopy && sym && (
+            copyExists && copyExists(strat, sym)
+              ? <div style={{ fontSize: 10, color: "var(--muted)", padding: "8px 2px 0", fontWeight: 700 }}>✓ Saved as “{strat.name} - {sym}” in My Copies.</div>
+              : <button onClick={() => onCreateCopy(strat, sym)} className="tap disp" style={{ margin: "8px 0 2px", border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 9, padding: "7px 12px", fontWeight: 800, fontSize: 11, display: "inline-flex", alignItems: "center", gap: 5 }}><Plus size={13} /> Create strategy — {strat.name} - {sym}</button>
+          )}
           <TradeLog trades={stats.tradeList} market={market} accent="#0EA5E9" />
         </td></tr>
       )}
@@ -1292,10 +1318,11 @@ function stratRunsOnSym(s, sym) {
   return syms.length ? syms.includes(sym) : true;
 }
 
-function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits }) {
+function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits, onCreateCopy, copyExists }) {
   const [objective, setObjective] = useState("pnl");
   const [state, setState] = useState({ loading: false, rows: null, ran: false });
   const [applied, setApplied] = useState(false);
+  const [rrMin, setRrMin] = useState(1.5);   // minimum reward/risk floor for the optimiser
   // OPTIMIZE runs on ALL strategies against this symbol — you can explore any strategy on any symbol.
   const eligible = (strats || []).filter((s) => s.cfg && (s.cfg.entry || []).length > 0);
   const run = async (obj = objective) => {
@@ -1304,7 +1331,7 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits }) {
     setState({ loading: true, rows: null, ran: true });
     const rows = await Promise.all(eligible.map(async (s) => {
       try {
-        const res = await optimizeExits({ mode: s.cfg.mode === "metric" ? "metric" : undefined, defs: s.cfg.defs || [], entry: s.cfg.entry, tf, appSyms: [sym], currentSl: s.cfg.sl != null ? Number(s.cfg.sl) : null, currentTp: s.cfg.tp != null ? Number(s.cfg.tp) : null, objective: obj });
+        const res = await optimizeExits({ mode: s.cfg.mode === "metric" ? "metric" : undefined, defs: s.cfg.defs || [], entry: s.cfg.entry, tf, appSyms: [sym], currentSl: s.cfg.sl != null ? Number(s.cfg.sl) : null, currentTp: s.cfg.tp != null ? Number(s.cfg.tp) : null, objective: obj, rrMin });
         return { s, best: res && res.best ? res.best : null, current: res ? res.current : null };
       } catch { return { s, best: null }; }
     }));
@@ -1344,6 +1371,7 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits }) {
           {objBtn("pnl", "P&L")}
         </div>
       </div>
+      <RRMinSelect value={rrMin} onChange={setRrMin} />
       {ran && !loading && (good.length === 0
         ? <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>Not enough past entry signals on {sym} to optimise these strategies.</div>
         : <div style={{ marginTop: 10 }}>
@@ -1370,7 +1398,11 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits }) {
                     <tr key={r.s.id}>
                       <td style={{ ...td, textAlign: "left", fontWeight: 800 }}>
                         {r.s.name}
-                        {onSym && <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "#7C3AED", background: "var(--primary-soft)", borderRadius: 999, padding: "1px 6px", verticalAlign: "middle" }}>ON {sym}</span>}
+                        {onSym
+                          ? <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "#7C3AED", background: "var(--primary-soft)", borderRadius: 999, padding: "1px 6px", verticalAlign: "middle" }}>ON {sym}</span>
+                          : onCreateCopy && (copyExists && copyExists(r.s, sym)
+                              ? <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "var(--muted)", verticalAlign: "middle" }}>saved</span>
+                              : <button onClick={() => onCreateCopy(r.s, sym)} className="tap" style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "var(--primary)", background: "var(--primary-soft)", border: "1px solid var(--primary)", borderRadius: 999, padding: "1px 6px", verticalAlign: "middle", cursor: "pointer" }}>+ Create for {sym}</button>)}
                       </td>
                       <td style={{ ...td, ...sepL, color: "var(--down)", fontWeight: 800 }}>{r.best.sl}%</td>
                       <td style={{ ...td, color: "var(--up)", fontWeight: 800 }}>{r.best.tp}%</td>
@@ -1398,7 +1430,7 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits }) {
    For EVERY eligible strategy it searches the best indicator lengths + timeframe (≤1h) on the chosen
    symbol, shows Earlier vs Now (win rate / P&L / return) plus the per-indicator change, and applies all
    at once. */
-function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators }) {
+function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators, onCreateCopy, copyExists }) {
   const [objective, setObjective] = useState("pnl");
   const [state, setState] = useState({ loading: false, rows: null, ran: false });
   const [applied, setApplied] = useState(false);
@@ -1480,7 +1512,11 @@ function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators }) {
                     <tr key={r.s.id}>
                       <td style={{ ...td, textAlign: "left", fontWeight: 800 }}>
                         {r.s.name}
-                        {onSym && <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "#0EA5E9", background: "var(--primary-soft)", borderRadius: 999, padding: "1px 6px", verticalAlign: "middle" }}>ON {sym}</span>}
+                        {onSym
+                          ? <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "#0EA5E9", background: "var(--primary-soft)", borderRadius: 999, padding: "1px 6px", verticalAlign: "middle" }}>ON {sym}</span>
+                          : onCreateCopy && (copyExists && copyExists(r.s, sym)
+                              ? <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "var(--muted)", verticalAlign: "middle" }}>saved</span>
+                              : <button onClick={() => onCreateCopy(r.s, sym)} className="tap" style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "var(--primary)", background: "var(--primary-soft)", border: "1px solid var(--primary)", borderRadius: 999, padding: "1px 6px", verticalAlign: "middle", cursor: "pointer" }}>+ Create for {sym}</button>)}
                       </td>
                       <td style={{ ...td, ...sepL, textAlign: "left", whiteSpace: "normal", maxWidth: 220, fontWeight: 600, color: "var(--muted)", fontSize: 9.5 }}>{(r.changes && r.changes.length) ? r.changes.map((c) => `${c.name}: ${c.fromLen ?? "—"}@${c.fromTf}→${c.toLen}@${c.toTf}`).join(" · ") : `unchanged @ ${r.best.tf}`}</td>
                       {mCells(r.current, "e")}
@@ -1638,7 +1674,7 @@ function IndicatorOptimizer({ defs, entry, mode, tf, appSyms, currentSl, current
    • Per Symbol  : one symbol × many strategies (with a strategy multi-select filter, all by default).
    • Per Strategy: one strategy × many symbols (symbol multi-select, all by default) — the transpose.
    Both reuse useBacktestStats and only run on the "Backtest Now" tap, never automatically. */
-function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators }) {
+function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators, onCreateCopy, copyExists }) {
   const DEF_SYM = { US: "SPX", IN: "NIFTY50", Crypto: "BTC", Commodity: "GOLD", FNO: "NIFTY50" };
   const [view, setView] = useState("perSymbol");   // perSymbol | perStrategy
   // Position sizing for absolute P&L: crypto = USD amount (default 100), everything else = quantity (default 1).
@@ -1740,11 +1776,11 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators 
 
           {/* Ideal SL/TP for EACH strategy on the selected symbol. */}
           {strats.length > 0 && (
-            <PerSymbolStrategyOptimizer strats={pickStrats.length ? strats.filter((s) => pickStrats.includes(s.name)) : strats} sym={sym} tf={tf} onApplyExits={onApplyExits} />
+            <PerSymbolStrategyOptimizer strats={pickStrats.length ? strats.filter((s) => pickStrats.includes(s.name)) : strats} sym={sym} tf={tf} onApplyExits={onApplyExits} onCreateCopy={onCreateCopy} copyExists={copyExists} />
           )}
           {/* Ideal INDICATORS (lengths + timeframe) for EACH strategy on the selected symbol. */}
           {strats.length > 0 && (
-            <PerSymbolIndicatorOptimizer strats={pickStrats.length ? strats.filter((s) => pickStrats.includes(s.name)) : strats} sym={sym} tf={tf} onApplyIndicators={onApplyIndicators} />
+            <PerSymbolIndicatorOptimizer strats={pickStrats.length ? strats.filter((s) => pickStrats.includes(s.name)) : strats} sym={sym} tf={tf} onApplyIndicators={onApplyIndicators} onCreateCopy={onCreateCopy} copyExists={copyExists} />
           )}
 
           <button onClick={() => { setResults({}); setRun({ tf, days, sym, names: pickStrats.length ? pickStrats : stratNames, ...sizing() }); }} disabled={!strats.length} className="tap disp" style={{ width: "100%", marginBottom: 12, border: "none", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 800, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", background: strats.length ? "var(--primary)" : "var(--elev)", color: strats.length ? "var(--on-primary)" : "var(--muted)", cursor: strats.length ? "pointer" : "not-allowed" }}>
@@ -1759,7 +1795,7 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators 
               </div>
               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 500 }}>
                 <Head />
-                <tbody>{runSymRows.map((s) => <CompareRow key={s.id + run.tf + run.days + run.sym} s={s} td={td} opts={{ tf: run.tf, days: run.days, sym: run.sym, qty: run.qty, amount: run.amount, market: run.market }} onReport={report} market={market} />)}</tbody>
+                <tbody>{runSymRows.map((s) => <CompareRow key={s.id + run.tf + run.days + run.sym} s={s} td={td} opts={{ tf: run.tf, days: run.days, sym: run.sym, qty: run.qty, amount: run.amount, market: run.market }} onReport={report} market={market} sym={run.sym} onCreateCopy={onCreateCopy} copyExists={copyExists} />)}</tbody>
               </table>
             </div>
           )}
@@ -1834,7 +1870,7 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators 
               </div>
               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 500 }}>
                 <Head />
-                <tbody>{pRun.syms.map((sy) => <SymbolRow key={pStrat.id + pRun.tf + pRun.days + sy} strat={pStrat} sym={sy} td={td} opts={{ tf: pRun.tf, days: pRun.days, qty: pRun.qty, amount: pRun.amount, market: pRun.market }} onReport={report} market={market} />)}</tbody>
+                <tbody>{pRun.syms.map((sy) => <SymbolRow key={pStrat.id + pRun.tf + pRun.days + sy} strat={pStrat} sym={sy} td={td} opts={{ tf: pRun.tf, days: pRun.days, qty: pRun.qty, amount: pRun.amount, market: pRun.market }} onReport={report} market={market} onCreateCopy={onCreateCopy} copyExists={copyExists} />)}</tbody>
               </table>
             </div>
           )}
@@ -2280,19 +2316,34 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
      each to a symbol relevant to the current market and carries its saved qty. */
   const bulkSetActive = (items, on) => {
     const rows = (items || []).map((x) => (x && x.s) ? x.s : x);
-    const ids = new Set(rows.map((s) => s.id));
-    if (on && typeof window !== "undefined" && !window.confirm(`Activate all ${ids.size} strategies? They'll place orders when their rules trigger.`)) return;
-    setStrats((p) => p.map((s) => ids.has(s.id) ? { ...s, active: on } : s));
-    setToast(on ? `Activated ${ids.size} strategies` : `Deactivated ${ids.size} strategies`);
+    // Only touch the strategies that ACTUALLY need to change: activating skips ones already live in
+    // this market; deactivating skips ones already off. So "Activate All" over 4 strategies where 3
+    // are already active only flips the 1 that's off — and the toast reports that real number.
+    const targets = rows.filter((s) => (on ? !activeInMarket(s) : activeInMarket(s)));
+    if (!targets.length) { setToast(on ? "All selected strategies are already active." : "None of the selected strategies are active."); return; }
+    if (on && typeof window !== "undefined" && !window.confirm(`Activate ${targets.length} strateg${targets.length > 1 ? "ies" : "y"}? They'll place orders when their rules trigger.`)) return;
+    const ids = new Set(targets.map((s) => s.id));
+    setStrats((p) => p.map((s) => {
+      if (!ids.has(s.id)) return s;
+      if (!on) return { ...s, active: false };
+      // Activating snaps the strategy to a symbol in the CURRENT market (keeps its own if already here),
+      // mirroring the single-card toggle so it lands under this market's Deployed ▸ Active.
+      const relSym = (s.symbols || []).find((x) => marketOf(x) === market) || ((UNIVERSE[market] || [])[0] || {}).sym || (s.symbols || [])[0];
+      return { ...s, active: true, ...(relSym ? { symbols: [relSym] } : {}) };
+    }));
+    setToast(on ? `Activated ${targets.length} strateg${targets.length > 1 ? "ies" : "y"}` : `Deactivated ${targets.length} strateg${targets.length > 1 ? "ies" : "y"}`);
   };
   /* Two-button bar shown atop a strategy section. `items` is ALREADY scoped to the current market by
-     the caller, so Activate All only arms this market's strategies — never other markets'. */
+     the caller. Each button's count is the number it will actually change — inactive count for
+     Activate, active count for Deactivate — so the numbers match what happens. */
   const BulkBar = ({ items }) => {
-    const n = (items || []).length;
+    const rows = (items || []).map((x) => (x && x.s) ? x.s : x);
+    const offCount = rows.filter((s) => !activeInMarket(s)).length;   // will be activated
+    const onCount = rows.filter((s) => activeInMarket(s)).length;     // will be deactivated
     return (
       <div style={{ display: "flex", gap: 8, margin: "4px 0 6px" }}>
-        <button onClick={() => bulkSetActive(items, true)} disabled={!n} className="tap disp" style={{ flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11.5, border: "none", background: n ? "linear-gradient(120deg,var(--up),#0EA968)" : "var(--elev)", color: n ? "#fff" : "var(--muted)", cursor: n ? "pointer" : "not-allowed" }}>Activate All{n ? ` (${n})` : ""}</button>
-        <button onClick={() => bulkSetActive(items, false)} disabled={!n} className="tap disp" style={{ flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11.5, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", cursor: n ? "pointer" : "not-allowed" }}>Deactivate All</button>
+        <button onClick={() => bulkSetActive(items, true)} disabled={!offCount} className="tap disp" style={{ flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11.5, border: "none", background: offCount ? "linear-gradient(120deg,var(--up),#0EA968)" : "var(--elev)", color: offCount ? "#fff" : "var(--muted)", cursor: offCount ? "pointer" : "not-allowed" }}>Activate All{offCount ? ` (${offCount})` : ""}</button>
+        <button onClick={() => bulkSetActive(items, false)} disabled={!onCount} className="tap disp" style={{ flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11.5, border: "1px solid var(--line)", background: onCount ? "var(--surface)" : "var(--elev)", color: onCount ? "var(--ink)" : "var(--muted)", cursor: onCount ? "pointer" : "not-allowed" }}>Deactivate All{onCount ? ` (${onCount})` : ""}</button>
       </div>
     );
   };
@@ -2323,6 +2374,26 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       ...p,
     ]);
     setToast(`Copied "${s.name}" → My Copies. Rename it and set symbol / timeframe there.`);
+    setStratTab("copies"); setTopTab("strategies");
+    setTimeout(() => stratsRef.current && stratsRef.current.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+  };
+  /* Materialise a strategy × SYMBOL combination the user explored in the backtest / optimiser but hasn't
+     saved. Lands under My Copies named "{name} - {SYMBOL}", configured for that symbol. No-ops (with a
+     nudge) if that exact copy already exists. */
+  const copyNameFor = (strat, sym) => `${(strat && (strat.sourceName || strat.name)) || "Strategy"} - ${sym}`;
+  const createCopyForSymbol = (strat, sym) => {
+    if (!strat || !sym) return;
+    const name = copyNameFor(strat, sym);
+    if (strats.some((x) => x.name === name)) { setToast(`"${name}" already exists in My Copies.`); setStratTab("copies"); setTopTab("strategies"); return; }
+    const id = "cp" + Date.now();
+    const dsz = marketOf(sym) === "Crypto" ? 200 : 1;
+    setStrats((p) => [
+      { id, name, by: creator, active: false, alerts: false, copy: true, locked: !!(strat.locked), sourceName: strat.sourceName || strat.name,
+        cfg: { ...(strat.cfg || {}) }, cap: strat.cap || dsz, qty: strat.qty || dsz, symbols: [sym],
+        tf: strat.tf || (strat.cfg && strat.cfg.tf) || "5m", created: Date.now() },
+      ...p,
+    ]);
+    setToast(`Created "${name}" → My Copies.`);
     setStratTab("copies"); setTopTab("strategies");
     setTimeout(() => stratsRef.current && stratsRef.current.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   };
@@ -3040,7 +3111,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
 
       {topTab === "backtest" && (
         <div style={{ marginTop: 16 }}>
-          <BacktestPanel strats={premiumStrats} market={market} onApplyExits={(id, sl, tp) => setStrats((p) => p.map((s) => s.id === id ? { ...s, cfg: { ...(s.cfg || {}), sl, tp } } : s))} onApplyIndicators={(id, defs, tf) => persistCard(id, { defs, tf })} />
+          <BacktestPanel strats={premiumStrats} market={market} onApplyExits={(id, sl, tp) => setStrats((p) => p.map((s) => s.id === id ? { ...s, cfg: { ...(s.cfg || {}), sl, tp } } : s))} onApplyIndicators={(id, defs, tf) => persistCard(id, { defs, tf })} onCreateCopy={createCopyForSymbol} copyExists={(strat, sym) => strats.some((x) => x.name === copyNameFor(strat, sym))} />
         </div>
       )}
 
@@ -3053,7 +3124,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       </div>
 
       {stratTab === "backtest" ? (
-        <BacktestPanel strats={premiumStrats} market={market} onApplyExits={(id, sl, tp) => setStrats((p) => p.map((s) => s.id === id ? { ...s, cfg: { ...(s.cfg || {}), sl, tp } } : s))} />
+        <BacktestPanel strats={premiumStrats} market={market} onApplyExits={(id, sl, tp) => setStrats((p) => p.map((s) => s.id === id ? { ...s, cfg: { ...(s.cfg || {}), sl, tp } } : s))} onCreateCopy={createCopyForSymbol} copyExists={(strat, sym) => strats.some((x) => x.name === copyNameFor(strat, sym))} />
       ) : stratTab === "sample" ? (
         (() => {
           const renderS = ({ s }) => <SampleStrategyCard key={s.id} s={s} market={market} onActivate={useTemplateStrategy} onClone={cloneStrategy} onEdit={isAdmin ? loadForEdit : undefined} onPersist={persistCard} canBacktest={canBacktest} onConnect={onConnectBroker} />;
