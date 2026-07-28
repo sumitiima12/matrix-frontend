@@ -3132,7 +3132,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           const sel = lsSide === "long" ? sampleLong : sampleShort;
           return (<>
             <LongShortToggle side={lsSide} setSide={setLsSide} longCount={sampleLong.length} shortCount={sampleShort.length} />
-            <BulkBar items={sel.filter(({ s }) => stratInMarket(s))} />
+            <BulkBar items={sel} />
             {sel.length ? sel.map(renderS) : <div style={emptyNote}>No {lsSide} samples.</div>}
           </>);
         })()
@@ -3153,7 +3153,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                 const sel = lsSide === "long" ? premiumLong : premiumShort;
                 return (<>
                   <LongShortToggle side={lsSide} setSide={setLsSide} longCount={premiumLong.length} shortCount={premiumShort.length} />
-                  <BulkBar items={sel.filter(stratInMarket)} />
+                  <BulkBar items={sel} />
                   {sel.length ? sel.map((s) => <PremiumStrategyCard key={s.id} s={s} active={activeInMarket(s)} market={market} onToggle={(rs, size, opts) => togglePremiumHere(s.id, rs, size, opts)} onEdit={isAdmin ? loadForEdit : undefined} onPersist={persistCard} onClone={clonePremium} canBacktest={canBacktest} onConnect={onConnectBroker} />) : <div style={emptyNote}>No {lsSide} strategies.</div>}
                 </>);
               })()}
