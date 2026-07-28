@@ -1318,40 +1318,58 @@ function stratRunsOnSym(s, sym) {
   return syms.length ? syms.includes(sym) : true;
 }
 
-function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits, onCreateCopy, copyExists }) {
+/* Segmented objective selector (Win rate | P&L) shared by the per-symbol optimisers. Styled as a
+   toggle — a raised chip on a grey track — so it reads as a SELECTOR, not a call-to-action. */
+function ObjSelect({ objective, onPick, accent = "#7C3AED" }) {
+  const btn = (k, label) => (
+    <button key={k} onClick={() => onPick(k)} className="tap" style={{ flex: 1, padding: "6px 12px", fontSize: 10.5, fontWeight: 800, border: "none", borderRadius: 7, cursor: "pointer", background: objective === k ? "var(--surface)" : "transparent", color: objective === k ? accent : "var(--muted)", boxShadow: objective === k ? "0 1px 3px rgba(0,0,0,.14)" : "none" }}>{label}</button>
+  );
+  return (
+    <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3, flex: "1 1 150px" }}>
+      {btn("winrate", "Win rate")}{btn("pnl", "P&L")}
+    </div>
+  );
+}
+
+/* PER-SYMBOL / PER-STRATEGY exit optimiser. Two modes off the same table:
+   • Per Symbol   — many strategies × ONE symbol (pass `strats` + `sym`); one row per strategy.
+   • Per Strategy — ONE strategy × many symbols (pass `singleStrat` + `symList`); one row per SYMBOL,
+     so you see the ideal SL/TP for EACH selected symbol, not one blended figure. */
+function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits, onCreateCopy, copyExists, singleStrat, symList }) {
   const [objective, setObjective] = useState("pnl");
   const [state, setState] = useState({ loading: false, rows: null, ran: false });
   const [applied, setApplied] = useState(false);
   const [rrMin, setRrMin] = useState(1.5);   // minimum reward/risk floor for the optimiser
-  // OPTIMIZE runs on ALL strategies against this symbol — you can explore any strategy on any symbol.
-  const eligible = (strats || []).filter((s) => s.cfg && (s.cfg.entry || []).length > 0);
+  const perStrat = !!singleStrat;            // "one strategy across symbols" mode
+  // Build the list of {strategy, symbol} jobs to optimise — one per row.
+  const jobs = perStrat
+    ? (symList || []).map((sy) => ({ key: sy, name: sy, strat: singleStrat, cfg: singleStrat.cfg || {}, sym: sy }))
+    : (strats || []).filter((s) => s.cfg && (s.cfg.entry || []).length > 0).map((s) => ({ key: s.id, name: s.name, strat: s, cfg: s.cfg, sym }));
+  const title = perStrat ? `Optimize SL & TP — ${(singleStrat.name || "strategy")}` : `Optimize SL & TP — ${sym}`;
+  const firstCol = perStrat ? "Symbol" : "Strategy";
   const run = async (obj = objective) => {
-    if (!sym || !eligible.length) { setState({ loading: false, ran: true, rows: [] }); return; }
+    if (!jobs.length) { setState({ loading: false, ran: true, rows: [] }); return; }
     setApplied(false);
     setState({ loading: true, rows: null, ran: true });
-    const rows = await Promise.all(eligible.map(async (s) => {
+    const rows = await Promise.all(jobs.map(async (j) => {
       try {
-        const res = await optimizeExits({ mode: s.cfg.mode === "metric" ? "metric" : undefined, defs: s.cfg.defs || [], entry: s.cfg.entry, tf, appSyms: [sym], currentSl: s.cfg.sl != null ? Number(s.cfg.sl) : null, currentTp: s.cfg.tp != null ? Number(s.cfg.tp) : null, objective: obj, rrMin });
-        return { s, best: res && res.best ? res.best : null, current: res ? res.current : null };
-      } catch { return { s, best: null }; }
+        const res = await optimizeExits({ mode: j.cfg.mode === "metric" ? "metric" : undefined, defs: j.cfg.defs || [], entry: j.cfg.entry, tf, appSyms: [j.sym], currentSl: j.cfg.sl != null ? Number(j.cfg.sl) : null, currentTp: j.cfg.tp != null ? Number(j.cfg.tp) : null, objective: obj, rrMin });
+        return { j, best: res && res.best ? res.best : null, current: res ? res.current : null };
+      } catch { return { j, best: null }; }
     }));
     setState({ loading: false, ran: true, rows });
   };
   const pick = (obj) => { setObjective(obj); if (state.ran && !state.loading) run(obj); };
   const { loading, rows, ran } = state;
   const good = (rows || []).filter((r) => r.best);
-  // APPLY only writes to the existing strategy × symbol combinations — strategies that actually run on
-  // this symbol. Optimizing MATIC on SOL is fine to look at, but we won't push SOL's SL/TP onto it.
-  const applicable = good.filter((r) => stratRunsOnSym(r.s, sym));
-  const applyAll = () => { applicable.forEach((r) => onApplyExits && onApplyExits(r.s.id, r.best.sl, r.best.tp)); setApplied(true); };
-  const objBtn = (k, label) => (
-    <button key={k} onClick={() => pick(k)} className="tap" style={{ flex: 1, padding: "6px 8px", fontSize: 10.5, fontWeight: 800, border: "none", borderRadius: 7, background: objective === k ? "var(--primary)" : "transparent", color: objective === k ? "var(--on-primary)" : "var(--muted)" }}>{label}</button>
-  );
+  // APPLY only writes to the existing strategy × symbol combinations — a row whose strategy actually runs
+  // on its symbol. Everything else is exploration only (offer a "Create for {sym}" copy instead).
+  const applicable = good.filter((r) => stratRunsOnSym(r.j.strat, r.j.sym));
+  const applyAll = () => { applicable.forEach((r) => onApplyExits && onApplyExits(r.j.strat.id, r.best.sl, r.best.tp)); setApplied(true); };
   const sepL = { borderLeft: "2px solid var(--muted)" };
   const th = { fontSize: 8.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", padding: "6px 6px", textAlign: "center", whiteSpace: "nowrap" };
   const td = { fontSize: 11, fontWeight: 700, padding: "7px 6px", textAlign: "center", borderTop: "1px solid var(--line)", whiteSpace: "nowrap" };
   const grp = { ...th, background: "var(--elev)", padding: "6px 6px" };
-  // Five metric cells for a bucket; the first carries the vertical separator that divides buckets.
   const metricCells = (m, key) => m ? [
     <td key={key + "w"} style={{ ...td, ...sepL }}>{oWr(m.winRate)}</td>,
     <td key={key + "s"} style={{ ...td, color: "var(--down)" }}>{oCnt(m.slHit)}</td>,
@@ -1361,25 +1379,22 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits, onCreateCop
   ] : [<td key={key + "e"} style={{ ...td, ...sepL, color: "var(--muted)" }} colSpan={5}>—</td>];
   return (
     <div style={{ marginBottom: 12, border: "1px solid var(--line)", borderRadius: 12, padding: 12, background: "var(--elev)" }}>
-      {/* Title + its two objective buttons on ONE line. */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <button onClick={() => run()} disabled={loading || !eligible.length} className="tap" style={{ flex: "1 1 190px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 9, padding: "8px 12px", fontSize: 11, fontWeight: 800, opacity: (loading || !eligible.length) ? 0.6 : 1 }}>
-          <Sparkles size={12} color="#7C3AED" /> {loading ? `Optimising ${eligible.length} strategies…` : `Optimize SL & TP per strategy — ${sym}`}
+        {/* Filled CTA — the button that runs the optimiser. */}
+        <button onClick={() => run()} disabled={loading || !jobs.length} className="tap disp" style={{ flex: "1 1 170px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, border: "none", background: "#7C3AED", color: "#fff", borderRadius: 10, padding: "10px 12px", fontSize: 12, fontWeight: 800, cursor: jobs.length ? "pointer" : "not-allowed", opacity: (loading || !jobs.length) ? 0.6 : 1 }}>
+          <Sparkles size={13} /> {loading ? `Optimising ${jobs.length}…` : title}
         </button>
-        <div className="pill" style={{ display: "inline-flex", background: "var(--surface)", border: "1px solid var(--line)", padding: 3, flex: "1 1 150px" }}>
-          {objBtn("winrate", "Win rate")}
-          {objBtn("pnl", "P&L")}
-        </div>
+        <ObjSelect objective={objective} onPick={pick} accent="#7C3AED" />
       </div>
       <RRMinSelect value={rrMin} onChange={setRrMin} />
       {ran && !loading && (good.length === 0
-        ? <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>Not enough past entry signals on {sym} to optimise these strategies.</div>
+        ? <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>{perStrat ? `Not enough past entry signals for ${singleStrat.name} on the selected symbols.` : `Not enough past entry signals on ${sym} to optimise these strategies.`}</div>
         : <div style={{ marginTop: 10 }}>
             <div style={{ overflowX: "auto" }}>
               <table style={{ borderCollapse: "collapse", minWidth: 760, width: "100%" }}>
                 <thead>
                   <tr>
-                    <th style={{ ...th, textAlign: "left" }} rowSpan={2}>Strategy</th>
+                    <th style={{ ...th, textAlign: "left" }} rowSpan={2}>{firstCol}</th>
                     <th style={{ ...grp, ...sepL, color: "#7C3AED" }} colSpan={2}>Optimum</th>
                     <th style={{ ...grp, ...sepL, color: "var(--muted)" }} colSpan={5}>Earlier</th>
                     <th style={{ ...grp, ...sepL, color: "var(--primary)" }} colSpan={5}>Now</th>
@@ -1393,16 +1408,16 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits, onCreateCop
                 </thead>
                 <tbody>
                   {good.map((r) => {
-                    const onSym = stratRunsOnSym(r.s, sym);
+                    const onSym = stratRunsOnSym(r.j.strat, r.j.sym);
                     return (
-                    <tr key={r.s.id}>
+                    <tr key={r.j.key}>
                       <td style={{ ...td, textAlign: "left", fontWeight: 800 }}>
-                        {r.s.name}
+                        {r.j.name}
                         {onSym
-                          ? <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "#7C3AED", background: "var(--primary-soft)", borderRadius: 999, padding: "1px 6px", verticalAlign: "middle" }}>ON {sym}</span>
-                          : onCreateCopy && (copyExists && copyExists(r.s, sym)
+                          ? <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "#7C3AED", background: "var(--primary-soft)", borderRadius: 999, padding: "1px 6px", verticalAlign: "middle" }}>ON {r.j.sym}</span>
+                          : onCreateCopy && (copyExists && copyExists(r.j.strat, r.j.sym)
                               ? <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "var(--muted)", verticalAlign: "middle" }}>saved</span>
-                              : <button onClick={() => onCreateCopy(r.s, sym)} className="tap" style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "var(--primary)", background: "var(--primary-soft)", border: "1px solid var(--primary)", borderRadius: 999, padding: "1px 6px", verticalAlign: "middle", cursor: "pointer" }}>+ Create for {sym}</button>)}
+                              : <button onClick={() => onCreateCopy(r.j.strat, r.j.sym)} className="tap" style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "var(--primary)", background: "var(--primary-soft)", border: "1px solid var(--primary)", borderRadius: 999, padding: "1px 6px", verticalAlign: "middle", cursor: "pointer" }}>+ Create for {r.j.sym}</button>)}
                       </td>
                       <td style={{ ...td, ...sepL, color: "var(--down)", fontWeight: 800 }}>{r.best.sl}%</td>
                       <td style={{ ...td, color: "var(--up)", fontWeight: 800 }}>{r.best.tp}%</td>
@@ -1414,12 +1429,12 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits, onCreateCop
                 </tbody>
               </table>
             </div>
-            <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 6, fontStyle: "italic" }}>Optimum = the ideal SL/TP · Earlier = each strategy's current SL/TP · Now = at the optimum. P&L is per 1 unit/contract. Backtested, not a guarantee.</div>
+            <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 6, fontStyle: "italic" }}>Optimum = the ideal SL/TP · Earlier = current SL/TP · Now = at the optimum. P&L is per 1 unit/contract. Backtested, not a guarantee.</div>
             {onApplyExits && (applicable.length > 0
               ? <button onClick={applyAll} disabled={applied} className="tap" style={{ marginTop: 8, width: "100%", border: "none", background: applied ? "var(--up)" : "#7C3AED", color: "#fff", borderRadius: 9, padding: "9px 0", fontSize: 11.5, fontWeight: 800, opacity: applied ? 0.95 : 1 }}>
-                  {applied ? `✓ New SL & TP applied to ${applicable.length} ${sym} strateg${applicable.length > 1 ? "ies" : "y"}` : `Apply ideal SL / TP to ${applicable.length} ${sym} strateg${applicable.length > 1 ? "ies" : "y"}`}
+                  {applied ? `✓ New SL & TP applied to ${applicable.length} combo${applicable.length > 1 ? "s" : ""}` : `Apply ideal SL / TP to ${applicable.length} existing combo${applicable.length > 1 ? "s" : ""}`}
                 </button>
-              : <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>No strategy actually runs on {sym}, so there's nothing to apply — these results are for exploration only. Apply is limited to existing strategy × symbol combinations.</div>
+              : <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>These are exploration results — apply is limited to existing strategy × symbol combinations. Use “Create for …” to save one.</div>
             )}
           </div>)}
     </div>
@@ -1430,38 +1445,39 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits, onCreateCop
    For EVERY eligible strategy it searches the best indicator lengths + timeframe (≤1h) on the chosen
    symbol, shows Earlier vs Now (win rate / P&L / return) plus the per-indicator change, and applies all
    at once. */
-function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators, onCreateCopy, copyExists }) {
+function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators, onCreateCopy, copyExists, singleStrat, symList }) {
   const [objective, setObjective] = useState("pnl");
   const [state, setState] = useState({ loading: false, rows: null, ran: false });
   const [applied, setApplied] = useState(false);
   const [lockTf, setLockTf] = useState(false);        // when on, keep this tf fixed; tune only lengths
   const lockable = ["3m", "5m", "15m", "30m", "1h"].includes(String(tf));
-  // OPTIMIZE runs on ALL strategies with tunable indicators against this symbol — explore freely.
-  const eligible = (strats || []).filter((s) => s.cfg && (s.cfg.entry || []).length > 0 && (s.cfg.defs || []).some((d) => Number(d && d.len) > 0));
+  const perStrat = !!singleStrat;
+  const hasLen = (cfg) => (cfg && (cfg.defs || []).some((d) => Number(d && d.len) > 0));
+  const jobs = perStrat
+    ? (hasLen(singleStrat.cfg) ? (symList || []).map((sy) => ({ key: sy, name: sy, strat: singleStrat, cfg: singleStrat.cfg || {}, sym: sy })) : [])
+    : (strats || []).filter((s) => s.cfg && (s.cfg.entry || []).length > 0 && hasLen(s.cfg)).map((s) => ({ key: s.id, name: s.name, strat: s, cfg: s.cfg, sym }));
+  const title = perStrat ? `Optimize Indicators — ${(singleStrat.name || "strategy")}` : `Optimize Indicators — ${sym}`;
+  const firstCol = perStrat ? "Symbol" : "Strategy";
   const iwr = (x) => (x == null || isNaN(x)) ? "—" : Number(x).toFixed(0) + "%";
   const ipct = (x) => (x == null || isNaN(x)) ? "—" : (x >= 0 ? "+" : "") + Number(x).toFixed(1) + "%";
   const iamt = (x) => (x == null || isNaN(x)) ? "—" : (x >= 0 ? "+" : "") + Number(x).toFixed(2);
   const run = async (obj = objective) => {
-    if (!sym || !eligible.length) { setState({ loading: false, ran: true, rows: [] }); return; }
+    if (!jobs.length) { setState({ loading: false, ran: true, rows: [] }); return; }
     setApplied(false);
     setState({ loading: true, rows: null, ran: true });
-    const rows = await Promise.all(eligible.map(async (s) => {
+    const rows = await Promise.all(jobs.map(async (j) => {
       try {
-        const res = await optimizeIndicators({ mode: s.cfg.mode === "metric" ? "metric" : undefined, defs: s.cfg.defs || [], entry: s.cfg.entry, tf, appSyms: [sym], currentSl: s.cfg.sl != null ? Number(s.cfg.sl) : null, currentTp: s.cfg.tp != null ? Number(s.cfg.tp) : null, objective: obj, lockTf: (lockTf && lockable) ? tf : null });
-        return { s, best: res && res.best ? res.best : null, current: res ? res.current : null, changes: (res && res.changes) || [] };
-      } catch { return { s, best: null }; }
+        const res = await optimizeIndicators({ mode: j.cfg.mode === "metric" ? "metric" : undefined, defs: j.cfg.defs || [], entry: j.cfg.entry, tf, appSyms: [j.sym], currentSl: j.cfg.sl != null ? Number(j.cfg.sl) : null, currentTp: j.cfg.tp != null ? Number(j.cfg.tp) : null, objective: obj, lockTf: (lockTf && lockable) ? tf : null });
+        return { j, best: res && res.best ? res.best : null, current: res ? res.current : null, changes: (res && res.changes) || [] };
+      } catch { return { j, best: null }; }
     }));
     setState({ loading: false, ran: true, rows });
   };
   const pick = (obj) => { setObjective(obj); if (state.ran && !state.loading) run(obj); };
   const { loading, rows, ran } = state;
   const good = (rows || []).filter((r) => r.best);
-  // APPLY only writes to the existing strategy × symbol combinations — strategies that run on this symbol.
-  const applicable = good.filter((r) => stratRunsOnSym(r.s, sym));
-  const applyAll = () => { applicable.forEach((r) => onApplyIndicators && onApplyIndicators(r.s.id, r.best.defs, r.best.tf)); setApplied(true); };
-  const objBtn = (k, label) => (
-    <button key={k} onClick={() => pick(k)} className="tap" style={{ flex: 1, padding: "6px 8px", fontSize: 10.5, fontWeight: 800, border: "none", borderRadius: 7, background: objective === k ? "var(--primary)" : "transparent", color: objective === k ? "var(--on-primary)" : "var(--muted)" }}>{label}</button>
-  );
+  const applicable = good.filter((r) => stratRunsOnSym(r.j.strat, r.j.sym));
+  const applyAll = () => { applicable.forEach((r) => onApplyIndicators && onApplyIndicators(r.j.strat.id, r.best.defs, r.best.tf)); setApplied(true); };
   const sepL = { borderLeft: "2px solid var(--muted)" };
   const th = { fontSize: 8.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", padding: "6px 6px", textAlign: "center", whiteSpace: "nowrap" };
   const td = { fontSize: 11, fontWeight: 700, padding: "7px 6px", textAlign: "center", borderTop: "1px solid var(--line)", whiteSpace: "nowrap" };
@@ -1473,15 +1489,12 @@ function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators, onCre
   ] : [<td key={key + "e"} style={{ ...td, ...sepL, color: "var(--muted)" }} colSpan={3}>—</td>];
   return (
     <div style={{ marginBottom: 12, border: "1px solid var(--line)", borderRadius: 12, padding: 12, background: "var(--elev)" }}>
-      {/* Title + its two objective buttons on ONE line. */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <button onClick={() => run()} disabled={loading || !eligible.length} className="tap" style={{ flex: "1 1 190px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 9, padding: "8px 12px", fontSize: 11, fontWeight: 800, opacity: (loading || !eligible.length) ? 0.6 : 1 }}>
-          <Sparkles size={12} color="#0EA5E9" /> {loading ? `Optimising ${eligible.length} strategies…` : `Optimize Indicators per strategy — ${sym}`}
+        {/* Filled CTA — the button that runs the optimiser. */}
+        <button onClick={() => run()} disabled={loading || !jobs.length} className="tap disp" style={{ flex: "1 1 170px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, border: "none", background: "#0EA5E9", color: "#fff", borderRadius: 10, padding: "10px 12px", fontSize: 12, fontWeight: 800, cursor: jobs.length ? "pointer" : "not-allowed", opacity: (loading || !jobs.length) ? 0.6 : 1 }}>
+          <Sparkles size={13} /> {loading ? `Optimising ${jobs.length}…` : title}
         </button>
-        <div className="pill" style={{ display: "inline-flex", background: "var(--surface)", border: "1px solid var(--line)", padding: 3, flex: "1 1 150px" }}>
-          {objBtn("winrate", "Win rate")}
-          {objBtn("pnl", "P&L")}
-        </div>
+        <ObjSelect objective={objective} onPick={pick} accent="#0EA5E9" />
       </div>
       {/* Lock timeframe — when on, only indicator lengths are tuned and this tf stays fixed. */}
       <label className="tap" style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 8, fontSize: 10.5, fontWeight: 700, color: lockable ? "var(--ink)" : "var(--muted)", cursor: lockable ? "pointer" : "not-allowed" }}>
@@ -1489,13 +1502,13 @@ function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators, onCre
         Lock timeframe to {tf} {lockable ? "(tune indicator lengths only)" : "(only ≤ 1h can be locked)"}
       </label>
       {ran && !loading && (good.length === 0
-        ? <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>Not enough past entry signals on {sym} to optimise these strategies' indicators.</div>
+        ? <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>{perStrat ? (jobs.length ? `Not enough past entry signals for ${singleStrat.name} on the selected symbols.` : `${singleStrat.name} has no tunable indicator lengths.`) : `Not enough past entry signals on ${sym} to optimise these strategies' indicators.`}</div>
         : <div style={{ marginTop: 10 }}>
             <div style={{ overflowX: "auto" }}>
               <table style={{ borderCollapse: "collapse", minWidth: 720, width: "100%" }}>
                 <thead>
                   <tr>
-                    <th style={{ ...th, textAlign: "left" }} rowSpan={2}>Strategy</th>
+                    <th style={{ ...th, textAlign: "left" }} rowSpan={2}>{firstCol}</th>
                     <th style={{ ...grp, ...sepL, color: "#0EA5E9" }} rowSpan={2}>Optimized indicators</th>
                     <th style={{ ...grp, ...sepL, color: "var(--muted)" }} colSpan={3}>Earlier</th>
                     <th style={{ ...grp, ...sepL, color: "var(--primary)" }} colSpan={3}>Now</th>
@@ -1507,16 +1520,16 @@ function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators, onCre
                 </thead>
                 <tbody>
                   {good.map((r) => {
-                    const onSym = stratRunsOnSym(r.s, sym);
+                    const onSym = stratRunsOnSym(r.j.strat, r.j.sym);
                     return (
-                    <tr key={r.s.id}>
+                    <tr key={r.j.key}>
                       <td style={{ ...td, textAlign: "left", fontWeight: 800 }}>
-                        {r.s.name}
+                        {r.j.name}
                         {onSym
-                          ? <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "#0EA5E9", background: "var(--primary-soft)", borderRadius: 999, padding: "1px 6px", verticalAlign: "middle" }}>ON {sym}</span>
-                          : onCreateCopy && (copyExists && copyExists(r.s, sym)
+                          ? <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "#0EA5E9", background: "var(--primary-soft)", borderRadius: 999, padding: "1px 6px", verticalAlign: "middle" }}>ON {r.j.sym}</span>
+                          : onCreateCopy && (copyExists && copyExists(r.j.strat, r.j.sym)
                               ? <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "var(--muted)", verticalAlign: "middle" }}>saved</span>
-                              : <button onClick={() => onCreateCopy(r.s, sym)} className="tap" style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "var(--primary)", background: "var(--primary-soft)", border: "1px solid var(--primary)", borderRadius: 999, padding: "1px 6px", verticalAlign: "middle", cursor: "pointer" }}>+ Create for {sym}</button>)}
+                              : <button onClick={() => onCreateCopy(r.j.strat, r.j.sym)} className="tap" style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "var(--primary)", background: "var(--primary-soft)", border: "1px solid var(--primary)", borderRadius: 999, padding: "1px 6px", verticalAlign: "middle", cursor: "pointer" }}>+ Create for {r.j.sym}</button>)}
                       </td>
                       <td style={{ ...td, ...sepL, textAlign: "left", whiteSpace: "normal", maxWidth: 220, fontWeight: 600, color: "var(--muted)", fontSize: 9.5 }}>{(r.changes && r.changes.length) ? r.changes.map((c) => `${c.name}: ${c.fromLen ?? "—"}@${c.fromTf}→${c.toLen}@${c.toTf}`).join(" · ") : `unchanged @ ${r.best.tf}`}</td>
                       {mCells(r.current, "e")}
@@ -1527,12 +1540,12 @@ function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators, onCre
                 </tbody>
               </table>
             </div>
-            <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 6, fontStyle: "italic" }}>Earlier = each strategy's current indicators · Now = at the tuned lengths + timeframe (SL/TP held fixed). Backtested, not a guarantee.</div>
+            <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 6, fontStyle: "italic" }}>Earlier = current indicators · Now = at the tuned lengths + timeframe (SL/TP held fixed). Backtested, not a guarantee.</div>
             {onApplyIndicators && (applicable.length > 0
               ? <button onClick={applyAll} disabled={applied} className="tap" style={{ marginTop: 8, width: "100%", border: "none", background: applied ? "var(--up)" : "#0EA5E9", color: "#fff", borderRadius: 9, padding: "9px 0", fontSize: 11.5, fontWeight: 800, opacity: applied ? 0.95 : 1 }}>
-                  {applied ? `✓ Indicators applied to ${applicable.length} ${sym} strateg${applicable.length > 1 ? "ies" : "y"}` : `Apply optimized indicators to ${applicable.length} ${sym} strateg${applicable.length > 1 ? "ies" : "y"}`}
+                  {applied ? `✓ Indicators applied to ${applicable.length} combo${applicable.length > 1 ? "s" : ""}` : `Apply optimized indicators to ${applicable.length} existing combo${applicable.length > 1 ? "s" : ""}`}
                 </button>
-              : <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>No strategy actually runs on {sym}, so there's nothing to apply — these results are for exploration only. Apply is limited to existing strategy × symbol combinations.</div>
+              : <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>These are exploration results — apply is limited to existing strategy × symbol combinations. Use “Create for …” to save one.</div>
             )}
           </div>)}
     </div>
@@ -1828,34 +1841,15 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators,
             <MultiSelect label="Symbols" options={symOptions} value={pSyms} onChange={setPSyms} allLabel="All symbols" />
           </div>
 
-          {/* Ideal SL/TP optimiser for the selected strategy — grid-search over its own past entry
-              signals on the chosen symbols. Apply writes the pair back onto the strategy. */}
-          {curStrat && curCfg && (curCfg.entry || []).length > 0 && (
-            <div style={{ marginBottom: 12, border: "1px solid var(--line)", borderRadius: 12, padding: "12px 12px", background: "var(--elev)" }}>
-              <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 700, marginBottom: 4 }}>{curStrat.name}</div>
-              <ExitOptimizer
-                defs={curCfg.defs || []}
-                entry={curCfg.entry}
-                tf={pTf}
-                appSyms={pSyms.length ? pSyms.slice(0, 8) : symOptions.slice(0, 8)}
-                currentSl={curCfg.sl != null ? Number(curCfg.sl) : null}
-                currentTp={curCfg.tp != null ? Number(curCfg.tp) : null}
-                onApply={onApplyExits ? (sl, tp) => onApplyExits(curStrat.id, sl, tp) : undefined}
-              />
-              <div style={{ height: 14 }} />
-              {/* Optimize Indicators — tune indicator lengths + timeframe (≤1h) for win rate or P&L. */}
-              <IndicatorOptimizer
-                defs={curCfg.defs || []}
-                entry={curCfg.entry}
-                mode={curCfg.mode === "metric" ? "metric" : undefined}
-                tf={pTf}
-                appSyms={pSyms.length ? pSyms.slice(0, 4) : symOptions.slice(0, 4)}
-                currentSl={curCfg.sl != null ? Number(curCfg.sl) : null}
-                currentTp={curCfg.tp != null ? Number(curCfg.tp) : null}
-                onApply={onApplyIndicators ? (nd, ntf) => onApplyIndicators(curStrat.id, nd, ntf) : undefined}
-              />
-            </div>
-          )}
+          {/* Ideal SL/TP + indicators for the selected strategy, computed PER SYMBOL (one row for each
+              selected symbol) so you see the ideal for each symbol, not one blended figure. */}
+          {curStrat && curCfg && (curCfg.entry || []).length > 0 && (() => {
+            const syms = pSyms.length ? pSyms.slice(0, 8) : symOptions.slice(0, 8);
+            return (<>
+              <PerSymbolStrategyOptimizer singleStrat={curStrat} symList={syms} sym={syms[0]} tf={pTf} onApplyExits={onApplyExits} onCreateCopy={onCreateCopy} copyExists={copyExists} />
+              <PerSymbolIndicatorOptimizer singleStrat={curStrat} symList={syms.slice(0, 5)} sym={syms[0]} tf={pTf} onApplyIndicators={onApplyIndicators} onCreateCopy={onCreateCopy} copyExists={copyExists} />
+            </>);
+          })()}
 
           <button onClick={() => { if (pStratId) { setResults({}); setPRun({ tf: pTf, days: pDays, syms: pSyms.length ? pSyms : symOptions, id: pStratId, ...sizing() }); } }} disabled={!strats.length || !pStratId} className="tap disp" style={{ width: "100%", marginBottom: 12, border: "none", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 800, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", background: (strats.length && pStratId) ? "var(--primary)" : "var(--elev)", color: (strats.length && pStratId) ? "var(--on-primary)" : "var(--muted)", cursor: (strats.length && pStratId) ? "pointer" : "not-allowed" }}>
             <Activity size={16} /> Backtest Now
