@@ -789,6 +789,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const [editSym, setEditSym] = useState(null);
   const [showTrades, setShowTrades] = useState(false);
   const [showTotalPos, setShowTotalPos] = useState(false);   // Total card "Show positions" toggle
+  const [runMsg, setRunMsg] = useState("");                  // transient feedback for "Run now"
   const MKT_LABEL = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", Commodity: "🪙 Commodity", FNO: "⚡ F&O" };
   // Smart Auto-Buy on/off is INDEPENDENT per mode: Real and Virtual each keep their own switch, so
   // turning it on for paper trading never arms real-money auto-buys (and vice versa).
@@ -851,6 +852,22 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     // without it, turning Auto-Buy on before prices arrived left the effect never re-running, so
     // nothing was ever placed (0 trades). The once-per-day key still prevents a second placement.
   }, [autoOn, market, autoTrades.length]);
+  /* MANUAL "Run now" — place today's picks immediately instead of waiting for the once-a-day effect to
+     catch the right moment. Respects market hours and needs the picks loaded; sets the daily guard so the
+     effect won't then double-place. */
+  const runAutoBuyNow = () => {
+    if (!marketOpen(market)) { setRunMsg(`${MKT_LABEL[market]} market is closed — auto-buy runs at the next open.`); return; }
+    if (!autoTrades.length) { setRunMsg("Today's picks are still loading — try again in a moment."); return; }
+    let placed = 0;
+    autoTrades.forEach((t) => {
+      const u = ALL.find((a) => a.sym === (t.under || t.sym));
+      if (!u) return;
+      (onAutoBuy || onBuy)(u, t.qty, { tp: t.tpPct, sl: t.slPct, tradeType: "Auto Buy", product: prodCode });
+      placed += 1;
+    });
+    lsSet(`mx_autobuy_${market}_${DAY}`, true);
+    setRunMsg(`Placed ${placed} ${MKT_LABEL[market]} auto-buy position${placed === 1 ? "" : "s"} at live prices.`);
+  };
   const setOv = (t, field, val) => setAutoOverrides((o) => { const cur = o[t.sym] || { tp: t.tpPct, sl: t.slPct }; return { ...o, [t.sym]: { ...cur, [field]: val === "" ? cur[field] : +val } }; });
   // period stats (shown regardless of on/off)
   const bizDaysThisMonth = () => { const now = new Date(); let c = 0; for (let d = 1; d <= now.getDate(); d++) { const wd = new Date(now.getFullYear(), now.getMonth(), d).getDay(); if (wd >= 1 && wd <= 5) c++; } return c; };
@@ -1090,6 +1107,15 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
               )}
               {autoRows.some((r) => r.rejected) && (
                 <div style={{ fontSize: 10, color: "var(--down)", fontWeight: 700, marginTop: 3 }}>⚠ {autoRows.filter((r) => r.rejected).length} order(s) rejected — see the reason under Orders</div>
+              )}
+              {/* RUN NOW — place today's picks on demand instead of waiting for the once-a-day auto-fire. */}
+              {autoOn && marketOpen(market) && (
+                <div style={{ marginTop: 8 }}>
+                  <button onClick={runAutoBuyNow} disabled={!autoTrades.length} className="tap disp" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid rgba(255,255,255,.35)", background: "rgba(255,255,255,.16)", color: "#fff", borderRadius: 10, padding: "8px 14px", fontWeight: 800, fontSize: 12, cursor: autoTrades.length ? "pointer" : "not-allowed", opacity: autoTrades.length ? 1 : 0.6 }}>
+                    ⚡ Run auto-buy now
+                  </button>
+                  {runMsg && <div style={{ fontSize: 10.5, opacity: .9, marginTop: 5, fontWeight: 700 }}>{runMsg}</div>}
+                </div>
               )}
 
               <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>

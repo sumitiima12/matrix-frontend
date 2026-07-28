@@ -6,6 +6,7 @@ import Section from "../common/Section";
 import CustomScreener from "./CustomScreener";
 import MyScreeners from "./SavedScreeners";
 import ExitOptimizer from "./ExitOptimizer";
+import IndicatorOptimizer from "./IndicatorOptimizer";
 import MultiSelect from "../common/MultiSelect";
 import { CondBuilder2, IndicatorDefs, TFS } from "../../pages/Automation";
 import { defOperands } from "../../domain/strategyLang";
@@ -262,6 +263,19 @@ function ScreenerRow({ screener, market, isAdmin = false, onOpen, onBuy, onAutoB
             currentSl={edit.sl}
             currentTp={edit.tp}
             onApply={(sl, tp) => setEdit((s) => ({ ...s, sl, tp }))}
+          />
+
+          {/* Optimize the indicator LENGTHS (+ timeframe ≤1h) this screener uses. Apply writes the tuned
+              indicators + timeframe straight back into the editor above (Save changes to publish). */}
+          <div style={{ height: 10 }} />
+          <IndicatorOptimizer
+            defs={edit.defs}
+            entry={edit.entry}
+            tf={edit.tf || screener.tf}
+            appSyms={(edit.selSyms && edit.selSyms.length) ? edit.selSyms.slice(0, 6) : (UNIVERSE[market] || []).map((s) => s.sym).slice(0, 6)}
+            currentSl={edit.sl}
+            currentTp={edit.tp}
+            onApply={(nd, ntf) => setEdit((s) => ({ ...s, defs: nd, tf: ntf }))}
           />
 
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>

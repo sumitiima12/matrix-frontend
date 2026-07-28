@@ -798,7 +798,20 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
               if (clearBusy) return;
               if (typeof window !== "undefined" && !window.confirm("Delete ALL your virtual (paper) trades across every market? Real broker trades are not affected. This cannot be undone.")) return;
               setClearBusy(true); setClearMsg("");
-              try { const r = await onClearVirtual(); setClearMsg(r && r.removed != null ? `Cleared ${r.removed} virtual trade${r.removed === 1 ? "" : "s"}.` : "Virtual trades cleared."); }
+              try {
+                const r = await onClearVirtual();
+                // Reset the once-a-day auto-buy guards so Smart Auto-Buy (and Screener Auto-Buy) can run
+                // AGAIN today — otherwise, wiping the trades leaves the "already bought today" flag set
+                // and nothing gets placed until tomorrow.
+                try {
+                  if (typeof localStorage !== "undefined") {
+                    Object.keys(localStorage).forEach((k) => {
+                      if (/^mx_autobuy_[A-Za-z]+_\d+$/.test(k) || /^mx_customscr_[A-Za-z]+_buy_\d+$/.test(k)) localStorage.removeItem(k);
+                    });
+                  }
+                } catch { /* ignore */ }
+                setClearMsg(r && r.removed != null ? `Cleared ${r.removed} virtual trade${r.removed === 1 ? "" : "s"}. Auto-buy can run again today.` : "Virtual trades cleared. Auto-buy can run again today.");
+              }
               catch { setClearMsg("Couldn't clear — try again."); }
               finally { setClearBusy(false); }
             }}
