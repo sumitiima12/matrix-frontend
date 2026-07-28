@@ -5,6 +5,7 @@ import { indValue } from "../../domain/screener";
 import { marketOpen } from "../../domain/api";
 import { saveScreenersRemote, loadScreenersRemote } from "../../services/tradeService";
 import ExitOptimizer from "./ExitOptimizer";
+import IndicatorOptimizer from "./IndicatorOptimizer";
 import { Pencil, Trash2 } from "lucide-react";
 
 /* MY SCREENERS — the carousels for screeners the user built and saved under "Create your own screener".
@@ -163,6 +164,21 @@ function SavedRow({ scr, market, mode, list, onOpen, onScreenerBuy, onDelete, on
           currentSl={ovSL((scr.selSyms || [])[0])}
           currentTp={ovTP((scr.selSyms || [])[0])}
           onApply={(sl, tp) => applyIdeal(sl, tp)}
+        />
+      )}
+      {/* Optimize Indicators — for metric screeners this tunes the timeframe (e.g. a Price change %
+          window). Applying persists the new window into this saved screener. */}
+      {(scr.selSyms || []).length > 0 && (
+        <IndicatorOptimizer
+          mode="metric"
+          defs={[]}
+          entry={scr.entry}
+          tf={((scr.entry || []).find((f) => f.m === "pchg") || {}).tf || "5m"}
+          appSyms={(scr.selSyms || []).slice(0, 8)}
+          currentSl={ovSL((scr.selSyms || [])[0])}
+          currentTp={ovTP((scr.selSyms || [])[0])}
+          tfTunable={(scr.entry || []).some((f) => f.m === "pchg")}
+          onApply={(_defs, ntf) => updateSavedScreener(scr.id, { entry: (scr.entry || []).map((f) => (f.m === "pchg" ? { ...f, tf: ntf } : f)) })}
         />
       )}
 

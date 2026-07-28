@@ -12,6 +12,8 @@ const PCHG_TFS = [["3m", "3 min"], ["5m", "5 min"], ["15m", "15 min"], ["30m", "
 const pcSig = (f) => `${f.tf || "5m"}|${f.o}|${f.v}`;
 import { selStyle } from "../common/styles";
 import { addSavedScreener, updateSavedScreener } from "./SavedScreeners";
+import ExitOptimizer from "./ExitOptimizer";
+import IndicatorOptimizer from "./IndicatorOptimizer";
 import { ChevronDown, ChevronUp, Filter, Plus, Save, Sparkles, Square, Trash2 } from "lucide-react";
 
 /* CREATE YOUR OWN SCREENER — the second tab of "Screener".
@@ -431,9 +433,31 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
         </>
       )}
 
-      {/* Ideal SL/TP per selected symbol — available once symbols and an entry rule are set. */}
+      {/* Optimize SL & TP (overall) + Optimize Indicators — available once symbols and an entry rule are
+          set. Optimises across the whole selected basket, not per symbol. */}
       {!!selSyms.length && entry.length > 0 && (
-        <PerSymbolOptimizer entry={entry} syms={selSyms} market={market} onApplyAll={applyPerSymbol} />
+        <div style={{ marginTop: 14, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+          <ExitOptimizer
+            mode="metric"
+            entry={entry}
+            tf="1d"
+            appSyms={selSyms.slice(0, 12)}
+            currentSl={ovSL(selSyms[0])}
+            currentTp={ovTP(selSyms[0])}
+            onApply={(sl, tp) => setOv((o) => { const next = { ...o }; selSyms.forEach((s) => { next[s] = { ...(next[s] || {}), sl, tp }; }); return next; })}
+          />
+          <IndicatorOptimizer
+            mode="metric"
+            defs={[]}
+            entry={entry}
+            tf={(entry.find((f) => f.m === PCHG) || {}).tf || "5m"}
+            appSyms={selSyms.slice(0, 8)}
+            currentSl={ovSL(selSyms[0])}
+            currentTp={ovTP(selSyms[0])}
+            tfTunable={entry.some((f) => f.m === PCHG)}
+            onApply={(_defs, ntf) => setEntry((e) => e.map((f) => (f.m === PCHG ? { ...f, tf: ntf } : f)))}
+          />
+        </div>
       )}
 
       {/* Run ⇄ Stop. Running shows live results; Stop clears them. Disabled with no symbols or no entry rule. */}

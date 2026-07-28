@@ -100,12 +100,14 @@ export async function optimizeExits({ mode, defs, entry, tf, appSyms, currentSl,
 /* Optimise the INDICATOR lengths + a shared timeframe (≤1h) that maximise win rate or P&L on the
    strategy's own past entry signals. Returns { best:{defs,tf,winRate,pnl,retPct,...}, current, changes }. */
 export async function optimizeIndicators({ mode, defs, entry, tf, appSyms, currentSl, currentTp, objective = "pnl", lockTf = null }) {
-  if (!BACKEND_URL || !appSyms || !appSyms.length || !entry || !entry.length || !defs || !defs.length) return null;
+  // `defs` may be EMPTY for metric screeners (RSI, Price change %, …) — the optimiser can still sweep the
+  // TIMEFRAME even with no tunable indicator lengths. So we require an entry + symbols, not defs.
+  if (!BACKEND_URL || !appSyms || !appSyms.length || !entry || !entry.length) return null;
   try {
     const ySyms = appSyms.map(yahooSymbol);
     const r = await fetch(`${BACKEND_URL}/api/optimize-indicators`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode, defs, entry, tf, symbols: ySyms, currentSl, currentTp, objective, ...(lockTf ? { lockTf } : {}) }),
+      body: JSON.stringify({ mode, defs: defs || [], entry, tf, symbols: ySyms, currentSl, currentTp, objective, ...(lockTf ? { lockTf } : {}) }),
     });
     return await r.json().catch(() => null);
   } catch { return null; }
