@@ -1340,6 +1340,11 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits, onCreateCop
   const [state, setState] = useState({ loading: false, rows: null, ran: false });
   const [applied, setApplied] = useState(false);
   const [rrMin, setRrMin] = useState(1.5);   // minimum reward/risk floor for the optimiser
+  // Clear stale results whenever the symbol, timeframe, strategy or symbol-set changes (e.g. switching
+  // market Crypto → Indian) so old BTC rows don't linger under NIFTY50.
+  useEffect(() => { setState({ loading: false, rows: null, ran: false }); setApplied(false);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */ },
+    [sym, tf, singleStrat && singleStrat.id, (symList || []).join(","), (strats || []).map((s) => s.id).join(",")]);
   const perStrat = !!singleStrat;            // "one strategy across symbols" mode
   // Build the list of {strategy, symbol} jobs to optimise — one per row.
   const jobs = perStrat
@@ -1451,6 +1456,10 @@ function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators, onCre
   const [applied, setApplied] = useState(false);
   const [lockTf, setLockTf] = useState(false);        // when on, keep this tf fixed; tune only lengths
   const lockable = ["3m", "5m", "15m", "30m", "1h"].includes(String(tf));
+  // Clear stale results when the symbol / timeframe / strategy set changes (e.g. market switch).
+  useEffect(() => { setState({ loading: false, rows: null, ran: false }); setApplied(false);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */ },
+    [sym, tf, singleStrat && singleStrat.id, (symList || []).join(","), (strats || []).map((s) => s.id).join(",")]);
   const perStrat = !!singleStrat;
   const hasLen = (cfg) => (cfg && (cfg.defs || []).some((d) => Number(d && d.len) > 0));
   const jobs = perStrat
