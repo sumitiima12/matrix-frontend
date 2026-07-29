@@ -86,13 +86,13 @@ export async function scanMomentum({ tf, pct, dir, bars, syms }) {
    past entry signals (a grid sweep over real candles), with an out-of-sample check. `mode:"metric"`
    evaluates My-Screener metric conditions candle-by-candle; otherwise it uses the candle entry chain
    (Popular screeners / builder strategies). Returns { entries, best, current, oos, top }. */
-export async function optimizeExits({ mode, defs, entry, tf, appSyms, currentSl, currentTp, objective = "pnl", rrMin = 1.5 }) {
+export async function optimizeExits({ mode, defs, entry, tf, appSyms, currentSl, currentTp, objective = "pnl", rrMin = 1.5, maxSl = 0 }) {
   if (!BACKEND_URL || !appSyms || !appSyms.length || !entry || !entry.length) return null;
   try {
     const ySyms = appSyms.map(yahooSymbol);
     const r = await fetch(`${BACKEND_URL}/api/optimize-exits`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode, defs, entry, tf, symbols: ySyms, currentSl, currentTp, objective, rrMin }),
+      body: JSON.stringify({ mode, defs, entry, tf, symbols: ySyms, currentSl, currentTp, objective, rrMin, maxSl }),
     });
     return await r.json().catch(() => null);
   } catch { return null; }

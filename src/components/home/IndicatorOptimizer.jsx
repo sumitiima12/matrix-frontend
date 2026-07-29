@@ -17,7 +17,7 @@ const amt = (x) => (x == null || isNaN(x)) ? "—" : (x >= 0 ? "+" : "") + Numbe
 export default function IndicatorOptimizer({ mode, defs, entry, tf, appSyms, currentSl, currentTp, onApply, tfTunable = true }) {
   const [state, setState] = useState({ loading: false, res: null, ran: false, applied: false });
   const [objective, setObjective] = useState(null);   // null until the user picks an option
-  const [lockTf, setLockTf] = useState(false);         // when on, keep tf fixed; tune only lengths
+  const [lockTf, setLockTf] = useState(true);          // default ON — keep tf fixed; tune only lengths
   const lockable = ["3m", "5m", "15m", "30m", "1h"].includes(String(tf));
   const numeric = (defs || []).some((d) => Number(d && d.len) > 0);   // any tunable indicator length?
   // Even with NO tunable lengths, the optimiser can still sweep the TIMEFRAME (e.g. Price change % 5m →

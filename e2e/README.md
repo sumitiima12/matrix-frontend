@@ -21,6 +21,10 @@ npm run test:e2e:ui    # interactive UI mode — best for tuning selectors
 ## What's covered
 - **smoke.spec.js** — app boots past the splash/login gate into the dashboard; bottom nav renders; market tabs (Indian/US/Crypto) switch without errors.
 - **flows.spec.js** — open a stock detail; Neo interprets a plain-English strategy prompt; the Delete-account confirmation shows its data-loss warning (and is cancelled, never confirmed); and a guard test proving no real broker/market host is called.
+- **features.spec.js** — the home desk + stock detail: live prices render, market tabs switch, **Top Picks**, **News**, **Trending**, the **Screener** surface and **Smart Auto-Buy** panel are present; opening a stock shows its detail; **Analysis / Fundamental analysis / Technical analysis** tabs and the **candlestick chart** render; Ideas and Portfolio pages open; and a no-real-host guard.
+- **workbench.spec.js** — the strategy workbench under **Auto**: the Neo builder opens; **Build / Strategies / P&L / Backtesting** tabs exist; the **Strategy Builder** surface and **Neo plain-English interpreter** work; the premium/sample **strategies** library with Activate-All and Long/Short controls; the **Backtesting** runner with *Backtest Now*; the **Optimizers** (Optimize SL&TP / Optimize Indicators) with Win-rate / P&L objective selectors; and a no-real-host guard.
+
+Run `npx playwright test --list` to see every case. Two device profiles (Desktop Chrome + Pixel 7) run each spec.
 
 ## How the stubbing works
 `e2e/fixtures.js` extends Playwright's `test`:
