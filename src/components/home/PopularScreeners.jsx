@@ -64,7 +64,7 @@ const capDefault = (m) => (m === "US" || m === "Crypto") ? "1000" : "100000";
 const qtyDefaultFor = (m) => (m === "Crypto" ? 100 : 1);
 const GRAD = "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)";
 
-function ScreenerRow({ screener, market, isAdmin = false, onOpen, onBuy, onAutoBuy, onScreenerBuy, liveTick = 0, side = "BUY" }) {
+function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin = false, onOpen, onBuy, onAutoBuy, onScreenerBuy, liveTick = 0, side = "BUY" }) {
   const short = side === "SELL";
   const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a ? a.price : null; };
   const [matches, setMatches] = useState([]);
@@ -134,14 +134,36 @@ function ScreenerRow({ screener, market, isAdmin = false, onOpen, onBuy, onAutoB
   const useBasketQty = eSel.length > 0;   // curated basket → explicit per-symbol qty (not capital-split)
   const setCardOv = (sym, field, val) => setOv((o) => ({ ...o, [sym]: { ...(o[sym] || {}), [field]: val === "" ? undefined : +val } }));
 
-  // Live P&L: each matched symbol treated as bought with perCap at its entry price.
-  const livePnl = useMemo(() => matches.reduce((a, m) => {
-    const cur = priceOf(m.sym);
-    if (cur == null || !m.entryPrice) return a;
-    const qty = m.entryPrice > 0 ? perCap / m.entryPrice : 0;
-    return a + (cur - m.entryPrice) * qty;
+  // PERIOD P&L — total (realised + open) P&L of THIS screener's own auto-buy trades over the range
+  // picked in the left dropdown (Today / 7d / 30d / 6m), not just the unrealised value of whatever is
+  // matching right now. Trades are the ones this card placed: tradeType "Screener Auto Buy",
+  // strategy === dispName, scoped to this market + mode. Short (Sell) trades are P&L-inverted.
+  const periodFrom = useMemo(() => {
+    const now = Date.now();
+    if (period === "today") return new Date(new Date().setHours(0, 0, 0, 0)).getTime();
+    if (period === "7d") return now - 7 * DAY;
+    if (period === "30d") return now - 30 * DAY;
+    if (period === "6m") return now - 182 * DAY;
+    return 0;
+  }, [period]);
+  const periodPnl = useMemo(() => {
+    const isReal = mode === "real";
+    return (trades || []).reduce((a, t) => {
+      if (t.strategy !== dispName) return a;                 // only THIS screener's trades
+      if (isReal ? !t.real : !!t.real) return a;             // scope to the active mode
+      if (t.status === "rejected" || t.entry == null) return a;
+      const closed = t.exitAt != null && t.exit != null;
+      // Include: closed trades that closed inside the window, OR anything still open.
+      if (closed && (t.exitAt || t.entryAt || 0) < periodFrom) return a;
+      const cur = closed ? t.exit : (priceOf(t.sym) != null ? priceOf(t.sym) : t.entry);
+      const dir = (t.side === "SELL" || t.short) ? -1 : 1;   // shorts profit when price falls
+      const p = market === "Crypto"
+        ? (t.qty || 0) * (((cur / t.entry) - 1) * dir)
+        : (cur - t.entry) * (t.qty || 1) * dir;
+      return a + p;
+    }, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, 0), [matches, perCap, liveTick]);
+  }, [trades, dispName, mode, market, periodFrom, liveTick]);
 
   /* AUTO-BUY. When the toggle is on, place today's matched symbols once per day (paper unless in real
      mode), each with the card's SL/TP — mirroring Smart Auto-Buy. */
@@ -328,8 +350,8 @@ function ScreenerRow({ screener, market, isAdmin = false, onOpen, onBuy, onAutoB
           <input value={capital} onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ""); setCapital(v); lsSet(`mx_scrcap_${market}`, v); }} inputMode="numeric" className="no-ring mono" style={{ flex: "1 1 0", minWidth: 0, background: "transparent", border: "none", color: "var(--ink)", fontSize: 13.5, fontWeight: 800, textAlign: "right" }} />
         </div>
         <div style={{ flex: "0 0 auto", textAlign: "right" }}>
-          <div style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 800 }}>LIVE P&amp;L</div>
-          <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: chgColor(livePnl) }}>{(livePnl >= 0 ? "+" : "") + fmt(livePnl, market)}</div>
+          <div style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 800 }}>P&amp;L</div>
+          <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: chgColor(periodPnl) }}>{(periodPnl >= 0 ? "+" : "") + fmt(periodPnl, market)}</div>
         </div>
       </div>
       )}
@@ -337,7 +359,7 @@ function ScreenerRow({ screener, market, isAdmin = false, onOpen, onBuy, onAutoB
   );
 }
 
-export default function PopularScreeners({ market, mode = "virtual", list = [], isAdmin = false, onOpen, onBuy, onAutoBuy, onScreenerBuy, liveTick = 0 }) {
+export default function PopularScreeners({ market, mode = "virtual", list = [], isAdmin = false, onOpen, onBuy, onAutoBuy, onScreenerBuy, liveTick = 0, trades = [] }) {
   const [tab, setTab] = useState("custom");   // "custom" | "popular" | "mine" — Build-a-screener is the default
   const [dir, setDir] = useState("buy");   // Buy (long) | Sell (short) for Popular Screeners
   const [editing, setEditing] = useState(null);   // a saved screener loaded into the builder for editing
@@ -359,11 +381,11 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
         <ScreenerDirToggle dir={dir} setDir={setDir} />
         {dir === "sell" && <div style={{ fontSize: 10.5, color: "var(--muted)", lineHeight: 1.5, margin: "0 2px 8px" }}>Sell mode shorts each match instead of buying it. Shorting executes on crypto and Indian options; elsewhere it runs in paper.</div>}
         {SCREENERS.map((s) => (
-          <ScreenerRow key={s.key + dir} screener={s} market={market} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} liveTick={liveTick} side={dir === "sell" ? "SELL" : "BUY"} />
+          <ScreenerRow key={s.key + dir} screener={s} market={market} mode={mode} trades={trades} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} liveTick={liveTick} side={dir === "sell" ? "SELL" : "BUY"} />
         ))}
       </>}
       {tab === "custom" && <CustomScreener market={market} mode={mode} list={list} onOpen={onOpen} onScreenerBuy={onScreenerBuy} liveTick={liveTick} editing={editing} onDoneEditing={() => setEditing(null)} />}
-      {tab === "mine" && <MyScreeners market={market} mode={mode} list={list} onOpen={onOpen} onScreenerBuy={onScreenerBuy} onEdit={startEdit} liveTick={liveTick} />}
+      {tab === "mine" && <MyScreeners market={market} mode={mode} list={list} trades={trades} onOpen={onOpen} onScreenerBuy={onScreenerBuy} onEdit={startEdit} liveTick={liveTick} />}
     </Section>
   );
 }

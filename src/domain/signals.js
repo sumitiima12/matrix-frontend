@@ -141,20 +141,87 @@ export function pickReason(s, t) {
   return `${lead}${tail} Upside toward ${cur(t.target)} (+${t.tpPct}%).`;
 }
 
-// Ranked picks — only from instruments with REAL data. Refreshed hourly.
-export function dailyPicks(list) {
-  return (list || [])
-    .filter((s) => s.hasData && s.rsi != null && s.sma50 != null && s.sector !== "Volatility")
+/* BEARISH mirror of techSignal — scores SHORT setups (used only where shorting is offered, i.e.
+   crypto Top Picks). Target sits BELOW price (downside profit), stop ABOVE (upside risk). Returns the
+   same shape as techSignal so the pick card can render it. Score ~0..+6; higher = stronger short. */
+export function techSignalShort(s) {
+  if (!s || !s.hasData || s.rsi == null || s.sma50 == null) return null;
+  const px = s.price;
+  const cur = (v) => fmt(v, marketOf(s.sym));
+  const isCrypto = marketOf(s.sym) === "Crypto";
+  const levHi = px * (isCrypto ? 1.6 : 1.4), levLo = px * (isCrypto ? 0.55 : 0.7);
+  const res = (s.resistance != null && s.resistance > px && s.resistance <= levHi) ? s.resistance : null;
+  const sup = (s.support != null && s.support < px && s.support >= levLo) ? s.support : null;
+  const atr = Math.min(s.atr || (px * 0.02), px * 0.10);
+  const volRatio = (s.avgVol && s.vol != null) ? s.vol / s.avgVol : null;
+  const macdBear = s.macd != null && s.macdSignal != null && s.macd < s.macdSignal;
+  const trendDown = s.sma200 != null ? s.sma50 < s.sma200 : s.price < s.sma50;
+
+  let score = 0, signal = "", why = "", pattern = "flag";
+  if (res != null && px >= res * 0.98 && s.rsi > 58 && macdBear) {
+    pattern = "flag"; signal = "Resistance rejection";
+    why = `Price stalled at the ${cur(res)} ceiling with MACD rolling over — sellers defending the level.`; score += 3.2;
+  } else if (s.rsi > 70 && macdBear) {
+    pattern = "flag"; signal = "Overbought reversal";
+    why = `RSI ${s.rsi} is stretched and MACD has turned down — momentum is fading from an extended level.`; score += 3.0;
+  } else if (trendDown && macdBear && s.rsi < 50 && s.rsi > 32) {
+    pattern = "triangle"; signal = "Downtrend continuation";
+    why = `50-DMA below 200-DMA with MACD negative and RSI ${s.rsi} — an intact downtrend, not yet oversold.`; score += 2.7;
+  } else if (macdBear && s.rsi < 46 && (s.chg == null || s.chg < 0)) {
+    pattern = "flag"; signal = "Breaking down";
+    why = `Momentum is negative — MACD below its signal and RSI ${s.rsi} pointing lower.`; score += 2.4;
+  } else {
+    signal = trendDown ? "Weak / drifting lower" : "No short edge";
+    why = trendDown ? `Below the 50-DMA (${cur(s.sma50)}) with soft momentum.` : `No clean bearish setup here.`;
+    score += trendDown ? 1.4 : 0.1;
+  }
+  if (macdBear) score += 0.8;
+  if (s.adx != null && s.adx > 25) score += 0.7;                      // strong trend (down)
+  if (volRatio != null && volRatio > 1.3) { score += 0.7; why += ` Volume ${volRatio.toFixed(1)}× average confirms the selling.`; }
+  if (s.rsi < 30) score -= 0.8;                                       // too oversold to chase a short
+  if (s.chg != null) score += Math.max(-1, Math.min(1, -s.chg * 0.15));
+
+  const tpFloor = px * (isCrypto ? 0.70 : 0.80);                      // target at most −30% (crypto) / −20%
+  const slCap = px * (isCrypto ? 1.15 : 1.10);                        // stop at most +15% (crypto) / +10%
+  let target = (sup != null && sup >= tpFloor) ? Math.min(sup + 0.25 * atr, px * 0.99) : px - 2.5 * atr;
+  target = Math.max(Math.min(target, px * 0.99), tpFloor);           // between −1% and the floor
+  let stop = (res != null && res <= slCap) ? Math.min(res + 0.25 * atr, slCap) : px + 2 * atr;
+  stop = Math.max(Math.min(stop, slCap), px * 1.005);               // between +0.5% and the cap
+  const slPct = +(((stop - px) / px) * 100).toFixed(1);              // upside risk
+  const tpPct = +(((px - target) / px) * 100).toFixed(1);           // downside reward
+  const rr = slPct > 0 ? Math.min(10, +(tpPct / slPct).toFixed(1)) : null;
+  const dp = px < 1 ? 6 : px < 10 ? 4 : 2;
+  return { score: +score.toFixed(2), signal, pattern, why: `${why} Downside toward ${cur(target)} (−${tpPct}%).`,
+    stop: +stop.toFixed(dp), target: +target.toFixed(dp), slPct, tpPct, rr, volRatio: volRatio != null ? +volRatio.toFixed(2) : null };
+}
+
+// Ranked picks — only from instruments with REAL data. Refreshed hourly. `opts.allowShorts` (crypto)
+// additionally surfaces the strongest BEARISH setups as Short picks; every other market stays long-only.
+export function dailyPicks(list, opts = {}) {
+  const base = (list || []).filter((s) => s.hasData && s.rsi != null && s.sma50 != null && s.sector !== "Volatility");
+  const longs = base
     .map((s) => ({ s, t: techSignal(s) }))
-    // A "top pick" is a BUY idea, so we drop outright bearish/overbought readings — never
-    // surface a stretched or edgeless name as a pick.
+    // A long "top pick" is a BUY idea, so we drop outright bearish/overbought readings.
     .filter((x) => x.t && x.t.score > 0 && x.t.signal !== "Overbought")
     .sort((a, b) => b.t.score - a.t.score)
     .map(({ s, t }) => Object.assign(s, {
-      pickSignal: t.signal, pickReason: pickReason(s, t), pickPattern: t.pattern,
-      pickStop: t.stop, pickTarget: t.target, pickSlPct: t.slPct, pickTpPct: t.tpPct, pickRR: t.rr,
-      pickScore: t.score,
+      pickDir: "long", pickSide: "BUY", pickSignal: t.signal, pickReason: pickReason(s, t), pickPattern: t.pattern,
+      pickStop: t.stop, pickTarget: t.target, pickSlPct: t.slPct, pickTpPct: t.tpPct, pickRR: t.rr, pickScore: t.score,
     }));
+  if (!opts.allowShorts) return longs;
+  // Short picks: genuine bearish setups only (score ≥ 2.4), excluding anything already a long pick.
+  const longSyms = new Set(longs.map((s) => s.sym));
+  const shorts = base
+    .filter((x) => !longSyms.has(x.sym))
+    .map((s) => ({ s, t: techSignalShort(s) }))
+    .filter((x) => x.t && x.t.score >= 2.4)
+    .sort((a, b) => b.t.score - a.t.score)
+    .slice(0, 4)
+    .map(({ s, t }) => Object.assign(s, {
+      pickDir: "short", pickSide: "SELL", pickSignal: t.signal, pickReason: t.why, pickPattern: t.pattern,
+      pickStop: t.stop, pickTarget: t.target, pickSlPct: t.slPct, pickTpPct: t.tpPct, pickRR: t.rr, pickScore: t.score,
+    }));
+  return [...longs, ...shorts];
 }
 
 /**

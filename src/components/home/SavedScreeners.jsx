@@ -42,7 +42,7 @@ const passes = (stock, conds) => (conds || []).every((f) => {
   return cmp(f.o, x, y);
 });
 
-function SavedRow({ scr, market, mode, list, onOpen, onScreenerBuy, onDelete, onEdit, liveTick = 0 }) {
+function SavedRow({ scr, market, mode, trades = [], list, onOpen, onScreenerBuy, onDelete, onEdit, liveTick = 0 }) {
   const bySym = useMemo(() => { const m = new Map(); (list || []).forEach((s) => m.set(s.sym, s)); ALL.forEach((s) => { if (!m.has(s.sym)) m.set(s.sym, s); }); return m; }, [list]);
   const priceOf = (sym) => { const s = bySym.get(sym); return s ? s.price : null; };
   const [autoOn, setAutoOn] = useState(() => lsGet(`mx_savedauto_${scr.id}`, false));
@@ -79,13 +79,31 @@ function SavedRow({ scr, market, mode, list, onOpen, onScreenerBuy, onDelete, on
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matched]);
 
-  const livePnl = useMemo(() => matched.reduce((a, sym) => {
-    const info = entryPx.current[sym]; const curP = priceOf(sym);
-    if (!info || info.px == null || curP == null) return a;
-    const coin = isCrypto ? (info.px > 0 ? ovQty(sym) / info.px : 0) : ovQty(sym);
-    return a + (curP - info.px) * coin;
+  // PERIOD P&L — total (realised + open) P&L of THIS screener's own auto-buy trades over the range
+  // picked in the left dropdown, not just the unrealised value of what's matching now.
+  const periodFrom = useMemo(() => {
+    const now = Date.now();
+    if (period === "today") return new Date(new Date().setHours(0, 0, 0, 0)).getTime();
+    if (period === "7d") return now - 7 * DAY;
+    if (period === "30d") return now - 30 * DAY;
+    if (period === "6m") return now - 182 * DAY;
+    return 0;
+  }, [period]);
+  const periodPnl = useMemo(() => {
+    const isReal = mode === "real";
+    return (trades || []).reduce((a, t) => {
+      if (t.strategy !== scr.name) return a;
+      if (isReal ? !t.real : !!t.real) return a;
+      if (t.status === "rejected" || t.entry == null) return a;
+      const closed = t.exitAt != null && t.exit != null;
+      if (closed && (t.exitAt || t.entryAt || 0) < periodFrom) return a;
+      const curP = closed ? t.exit : (priceOf(t.sym) != null ? priceOf(t.sym) : t.entry);
+      const dir = (t.side === "SELL" || t.short) ? -1 : 1;
+      const p = isCrypto ? (t.qty || 0) * (((curP / t.entry) - 1) * dir) : (curP - t.entry) * (t.qty || 1) * dir;
+      return a + p;
+    }, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, 0), [matched, ov, liveTick]);
+  }, [trades, scr.name, mode, isCrypto, periodFrom, liveTick]);
 
   useEffect(() => {
     if (!autoOn || !onScreenerBuy || !matched.length) return;
@@ -193,8 +211,8 @@ function SavedRow({ scr, market, mode, list, onOpen, onScreenerBuy, onDelete, on
         </select>
         <div style={{ flex: 1 }} />
         <div style={{ flex: "0 0 auto", textAlign: "right" }}>
-          <div style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 800 }}>LIVE P&amp;L</div>
-          <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: chgColor(livePnl) }}>{(livePnl >= 0 ? "+" : "") + fmt(livePnl, market)}</div>
+          <div style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 800 }}>P&amp;L</div>
+          <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: chgColor(periodPnl) }}>{(periodPnl >= 0 ? "+" : "") + fmt(periodPnl, market)}</div>
         </div>
       </div>
       )}
@@ -202,7 +220,7 @@ function SavedRow({ scr, market, mode, list, onOpen, onScreenerBuy, onDelete, on
   );
 }
 
-export default function MyScreeners({ market, mode = "virtual", list = [], onOpen, onScreenerBuy, onEdit, liveTick = 0 }) {
+export default function MyScreeners({ market, mode = "virtual", list = [], trades = [], onOpen, onScreenerBuy, onEdit, liveTick = 0 }) {
   const [items, setItems] = useState(() => loadSaved());
   // Re-read whenever the tab is shown (component mounts) or the market changes.
   useEffect(() => { setItems(loadSaved()); }, [market]);
@@ -230,7 +248,7 @@ export default function MyScreeners({ market, mode = "virtual", list = [], onOpe
   return (
     <>
       {mine.map((scr) => (
-        <SavedRow key={scr.id} scr={scr} market={market} mode={mode} list={list} onOpen={onOpen} onScreenerBuy={onScreenerBuy} onDelete={remove} onEdit={onEdit} liveTick={liveTick} />
+        <SavedRow key={scr.id} scr={scr} market={market} mode={mode} trades={trades} list={list} onOpen={onOpen} onScreenerBuy={onScreenerBuy} onDelete={remove} onEdit={onEdit} liveTick={liveTick} />
       ))}
     </>
   );

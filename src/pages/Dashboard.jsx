@@ -633,10 +633,14 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const picks = useMemo(() => {
     /* Ranked by POTENTIAL LEFT to the engine's real target, not by raw signal score:
        a pick that has already run to its target is the least useful one to show first. */
-    const base = dailyPicks(list)
+    // Crypto also gets SHORT picks; every other market stays long-only.
+    const base = dailyPicks(list, { allowShorts: market === "Crypto" })
       .map((s) => ({
         s,
-        left: s.price != null && s.pickTarget != null ? ((s.pickTarget - s.price) / s.price) * 100 : -Infinity,
+        // Rank by the favourable move LEFT to target: upside for longs, downside for shorts.
+        left: s.price != null && s.pickTarget != null
+          ? (s.pickDir === "short" ? -1 : 1) * ((s.pickTarget - s.price) / s.price) * 100
+          : -Infinity,
       }))
       .sort((a, b) => b.left - a.left)
       .map((x) => x.s)
@@ -1265,8 +1269,19 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     number. "Why?" opens the full evidence + verdict. */}
                 <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "nowrap", alignItems: "center", overflow: "hidden" }}>
                   {(() => {
-                    // Every Pick is, by construction, a bullish setup — so if the tag engine returns
-                    // nothing yet, show a "Bullish" chip rather than a bare card. Real tags win when present.
+                    const isShort = s.pickDir === "short";
+                    // SHORT picks lead with a red "Short" chip + the bearish signal; long picks show the
+                    // real bullish tags (or a "Bullish setup" fallback).
+                    if (isShort) {
+                      const shown = [{ id: "short", label: "▼ Short", evidence: s.pickReason || "Bearish setup" }];
+                      if (s.pickSignal) shown.push({ id: "sig", label: s.pickSignal, evidence: s.pickReason || "" });
+                      return shown.map((t) => (
+                        <span key={t.id} className="pill" title={t.evidence}
+                          style={{ fontSize: 10, fontWeight: 800, background: "var(--down-soft, #fee2e2)", color: "var(--down, #dc2626)", padding: "3px 9px", whiteSpace: "nowrap", flex: "0 0 auto" }}>
+                          {t.label}
+                        </span>
+                      ));
+                    }
                     const ts = computeTags(s.under ? { ...s, sym: s.under } : s).slice(0, 3);
                     const shown = ts.length ? ts : [{ id: "bull", label: "Bullish setup", evidence: s.pickReason || "Qualified on real technicals" }];
                     return shown.map((t) => (
@@ -1285,11 +1300,11 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                     <div style={{ flex: 1, background: "var(--elev)", borderRadius: 10, padding: "7px 9px" }}>
                       <div style={{ fontSize: 8.5, opacity: .8, fontWeight: 700 }}>TARGET</div>
-                      <div className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: "var(--up)" }}>{fmt(s.pickTarget, market)} <span style={{ fontSize: 9, opacity: .85 }}>+{s.pickTpPct}%</span></div>
+                      <div className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: "var(--up)" }}>{fmt(s.pickTarget, market)} <span style={{ fontSize: 9, opacity: .85 }}>{s.pickDir === "short" ? "−" : "+"}{s.pickTpPct}%</span></div>
                     </div>
                     <div style={{ flex: 1, background: "var(--elev)", borderRadius: 10, padding: "7px 9px" }}>
                       <div style={{ fontSize: 8.5, opacity: .8, fontWeight: 700 }}>STOP</div>
-                      <div className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: "var(--down)" }}>{fmt(s.pickStop, market)} <span style={{ fontSize: 9, opacity: .85 }}>−{s.pickSlPct}%</span></div>
+                      <div className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: "var(--down)" }}>{fmt(s.pickStop, market)} <span style={{ fontSize: 9, opacity: .85 }}>{s.pickDir === "short" ? "+" : "−"}{s.pickSlPct}%</span></div>
                     </div>
                     {s.pickRR != null && <div style={{ flex: "0 0 auto", background: "var(--elev)", borderRadius: 10, padding: "7px 9px", display: "grid", placeItems: "center" }}>
                       <div style={{ fontSize: 8.5, opacity: .8, fontWeight: 700 }}>R:R</div>
@@ -1340,7 +1355,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       {market !== "Commodity" && market !== "Crypto" && <StockIdeasStrip onOpen={onOpen} onBuy={onBuy} market={market} liveTick={liveTick} />}
 
       {/* Popular Screeners — 3 live-scanning strategy carousels, market-aware. */}
-      <PopularScreeners market={market} mode={mode} list={list} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} liveTick={liveTick} />
+      <PopularScreeners market={market} mode={mode} list={list} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} liveTick={liveTick} trades={trades} />
 
       {/* F&O Picks (Indian derivatives) */}
 
