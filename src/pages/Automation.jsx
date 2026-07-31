@@ -1600,19 +1600,20 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits, onCreateCop
                   <tr>
                     <th style={{ ...th, width: 24 }} rowSpan={2}><input type="checkbox" checked={allOn} onChange={toggleAll} style={{ accentColor: "#7C3AED", width: 14, height: 14 }} /></th>
                     <th style={{ ...th, textAlign: "left" }} rowSpan={2}>{firstCol}</th>
-                    <th style={{ ...grp, ...sepL, color: "#7C3AED" }} colSpan={2}>Optimum</th>
+                    <th style={{ ...grp, ...sepL, color: "#7C3AED" }} colSpan={3}>Optimum</th>
                     <th style={{ ...grp, ...sepL, color: "var(--muted)" }} colSpan={5}>Earlier</th>
                     <th style={{ ...grp, ...sepL, color: "var(--primary)" }} colSpan={5}>Now</th>
                   </tr>
                   <tr>
                     <th style={{ ...th, ...sepL, color: "var(--down)" }}>SL</th>
                     <th style={{ ...th, color: "var(--up)" }}>TP</th>
+                    <th style={{ ...th, color: "var(--primary)" }}>P&L</th>
                     {["Win", "SL hit", "TP hit", "P&L", "Ret"].map((h, i) => <th key={"e" + h} style={i === 0 ? { ...th, ...sepL } : th}>{h}</th>)}
                     {["Win", "SL hit", "TP hit", "P&L", "Ret"].map((h, i) => <th key={"n" + h} style={i === 0 ? { ...th, ...sepL } : th}>{h}</th>)}
                   </tr>
                 </thead>
                 <tbody>
-                  {visible.length === 0 && <tr><td colSpan={13} style={{ ...td, color: "var(--muted)", fontWeight: 700, textAlign: "center", padding: "14px 6px" }}>{view === "apply" ? `No strategies exist for ${sym} yet — switch to Create to add some.` : `Every optimised strategy already exists for ${sym}.`}</td></tr>}
+                  {visible.length === 0 && <tr><td colSpan={14} style={{ ...td, color: "var(--muted)", fontWeight: 700, textAlign: "center", padding: "14px 6px" }}>{view === "apply" ? `No strategies exist for ${sym} yet — switch to Create to add some.` : `Every optimised strategy already exists for ${sym}.`}</td></tr>}
                   {visible.map((r) => {
                     const exists = existsForSym(r);
                     return (
@@ -1626,6 +1627,8 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits, onCreateCop
                       </td>
                       <td style={{ ...td, ...sepL, color: "var(--down)", fontWeight: 800 }}>{r.best.sl}%</td>
                       <td style={{ ...td, color: "var(--up)", fontWeight: 800 }}>{r.best.tp}%</td>
+                      {/* P&L AT THE OPTIMUM — same figure as the "Now" P&L, surfaced here for a quick read. */}
+                      <td style={{ ...td, color: (r.best && (r.best.pnl || 0) >= 0) ? "var(--up)" : "var(--down)", fontWeight: 800 }}>{oAmt(r.best && r.best.pnl)}</td>
                       {metricCells(r.current, "e")}
                       {metricCells(r.best, "n")}
                     </tr>
