@@ -6,6 +6,7 @@ import { marketOpen } from "../../domain/api";
 import { saveScreenersRemote, loadScreenersRemote } from "../../services/tradeService";
 import ExitOptimizer from "./ExitOptimizer";
 import IndicatorOptimizer from "./IndicatorOptimizer";
+import ScreenerTradeList from "./ScreenerTradeList";
 import { Pencil, Trash2 } from "lucide-react";
 
 /* MY SCREENERS — the carousels for screeners the user built and saved under "Create your own screener".
@@ -47,6 +48,7 @@ function SavedRow({ scr, market, mode, trades = [], list, onOpen, onScreenerBuy,
   const priceOf = (sym) => { const s = bySym.get(sym); return s ? s.price : null; };
   const [autoOn, setAutoOn] = useState(() => lsGet(`mx_savedauto_${scr.id}`, false));
   const [period, setPeriod] = useState("today");
+  const [showTrades, setShowTrades] = useState(false);   // expandable List of Trades (tap the P&L)
   const [ov, setOv] = useState(scr.ov || {});
   const entryPx = useRef({});
   const isCrypto = market === "Crypto";
@@ -83,10 +85,11 @@ function SavedRow({ scr, market, mode, trades = [], list, onOpen, onScreenerBuy,
   // picked in the left dropdown, not just the unrealised value of what's matching now.
   const periodFrom = useMemo(() => {
     const now = Date.now();
+    const D = 864e5;   // one day in ms (NOT the imported day-index `DAY`, which would be ~2 minutes)
     if (period === "today") return new Date(new Date().setHours(0, 0, 0, 0)).getTime();
-    if (period === "7d") return now - 7 * DAY;
-    if (period === "30d") return now - 30 * DAY;
-    if (period === "6m") return now - 182 * DAY;
+    if (period === "7d") return now - 7 * D;
+    if (period === "30d") return now - 30 * D;
+    if (period === "6m") return now - 182 * D;
     return 0;
   }, [period]);
   const periodPnl = useMemo(() => {
@@ -99,7 +102,9 @@ function SavedRow({ scr, market, mode, trades = [], list, onOpen, onScreenerBuy,
       if (closed && (t.exitAt || t.entryAt || 0) < periodFrom) return a;
       const curP = closed ? t.exit : (priceOf(t.sym) != null ? priceOf(t.sym) : t.entry);
       const dir = (t.side === "SELL" || t.short) ? -1 : 1;
-      const p = isCrypto ? (t.qty || 0) * (((curP / t.entry) - 1) * dir) : (curP - t.entry) * (t.qty || 1) * dir;
+      // P&L = price move × quantity held (t.qty is coins/shares/lots for all markets). The old crypto
+      // branch treated qty as a USD notional × return fraction, which exploded sub-cent coins.
+      const p = (curP - t.entry) * (t.qty || 0) * dir;
       return a + p;
     }, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -202,6 +207,7 @@ function SavedRow({ scr, market, mode, trades = [], list, onOpen, onScreenerBuy,
 
       {/* Footer — date range + Live P&L (only when Auto-Buy is on) */}
       {autoOn && (
+      <>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
         <select aria-label="Date range" value={period} onChange={(e) => setPeriod(e.target.value)} style={{ flex: "0 0 auto", fontSize: 10.5, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 9, padding: "7px 8px", background: "var(--surface)", color: "var(--ink)" }}>
           <option value="today">Today</option>
@@ -210,11 +216,14 @@ function SavedRow({ scr, market, mode, trades = [], list, onOpen, onScreenerBuy,
           <option value="6m">Last 6 months</option>
         </select>
         <div style={{ flex: 1 }} />
-        <div style={{ flex: "0 0 auto", textAlign: "right" }}>
-          <div style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 800 }}>P&amp;L</div>
-          <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: chgColor(periodPnl) }}>{(periodPnl >= 0 ? "+" : "") + fmt(periodPnl, market)}</div>
-        </div>
+        {/* P&L doubles as the "List of Trades" toggle — tap it to see the underlying trades for the period. */}
+        <button type="button" onClick={() => setShowTrades((v) => !v)} className="tap" title="Tap to see the list of trades" style={{ flex: "0 0 auto", textAlign: "right", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>
+          <div style={{ fontSize: 8.5, color: "var(--primary)", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3 }}>P&amp;L <span style={{ display: "inline-block", transform: showTrades ? "rotate(180deg)" : "none", transition: "transform .15s", fontSize: 8 }}>▾</span></div>
+          <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: chgColor(periodPnl), textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 3 }}>{(periodPnl >= 0 ? "+" : "") + fmt(periodPnl, market)}</div>
+        </button>
       </div>
+      <ScreenerTradeList trades={trades} strategyName={scr.name} mode={mode} market={market} periodFrom={periodFrom} priceOf={priceOf} open={showTrades} />
+      </>
       )}
     </div>
   );

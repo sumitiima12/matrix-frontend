@@ -8,6 +8,7 @@ import MyScreeners from "./SavedScreeners";
 import ExitOptimizer from "./ExitOptimizer";
 import IndicatorOptimizer from "./IndicatorOptimizer";
 import MultiSelect from "../common/MultiSelect";
+import ScreenerTradeList from "./ScreenerTradeList";
 import { CondBuilder2, IndicatorDefs, TFS } from "../../pages/Automation";
 import { defOperands } from "../../domain/strategyLang";
 import { Pencil, SlidersHorizontal } from "lucide-react";
@@ -71,7 +72,11 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
   const autoKey = `mx_scrauto_${screener.key}_${market}${short ? "_sell" : ""}`;
   const [autoOn, setAutoOn] = useState(() => lsGet(autoKey, false));
   const [period, setPeriod] = useState("today");
-  const [capital, setCapital] = useState(() => lsGet(`mx_scrcap_${market}`, capDefault(market)));
+  const [showTrades, setShowTrades] = useState(false);   // expandable List of Trades (tap the P&L)
+  // Capital-deployed is PER SCREENER (keyed by screener.key + market + side), not one shared value —
+  // editing it on one card must not move every other card's capital.
+  const capKey = `mx_scrcap_${screener.key}_${market}${short ? "_sell" : ""}`;
+  const [capital, setCapital] = useState(() => lsGet(capKey, capDefault(market)));
   const [ov, setOv] = useState({});   // per-symbol { sl, tp } override
   // Admin-editable overrides for this Popular screener: display name, default SL/TP, and the actual
   // scan rules (indicators + entry/exit chains + timeframe). Absent fields fall back to the built-in.
@@ -113,7 +118,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
     let stop = false;
     // Admin-curated basket if set, else the market's universe (capped for cost).
     const syms = eSel.length ? eSel : (UNIVERSE[market] || []).map((s) => s.sym).slice(0, 40);
-    setCapital(lsGet(`mx_scrcap_${market}`, capDefault(market)));
+    setCapital(lsGet(capKey, capDefault(market)));
     setAutoOn(lsGet(autoKey, false));
     if (!syms.length) { setMatches([]); return undefined; }
     let h = 0; for (let i = 0; i < cfgSig.length; i++) h = (h * 31 + cfgSig.charCodeAt(i)) | 0;
@@ -140,10 +145,11 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
   // strategy === dispName, scoped to this market + mode. Short (Sell) trades are P&L-inverted.
   const periodFrom = useMemo(() => {
     const now = Date.now();
+    const D = 864e5;   // one day in ms (NOT the imported day-index `DAY`, which would be ~2 minutes)
     if (period === "today") return new Date(new Date().setHours(0, 0, 0, 0)).getTime();
-    if (period === "7d") return now - 7 * DAY;
-    if (period === "30d") return now - 30 * DAY;
-    if (period === "6m") return now - 182 * DAY;
+    if (period === "7d") return now - 7 * D;
+    if (period === "30d") return now - 30 * D;
+    if (period === "6m") return now - 182 * D;
     return 0;
   }, [period]);
   const periodPnl = useMemo(() => {
@@ -157,9 +163,11 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
       if (closed && (t.exitAt || t.entryAt || 0) < periodFrom) return a;
       const cur = closed ? t.exit : (priceOf(t.sym) != null ? priceOf(t.sym) : t.entry);
       const dir = (t.side === "SELL" || t.short) ? -1 : 1;   // shorts profit when price falls
-      const p = market === "Crypto"
-        ? (t.qty || 0) * (((cur / t.entry) - 1) * dir)
-        : (cur - t.entry) * (t.qty || 1) * dir;
+      // P&L = price move × quantity held. t.qty is the amount of the asset (coins / shares / lots) for
+      // BOTH crypto and everything else, so this is uniform. The old crypto branch wrongly treated qty
+      // as a USD notional and multiplied by the return fraction, which for a sub-cent coin blew a
+      // $1,000 stop up into a -$300k figure (qty × -100%).
+      const p = (cur - t.entry) * (t.qty || 0) * dir;
       return a + p;
     }, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -338,6 +346,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
 
       {/* Footer — date range · capital · live P&L. Only shown when Auto-Buy is on (off = a plain discovery list). */}
       {autoOn && (
+      <>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
         <select aria-label="Date range" value={period} onChange={(e) => setPeriod(e.target.value)} style={{ flex: "0 0 auto", fontSize: 10.5, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 9, padding: "7px 8px", background: "var(--surface)", color: "var(--ink)" }}>
           <option value="today">Today</option>
@@ -347,13 +356,16 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
         </select>
         <div style={{ flex: "1 1 0", minWidth: 0, display: "flex", alignItems: "center", gap: 6, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 9, padding: "5px 9px" }}>
           <span style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 800, flexShrink: 0 }}>CAPITAL ({cur})</span>
-          <input value={capital} onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ""); setCapital(v); lsSet(`mx_scrcap_${market}`, v); }} inputMode="numeric" className="no-ring mono" style={{ flex: "1 1 0", minWidth: 0, background: "transparent", border: "none", color: "var(--ink)", fontSize: 13.5, fontWeight: 800, textAlign: "right" }} />
+          <input value={capital} onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ""); setCapital(v); lsSet(capKey, v); }} inputMode="numeric" className="no-ring mono" style={{ flex: "1 1 0", minWidth: 0, background: "transparent", border: "none", color: "var(--ink)", fontSize: 13.5, fontWeight: 800, textAlign: "right" }} />
         </div>
-        <div style={{ flex: "0 0 auto", textAlign: "right" }}>
-          <div style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 800 }}>P&amp;L</div>
-          <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: chgColor(periodPnl) }}>{(periodPnl >= 0 ? "+" : "") + fmt(periodPnl, market)}</div>
-        </div>
+        {/* P&L doubles as the "List of Trades" toggle — tap it to see the underlying trades for the period. */}
+        <button type="button" onClick={() => setShowTrades((v) => !v)} className="tap" title="Tap to see the list of trades" style={{ flex: "0 0 auto", textAlign: "right", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>
+          <div style={{ fontSize: 8.5, color: "var(--primary)", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3 }}>P&amp;L <span style={{ display: "inline-block", transform: showTrades ? "rotate(180deg)" : "none", transition: "transform .15s", fontSize: 8 }}>▾</span></div>
+          <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: chgColor(periodPnl), textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 3 }}>{(periodPnl >= 0 ? "+" : "") + fmt(periodPnl, market)}</div>
+        </button>
       </div>
+      <ScreenerTradeList trades={trades} strategyName={dispName} mode={mode} market={market} periodFrom={periodFrom} priceOf={priceOf} open={showTrades} />
+      </>
       )}
     </div>
   );
