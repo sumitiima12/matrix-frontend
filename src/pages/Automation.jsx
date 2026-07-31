@@ -738,6 +738,130 @@ function StratSLTP({ sl, tp, setSl, setTp }) {
     </div>
   );
 }
+/* CARD TRADE LOG — the expandable "List of Trades" opened by tapping a card's TRADES tile. It adds a
+   date-range filter over the backtest's trade ledger and a summary strip (trades / win rate / SL hit /
+   TP hit / P&L / return) for the selected range, then the per-trade table: entry & exit date-time,
+   exit type, return % and P&L, exportable to CSV. Same backtest ledger the tiles are computed from. */
+function CardTradeLog({ tradeList, market = "IN", open = false }) {
+  const [range, setRange] = useState("all");
+  const DAY_MS = 86400000;
+  const from = useMemo(() => {
+    const now = Date.now();
+    if (range === "7d") return now - 7 * DAY_MS;
+    if (range === "30d") return now - 30 * DAY_MS;
+    if (range === "3m") return now - 91 * DAY_MS;
+    if (range === "6m") return now - 182 * DAY_MS;
+    if (range === "1y") return now - 365 * DAY_MS;
+    return 0;
+  }, [range]);
+  const rows = useMemo(
+    () => (tradeList || []).filter((t) => (t.exitTime || t.entryTime || 0) >= from),
+    [tradeList, from]
+  );
+  const sum = useMemo(() => {
+    const n = rows.length;
+    const wins = rows.filter((r) => (r.retPct || 0) > 0).length;
+    return {
+      n,
+      winRate: n ? (wins / n) * 100 : null,
+      slHit: rows.filter((r) => r.reason === "SL").length,
+      tpHit: rows.filter((r) => r.reason === "TP").length,
+      pnl: rows.reduce((a, r) => a + (r.pnl || 0), 0),
+      ret: rows.reduce((a, r) => a + (r.retPct || 0), 0),
+    };
+  }, [rows]);
+  const dt = (ms) => {
+    if (!ms) return { d: "—", t: "" };
+    const x = new Date(ms);
+    return { d: x.toLocaleDateString("en-GB"), t: x.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) };
+  };
+  const exportCsv = () => {
+    const cols = [
+      ["#", (r, i) => i + 1], ["Symbol", (r) => r.sym || ""],
+      ["Entry Date", (r) => dt(r.entryTime).d], ["Entry Time", (r) => dt(r.entryTime).t],
+      ["Exit Date", (r) => dt(r.exitTime).d], ["Exit Time", (r) => dt(r.exitTime).t],
+      ["Exit Type", (r) => r.reason || ""],
+      ["Return %", (r) => ((r.retPct || 0) >= 0 ? "+" : "") + (r.retPct || 0).toFixed(2)],
+      ["P&L", (r) => (r.pnl == null ? "" : r.pnl.toFixed(2))],
+    ];
+    const esc = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
+    const lines = [cols.map((c) => esc(c[0])).join(",")];
+    rows.forEach((r, i) => lines.push(cols.map((c) => esc(c[1](r, i))).join(",")));
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `trades-${Date.now()}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+  if (!open) return null;
+  const th = { fontSize: 8.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", padding: "6px 7px", textAlign: "left", whiteSpace: "nowrap" };
+  const td = { fontSize: 10.5, fontWeight: 700, padding: "6px 7px", borderTop: "1px solid var(--line)", whiteSpace: "nowrap" };
+  const sCell = (label, val, color) => (
+    <div style={{ flex: "1 1 auto", minWidth: 60, background: "var(--elev)", borderRadius: 9, padding: "6px 8px", textAlign: "center" }}>
+      <div style={{ fontSize: 8, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase" }}>{label}</div>
+      <div className="mono" style={{ fontWeight: 800, fontSize: 12, color: color || "var(--ink)", marginTop: 2 }}>{val}</div>
+    </div>
+  );
+  return (
+    <div style={{ marginTop: 10, border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 10px", background: "var(--elev)", flexWrap: "wrap" }}>
+        <span style={{ fontSize: 11, fontWeight: 800, color: "var(--ink)" }}>List of Trades</span>
+        <select value={range} onChange={(e) => setRange(e.target.value)}
+          style={{ fontSize: 10.5, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 8, padding: "5px 8px", background: "var(--surface)", color: "var(--ink)" }}>
+          <option value="all">All time</option>
+          <option value="7d">Last 7 days</option>
+          <option value="30d">Last 30 days</option>
+          <option value="3m">Last 3 months</option>
+          <option value="6m">Last 6 months</option>
+          <option value="1y">Last 1 year</option>
+        </select>
+        <button onClick={exportCsv} disabled={!rows.length} className="tap"
+          style={{ marginLeft: "auto", border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 8, padding: "5px 10px", fontWeight: 800, fontSize: 10.5, opacity: rows.length ? 1 : 0.5 }}>
+          ⬇ CSV
+        </button>
+      </div>
+      <div style={{ display: "flex", gap: 6, padding: "9px 10px", flexWrap: "wrap", borderTop: "1px solid var(--line)" }}>
+        {sCell("Trades", sum.n)}
+        {sCell("Win rate", sum.winRate == null ? "—" : sum.winRate.toFixed(0) + "%")}
+        {sCell("SL hit", sum.slHit, "var(--down)")}
+        {sCell("TP hit", sum.tpHit, "var(--up)")}
+        {sCell("P&L", (sum.pnl >= 0 ? "+" : "") + fmt(sum.pnl, market), chgColor(sum.pnl))}
+        {sCell("Return", (sum.ret >= 0 ? "+" : "") + sum.ret.toFixed(1) + "%", chgColor(sum.ret))}
+      </div>
+      {rows.length ? (
+        <div style={{ overflowX: "auto", maxHeight: 320, overflowY: "auto", borderTop: "1px solid var(--line)" }}>
+          <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 480 }}>
+            <thead>
+              <tr>
+                <th style={th}>#</th><th style={th}>Entry</th><th style={th}>Exit</th><th style={th}>Exit type</th>
+                <th style={{ ...th, textAlign: "right" }}>Return</th>
+                <th style={{ ...th, textAlign: "right" }}>P&L</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => {
+                const e = dt(r.entryTime), x = dt(r.exitTime);
+                return (
+                  <tr key={i}>
+                    <td style={{ ...td, color: "var(--muted)" }}>{i + 1}</td>
+                    <td style={td}><span style={{ fontWeight: 800 }}>{e.d}</span> <span style={{ color: "var(--muted)" }}>{e.t}</span></td>
+                    <td style={td}><span style={{ fontWeight: 800 }}>{x.d}</span> <span style={{ color: "var(--muted)" }}>{x.t}</span></td>
+                    <td style={{ ...td, color: "var(--muted)" }}>{r.reason || "—"}</td>
+                    <td style={{ ...td, textAlign: "right", color: (r.retPct || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{((r.retPct || 0) >= 0 ? "+" : "") + (r.retPct || 0).toFixed(2)}%</td>
+                    <td style={{ ...td, textAlign: "right", color: (r.pnl || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{r.pnl == null ? "—" : (r.pnl >= 0 ? "+" : "") + fmt(r.pnl, market)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div style={{ fontSize: 11, color: "var(--muted)", padding: "12px 10px", borderTop: "1px solid var(--line)" }}>No trades in this range.</div>
+      )}
+    </div>
+  );
+}
+
 function SampleStrategyCard({ s, onActivate, onClone, onEdit, onPersist, market = "IN", canBacktest = true, onConnect }) {
   const { loading, stats } = useBacktestStats(s);
   const [bt, setBt] = useState(false);
@@ -748,6 +872,7 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, onPersist, market 
   const [symSel, setSymSel] = useState(relSym0);
   const [tfSel, setTfSel] = useState((s.tf) || (s.cfg && s.cfg.tf) || "5m");
   const [showEdit, setShowEdit] = useState(false);
+  const [showTrades, setShowTrades] = useState(false);
   useEffect(() => { setSymSel(relSym0); /* eslint-disable-next-line */ }, [relSym0]);
   const cfgTf = useMemo(() => ({ ...(s.cfg || {}), tf: tfSel, defs: ((s.cfg && s.cfg.defs) || []).map((d) => ({ ...d, tf: tfSel })) }), [s.cfg, tfSel]);
   // Persist SL/TP/symbol/timeframe changes to the user's own copy so they survive the session.
@@ -783,11 +908,18 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, onPersist, market 
         <>
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
             <Stat k="WIN RATE" v={stats.winRate.toFixed(0) + "%"} />
-            <Stat k="TRADES" v={stats.trades} />
+            <button type="button" onClick={() => setShowTrades((v) => !v)} className="tap" title="Tap to see the list of trades"
+              style={{ flex: 1, minWidth: 0, textAlign: "left", cursor: "pointer", background: "var(--elev)", borderRadius: 11, padding: "9px 10px", border: "1px solid " + (showTrades ? "var(--primary)" : "var(--line)") }}>
+              <div style={{ fontSize: 9, color: "var(--primary)", fontWeight: 800, letterSpacing: ".03em", display: "flex", alignItems: "center", gap: 3 }}>
+                TRADES <ChevronDown size={9} style={{ transform: showTrades ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
+              </div>
+              <div className="mono" style={{ fontWeight: 800, fontSize: 13.5, marginTop: 3, color: "var(--ink)", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 3 }}>{stats.trades}</div>
+            </button>
             <Stat k="P&L" v={(stats.pnl >= 0 ? "+" : "") + fmt(stats.pnl, market)} c={chgColor(stats.pnl)} />
             <Stat k="RETURN" v={pct(stats.retPct, 1)} c={chgColor(stats.retPct)} />
             <Stat k="MAX DD" v={stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmt(stats.maxDD, market) : fmt(0, market)) : "—"} c={stats.maxDD > 0 ? "var(--down)" : "var(--muted)"} />
           </div>
+          <CardTradeLog tradeList={stats.tradeList} market={market} open={showTrades} />
           <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.45 }}>
             Backtested on {btPeriodStr(stats)} of real {stats.tf || "5m"} candles across {stats.symbols} symbol{stats.symbols === 1 ? "" : "s"}.
             {stats.trades < 10 && " That is a thin sample — treat it as weak evidence."}
@@ -864,6 +996,7 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, onPersist, onClone, 
   const [symSel, setSymSel] = useState(relSym);
   const [tfSel, setTfSel] = useState((s.tf) || (s.cfg && s.cfg.tf) || "5m");
   const [showEdit, setShowEdit] = useState(false);
+  const [showTrades, setShowTrades] = useState(false);
   useEffect(() => { setSymSel(relSym); /* eslint-disable-next-line */ }, [relSym]);
   const cfgTf = useMemo(() => ({ ...(s.cfg || {}), tf: tfSel, defs: ((s.cfg && s.cfg.defs) || []).map((d) => ({ ...d, tf: tfSel })) }), [s.cfg, tfSel]);
   // Persist SL/TP/symbol/timeframe edits to the user's own copy so they survive the session.
@@ -891,12 +1024,21 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, onPersist, onClone, 
       {loading ? (
         <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 12 }}>Backtesting on real prices…</div>
       ) : stats && stats.trades > 0 ? (
-        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-          <Stat k="WIN RATE" v={stats.winRate.toFixed(0) + "%"} />
-          <Stat k="TRADES" v={stats.trades} />
-          <Stat k="RETURN" v={pct(stats.retPct, 1)} c={chgColor(stats.retPct)} />
-          <Stat k="MAX DD" v={stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmt(stats.maxDD, market) : fmt(0, market)) : "—"} c={stats.maxDD > 0 ? "var(--down)" : "var(--muted)"} />
-        </div>
+        <>
+          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            <Stat k="WIN RATE" v={stats.winRate.toFixed(0) + "%"} />
+            <button type="button" onClick={() => setShowTrades((v) => !v)} className="tap" title="Tap to see the list of trades"
+              style={{ flex: 1, minWidth: 0, textAlign: "left", cursor: "pointer", background: "var(--elev)", borderRadius: 11, padding: "9px 10px", border: "1px solid " + (showTrades ? "var(--primary)" : "var(--line)") }}>
+              <div style={{ fontSize: 9, color: "var(--primary)", fontWeight: 800, letterSpacing: ".03em", display: "flex", alignItems: "center", gap: 3 }}>
+                TRADES <ChevronDown size={9} style={{ transform: showTrades ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
+              </div>
+              <div className="mono" style={{ fontWeight: 800, fontSize: 13.5, marginTop: 3, color: "var(--ink)", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 3 }}>{stats.trades}</div>
+            </button>
+            <Stat k="RETURN" v={pct(stats.retPct, 1)} c={chgColor(stats.retPct)} />
+            <Stat k="MAX DD" v={stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmt(stats.maxDD, market) : fmt(0, market)) : "—"} c={stats.maxDD > 0 ? "var(--down)" : "var(--muted)"} />
+          </div>
+          <CardTradeLog tradeList={stats.tradeList} market={market} open={showTrades} />
+        </>
       ) : null}
 
       <DeploySizeField market={market} value={size} onChange={setSize} />
@@ -1129,6 +1271,7 @@ function CopyStrategyCard({ s, active, onToggle, onPersist, onDelete, market = "
   const [symSel, setSymSel] = useState(relSym0);
   const [tfSel, setTfSel] = useState((s.tf) || (s.cfg && s.cfg.tf) || "5m");
   const [showEdit, setShowEdit] = useState(false);
+  const [showTrades, setShowTrades] = useState(false);
   const cfgTf = useMemo(() => ({ ...(s.cfg || {}), tf: tfSel, defs: ((s.cfg && s.cfg.defs) || []).map((d) => ({ ...d, tf: tfSel })) }), [s.cfg, tfSel]);
   const firstRef = useRef(true);
   useEffect(() => { if (firstRef.current) { firstRef.current = false; return; } onPersist && onPersist(s.id, { name: name.trim() || s.name, sl, tp, symbol: symSel, tf: tfSel }); /* eslint-disable-next-line */ }, [name, sl, tp, symSel, tfSel]);
@@ -1153,12 +1296,21 @@ function CopyStrategyCard({ s, active, onToggle, onPersist, onDelete, market = "
 
       {loading ? <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 12 }}>Backtesting on real prices…</div>
         : stats && stats.trades > 0 ? (
-          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-            <Stat k="WIN RATE" v={stats.winRate.toFixed(0) + "%"} />
-            <Stat k="TRADES" v={stats.trades} />
-            <Stat k="RETURN" v={pct(stats.retPct, 1)} c={chgColor(stats.retPct)} />
-            <Stat k="MAX DD" v={stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmt(stats.maxDD, market) : fmt(0, market)) : "—"} c={stats.maxDD > 0 ? "var(--down)" : "var(--muted)"} />
-          </div>
+          <>
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <Stat k="WIN RATE" v={stats.winRate.toFixed(0) + "%"} />
+              <button type="button" onClick={() => setShowTrades((v) => !v)} className="tap" title="Tap to see the list of trades"
+                style={{ flex: 1, minWidth: 0, textAlign: "left", cursor: "pointer", background: "var(--elev)", borderRadius: 11, padding: "9px 10px", border: "1px solid " + (showTrades ? "var(--primary)" : "var(--line)") }}>
+                <div style={{ fontSize: 9, color: "var(--primary)", fontWeight: 800, letterSpacing: ".03em", display: "flex", alignItems: "center", gap: 3 }}>
+                  TRADES <ChevronDown size={9} style={{ transform: showTrades ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
+                </div>
+                <div className="mono" style={{ fontWeight: 800, fontSize: 13.5, marginTop: 3, color: "var(--ink)", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 3 }}>{stats.trades}</div>
+              </button>
+              <Stat k="RETURN" v={pct(stats.retPct, 1)} c={chgColor(stats.retPct)} />
+              <Stat k="MAX DD" v={stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmt(stats.maxDD, market) : fmt(0, market)) : "—"} c={stats.maxDD > 0 ? "var(--down)" : "var(--muted)"} />
+            </div>
+            <CardTradeLog tradeList={stats.tradeList} market={market} open={showTrades} />
+          </>
         ) : null}
 
       <DeploySizeField market={market} value={size} onChange={setSize} />
