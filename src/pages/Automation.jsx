@@ -1581,7 +1581,7 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits, onCreateCop
             {/* View filter — All shows every result, Apply shows only strategies that already exist for
                the symbol, Create shows only the ones that don't. */}
             <div style={{ display: "inline-flex", gap: 2, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: 2, marginBottom: 8 }}>
-              {[["all", `All · ${good.length}`], ["apply", `Apply · ${good.filter(existsForSym).length}`], ["create", `Create · ${good.filter((r) => !existsForSym(r)).length}`]].map(([k, lbl]) => (
+              {[["all", `All · ${good.length}`], ["apply", `Existing · ${good.filter(existsForSym).length}`], ["create", `Create · ${good.filter((r) => !existsForSym(r)).length}`]].map(([k, lbl]) => (
                 <button key={k} onClick={() => setView(k)} className="tap" style={{ border: "none", background: view === k ? "#7C3AED" : "transparent", color: view === k ? "#fff" : "var(--muted)", borderRadius: 8, padding: "5px 12px", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>{lbl}</button>
               ))}
             </div>
@@ -1721,7 +1721,7 @@ function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators, onCre
             {/* View filter — All shows every result, Apply shows only strategies that already exist for
                the symbol, Create shows only the ones that don't. CTA appears only under Apply / Create. */}
             <div style={{ display: "inline-flex", gap: 2, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: 2, marginBottom: 8 }}>
-              {[["all", `All · ${good.length}`], ["apply", `Apply · ${good.filter(existsForSym).length}`], ["create", `Create · ${good.filter((r) => !existsForSym(r)).length}`]].map(([k, lbl]) => (
+              {[["all", `All · ${good.length}`], ["apply", `Existing · ${good.filter(existsForSym).length}`], ["create", `Create · ${good.filter((r) => !existsForSym(r)).length}`]].map(([k, lbl]) => (
                 <button key={k} onClick={() => setView(k)} className="tap" style={{ border: "none", background: view === k ? "#0EA5E9" : "transparent", color: view === k ? "#fff" : "var(--muted)", borderRadius: 8, padding: "5px 12px", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>{lbl}</button>
               ))}
             </div>
@@ -2741,6 +2741,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const publicByOptions = useMemo(() => Array.from(new Set(publicList.map((s) => s.owner_name).filter(Boolean))), [publicList]);
   const publicSymOptions = useMemo(() => Array.from(new Set(publicList.flatMap((s) => s.symbols || []))), [publicList]);
   const [activeTab, setActiveTab] = useState("active"); // active | inactive (inside My strategies)
+  const [stratSymFilter, setStratSymFilter] = useState([]);   // symbol multi-select for the buckets ([] = All)
   const stratsRef = useRef(null);
   const sampleStrats = perf.filter(({ s }) => s.by === "Matrix" && !s.premium);
   // Premium strategies are shown in EVERY market (not market-filtered) and are locked:
@@ -2755,23 +2756,32 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   /* A strategy belongs to the market of the symbol it's deployed on. So a crypto strategy
      doesn't show under US. Strategies with no symbol yet appear in every market. */
   const stratInMarket = (s) => { const sy = (s.symbols || [])[0]; return !sy || marketOf(sy) === market; };
+  // The Backtest optimiser considers EVERY strategy the user has for this market — premium, samples,
+  // mine and copies (premium show in all markets, everything else is market-scoped). That's why the
+  // "Existing" view can recognise the user's own BTC strategies, not only the premium catalogue.
+  const allBucketStrats = strats.filter((s) => s.premium || stratInMarket(s));
   // "Mine" = ONLY strategies this user BUILT (not samples, premium, others' public, or copies of premium).
   const mineOwn      = perf.filter(({ s }) => s.by === creator && !s.copy && stratInMarket(s));
   const myStrats     = mineOwn;
   // "My Copies" = the user's copies of Premium strategies — rules hidden, name/symbol/tf/SL/TP editable.
   const myCopies     = perf.filter(({ s }) => s.copy && stratInMarket(s));
-  // Long/Short groups per tab.
-  const sampleLong = longOf(sampleStrats, perfSel), sampleShort = shortOf(sampleStrats, perfSel);
-  const premiumLong = longOf(premiumStrats), premiumShort = shortOf(premiumStrats);
-  const mineLong = longOf(mineOwn, perfSel), mineShort = shortOf(mineOwn, perfSel);
-  const copiesLong = longOf(myCopies, perfSel), copiesShort = shortOf(myCopies, perfSel);
+  // SYMBOL FILTER — a multi-select over every symbol used by this market's strategies. [] = All.
+  // Applied to every bucket below (Deployed / Samples / Premium / Mine / Copies) so the user can narrow
+  // each list to one or more symbols. `symOk` accepts either a raw strategy or a { s } perf item.
+  const availSyms = [...new Set(allBucketStrats.flatMap((s) => s.symbols || []))].filter((x) => marketOf(x) === market).sort();
+  const symOk = (x) => { const s = (x && x.s) ? x.s : x; return !stratSymFilter.length || (s.symbols || []).some((y) => stratSymFilter.includes(y)); };
+  // Long/Short groups per tab (symbol-filtered).
+  const sampleLong = longOf(sampleStrats, perfSel).filter(symOk), sampleShort = shortOf(sampleStrats, perfSel).filter(symOk);
+  const premiumLong = longOf(premiumStrats).filter(symOk), premiumShort = shortOf(premiumStrats).filter(symOk);
+  const mineLong = longOf(mineOwn, perfSel).filter(symOk), mineShort = shortOf(mineOwn, perfSel).filter(symOk);
+  const copiesLong = longOf(myCopies, perfSel).filter(symOk), copiesShort = shortOf(myCopies, perfSel).filter(symOk);
   const emptyNote = { fontSize: 11.5, color: "var(--muted)", margin: "2px 2px 6px" };
   /* "Deployed" spans EVERY type (Mine, Premium, Sample, Public), split into Active
      (running now) and Inactive, each shown with its type + state tag — market-filtered.
      Every active/armed strategy shows here (including a just-activated premium that hasn't
      traded yet); the "Live" section separately shows only those holding a position. */
-  const deployedActive   = strats.filter((s) => s.active && stratInMarket(s)).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
-  const deployedInactive = strats.filter((s) => !s.active && stratInMarket(s)).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
+  const deployedActive   = strats.filter((s) => s.active && stratInMarket(s) && symOk(s)).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
+  const deployedInactive = strats.filter((s) => !s.active && stratInMarket(s) && symOk(s)).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
   const myActive     = deployedActive;
   const myInactive   = deployedInactive;
   const byOptions = ["All", "Matrix", "You", "Community"];
@@ -3378,7 +3388,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
 
       {topTab === "backtest" && (
         <div style={{ marginTop: 16 }}>
-          <BacktestPanel strats={premiumStrats} market={market} onApplyExits={(id, sl, tp) => setStrats((p) => p.map((s) => s.id === id ? { ...s, cfg: { ...(s.cfg || {}), sl, tp } } : s))} onApplyIndicators={(id, defs, tf) => persistCard(id, { defs, tf })} onCreateCopy={createCopyForSymbol} copyExists={(strat, sym) => strats.some((x) => x.name === copyNameFor(strat, sym))} />
+          <BacktestPanel strats={allBucketStrats} market={market} onApplyExits={(id, sl, tp) => setStrats((p) => p.map((s) => s.id === id ? { ...s, cfg: { ...(s.cfg || {}), sl, tp } } : s))} onApplyIndicators={(id, defs, tf) => persistCard(id, { defs, tf })} onCreateCopy={createCopyForSymbol} copyExists={(strat, sym) => strats.some((x) => x.name === copyNameFor(strat, sym))} />
         </div>
       )}
 
@@ -3390,8 +3400,16 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         ))}
       </div>
 
+      {/* Symbol filter — narrows the visible cards in this bucket to one or more symbols (default All).
+         Backtest has its own symbol control; Public has its own filter row, so skip both here. */}
+      {stratTab !== "backtest" && stratTab !== "public" && availSyms.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <MultiSelect label="Symbols" options={availSyms} value={stratSymFilter} onChange={setStratSymFilter} allLabel="All symbols" />
+        </div>
+      )}
+
       {stratTab === "backtest" ? (
-        <BacktestPanel strats={premiumStrats} market={market} onApplyExits={(id, sl, tp) => setStrats((p) => p.map((s) => s.id === id ? { ...s, cfg: { ...(s.cfg || {}), sl, tp } } : s))} onApplyIndicators={(id, defs, tf) => persistCard(id, { defs, tf })} onCreateCopy={createCopyForSymbol} copyExists={(strat, sym) => strats.some((x) => x.name === copyNameFor(strat, sym))} />
+        <BacktestPanel strats={allBucketStrats} market={market} onApplyExits={(id, sl, tp) => setStrats((p) => p.map((s) => s.id === id ? { ...s, cfg: { ...(s.cfg || {}), sl, tp } } : s))} onApplyIndicators={(id, defs, tf) => persistCard(id, { defs, tf })} onCreateCopy={createCopyForSymbol} copyExists={(strat, sym) => strats.some((x) => x.name === copyNameFor(strat, sym))} />
       ) : stratTab === "sample" ? (
         (() => {
           const renderS = ({ s }) => <SampleStrategyCard key={s.id} s={s} market={market} onActivate={useTemplateStrategy} onClone={cloneStrategy} onEdit={isAdmin ? loadForEdit : undefined} onPersist={persistCard} canBacktest={canBacktest} onConnect={onConnectBroker} />;
