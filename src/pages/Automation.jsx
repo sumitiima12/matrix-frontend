@@ -1540,10 +1540,17 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits, onCreateCop
   const allOn = good.length > 0 && good.every((r) => sel.has(r.j.key));
   const toggleAll = () => setSel(allOn ? new Set() : new Set(good.map((r) => r.j.key)));
   const chosen = good.filter((r) => sel.has(r.j.key));
-  // Apply the optimised SL/TP to every TICKED strategy (writes back to the existing strategy).
-  const applySelected = () => { chosen.forEach((r) => onApplyExits && onApplyExits(r.j.strat.id, r.best.sl, r.best.tp)); setApplied(true); };
-  // Create a new copy (under Strategies ▸ My Copies) for every ticked row that isn't already saved.
-  const createSelected = () => { chosen.forEach((r) => { if (!(copyExists && copyExists(r.j.strat, r.j.sym))) onCreateCopy && onCreateCopy(r.j.strat, r.j.sym); }); };
+  // A row "exists for this symbol" if the strategy already runs on it OR a copy was already saved for
+  // it. APPLY only makes sense for those (there's a live strategy to write the SL/TP onto); CREATE only
+  // makes sense for the rest (there's nothing yet, so we make a copy). So the two actions target
+  // disjoint subsets and each shows its own honest count — not the whole 56.
+  const existsForSym = (r) => stratRunsOnSym(r.j.strat, r.j.sym) || (copyExists && copyExists(r.j.strat, r.j.sym));
+  const chosenExisting = chosen.filter(existsForSym);       // Apply targets these
+  const chosenMissing = chosen.filter((r) => !existsForSym(r));   // Create targets these
+  // Apply the optimised SL/TP only to ticked strategies that ALREADY exist for this symbol.
+  const applySelected = () => { chosenExisting.forEach((r) => onApplyExits && onApplyExits(r.j.strat.id, r.best.sl, r.best.tp)); setApplied(true); };
+  // Create a new copy only for ticked rows that DON'T yet exist for this symbol.
+  const createSelected = () => { chosenMissing.forEach((r) => onCreateCopy && onCreateCopy(r.j.strat, r.j.sym)); };
   const sepL = { borderLeft: "2px solid var(--muted)" };
   const th = { fontSize: 8.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", padding: "6px 6px", textAlign: "center", whiteSpace: "nowrap" };
   const td = { fontSize: 11, fontWeight: 700, padding: "7px 6px", textAlign: "center", borderTop: "1px solid var(--line)", whiteSpace: "nowrap" };
@@ -1570,9 +1577,9 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits, onCreateCop
         : <div style={{ marginTop: 10 }}>
             {/* Bulk actions on the TICKED rows — apply the ideal SL/TP to existing strategies, or create copies. */}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
-              <span style={{ fontSize: 10, fontWeight: 800, color: "var(--muted)" }}>{chosen.length} selected</span>
-              {onApplyExits && <button onClick={applySelected} disabled={!chosen.length || applied} className="tap" style={{ border: "none", background: applied ? "var(--up)" : "#7C3AED", color: "#fff", borderRadius: 9, padding: "7px 12px", fontSize: 11, fontWeight: 800, opacity: (!chosen.length || applied) ? 0.5 : 1 }}>{applied ? "✓ Applied" : `Apply SL & TP to ${chosen.length}`}</button>}
-              {onCreateCopy && <button onClick={createSelected} disabled={!chosen.length} className="tap disp" style={{ border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 9, padding: "7px 12px", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 5, opacity: !chosen.length ? 0.5 : 1 }}><Plus size={13} /> Create {chosen.length} as copies</button>}
+              <span style={{ fontSize: 10, fontWeight: 800, color: "var(--muted)" }}>{chosenExisting.length} existing · {chosenMissing.length} new</span>
+              {onApplyExits && <button onClick={applySelected} disabled={!chosenExisting.length || applied} className="tap" title={`Apply the optimised SL/TP to ${chosenExisting.length} strategy(ies) that already exist for ${sym}`} style={{ border: "none", background: applied ? "var(--up)" : "#7C3AED", color: "#fff", borderRadius: 9, padding: "7px 12px", fontSize: 11, fontWeight: 800, opacity: (!chosenExisting.length || applied) ? 0.5 : 1 }}>{applied ? "✓ Applied" : `Apply Now · ${chosenExisting.length}`}</button>}
+              {onCreateCopy && <button onClick={createSelected} disabled={!chosenMissing.length} className="tap disp" title={`Create ${chosenMissing.length} new copy(ies) for ${sym} that don't exist yet`} style={{ border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 9, padding: "7px 12px", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 5, opacity: !chosenMissing.length ? 0.5 : 1 }}><Plus size={13} /> Create Now · {chosenMissing.length}</button>}
             </div>
             <div style={{ overflowX: "auto" }}>
               <table style={{ borderCollapse: "collapse", minWidth: 780, width: "100%" }}>
@@ -1593,17 +1600,15 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits, onCreateCop
                 </thead>
                 <tbody>
                   {good.map((r) => {
-                    const onSym = stratRunsOnSym(r.j.strat, r.j.sym);
+                    const exists = existsForSym(r);
                     return (
                     <tr key={r.j.key}>
                       <td style={{ ...td, textAlign: "center" }}><input type="checkbox" checked={sel.has(r.j.key)} onChange={() => toggle(r.j.key)} style={{ accentColor: "#7C3AED", width: 14, height: 14 }} /></td>
                       <td style={{ ...td, textAlign: "left", fontWeight: 800 }}>
                         {r.j.name}
-                        {onSym
-                          ? <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "#7C3AED", background: "var(--primary-soft)", borderRadius: 999, padding: "1px 6px", verticalAlign: "middle" }}>ON {r.j.sym}</span>
-                          : (copyExists && copyExists(r.j.strat, r.j.sym))
-                              ? <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "var(--muted)", verticalAlign: "middle" }}>saved</span>
-                              : <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "var(--muted)", verticalAlign: "middle" }}>· {r.j.sym}</span>}
+                        {exists
+                          ? <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "var(--up)", background: "rgba(34,197,94,.12)", borderRadius: 999, padding: "1px 6px", verticalAlign: "middle" }}>EXISTS · {r.j.sym}</span>
+                          : <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "var(--muted)", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 999, padding: "1px 6px", verticalAlign: "middle" }}>NEW · {r.j.sym}</span>}
                       </td>
                       <td style={{ ...td, ...sepL, color: "var(--down)", fontWeight: 800 }}>{r.best.sl}%</td>
                       <td style={{ ...td, color: "var(--up)", fontWeight: 800 }}>{r.best.tp}%</td>
@@ -1615,7 +1620,7 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits, onCreateCop
                 </tbody>
               </table>
             </div>
-            <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 6, fontStyle: "italic" }}>Tick rows, then Apply (writes SL/TP onto the existing strategy) or Create (saves a copy). Optimum = ideal SL/TP · Earlier = current · Now = at the optimum. Backtested, not a guarantee.</div>
+            <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 6, fontStyle: "italic" }}>Green EXISTS rows already run on {sym} — Apply Now writes the SL/TP onto them. Grey NEW rows don't exist yet — Create Now saves them as copies. Optimum = ideal SL/TP · Earlier = current · Now = at the optimum. Backtested, not a guarantee.</div>
           </div>)}
     </div>
   );
@@ -1666,9 +1671,14 @@ function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators, onCre
   const allOn = good.length > 0 && good.every((r) => sel.has(r.j.key));
   const toggleAll = () => setSel(allOn ? new Set() : new Set(good.map((r) => r.j.key)));
   const chosen = good.filter((r) => sel.has(r.j.key));
-  // Apply the tuned indicators (lengths + tf) to every TICKED strategy.
-  const applySelected = () => { chosen.forEach((r) => onApplyIndicators && onApplyIndicators(r.j.strat.id, r.best.defs, r.best.tf)); setApplied(true); };
-  const createSelected = () => { chosen.forEach((r) => { if (!(copyExists && copyExists(r.j.strat, r.j.sym))) onCreateCopy && onCreateCopy(r.j.strat, r.j.sym); }); };
+  // Apply targets strategies that ALREADY exist for this symbol; Create targets the rest (see the
+  // SL/TP optimiser for the full rationale) — so each action shows its own honest count.
+  const existsForSym = (r) => stratRunsOnSym(r.j.strat, r.j.sym) || (copyExists && copyExists(r.j.strat, r.j.sym));
+  const chosenExisting = chosen.filter(existsForSym);
+  const chosenMissing = chosen.filter((r) => !existsForSym(r));
+  // Apply the tuned indicators (lengths + tf) only to ticked strategies that already exist for the symbol.
+  const applySelected = () => { chosenExisting.forEach((r) => onApplyIndicators && onApplyIndicators(r.j.strat.id, r.best.defs, r.best.tf)); setApplied(true); };
+  const createSelected = () => { chosenMissing.forEach((r) => onCreateCopy && onCreateCopy(r.j.strat, r.j.sym)); };
   const sepL = { borderLeft: "2px solid var(--muted)" };
   const th = { fontSize: 8.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", padding: "6px 6px", textAlign: "center", whiteSpace: "nowrap" };
   const td = { fontSize: 11, fontWeight: 700, padding: "7px 6px", textAlign: "center", borderTop: "1px solid var(--line)", whiteSpace: "nowrap" };
@@ -1697,9 +1707,9 @@ function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators, onCre
         : <div style={{ marginTop: 10 }}>
             {/* Bulk actions on the TICKED rows — apply the tuned indicators to existing strategies, or create copies. */}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
-              <span style={{ fontSize: 10, fontWeight: 800, color: "var(--muted)" }}>{chosen.length} selected</span>
-              {onApplyIndicators && <button onClick={applySelected} disabled={!chosen.length || applied} className="tap" style={{ border: "none", background: applied ? "var(--up)" : "#0EA5E9", color: "#fff", borderRadius: 9, padding: "7px 12px", fontSize: 11, fontWeight: 800, opacity: (!chosen.length || applied) ? 0.5 : 1 }}>{applied ? "✓ Applied" : `Apply indicators to ${chosen.length}`}</button>}
-              {onCreateCopy && <button onClick={createSelected} disabled={!chosen.length} className="tap disp" style={{ border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 9, padding: "7px 12px", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 5, opacity: !chosen.length ? 0.5 : 1 }}><Plus size={13} /> Create {chosen.length} as copies</button>}
+              <span style={{ fontSize: 10, fontWeight: 800, color: "var(--muted)" }}>{chosenExisting.length} existing · {chosenMissing.length} new</span>
+              {onApplyIndicators && <button onClick={applySelected} disabled={!chosenExisting.length || applied} className="tap" title={`Apply the tuned indicators to ${chosenExisting.length} strategy(ies) that already exist for ${sym}`} style={{ border: "none", background: applied ? "var(--up)" : "#0EA5E9", color: "#fff", borderRadius: 9, padding: "7px 12px", fontSize: 11, fontWeight: 800, opacity: (!chosenExisting.length || applied) ? 0.5 : 1 }}>{applied ? "✓ Applied" : `Apply Now · ${chosenExisting.length}`}</button>}
+              {onCreateCopy && <button onClick={createSelected} disabled={!chosenMissing.length} className="tap disp" title={`Create ${chosenMissing.length} new copy(ies) for ${sym} that don't exist yet`} style={{ border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 9, padding: "7px 12px", fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 5, opacity: !chosenMissing.length ? 0.5 : 1 }}><Plus size={13} /> Create Now · {chosenMissing.length}</button>}
             </div>
             <div style={{ overflowX: "auto" }}>
               <table style={{ borderCollapse: "collapse", minWidth: 740, width: "100%" }}>
@@ -1718,17 +1728,15 @@ function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators, onCre
                 </thead>
                 <tbody>
                   {good.map((r) => {
-                    const onSym = stratRunsOnSym(r.j.strat, r.j.sym);
+                    const exists = existsForSym(r);
                     return (
                     <tr key={r.j.key}>
                       <td style={{ ...td, textAlign: "center" }}><input type="checkbox" checked={sel.has(r.j.key)} onChange={() => toggle(r.j.key)} style={{ accentColor: "#0EA5E9", width: 14, height: 14 }} /></td>
                       <td style={{ ...td, textAlign: "left", fontWeight: 800 }}>
                         {r.j.name}
-                        {onSym
-                          ? <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "#0EA5E9", background: "var(--primary-soft)", borderRadius: 999, padding: "1px 6px", verticalAlign: "middle" }}>ON {r.j.sym}</span>
-                          : (copyExists && copyExists(r.j.strat, r.j.sym))
-                              ? <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "var(--muted)", verticalAlign: "middle" }}>saved</span>
-                              : <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "var(--muted)", verticalAlign: "middle" }}>· {r.j.sym}</span>}
+                        {exists
+                          ? <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "var(--up)", background: "rgba(34,197,94,.12)", borderRadius: 999, padding: "1px 6px", verticalAlign: "middle" }}>EXISTS · {r.j.sym}</span>
+                          : <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 800, color: "var(--muted)", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 999, padding: "1px 6px", verticalAlign: "middle" }}>NEW · {r.j.sym}</span>}
                       </td>
                       <td style={{ ...td, ...sepL, textAlign: "left", whiteSpace: "normal", maxWidth: 220, fontWeight: 600, color: "var(--muted)", fontSize: 9.5 }}>{(r.changes && r.changes.length) ? r.changes.map((c) => `${c.name}: ${c.fromLen ?? "—"}@${c.fromTf}→${c.toLen}@${c.toTf}`).join(" · ") : `unchanged @ ${r.best.tf}`}</td>
                       {mCells(r.current, "e")}
@@ -1739,7 +1747,7 @@ function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators, onCre
                 </tbody>
               </table>
             </div>
-            <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 6, fontStyle: "italic" }}>Tick rows, then Apply (writes tuned lengths + tf onto the existing strategy) or Create (saves a copy). Earlier = current · Now = tuned (SL/TP held fixed). Backtested, not a guarantee.</div>
+            <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 6, fontStyle: "italic" }}>Green EXISTS rows already run on {sym} — Apply Now writes the tuned lengths + tf onto them. Grey NEW rows don't exist yet — Create Now saves them as copies. Earlier = current · Now = tuned (SL/TP held fixed). Backtested, not a guarantee.</div>
           </div>)}
     </div>
   );
