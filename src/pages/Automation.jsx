@@ -1540,7 +1540,10 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits, onCreateCop
   // A row "exists for this symbol" if the strategy already runs on it OR a copy was already saved for
   // it. APPLY only makes sense for those (there's a live strategy to write the SL/TP onto); CREATE only
   // makes sense for the rest (there's nothing yet, so we make a copy).
-  const existsForSym = (r) => stratRunsOnSym(r.j.strat, r.j.sym) || (copyExists && copyExists(r.j.strat, r.j.sym));
+  // STRICT: a strategy "exists for this symbol" only if the symbol is genuinely in its symbols list (or
+  // a copy was saved for it). We deliberately do NOT use stratRunsOnSym here — its "no symbol → matches
+  // everything" fallback wrongly tagged symbol-less / other-symbol strategies as EXISTS on BTC.
+  const existsForSym = (r) => ((r.j.strat.symbols || []).includes(r.j.sym)) || (copyExists && copyExists(r.j.strat, r.j.sym));
   // The All / Apply / Create tabs filter which rows the table shows: Apply = existing only, Create =
   // new only, All = everything.
   const visible = view === "apply" ? good.filter(existsForSym) : view === "create" ? good.filter((r) => !existsForSym(r)) : good;
@@ -1681,7 +1684,10 @@ function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators, onCre
   const good = (rows || []).filter((r) => r.best);
   // Apply targets strategies that ALREADY exist for this symbol; Create targets the rest (see the
   // SL/TP optimiser for the full rationale) — so each action shows its own honest count.
-  const existsForSym = (r) => stratRunsOnSym(r.j.strat, r.j.sym) || (copyExists && copyExists(r.j.strat, r.j.sym));
+  // STRICT: a strategy "exists for this symbol" only if the symbol is genuinely in its symbols list (or
+  // a copy was saved for it). We deliberately do NOT use stratRunsOnSym here — its "no symbol → matches
+  // everything" fallback wrongly tagged symbol-less / other-symbol strategies as EXISTS on BTC.
+  const existsForSym = (r) => ((r.j.strat.symbols || []).includes(r.j.sym)) || (copyExists && copyExists(r.j.strat, r.j.sym));
   const visible = view === "apply" ? good.filter(existsForSym) : view === "create" ? good.filter((r) => !existsForSym(r)) : good;
   const toggle = (k) => setSel((p) => { const n = new Set(p); n.has(k) ? n.delete(k) : n.add(k); return n; });
   const allOn = visible.length > 0 && visible.every((r) => sel.has(r.j.key));
