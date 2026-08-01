@@ -278,7 +278,7 @@ function LiveNewsStrip({ symbols = [], onOpen, onBuy, list = [], market = "IN" }
                 flex: "0 0 auto", padding: "5px 11px", fontSize: 11, fontWeight: 700, cursor: "pointer",
                 border: "1px solid " + (tag === t ? (TAG_COLOR[t] || "var(--primary)") : "var(--line)"),
                 background: tag === t ? (TAG_COLOR[t] || "var(--primary)") : "var(--surface)",
-                color: tag === t ? "#fff" : "var(--ink)",
+                color: tag === t ? "var(--on-primary)" : "var(--ink)",
               }}
             >
               {t}

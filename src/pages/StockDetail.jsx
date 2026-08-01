@@ -398,7 +398,7 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
                   flex: "0 0 auto", padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer",
                   border: "1px solid " + (strengthTf === t ? "var(--primary)" : "var(--line)"),
                   background: strengthTf === t ? "var(--primary)" : "var(--surface)",
-                  color: strengthTf === t ? "#fff" : "var(--ink)",
+                  color: strengthTf === t ? "var(--on-primary)" : "var(--ink)",
                 }}
               >
                 {t}

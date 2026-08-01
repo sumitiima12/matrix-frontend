@@ -110,7 +110,7 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
                   flex: 1, padding: "9px 0", borderRadius: 10, fontSize: 12.5, fontWeight: 800, cursor: "pointer",
                   border: "1px solid " + (instrument === k ? "var(--primary)" : "var(--line)"),
                   background: instrument === k ? "var(--primary)" : "var(--surface)",
-                  color: instrument === k ? "#fff" : "var(--ink)",
+                  color: instrument === k ? "var(--on-primary)" : "var(--ink)",
                 }}
               >
                 {l}

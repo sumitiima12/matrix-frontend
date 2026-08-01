@@ -45,7 +45,7 @@ export default function OptionPicker({ underlying, spot, userId, onPick }) {
     padding: "7px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", borderRadius: 10,
     border: "1px solid " + (on ? "var(--primary)" : "var(--line)"),
     background: on ? "var(--primary)" : "var(--surface)",
-    color: on ? "#fff" : "var(--ink)",
+    color: on ? "var(--on-primary)" : "var(--ink)",
   });
 
   if (loading) {
@@ -150,7 +150,7 @@ export default function OptionPicker({ underlying, spot, userId, onPick }) {
               cursor: on ? "default" : "not-allowed", opacity: on ? 1 : 0.4,
               border: "1px solid " + (on ? "var(--primary)" : "var(--line)"),
               background: on ? "var(--primary)" : "var(--surface)",
-              color: on ? "#fff" : "var(--ink)",
+              color: on ? "var(--on-primary)" : "var(--ink)",
             }}>
             {k}
           </div>

@@ -569,7 +569,7 @@ function SegF({ label, options, value, set, disabled = [] }) {
                 cursor: off ? "not-allowed" : "pointer", opacity: off ? 0.4 : 1,
                 border: "1px solid " + (value === o && !off ? "var(--primary)" : "var(--line)"),
                 background: value === o && !off ? "var(--primary)" : "var(--surface)",
-                color: value === o && !off ? "#fff" : "var(--ink)",
+                color: value === o && !off ? "var(--on-primary)" : "var(--ink)",
               }}
             >
               {o}
@@ -3137,7 +3137,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
               cursor: "pointer",
               border: "1px solid " + (topTab === k ? "var(--primary)" : "var(--line)"),
               background: topTab === k ? "var(--primary)" : "var(--surface)",
-              color: topTab === k ? "#fff" : "var(--ink)",
+              color: topTab === k ? "var(--on-primary)" : "var(--ink)",
             }}
           >
             {label}
