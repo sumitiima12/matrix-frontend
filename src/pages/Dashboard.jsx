@@ -627,7 +627,7 @@ export function marketOpen(market) {
   return true;
 }
 
-export default function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, onAutoBuy, onScreenerBuy, isAdmin = false, mode, watch, toggleWatch, profile, portfolio = [], realPortfolio = [], onRefreshReal, wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [], liveTick = 0, onWhy, autoOnMap: autoOnMapProp, setAutoOnMap: setAutoOnMapProp, deployCapMap: deployCapMapProp, setDeployCapMap: setDeployCapMapProp, hideDash = false }) {
+export default function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, onAutoBuy, onScreenerBuy, isAdmin = false, mode, watch, toggleWatch, profile, portfolio = [], realPortfolio = [], onRefreshReal, wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [], liveTick = 0, onWhy, autoOnMap: autoOnMapProp, setAutoOnMap: setAutoOnMapProp, deployCapMap: deployCapMapProp, setDeployCapMap: setDeployCapMapProp, hideDash = false, onOpenScreener }) {
   const [glMode, setGlMode] = useState("Gainers");
   // Picks refresh ONCE AN HOUR (not on every tick) so they don't churn.
   const [pickHour, setPickHour] = useState(() => Math.floor(Date.now() / 3600000));
@@ -1368,7 +1368,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       {market !== "Commodity" && <StockIdeasStrip onOpen={onOpen} onBuy={onBuy} market={market} liveTick={liveTick} />}
 
       {/* Popular Screeners — 3 live-scanning strategy carousels, market-aware. */}
-      <PopularScreeners market={market} mode={mode} list={list} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} liveTick={liveTick} trades={trades} />
+      <PopularScreeners variant="active" onOpenScreener={onOpenScreener} market={market} mode={mode} list={list} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} liveTick={liveTick} trades={trades} />
 
       {/* F&O Picks (Indian derivatives) */}
 

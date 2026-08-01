@@ -1683,7 +1683,7 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits, onCreateCop
    For EVERY eligible strategy it searches the best indicator lengths + timeframe (≤1h) on the chosen
    symbol, shows Earlier vs Now (win rate / P&L / return) plus the per-indicator change, and applies all
    at once. */
-function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators, onCreateCopy, copyExists, singleStrat, symList }) {
+function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators, onCreateCopy, copyExists, singleStrat, symList, days = 0, qty = null, amount = null, market = "IN" }) {
   const [objective, setObjective] = useState("pnl");
   const [state, setState] = useState({ loading: false, rows: null, ran: false });
   const [applied, setApplied] = useState(false);
@@ -1709,10 +1709,24 @@ function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators, onCre
     if (!jobs.length) { setState({ loading: false, ran: true, rows: [] }); return; }
     setApplied(false);
     setState({ loading: true, rows: null, ran: true });
+    const candleCache = {};   // key `${sym}|${tf}` → candles, so each (symbol, tf) is fetched once
+    const getCandles = async (sy, t) => { const k = sy + "|" + t; if (candleCache[k] === undefined) candleCache[k] = await loadBtCandles(sy, t, days); return candleCache[k]; };
+    const sizing = { qty, amount, market };
     const rows = await Promise.all(jobs.map(async (j) => {
       try {
         const res = await optimizeIndicators({ mode: j.cfg.mode === "metric" ? "metric" : undefined, defs: j.cfg.defs || [], entry: j.cfg.entry, tf, appSyms: [j.sym], currentSl: j.cfg.sl != null ? Number(j.cfg.sl) : null, currentTp: j.cfg.tp != null ? Number(j.cfg.tp) : null, objective: obj, lockTf: (lockTf && lockable) ? tf : null });
-        return { j, best: res && res.best ? res.best : null, current: res ? res.current : null, changes: (res && res.changes) || [] };
+        const best = res && res.best ? res.best : null;
+        // RE-SCORE Earlier (current indicators @ current tf) and Now (tuned indicators @ tuned tf) with
+        // the SAME backtest engine, sizing and period as the results table so the preview lines up.
+        let current = res ? res.current : null, nowM = best;
+        const curCandles = await getCandles(j.sym, tf);
+        if (curCandles && curCandles.length >= 30) { const cur = scoreCfg(j.cfg, curCandles, tf, sizing); if (cur) current = cur; }
+        if (best) {
+          const ntf = best.tf || tf;
+          const nowCandles = await getCandles(j.sym, ntf);
+          if (nowCandles && nowCandles.length >= 30) { const nw = scoreCfg({ ...j.cfg, defs: best.defs || j.cfg.defs, tf: ntf }, nowCandles, ntf, sizing); if (nw) nowM = { ...best, ...nw }; }
+        }
+        return { j, best: nowM, current, changes: (res && res.changes) || [] };
       } catch { return { j, best: null }; }
     }));
     setState({ loading: false, ran: true, rows });
@@ -2099,7 +2113,7 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators,
           )}
           {/* Ideal INDICATORS (lengths + timeframe) for EACH strategy on the selected symbol. */}
           {strats.length > 0 && (
-            <PerSymbolIndicatorOptimizer strats={pickStrats.length ? strats.filter((s) => pickStrats.includes(s.name)) : strats} sym={sym} tf={tf} onApplyIndicators={onApplyIndicators} onCreateCopy={onCreateCopy} copyExists={copyExists} />
+            <PerSymbolIndicatorOptimizer strats={pickStrats.length ? strats.filter((s) => pickStrats.includes(s.name)) : strats} sym={sym} tf={tf} days={days} qty={isCrypto ? null : Number(size)} amount={isCrypto ? Number(size) : null} market={market} onApplyIndicators={onApplyIndicators} onCreateCopy={onCreateCopy} copyExists={copyExists} />
           )}
 
           <button onClick={() => { setResults({}); setRun({ tf, days, sym, names: pickStrats.length ? pickStrats : stratNames, ...sizing() }); }} disabled={!strats.length} className="tap disp" style={{ width: "100%", marginBottom: 12, border: "none", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 800, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", background: strats.length ? "var(--primary)" : "var(--elev)", color: strats.length ? "var(--on-primary)" : "var(--muted)", cursor: strats.length ? "pointer" : "not-allowed" }}>
@@ -2169,7 +2183,7 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators,
             const syms = pSyms.length ? pSyms.slice(0, 8) : symOptions.slice(0, 8);
             return (<>
               <PerSymbolStrategyOptimizer singleStrat={curStrat} symList={syms} sym={syms[0]} tf={pTf} days={pDays} qty={isCrypto ? null : Number(size)} amount={isCrypto ? Number(size) : null} market={market} onApplyExits={onApplyExits} onCreateCopy={onCreateCopy} copyExists={copyExists} />
-              <PerSymbolIndicatorOptimizer singleStrat={curStrat} symList={syms.slice(0, 5)} sym={syms[0]} tf={pTf} onApplyIndicators={onApplyIndicators} onCreateCopy={onCreateCopy} copyExists={copyExists} />
+              <PerSymbolIndicatorOptimizer singleStrat={curStrat} symList={syms.slice(0, 5)} sym={syms[0]} tf={pTf} days={pDays} qty={isCrypto ? null : Number(size)} amount={isCrypto ? Number(size) : null} market={market} onApplyIndicators={onApplyIndicators} onCreateCopy={onCreateCopy} copyExists={copyExists} />
             </>);
           })()}
 

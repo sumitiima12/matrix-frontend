@@ -69,6 +69,7 @@ import MultiSelect from "./components/common/MultiSelect";
 import WatchAddButton from "./components/common/WatchAddButton";
 import ResearchVerdict from "./components/ai/ResearchVerdict";
 import HomeView from "./pages/Dashboard";
+import PopularScreeners from "./components/home/PopularScreeners";
 /* lazyWithRetry — after a new deploy, an already-open tab still holds the OLD index.js, which
    references chunk filenames (PortfolioPage-<hash>.js) that Vercel has since replaced. The
    dynamic import then 404s: "Failed to fetch dynamically imported module." We catch that once
@@ -975,7 +976,7 @@ function AppInner() {
   }, [market, profile]);
 
   // Neo is no longer a bottom-bar tab — it's a floating chatbot button (see below), so the bar has room.
-  const nav = [["home", Home, "Home"], ["ideas", Lightbulb, "Ideas"], ["portfolio", Briefcase, "Portfolio"], ["automation", Bolt, "Auto"], ["orders", Clock, "Orders"], ["watchlist", Star, "Watch"]];
+  const nav = [["home", Home, "Home"], ["ideas", Lightbulb, "Ideas"], ["portfolio", Briefcase, "Portfolio"], ["automation", Bolt, "Auto"], ["screener", SlidersHorizontal, "Screen"], ["orders", Clock, "Orders"], ["watchlist", Star, "Watch"]];
 
   return (
     <BuyGateContext.Provider value={canBuy}>
@@ -1161,10 +1162,11 @@ function AppInner() {
             <DetailPage s={detail} onBack={() => setDetail(null)} watched={watch.includes(detail.sym)} toggleWatch={toggleWatch} onTrade={goTrade} onBuy={buyStock} canBuy={canBuy} />
           ) : (
             <>
-              {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} onAutoBuy={autoBuyNow} onScreenerBuy={screenerBuyNow} isAdmin={effAdmin} mode={mode} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} canBuy={canBuy} hideDash={(market === "IN" || market === "Commodity") && virtualBlocked(market)} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} realPortfolio={realPortfolio} onRefreshReal={() => refreshPortfolio(market)} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} trades={trades} liveTick={liveTick} onWhy={openWhy} autoOnMap={autoOnMap} setAutoOnMap={setAutoOnMap} deployCapMap={deployCapMap} setDeployCapMap={setDeployCapMap} />}
+              {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} onAutoBuy={autoBuyNow} onScreenerBuy={screenerBuyNow} isAdmin={effAdmin} mode={mode} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} canBuy={canBuy} hideDash={(market === "IN" || market === "Commodity") && virtualBlocked(market)} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} realPortfolio={realPortfolio} onRefreshReal={() => refreshPortfolio(market)} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} trades={trades} liveTick={liveTick} onWhy={openWhy} autoOnMap={autoOnMap} setAutoOnMap={setAutoOnMap} deployCapMap={deployCapMap} setDeployCapMap={setDeployCapMap} onOpenScreener={() => { setDetail(null); setTab("screener"); }} />}
               {tab === "trade" && <TradeView walletMap={walletMap} adjustWallet={adjustWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} recordTrade={recordTrade} />}
               {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} canBuy={canBuy} market={market} onWhy={openWhy} me={auth ? (auth.username || null) : null} isAdmin={effAdmin} adminKey={adminKey} signupAt={auth ? (auth.createdAt || null) : null} />}
               {tab === "automation" && <Automation market={market} appMode={mode} onRecord={recordTrade} trades={trades} strats={strats} setStrats={setStrats} onExitAll={exitAllStrategies} onCloseStrategy={exitStrategyPositions} me={auth ? (auth.username || null) : null} isAdmin={effAdmin} userId={userId} brokerFor={brokerFor} adminKey={adminKey} onConnectBroker={() => openBrokers(market)} />}
+              {tab === "screener" && <div style={{ padding: "10px 14px 96px" }}><PopularScreeners variant="full" market={market} mode={mode} list={list} isAdmin={effAdmin} onOpen={openStock} onBuy={buyStock} onAutoBuy={autoBuyNow} onScreenerBuy={screenerBuyNow} liveTick={liveTick} trades={trades} /></div>}
               {tab === "portfolio" && <Portfolio mode={mode} realPortfolio={realPortfolio} realErr={realErr} realLoading={realLoading} onRefreshReal={() => refreshPortfolio(market)} realAvailable={!!brokerFor(market)} userId={userId} brokerName={(brokerFor(market) && brokerFor(market).meta ? brokerFor(market).meta.name : (liveBroker ? liveBroker.name : null))} portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} onBuy={buyStock} canBuy={canBuy} onSell={sellStock} onUpdate={updateHolding} onArmRealExit={armRealExit} priceSnap={priceSnap} onWhy={openWhy} onOpen={openStock} onRemove={(sym) => { setPortfolio((prev) => prev.filter((h) => h.sym !== sym)); setBuyToast({ t: `${sym} removed` }); }} />}
               {tab === "watchlist" && <WatchlistView watchlists={watchlists} activeWl={activeWl} setActiveWl={setActiveWl} createWatchlist={createWatchlist} deleteWatchlist={deleteWatchlist} toggleWatch={toggleWatch} onOpen={openStock} />}
               {tab === "ask" && (

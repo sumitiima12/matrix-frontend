@@ -13,7 +13,7 @@ import MultiSelect from "../common/MultiSelect";
 import ScreenerTradeList from "./ScreenerTradeList";
 import { CondBuilder2, IndicatorDefs, TFS } from "../../pages/Automation";
 import { defOperands } from "../../domain/strategyLang";
-import { Pencil, SlidersHorizontal, Sparkles } from "lucide-react";
+import { Pencil, SlidersHorizontal, Sparkles, ChevronRight } from "lucide-react";
 
 /* THE THREE POPULAR SCREENERS. Each is a real strategy config (indicators + entry chain) evaluated live
    on 5-minute candles by the backend /api/screener-scan. A symbol appears in a carousel only while its
@@ -136,6 +136,13 @@ const SCREENERS = [
   },
 ];
 
+/* Screeners that ship ACTIVE (Auto-Buy on) for a new user — they show under "Active Screeners" on the
+   home page out of the box. The auto-buy toggle's stored value overrides this once the user flips it,
+   so turning one off (or on) is remembered; the default only applies while the key is untouched. */
+const DEFAULT_ACTIVE_KEYS = ["swing-catcher", "bollinger-mean-reversion", "support-resistance"];
+const autoKeyFor = (key, market, short) => `mx_scrauto_${key}_${market}${short ? "_sell" : ""}`;
+const isScreenerActive = (key, market, short) => lsGet(autoKeyFor(key, market, short), DEFAULT_ACTIVE_KEYS.includes(key));
+
 /* Buy (long) vs Sell (short) toggle — mirrors the Automate Samples/Premium toggle. In "Sell"
    mode a Popular screener shorts its matches instead of buying them (same setup, opposite side). */
 function ScreenerDirToggle({ dir, setDir }) {
@@ -160,8 +167,8 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
   const short = side === "SELL";
   const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a ? a.price : null; };
   const [matches, setMatches] = useState([]);
-  const autoKey = `mx_scrauto_${screener.key}_${market}${short ? "_sell" : ""}`;
-  const [autoOn, setAutoOn] = useState(() => lsGet(autoKey, false));
+  const autoKey = autoKeyFor(screener.key, market, short);
+  const [autoOn, setAutoOn] = useState(() => lsGet(autoKey, DEFAULT_ACTIVE_KEYS.includes(screener.key)));
   const [period, setPeriod] = useState("today");
   const [showTrades, setShowTrades] = useState(false);   // expandable List of Trades (tap the P&L)
   // Capital-deployed is PER SCREENER (keyed by screener.key + market + side), not one shared value —
@@ -220,6 +227,9 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
   const [winMin, setWinMin] = useState(() => lsGet(critKey + "_w", 50));
   const [retMin, setRetMin] = useState(() => lsGet(critKey + "_r", 10));
   const [autoSel, setAutoSel] = useState({ running: false, done: false, n: 0, total: 0, kept: 0, win: 50, ret: 10 });
+  // Inline symbol basket editor (available to everyone, via the pencil on the card).
+  const [symEdit, setSymEdit] = useState(false);
+  const setSelSyms = (v) => { const next = { ...(ovr || {}), selSyms: v, selNone: false }; setOvr(next); lsSet(EDK, next); };
   const runAutoSelect = async () => {
     const syms = (UNIVERSE[market] || []).map((s) => s.sym);
     if (!syms.length || autoSel.running) return;
@@ -257,7 +267,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
     // None (auto-select found nothing) → scan no symbols. Else curated basket if set, else the market.
     const syms = eNone ? [] : (eSel.length ? eSel : (UNIVERSE[market] || []).map((s) => s.sym).slice(0, 40));
     setCapital(lsGet(capKey, capDefault(market)));
-    setAutoOn(lsGet(autoKey, false));
+    setAutoOn(lsGet(autoKey, DEFAULT_ACTIVE_KEYS.includes(screener.key)));
     if (!syms.length) { setMatches([]); return undefined; }
     let h = 0; for (let i = 0; i < cfgSig.length; i++) h = (h * 31 + cfgSig.charCodeAt(i)) | 0;
     scanScreener({ key: `${screener.key}:${(h >>> 0).toString(36)}`, defs: eDefs, entry: eEntry, tf: eTf, appSyms: syms })
@@ -354,7 +364,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           <label className="tap" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, fontWeight: 800, color: "var(--ink)" }}>
-            <span onClick={() => { const v = !autoOn; setAutoOn(v); lsSet(`mx_scrauto_${screener.key}_${market}`, v); }} style={{ width: 36, height: 21, borderRadius: 999, background: autoOn ? "#22C55E" : "var(--line)", position: "relative", flexShrink: 0, transition: "background .2s" }}>
+            <span onClick={() => { const v = !autoOn; setAutoOn(v); lsSet(autoKey, v); }} style={{ width: 36, height: 21, borderRadius: 999, background: autoOn ? "#22C55E" : "var(--line)", position: "relative", flexShrink: 0, transition: "background .2s" }}>
               <span style={{ position: "absolute", top: 2, left: autoOn ? 17 : 2, width: 17, height: 17, borderRadius: 999, background: "#fff", transition: "left .2s" }} />
             </span>
             Auto-Buy
@@ -394,6 +404,19 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
           {autoSel.kept > 0
             ? `Kept ${autoSel.kept} of ${autoSel.total} symbols (win rate > ${autoSel.win}% and return > ${autoSel.ret}% on ${eTf} backtest).`
             : `No symbols met win rate > ${autoSel.win}% and return > ${autoSel.ret}% — selected None. Lower the thresholds and re-run, or tap Clear to scan the whole market.`}
+        </div>
+      )}
+
+      {/* Selected-symbols count + pencil to edit the basket by hand (available to everyone). */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+        <span style={{ fontSize: 10.5, fontWeight: 800, color: "var(--muted)" }}>Symbols: <span style={{ color: "var(--ink)" }}>{eNone ? "None selected" : eSel.length ? `${eSel.length} selected` : "Whole market"}</span></span>
+        <button onClick={() => setSymEdit((v) => !v)} className="tap" title="Edit selected symbols" style={{ border: "1px solid var(--line)", background: symEdit ? "var(--primary-soft)" : "transparent", borderRadius: 8, padding: "3px 8px", display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+          <Pencil size={12} color={symEdit ? "var(--primary)" : "var(--muted)"} /> <span style={{ fontSize: 10, fontWeight: 800, color: symEdit ? "var(--primary)" : "var(--muted)" }}>Edit</span>
+        </button>
+      </div>
+      {symEdit && (
+        <div style={{ marginTop: 8 }}>
+          <MultiSelect label="Symbols" options={(UNIVERSE[market] || []).map((s) => s.sym)} value={eSel} onChange={setSelSyms} allLabel="Whole market" />
         </div>
       )}
 
@@ -549,13 +572,33 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
   );
 }
 
-export default function PopularScreeners({ market, mode = "virtual", list = [], isAdmin = false, onOpen, onBuy, onAutoBuy, onScreenerBuy, liveTick = 0, trades = [] }) {
-  const [tab, setTab] = useState("custom");   // "custom" | "popular" | "mine" — Build-a-screener is the default
+export default function PopularScreeners({ market, mode = "virtual", list = [], isAdmin = false, onOpen, onBuy, onAutoBuy, onScreenerBuy, liveTick = 0, trades = [], variant = "full", onOpenScreener }) {
+  const [tab, setTab] = useState(variant === "active" ? "popular" : "custom");   // full page defaults to Build-a-screener
   const [dir, setDir] = useState("buy");   // Buy (long) | Sell (short) for Popular Screeners
   const [editing, setEditing] = useState(null);   // a saved screener loaded into the builder for editing
   // Not for Commodity (thin universe / no 5m intraday screening there).
   if (market === "Commodity") return null;
   const startEdit = (scr) => { setEditing(scr); setTab("custom"); };
+
+  /* HOMEPAGE variant — only the ACTIVE screeners (Auto-Buy on), compact, with a link to the full
+     Screener tab. Active = the auto-buy toggle is on; 3 ship active for new users. */
+  if (variant === "active") {
+    const activeScreeners = SCREENERS.filter((s) => isScreenerActive(s.key, market, false));
+    return (
+      <Section title="Active Screeners" icon={<SlidersHorizontal size={17} color="var(--primary)" />}>
+        {activeScreeners.length === 0
+          ? <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.5, padding: "4px 2px 10px" }}>No active screeners yet. Open the Screener tab to browse and activate them.</div>
+          : activeScreeners.map((s) => (
+              <ScreenerRow key={s.key} screener={s} market={market} mode={mode} trades={trades} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} liveTick={liveTick} side="BUY" />
+            ))}
+        {onOpenScreener && (
+          <button onClick={onOpenScreener} className="tap disp" style={{ marginTop: 10, width: "100%", border: "1px solid var(--line)", background: "var(--surface)", color: "var(--primary)", borderRadius: 11, padding: "10px 12px", fontWeight: 800, fontSize: 12.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            Open Screener <ChevronRight size={15} />
+          </button>
+        )}
+      </Section>
+    );
+  }
   return (
     <Section title="Screener" icon={<SlidersHorizontal size={17} color="var(--primary)" />}>
       {/* Build a screener | Popular Screeners | My Screeners */}
