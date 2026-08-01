@@ -254,8 +254,11 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
       const cur = priceSnap[h.sym] != null ? priceSnap[h.sym] : h.buy;   // frozen until next buy/sell
       // SHORT positions profit when price FALLS, so their P&L is the inverse of a long's.
       const dir = (h.side === "SELL" || h.short) ? -1 : 1;
-      const inv = h.buy * h.qty, val = cur * h.qty;
-      const pl = dir * (val - inv), plp = dir * (cur / h.buy - 1) * 100;
+      const inv = h.buy * h.qty;
+      const pl = dir * (cur * h.qty - inv), plp = dir * (cur / h.buy - 1) * 100;
+      // Equity value: for a long this equals cur*qty; for a short it's mirrored so `val - inv` always
+      // equals the direction-aware P&L — that keeps the portfolio TOTAL (Σval − Σinv) correct with shorts.
+      const val = inv + pl;
       const days = Math.max(1, Math.round((Date.now() - h.date) / 86400000)) || 1;
       return { ...h, m, cur, inv, val, pl, plp, days, short: dir < 0 };
     });
