@@ -976,7 +976,7 @@ function AppInner() {
   }, [market, profile]);
 
   // Neo is no longer a bottom-bar tab — it's a floating chatbot button (see below), so the bar has room.
-  const nav = [["home", Home, "Home"], ["ideas", Lightbulb, "Ideas"], ["portfolio", Briefcase, "Portfolio"], ["automation", Bolt, "Auto"], ["screener", SlidersHorizontal, "Screen"], ["orders", Clock, "Orders"], ["watchlist", Star, "Watch"]];
+  const nav = [["home", Home, "Home"], ["ideas", Lightbulb, "Ideas"], ["portfolio", Briefcase, "Portfolio"], ["automation", Bolt, "Auto"], ["screener", SlidersHorizontal, "Screen"], ["orders", Clock, "Orders"]];
 
   return (
     <BuyGateContext.Provider value={canBuy}>
@@ -1143,11 +1143,13 @@ function AppInner() {
               <Search size={17} /> Search any stock, crypto or commodity…
             </div>
           </div>
-          {!detail && ["home", "ideas", "automation", "portfolio"].includes(tab) && (
+          {!detail && ["home", "ideas", "automation", "portfolio", "screener", "watchlist"].includes(tab) && (
             <div className="hide-scroll" style={{ display: "flex", gap: 8, overflowX: "auto", padding: "0 18px 12px" }}>
               {[["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["Commodity", "🪙 Commodity"]].filter(([k]) => marketVisible(k)).map(([k, l]) => (
                 <button key={k} onClick={() => setMarket(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "8px 14px", fontWeight: 700, fontSize: 12.5, border: "1px solid " + (market === k ? "var(--primary)" : "var(--line)"), background: market === k ? "var(--primary)" : "var(--surface)", color: market === k ? "var(--on-primary)" : "var(--ink)" }}>{l}</button>
               ))}
+              {/* Watchlist entry — moved up here from the bottom nav, right after the market chips. */}
+              <button onClick={() => { setHistOpen(false); setTab("watchlist"); setTradePreset(null); }} className="pill tap disp" style={{ flex: "0 0 auto", padding: "8px 13px", fontWeight: 700, fontSize: 12.5, display: "inline-flex", alignItems: "center", gap: 5, border: "1px solid " + (tab === "watchlist" ? "var(--primary)" : "var(--line)"), background: tab === "watchlist" ? "var(--primary)" : "var(--surface)", color: tab === "watchlist" ? "var(--on-primary)" : "var(--ink)" }}><Star size={13} fill={tab === "watchlist" ? "var(--on-primary)" : "none"} /> Watch</button>
             </div>
           )}
         </div>
@@ -1205,11 +1207,11 @@ function AppInner() {
           is both visually wrong and a real hazard: the tap targets overlap the sheet's own
           controls, so a thumb reaching for "Buy" can land on "Watch". */}
       {!detail && !onboarding && !drawer && !confirmOrder && !walletOpen && !brokerOpen && !search && !showProfile && (
-        <div className="glass" style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--header-bg)", borderTop: "1px solid var(--line)", borderRadius: "22px 22px 0 0", boxShadow: "0 -10px 34px rgba(40,10,80,.3)", display: "flex", padding: "11px 6px 16px", zIndex: 100 }}>
+        <div className="glass" style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--header-bg)", borderTop: "1px solid var(--line)", borderRadius: "22px 22px 0 0", boxShadow: "0 -10px 34px rgba(40,10,80,.3)", display: "flex", padding: "8px 2px 13px", zIndex: 100 }}>
           {nav.map(([k, Icon, label]) => (
-            <button key={k} onClick={() => { if (k === "orders") { setHistOpen(true); return; } setHistOpen(false); setTab(k); setTradePreset(null); }} className="tap" style={{ flex: 1, border: "none", background: "transparent", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "6px 2px", minHeight: 52, color: (k === "orders" ? histOpen : (tab === k && !histOpen)) ? "var(--primary)" : "var(--muted)" }}>
-              <Icon size={20} fill={k === "watchlist" && tab === k ? "var(--primary)" : "none"} />
-              <span style={{ fontSize: 9.5, fontWeight: 700 }}>{label}</span>
+            <button key={k} onClick={() => { if (k === "orders") { setHistOpen(true); return; } setHistOpen(false); setTab(k); setTradePreset(null); }} className="tap" style={{ flex: 1, minWidth: 0, border: "none", background: "transparent", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "5px 1px", minHeight: 46, color: (k === "orders" ? histOpen : (tab === k && !histOpen)) ? "var(--primary)" : "var(--muted)" }}>
+              <Icon size={17} fill={k === "watchlist" && tab === k ? "var(--primary)" : "none"} />
+              <span style={{ fontSize: 8.5, fontWeight: 700, maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
             </button>
           ))}
         </div>
