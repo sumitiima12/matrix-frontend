@@ -375,7 +375,7 @@ export async function setAutoBuyLive(adminKey, on) {
   try {
     const r = await fetch(`${BACKEND_URL}/api/autobuy/live`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...(adminKey ? { "X-Admin-Key": adminKey } : {}) },
+      headers: { "Content-Type": "application/json", ...tokenHdr(), ...(adminKey ? { "X-Admin-Key": adminKey } : {}) },
       body: JSON.stringify({ on: !!on }),
     });
     return r.json().catch(() => ({ ok: false }));

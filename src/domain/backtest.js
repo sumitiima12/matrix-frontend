@@ -14,32 +14,50 @@ import { resolveOperand, chainEval, parseClause, mapToken, detectOp, interpretTe
  * depends on it can never fire, and the backtest confidently reports zero trades —
  * which reads as "the strategy never triggers" rather than "we never gave it enough
  * data to know". So: compute over everything, only COUNT entries from startIdx on.
+ *
+ * CAUSAL (no look-ahead) execution — this is what a live trader can actually achieve:
+ *   • A signal is read on a CLOSED bar (i-1). You can't act on bar i's close while bar i
+ *     is still forming, so the fill happens at the NEXT bar's OPEN (bar i). This removes the
+ *     same-bar "see the close, trade at that close" look-ahead the old engine had.
+ *   • Stop-loss / take-profit are standing orders, so they trigger INTRABAR against each bar's
+ *     HIGH/LOW (not the closing return) and fill at the level. If both the stop and target are
+ *     touched inside one bar, we assume the STOP filled first (conservative).
+ *   • SHORT strategies (side:"SELL") mirror direction, stop-above / target-below.
  */
 export function backtest(cfg, c, startIdx = 1, baseTf = null) {
   const closes = c.map((x) => x.c), vols = c.map((x) => x.v || 0), cache = {};
-  // A SHORT strategy (its sell-mirror carries side:"SELL") profits when price FALLS, so its per-bar
-  // equity step, trade return and SL/TP triggers are all the MIRROR of a long. `dir` flips them.
   const short = !!(cfg && (cfg.side === "SELL" || cfg.short === true));
   const dir = short ? -1 : 1;
-  // baseTf lets a def on a HIGHER timeframe (e.g. a 1D EMA) resolve on daily candles even though the
-  // backtest runs on, say, 5-minute bars — instead of silently becoming a wrong 5-minute EMA.
+  const slPct = cfg.sl ? Math.abs(Number(cfg.sl)) : null;
+  const tpPct = cfg.tp ? Math.abs(Number(cfg.tp)) : null;
   const get = (op) => resolveOperand(op, cfg.defs, c, closes, vols, cache, baseTf);
   const trades = []; let pos = null, equity = 1, peak = 1, maxDD = 0; const eq = [{ i: 0, eq: 100 }];
   const from = Math.max(1, startIdx | 0);
   for (let i = 1; i < c.length; i++) {
-    if (pos) equity *= 1 + dir * (closes[i] / closes[i - 1] - 1);   // short gains when price drops
+    const bar = c[i];
+    // ── 1. Manage an OPEN position on bar i ──────────────────────────────────────────────────
+    if (pos) {
+      const stop = slPct != null ? (dir > 0 ? pos.entry * (1 - slPct / 100) : pos.entry * (1 + slPct / 100)) : null;
+      const tgt = tpPct != null ? (dir > 0 ? pos.entry * (1 + tpPct / 100) : pos.entry * (1 - tpPct / 100)) : null;
+      const hitStop = stop != null && (dir > 0 ? bar.l <= stop : bar.h >= stop);
+      const hitTgt = tgt != null && (dir > 0 ? bar.h >= tgt : bar.l <= tgt);
+      let exitPx = null, reason = null;
+      if (hitStop) { exitPx = stop; reason = "SL"; }               // tie -> stop first (conservative)
+      else if (hitTgt) { exitPx = tgt; reason = "TP"; }
+      else if (i > pos.i && chainEval(cfg.exit, i - 1, get)) { exitPx = bar.o; reason = "Signal"; }  // signal on closed bar, fill next open
+      if (exitPx != null) {
+        const ret = dir * (exitPx / pos.entry - 1);
+        trades.push({ entryIdx: pos.i, exitIdx: i, entry: pos.entry, exit: +exitPx, ret, reason });
+        pos = null;
+      }
+    }
+    // ── equity curve: mark-to-market a still-open position on the close ──
+    if (pos) equity *= 1 + dir * (closes[i] / closes[i - 1] - 1);
     eq.push({ i, eq: +(equity * 100).toFixed(2) });
     peak = Math.max(peak, equity); maxDD = Math.max(maxDD, (peak - equity) / peak);
-    if (pos) {
-      const ret = dir * (closes[i] / pos.entry - 1);               // return in the trade's direction
-      const hitSL = cfg.sl && ret <= -Math.abs(Number(cfg.sl)) / 100;
-      const hitTP = cfg.tp && ret >= Math.abs(Number(cfg.tp)) / 100;
-      const sig = chainEval(cfg.exit, i, get);
-      if (hitSL || hitTP || sig) { trades.push({ entryIdx: pos.i, exitIdx: i, entry: pos.entry, exit: closes[i], ret, reason: hitSL ? "SL" : hitTP ? "TP" : "Signal" }); pos = null; }
-    } else if (i >= from && chainEval(cfg.entry, i, get)) {
-      // Only OPEN inside the window. Exits above are ungated on purpose: a position
-      // opened in-window must still be allowed to close.
-      pos = { i, entry: closes[i] };
+    // ── 2. ENTRY: signal read on the last CLOSED bar (i-1), filled at THIS bar's OPEN ──
+    if (!pos && i >= from && i > 1 && chainEval(cfg.entry, i - 1, get)) {
+      pos = { i, entry: bar.o };
     }
   }
   if (pos) { const i = c.length - 1; trades.push({ entryIdx: pos.i, exitIdx: i, entry: pos.entry, exit: closes[i], ret: dir * (closes[i] / pos.entry - 1), reason: "EOD" }); }

@@ -3062,10 +3062,13 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <input value={liveAmt} onChange={(e) => setLiveAmt(e.target.value.replace(/[^\d.]/g, ""))} placeholder="Amount per trade" inputMode="decimal" className="no-ring mono" style={{ ...selStyle, flex: "1 1 120px", textAlign: "center" }} />
-            <select value={liveProduct} onChange={(e) => setLiveProduct(e.target.value)} aria-label="Product" style={{ ...selStyle, flex: "1 1 110px" }}>
-              <option value="Intraday">Intraday (MIS)</option>
-              <option value="Delivery">NRML / Delivery</option>
-            </select>
+            {/* Crypto is 24/7 with no MIS/NRML concept — no product choice for it. */}
+            {market !== "Crypto" && (
+              <select value={liveProduct} onChange={(e) => setLiveProduct(e.target.value)} aria-label="Product" style={{ ...selStyle, flex: "1 1 110px" }}>
+                <option value="Intraday">Intraday (MIS)</option>
+                <option value="Delivery">NRML / Delivery</option>
+              </select>
+            )}
           </div>
           {liveMsg && <div style={{ fontSize: 11.5, marginTop: 8, fontWeight: 600, color: liveMsg.e ? "var(--down)" : "var(--up)" }}>{liveMsg.t}</div>}
           <button onClick={() => armLive(s)} disabled={liveBusy} className="tap disp glow" style={{ width: "100%", marginTop: 10, background: "linear-gradient(120deg,var(--down),#E0455E)", color: "#fff", border: "none", borderRadius: 11, padding: 11, fontWeight: 800, fontSize: 12.5 }}>{liveBusy ? "Arming…" : "Arm real-money auto-buy"}</button>
@@ -3448,7 +3451,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
               <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 5 }}>{market === "Crypto" ? "Amount (in your wallet currency) spent on each entry." : "Number of shares (or lots, for options) placed on each entry."}</div>
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-              <SegF label="Buy Type" options={["Intraday", "NRML"]} value={buyType} set={setBuyType} />
+              {market !== "Crypto" && <SegF label="Buy Type" options={["Intraday", "NRML"]} value={buyType} set={setBuyType} />}
               <SegF label="Order Type" options={["Market", "Limit"]} value={optLeg.enabled ? "Limit" : entryType} set={setEntryType} disabled={optLeg.enabled ? ["Market"] : []} />
             </div>
             {optLeg.enabled && (

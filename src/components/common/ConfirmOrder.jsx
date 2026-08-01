@@ -144,7 +144,8 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
         <>
         <div style={{ marginTop: 10 }}>
           <Row k="Action" v={side} c={side === "BUY" ? "var(--up)" : "var(--down)"} />
-          {side === "BUY" && (
+          {/* Crypto trades 24/7 with no Intraday/Delivery (MIS/CNC) distinction — skip the product choice. */}
+          {side === "BUY" && market !== "Crypto" && (
             <div style={{ padding: "11px 0", borderBottom: "1px solid var(--line)" }}>
               <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginBottom: 7 }}>Buy type</div>
               <div style={{ display: "flex", gap: 6 }}>
