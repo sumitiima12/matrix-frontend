@@ -4,13 +4,16 @@ import { pivots, detectPatterns, PATTERN_KEYS } from "./patterns";
 /* Support / resistance as evaluable series: at each bar, the price of the most recent CONFIRMED
    swing low (support) / swing high (resistance) at or before that bar. Falls back to a rolling
    extreme early on, before any pivot exists, so the operand is never NaN for the whole window. */
+const PIVOT_K = 3;
 function srSeries(c, kind) {
-  const pv = pivots(c, 3);
+  const pv = pivots(c, PIVOT_K);
   const wantT = kind === "support" ? "L" : "H";
   const out = new Array(c.length).fill(NaN);
   let last = NaN, pi = 0;
   for (let i = 0; i < c.length; i++) {
-    while (pi < pv.length && pv[pi].i <= i) { if (pv[pi].t === wantT) last = pv[pi].p; pi++; }
+    // CAUSAL: a swing pivot needs PIVOT_K bars on each side, so it is only KNOWN from bar i+PIVOT_K
+    // onward. The old `pv[pi].i <= i` let the backtest see a swing 3 bars before a live trader could.
+    while (pi < pv.length && pv[pi].i + PIVOT_K <= i) { if (pv[pi].t === wantT) last = pv[pi].p; pi++; }
     if (!isNaN(last)) { out[i] = last; continue; }
     // No pivot yet — use the running extreme of the window seen so far.
     let ext = kind === "support" ? Infinity : -Infinity;
@@ -20,12 +23,18 @@ function srSeries(c, kind) {
   return out;
 }
 
-/* Chart-pattern condition series: 1 on bars where a pattern of `key` is present (from its
-   confirmation bar, held for a short window so the entry rule has time to fire), else 0. */
+/* Chart-pattern condition series: 1 on bars where a pattern of `key` is present, else 0. CAUSAL:
+   at each bar i the pattern is detected from ONLY c[0..i] (confirming close is bar i, never a future
+   bar), then held for `within` bars so the entry rule has time to fire. The old code ran detection
+   over the WHOLE array — validated by the final close — and stamped the match back at its formation
+   pivot, which is look-ahead. Mirrors backend strategyEngine.patternSeries. */
 function patternSeries(c, key, within = 3) {
   const s = new Array(c.length).fill(0);
-  const pats = detectPatterns(c).filter((p) => p.key === key);
-  for (const p of pats) for (let j = p.at; j <= Math.min(c.length - 1, p.at + within); j++) s[j] = 1;
+  for (let i = 12; i < c.length; i++) {
+    if (s[i]) continue;                                   // already held from a prior confirmation
+    const pats = detectPatterns(c.slice(0, i + 1)).filter((p) => p.key === key);
+    if (pats.length) for (let j = i; j <= Math.min(c.length - 1, i + within); j++) s[j] = 1;
+  }
   return s;
 }
 /* ── CANDLESTICK PATTERNS ────────────────────────────────────────────────────────────────
