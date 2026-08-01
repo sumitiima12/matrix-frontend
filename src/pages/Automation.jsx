@@ -1936,6 +1936,7 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators,
   // Position sizing for absolute P&L: crypto = USD amount (default 100), everything else = quantity (default 1).
   const isCrypto = market === "Crypto";
   const [size, setSize] = useState(isCrypto ? "100" : "1");
+  const [resBucket, setResBucket] = useState("existing");   // Existing | New tabs over the per-symbol results
   const sizing = () => (isCrypto ? { amount: Number(size) || 0, market } : { qty: Number(size) || 0, market });
   const symOptions = useMemo(() => (UNIVERSE[market] || []).map((s) => s.sym), [market]);
   const stratNames = useMemo(() => strats.map((s) => s.name), [strats]);
@@ -2055,24 +2056,26 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators,
                 <div className="disp" style={{ fontSize: 12, fontWeight: 800 }}>{run.sym} · {run.tf} · {run.names.length} strategies</div>
                 {exportBtn(() => exportBacktestCsv({ results, order: runSymRows.map((s) => s.name), labelHeader: "Strategy", meta: [["Symbol", run.sym], ["Timeframe", run.tf], ["Period (days)", run.days], [isCrypto ? "Amount (USD)" : "Qty", size]], filename: `matrix-backtest-${run.sym}-${run.tf}-${run.days}d.csv` }))}
               </div>
-              {/* Two buckets: EXISTING (this strategy already runs on the selected symbol — Activate/Deactivate)
-                  and NEW (it doesn't yet — Create it for this symbol under My Copies). */}
-              {[["Existing", existingSymRows, "existing"], ["New", newSymRows, "new"]].map(([label, rows, bucket]) => (
-                <div key={bucket} style={{ marginTop: 2 }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".04em", padding: "9px 4px 4px" }}>
-                    {label} · {rows.length}
-                    {bucket === "new" && rows.length > 0 && <span style={{ textTransform: "none", fontWeight: 600, opacity: .8 }}> — not on {run.sym} yet; tap Create to add under My Copies</span>}
-                  </div>
-                  {rows.length === 0
-                    ? <div style={{ fontSize: 11, color: "var(--muted)", padding: "0 4px 8px", fontWeight: 600 }}>None.</div>
-                    : (
-                      <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 500 }}>
-                        <Head />
-                        <tbody>{rows.map((s) => <CompareRow key={s.id + run.tf + run.days + run.sym} s={s} td={td} opts={{ tf: run.tf, days: run.days, sym: run.sym, qty: run.qty, amount: run.amount, market: run.market }} onReport={report} market={market} sym={run.sym} onCreateCopy={onCreateCopy} copyExists={copyExists} isActive={isActive} onToggleActive={onToggleActive} bucket={bucket} />)}</tbody>
-                      </table>
-                    )}
-                </div>
-              ))}
+              {/* EXISTING vs NEW — two tabs side by side (default Existing). Existing = already runs on the
+                  selected symbol (Activate/Deactivate). New = doesn't yet (Create it under My Copies). */}
+              <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3, margin: "6px 2px 8px" }}>
+                {[["existing", "Existing", existingSymRows.length], ["new", "New", newSymRows.length]].map(([k, l, n]) => (
+                  <button key={k} onClick={() => setResBucket(k)} className="pill tap disp" style={{ padding: "6px 16px", fontSize: 12, fontWeight: 800, border: "none", background: resBucket === k ? "var(--primary)" : "transparent", color: resBucket === k ? "var(--on-primary)" : "var(--muted)" }}>{l} · {n}</button>
+                ))}
+              </div>
+              {(() => {
+                const rows = resBucket === "new" ? newSymRows : existingSymRows;
+                if (!rows.length) return <div style={{ fontSize: 11.5, color: "var(--muted)", padding: "4px 4px 8px", fontWeight: 600 }}>{resBucket === "new" ? `Every backtested strategy already runs on ${run.sym}.` : `No strategies run on ${run.sym} yet — check the New tab to create some.`}</div>;
+                return (
+                  <>
+                    {resBucket === "new" && <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600, padding: "0 2px 6px" }}>Not on {run.sym} yet — tap Create to add under My Copies.</div>}
+                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 500 }}>
+                      <Head />
+                      <tbody>{rows.map((s) => <CompareRow key={s.id + run.tf + run.days + run.sym} s={s} td={td} opts={{ tf: run.tf, days: run.days, sym: run.sym, qty: run.qty, amount: run.amount, market: run.market }} onReport={report} market={market} sym={run.sym} onCreateCopy={onCreateCopy} copyExists={copyExists} isActive={isActive} onToggleActive={onToggleActive} bucket={resBucket} />)}</tbody>
+                    </table>
+                  </>
+                );
+              })()}
             </div>
           )}
         </>
