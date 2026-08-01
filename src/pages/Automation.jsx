@@ -1228,9 +1228,9 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
                   : exited
                     ? <div style={{ fontSize: 9.5, color: "var(--primary)", fontWeight: 800 }}>exited</div>
                     : <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }} title="Buys automatically when your entry rule fires on live candles.">waiting for entry</div>}
-            <div style={{ display: "flex", gap: 6 }}>
-              <button onClick={() => doPause(s)} className="tap" style={{ border: "1px solid " + (s.status === "active" ? "var(--line)" : "var(--up)"), background: s.status === "active" ? "transparent" : "var(--up-soft)", color: s.status === "active" ? "var(--muted)" : "var(--up)", borderRadius: 8, padding: "3px 9px", fontSize: 10, fontWeight: 800 }}>{s.status === "active" ? "❚❚ Pause" : "▶ Start"}</button>
-              <button onClick={() => doClose(s)} className="tap" title="Close the position now (market sell) and stop the strategy" style={{ border: "1px solid var(--down)", background: "var(--down-soft)", color: "var(--down)", borderRadius: 8, padding: "3px 8px", fontSize: 10, fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 2 }}><X size={10} /> Stop &amp; sell</button>
+            <div style={{ display: "flex", gap: 6, flexWrap: "nowrap", justifyContent: "flex-end" }}>
+              <button onClick={() => doPause(s)} className="tap" style={{ flex: "0 0 auto", whiteSpace: "nowrap", border: "1px solid " + (s.status === "active" ? "var(--line)" : "var(--up)"), background: s.status === "active" ? "transparent" : "var(--up-soft)", color: s.status === "active" ? "var(--muted)" : "var(--up)", borderRadius: 8, padding: "3px 9px", fontSize: 10, fontWeight: 800 }}>{s.status === "active" ? "❚❚ Pause" : "▶ Start"}</button>
+              <button onClick={() => doClose(s)} className="tap" title="Close the position now (market sell) and stop the strategy" style={{ flex: "0 0 auto", whiteSpace: "nowrap", border: "1px solid var(--down)", background: "var(--down-soft)", color: "var(--down)", borderRadius: 8, padding: "3px 8px", fontSize: 10, fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 2 }}><X size={10} /> Stop &amp; sell</button>
             </div>
           </div>
         </div>
