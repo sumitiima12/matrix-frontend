@@ -6,7 +6,7 @@ import { Activity, Bell, Bolt, Check, ChevronDown, ChevronUp, Copy, Globe, ListC
 import { Area, AreaChart, Bar, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { BACKEND_URL } from "../config";
 import { chgColor, clamp, fmt, pct, DAY, lsGet, lsSet } from "../lib/format";
-import { confirmDialog } from "../lib/confirmDialog";   // in-app confirm (reliable in webviews/PWA) for money-moving gates
+import { confirmDialog, alertDialog } from "../lib/confirmDialog";   // in-app confirm/notice (reliable in webviews/PWA) for money-moving gates
 import EntryKillSwitch from "../components/common/EntryKillSwitch";
 import { useBacktestStats, loadBtCandles, scoreCfg } from "../hooks/useBacktestStats";
 import { SMAarr, EMAarr, RSIarr, MACDarr, BBarr, CCIarr, ATRarr, VWAParr, ADXarr, CF } from "../lib/series";
@@ -1203,14 +1203,14 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
   const doClose = async (s) => {
     if (!(await confirmDialog(`Close ${s.name || s.symbol} now?\n\nThis places a market SELL to flatten the position at ${s.broker}. This cannot be undone.`, { title: "Close real position", confirmLabel: "Close position" }))) return;
     setData((d) => ({ ...d, strategies: (d.strategies || []).map((x) => x.id === s.id ? { ...x, inPosition: false, status: "cancelled" } : x) }));
-    try { const r = await closeAutoBuy(userId, s.id); if (r && r.dryRun) alert("Engine is in dry-run — position marked closed, no real order was placed."); }
-    catch (e) { alert(String(e.message || e)); }
+    try { const r = await closeAutoBuy(userId, s.id); if (r && r.dryRun) await alertDialog("Engine is in dry-run — position marked closed, no real order was placed.", { title: "Dry-run" }); }
+    catch (e) { await alertDialog(String(e.message || e), { title: "Couldn't close", danger: true }); }
     refresh();
   };
   /* Persist a new SL/TP to the strategy AND its open managed position (exit engine acts on it). */
   const doUpdate = async (s, { sl, tp }) => {
     setData((d) => ({ ...d, strategies: (d.strategies || []).map((x) => x.id === s.id ? { ...x, sl, tp } : x) }));
-    try { await updateAutoBuy(userId, s.id, { sl, tp }); } catch (e) { alert(String(e.message || e)); }
+    try { await updateAutoBuy(userId, s.id, { sl, tp }); } catch (e) { await alertDialog(String(e.message || e), { title: "Couldn't update", danger: true }); }
     refresh();
   };
   const toggleLive = async () => {
@@ -1259,6 +1259,11 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
             <SlTpEditor sl={s.sl} tp={s.tp} onSave={(v) => doUpdate(s, v)} />
             {/* Order status of the last attempt — a rejected order shows WHY (e.g. insufficient
                 balance), so it's never mistaken for a silent no-op. */}
+            {/* R3-#1: an order that timed out and couldn't be verified pauses the strategy for review.
+                Surface it loudly with the resume hint — a silent pause would hide real money at risk. */}
+            {s.needsReview && (
+              <div style={{ fontSize: 10, color: "var(--down)", fontWeight: 800, marginTop: 3, lineHeight: 1.4 }}>⚠ Needs review — order outcome unverified. {s.lastError || "Check your broker, then Start to resume."}</div>
+            )}
             {s.lastOrderStatus === "rejected" && (
               <div style={{ fontSize: 10, color: "var(--down)", fontWeight: 700, marginTop: 3, lineHeight: 1.4 }}>⚠ Entry triggered · Order rejected{s.lastError ? ` — ${s.lastError}` : ""}</div>
             )}
@@ -2917,7 +2922,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   /* Delete a strategy (admin action on premium/sample/others' public, or your own). Removes it
      locally and, if it was public, unpublishes it too. */
   const deleteStrategy = async (s) => {
-    if (typeof window !== "undefined" && !window.confirm(`Delete "${s.name || "this strategy"}"?`)) return;
+    if (!(await confirmDialog(`Delete "${s.name || "this strategy"}"?`, { title: "Delete strategy", confirmLabel: "Delete" }))) return;
     if (s.publicId) { try { await apiUnpublishStrategy(s.publicId); } catch { /* ignore */ } }
     setStrats((p) => p.filter((x) => x.id !== s.id));
     setToast(`"${s.name || "Strategy"}" deleted.`);

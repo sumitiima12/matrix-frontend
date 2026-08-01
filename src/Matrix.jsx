@@ -27,6 +27,7 @@ import { analyzeHolding, portfolioHealth, sectorExposure } from "./services/port
 import { analyzeJournal } from "./services/journalService";
 import BuyButton, { BuyGateContext } from "./components/common/BuyButton";
 import { PATTERNS, TF_N } from "./lib/patterns";
+import { promptDialog } from "./lib/confirmDialog";   // in-app prompt (reliable in webviews/PWA)
 import { ALL, UNIVERSE, IN_STOCKS, US_STOCKS, CRYPTO, COMMODITY, marketOf, yahooSymbol, istParts, marketHoursLabel } from "./domain/universe";
 import { SEED_STRATS } from "./domain/strategies";
 import { techSignal, dailyPicks } from "./domain/signals";
@@ -877,7 +878,7 @@ function AppInner() {
     }
     // Clean up any admin key a previous build may have left in storage.
     try { localStorage.removeItem("mx_admin_auth"); } catch { /* ignore */ }
-    const key = typeof window !== "undefined" ? window.prompt("Admin key:") : "";
+    const key = await promptDialog("Enter the admin key to open the admin console.", { title: "Admin key", confirmLabel: "Unlock", password: true, placeholder: "Admin key" });
     if (!key) return;
     const ok = await adminCheck(userId, key);
     if (!ok) { setBuyToast({ t: "Not authorized for admin.", e: true }); return; }

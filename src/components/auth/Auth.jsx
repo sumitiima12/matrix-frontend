@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { } from "../../domain/universe";
 import { fmt, profileSummary } from "../../lib/format";
+import { confirmDialog } from "../../lib/confirmDialog";   // in-app confirm (reliable in webviews/PWA)
 import { Check, ChevronLeft, ChevronRight, Clock, Copy, LogIn, LogOut, Sparkles, User } from "lucide-react";
 import { apiLogin, apiRegister, apiForgotQuestion, apiForgotReset, apiGetSecurityQuestion, apiSetSecurityQuestion, apiSetUsername, apiSetEmail, apiChangePin } from "../../domain/api";
 import EquityCurve from "../common/EquityCurve";
@@ -864,7 +865,7 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
           <button
             onClick={async () => {
               if (clearBusy) return;
-              if (typeof window !== "undefined" && !window.confirm("Delete ALL your virtual (paper) trades across every market? Real broker trades are not affected. This cannot be undone.")) return;
+              if (!(await confirmDialog("Delete ALL your virtual (paper) trades across every market? Real broker trades are not affected. This cannot be undone.", { title: "Clear virtual trades", confirmLabel: "Delete all" }))) return;
               setClearBusy(true); setClearMsg("");
               try {
                 const r = await onClearVirtual();

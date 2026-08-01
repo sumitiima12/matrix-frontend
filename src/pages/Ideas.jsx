@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { currentIdeas, resolveIdea } from "../domain/ideas";
 import { BACKEND_URL } from "../config";
 import { fmt } from "../lib/format";
+import { alertDialog } from "../lib/confirmDialog";   // in-app notice (reliable in webviews/PWA)
 import { ALL, marketOf, UNIVERSE } from "../domain/universe";
 import { fetchHistory, apiListIdeas, apiPostIdea, apiDeleteIdea, apiReviewIdea } from "../domain/api";
 import { ChevronDown, ChevronUp, Plus, Sparkles, Trash2, X } from "lucide-react";
@@ -148,7 +149,7 @@ function CommunityIdeas({ market, me, isAdmin, adminKey = "", onOpen }) {
   const addTag = () => { const t = tagIn.trim().replace(/^#/, "").slice(0, 24); if (t && tags.length < 4 && !tags.includes(t)) setTags([...tags, t]); setTagIn(""); };
   const onShot = (e) => {
     const f = e.target.files && e.target.files[0]; if (!f) return;
-    if (f.size > 1_400_000) { alert("Image too large — please use one under ~1.4MB."); return; }
+    if (f.size > 1_400_000) { alertDialog("Image too large — please use one under ~1.4MB.", { title: "Image too large" }); return; }
     const rd = new FileReader(); rd.onload = () => setShot(String(rd.result)); rd.readAsDataURL(f);
   };
   const submit = async () => {

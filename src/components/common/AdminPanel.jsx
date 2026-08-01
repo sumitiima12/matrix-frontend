@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { adminListUsers, adminGetUser, adminSetBlocked, adminResetPin, adminPendingUsers, adminApproveUser, adminDeleteUser, adminClearVirtual, adminClearTradesByType } from "../../services/adminService";
 import { apiListIdeas, apiReviewIdea } from "../../domain/api";
 import { tradesToCSV, downloadCSV, tradeFilename } from "../../lib/csv";
+import { confirmDialog, promptDialog, alertDialog } from "../../lib/confirmDialog";   // in-app dialogs (reliable in webviews/PWA)
 
 /**
  * AdminPanel — a full-screen admin console. Gated: it only mounts once the caller has
@@ -33,26 +34,26 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
   };
 
   const resetPin = async (phone) => {
-    const np = typeof window !== "undefined" ? window.prompt(`New PIN for ${phone} (4+ digits):`) : "";
+    const np = await promptDialog(`New PIN for ${phone} (4+ digits):`, { title: "Reset PIN", confirmLabel: "Reset", placeholder: "New PIN" });
     if (!np) return;
     if (String(np).length < 4) { setErr("PIN must be at least 4 digits."); return; }
     setBusy(true);
-    try { await adminResetPin(userId, adminKey, phone, np); setErr(null); alert("PIN reset."); }
+    try { await adminResetPin(userId, adminKey, phone, np); setErr(null); await alertDialog("PIN reset.", { title: "Done" }); }
     catch (e) { setErr(String(e.message || e)); }
     finally { setBusy(false); }
   };
   const clearVirtual = async (phone) => {
-    if (typeof window !== "undefined" && !window.confirm(`Delete ALL virtual (paper) trade history for ${phone}? Real broker trades are not affected. This cannot be undone.`)) return;
+    if (!(await confirmDialog(`Delete ALL virtual (paper) trade history for ${phone}? Real broker trades are not affected. This cannot be undone.`, { title: "Clear virtual trades", confirmLabel: "Delete all" }))) return;
     setBusy(true);
-    try { const r = await adminClearVirtual(userId, adminKey, phone); setErr(null); alert(`Cleared ${r.removed != null ? r.removed : ""} virtual trade${r.removed === 1 ? "" : "s"}.`); }
+    try { const r = await adminClearVirtual(userId, adminKey, phone); setErr(null); await alertDialog(`Cleared ${r.removed != null ? r.removed : ""} virtual trade${r.removed === 1 ? "" : "s"}.`, { title: "Done" }); }
     catch (e) { setErr(String(e.message || e)); }
     finally { setBusy(false); }
   };
   // Clear ONE trade type's virtual history (Manual / Auto Buy / Screener / Automate). Real trades untouched.
   const clearType = async (phone, tradeType, label) => {
-    if (typeof window !== "undefined" && !window.confirm(`Delete ${label} virtual trade data for ${phone}? Real broker trades are not affected. This cannot be undone.`)) return;
+    if (!(await confirmDialog(`Delete ${label} virtual trade data for ${phone}? Real broker trades are not affected. This cannot be undone.`, { title: "Clear trades", confirmLabel: "Delete" }))) return;
     setBusy(true);
-    try { const r = await adminClearTradesByType(userId, adminKey, phone, tradeType); setErr(null); alert(`Cleared ${r.removed != null ? r.removed : ""} ${label} trade${r.removed === 1 ? "" : "s"}.`); if (selected && selected.phone === phone) await openUser(phone); }
+    try { const r = await adminClearTradesByType(userId, adminKey, phone, tradeType); setErr(null); await alertDialog(`Cleared ${r.removed != null ? r.removed : ""} ${label} trade${r.removed === 1 ? "" : "s"}.`, { title: "Done" }); if (selected && selected.phone === phone) await openUser(phone); }
     catch (e) { setErr(String(e.message || e)); }
     finally { setBusy(false); }
   };
@@ -75,7 +76,7 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
     finally { setBusy(false); }
   };
   const removeUser = async (phone, label) => {
-    if (typeof window !== "undefined" && !window.confirm(`Permanently delete ${label || phone} and ALL their data? This cannot be undone.`)) return;
+    if (!(await confirmDialog(`Permanently delete ${label || phone} and ALL their data? This cannot be undone.`, { title: "Delete user", confirmLabel: "Delete user" }))) return;
     setBusy(true);
     try {
       const r = await adminDeleteUser(userId, adminKey, phone);

@@ -109,7 +109,9 @@ export function backtest(cfg, c, startIdx = 1, baseTf = null, opts = {}) {
       const { stop, tgt } = levels(pos.entry);
       const hitStop = stop != null && (dir > 0 ? bar.l <= stop : bar.h >= stop);
       const hitTgt  = tgt  != null && (dir > 0 ? bar.h >= tgt  : bar.l <= tgt);
-      if (hitStop) { closeTrade(pos.i, pos.entry, i, stop, "SL"); pos = null; exitedThisBar = true; }   // tie → stop first
+      // R3-#5: a stop is a STOP-MARKET order. If the bar GAPS through it at the open, you don't get the
+      // stop price — you fill at the (worse) open. Fill at whichever is worse for the position.
+      if (hitStop) { const sf = dir > 0 ? Math.min(stop, bar.o) : Math.max(stop, bar.o); closeTrade(pos.i, pos.entry, i, sf, "SL"); pos = null; exitedThisBar = true; }   // tie → stop first
       else if (hitTgt) { closeTrade(pos.i, pos.entry, i, tgt, "TP"); pos = null; exitedThisBar = true; }
       else if (chainEval(cfg.exit, i - 1, get)) { closeTrade(pos.i, pos.entry, i, bar.o, "Signal"); pos = null; exitedThisBar = true; }
     }
@@ -121,7 +123,7 @@ export function backtest(cfg, c, startIdx = 1, baseTf = null, opts = {}) {
       const { stop, tgt } = levels(pos.entry);
       const hitStop = stop != null && (dir > 0 ? bar.l <= stop : bar.h >= stop);
       const hitTgt  = tgt  != null && (dir > 0 ? bar.h >= tgt  : bar.l <= tgt);
-      if (hitStop) { closeTrade(pos.i, pos.entry, i, stop, "SL"); pos = null; }        // stopped out on entry bar
+      if (hitStop) { const sf = dir > 0 ? Math.min(stop, bar.o) : Math.max(stop, bar.o); closeTrade(pos.i, pos.entry, i, sf, "SL"); pos = null; }  // R3-#5 gap-aware fill; stopped out on entry bar
       else if (hitTgt) { closeTrade(pos.i, pos.entry, i, tgt, "TP"); pos = null; }
     }
     // ── 3. equity curve = realized P&L × unrealised MTM of any still-open position at this close ──
@@ -129,13 +131,29 @@ export function backtest(cfg, c, startIdx = 1, baseTf = null, opts = {}) {
     eq.push({ i, eq: +(curveEq * 100).toFixed(2) });
     peak = Math.max(peak, curveEq); maxDD = Math.max(maxDD, (peak - curveEq) / peak);
   }
+  // R3-#4: the LAST candle can itself be malformed (skipped in the loop). Forcing an exit or a buy&hold
+  // return off a zero/negative/NaN close would corrupt results, so resolve the last VALID close first.
+  const isNum = (x) => Number.isFinite(x) && x > 0;
+  let lastIdx = c.length - 1;
+  while (lastIdx > 0 && !isNum(closes[lastIdx])) lastIdx--;
+  const lastClose = isNum(closes[lastIdx]) ? closes[lastIdx] : null;
   // Force-close anything still open at the END OF THE DATASET (note: end of data, not necessarily EOD session).
-  if (pos) closeTrade(pos.i, pos.entry, c.length - 1, closes[c.length - 1], "EOD");
+  if (pos && lastClose != null) {
+    closeTrade(pos.i, pos.entry, lastIdx, lastClose, "EOD");
+    pos = null;
+    // R3-#3: the forced exit's transaction cost is in `realized` now — reflect it in the FINAL equity
+    // point and the drawdown too, so the curve/maxDD agree with totalRet instead of trailing it.
+    const lastPt = eq[eq.length - 1];
+    if (lastPt) lastPt.eq = +(realized * 100).toFixed(2);
+    peak = Math.max(peak, realized); maxDD = Math.max(maxDD, (peak - realized) / peak);
+  }
   const totalRet = (realized - 1) * 100;
   const wins = trades.filter((t) => t.ret > 0).length;
-  // Buy & hold over the SAME test window (from the warm-up boundary), not the whole fetched history.
-  const bhStart = closes[Math.min(from, closes.length - 1)] || closes[0];
-  const bh = (closes[closes.length - 1] / bhStart - 1) * 100 - costFrac * 100;
+  // Buy & hold over the SAME test window (from the warm-up boundary), using valid closes at both ends.
+  let startIdxV = Math.min(from, closes.length - 1);
+  while (startIdxV < closes.length && !isNum(closes[startIdxV])) startIdxV++;
+  const bhStart = isNum(closes[startIdxV]) ? closes[startIdxV] : (closes.find(isNum) || null);
+  const bh = (lastClose != null && bhStart != null) ? (lastClose / bhStart - 1) * 100 - costFrac * 100 : 0;
   return { trades, eq, stats: { n: trades.length, wins, winRate: trades.length ? wins / trades.length * 100 : 0, totalRet, maxDD: maxDD * 100, bh, avg: trades.length ? trades.reduce((a, t) => a + t.ret, 0) / trades.length * 100 : 0, costPct: +(costFrac * 100).toFixed(3) } };
 }
 

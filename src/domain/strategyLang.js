@@ -204,7 +204,11 @@ function sessionStarts(c) {
   let base = Infinity;
   for (let i = 1; i < n; i++) { const g = c[i].t - c[i - 1].t; if (g > 0 && g < base) base = g; }
   if (!Number.isFinite(base) || base <= 0) base = 60000;
-  const bigGap = Math.max(4 * base, 30 * 60000);
+  // R3-#8: the UTC-date change below is the PRIMARY session boundary. The time-gap fallback only exists
+  // for feeds that don't align to UTC midnight — so it must be OVERNIGHT-scale (≥6h), not ~30min. A
+  // 30-min threshold let an ordinary feed outage or trading halt fabricate a second "opening range" in
+  // the same session; requiring a 6-hour gap means only a genuine session break (not a halt) resets.
+  const bigGap = Math.max(24 * base, 6 * 3600000);
   const utcDay = (t) => { const d = new Date(t); return d.getUTCFullYear() + "-" + d.getUTCMonth() + "-" + d.getUTCDate(); };
   for (let i = 1; i < n; i++) {
     if (utcDay(c[i].t) !== utcDay(c[i - 1].t) || (c[i].t - c[i - 1].t) >= bigGap) out[i] = true;

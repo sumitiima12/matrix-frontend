@@ -23,6 +23,12 @@ export const DEFAULT_LIMITS = {
   allowOutsideMarketHours: true,  // paper trading: allowed, but flagged
 };
 
+/* R3-#6: conservative (generous-leverage) per-market initial-margin fraction of notional for a short.
+   A short consumes margin, not full notional — charging full notional falsely rejected legit leveraged
+   crypto shorts. Kept in sync with the backend riskEngine. */
+const SHORT_MARGIN_FRACTION = { Crypto: 0.04, FNO: 0.15, IN: 0.20, US: 0.30, Commodity: 0.10 };
+const shortMarginFraction = (market) => SHORT_MARGIN_FRACTION[market] != null ? SHORT_MARGIN_FRACTION[market] : 0.20;
+
 /** Indian & US cash markets have sessions; crypto is 24/7. */
 export function isMarketOpen(market, now = new Date()) {
   if (market === "Crypto") return true;
@@ -115,7 +121,12 @@ export function validateOrder(order, account) {
     const shortQty = Math.max(0, qty - longHeld);
     if (shortQty > 0) {
       if (!price || price <= 0 || !Number.isFinite(price)) reasons.push("No live price available to open a short.");
-      else if (shortQty * price > wallet) reasons.push(`Insufficient margin to short: needs ${(shortQty * price).toFixed(2)} but the ${market} wallet holds ${wallet.toFixed(2)}.`);
+      else {
+        // R3-#6: charge estimated MARGIN (a fraction of notional), not full notional — full notional
+        // falsely rejected legit leveraged crypto shorts. Matches the backend riskEngine.
+        const reqMargin = shortQty * price * shortMarginFraction(market);
+        if (reqMargin > wallet) reasons.push(`Insufficient margin to short: needs ≈ ${reqMargin.toFixed(2)} but the ${market} wallet holds ${wallet.toFixed(2)}.`);
+      }
     }
   }
 
