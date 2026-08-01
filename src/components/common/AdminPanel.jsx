@@ -382,7 +382,7 @@ function TradesSection({ trades = [], cardStyle }) {
   const chip = (on) => ({
     flex: "0 0 auto", padding: "5px 10px", fontSize: 10.5, fontWeight: 800, borderRadius: 9, cursor: "pointer",
     border: "1px solid " + (on ? "var(--primary)" : "var(--line)"),
-    background: on ? "var(--primary)" : "var(--surface)", color: on ? "#fff" : "var(--ink)",
+    background: on ? "var(--primary)" : "var(--surface)", color: on ? "var(--on-primary)" : "var(--ink)",
   });
   const dateInput = { border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 9, padding: "7px 8px", fontSize: 11.5, fontWeight: 700, width: "100%" };
 

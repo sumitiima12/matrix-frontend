@@ -1025,7 +1025,7 @@ function AppInner() {
               {/* Activity log — recent actions & their outcomes (orders, rejects, connects). */}
               <button onClick={() => setActivityOpen(true)} aria-label="Activity" className="tap" style={{ position: "relative", border: "1px solid var(--line)", background: "transparent", borderRadius: 10, width: 34, height: 34, display: "grid", placeItems: "center", cursor: "pointer", flexShrink: 0 }}>
                 <Clock size={16} color="var(--muted)" />
-                {activity.length > 0 && <span style={{ position: "absolute", top: -4, right: -4, minWidth: 15, height: 15, padding: "0 3px", borderRadius: 8, background: "var(--primary)", color: "#fff", fontSize: 8.5, fontWeight: 800, display: "grid", placeItems: "center" }}>{activity.length > 9 ? "9+" : activity.length}</span>}
+                {activity.length > 0 && <span style={{ position: "absolute", top: -4, right: -4, minWidth: 15, height: 15, padding: "0 3px", borderRadius: 8, background: "var(--primary)", color: "var(--on-primary)", fontSize: 8.5, fontWeight: 800, display: "grid", placeItems: "center" }}>{activity.length > 9 ? "9+" : activity.length}</span>}
               </button>
               {/* Profile: the icon, with a label below — "Login" for a guest, the username
                   (or name) once signed in. Tapping opens the profile sheet either way. */}
@@ -1219,7 +1219,7 @@ function AppInner() {
           tab. Sits inside a centered 460-wide track so it hugs the app's right edge, not the viewport. */}
       {!detail && !onboarding && !drawer && !confirmOrder && !walletOpen && !brokerOpen && !search && !showProfile && tab !== "ask" && (
         <div style={{ position: "fixed", left: 0, right: 0, bottom: 92, maxWidth: 460, margin: "0 auto", zIndex: 105, display: "flex", justifyContent: "flex-end", paddingRight: 16, pointerEvents: "none" }}>
-          <button onClick={() => { setHistOpen(false); setTab("ask"); setTradePreset(null); }} aria-label="Ask Neo" className="tap" style={{ pointerEvents: "auto", width: 56, height: 56, borderRadius: "50%", border: "none", background: "linear-gradient(135deg, var(--primary), var(--primary-2))", boxShadow: "0 8px 24px rgba(40,10,80,.4)", display: "grid", placeItems: "center", color: "#fff" }}>
+          <button onClick={() => { setHistOpen(false); setTab("ask"); setTradePreset(null); }} aria-label="Ask Neo" className="tap" style={{ pointerEvents: "auto", width: 56, height: 56, borderRadius: "50%", border: "none", background: "linear-gradient(135deg, var(--primary), var(--primary-2))", boxShadow: "0 8px 24px rgba(40,10,80,.4)", display: "grid", placeItems: "center", color: "var(--on-primary)" }}>
             <NeoIcon size={28} />
           </button>
         </div>

@@ -49,7 +49,7 @@ export default function ChatPanel({ context, suggestions, compactMode, stock }) 
         <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && fire(text)}
           placeholder="Ask Neo…" className="no-ring"
           style={{ flex: 1, border: "1px solid var(--line)", borderRadius: 14, padding: "11px 14px", fontSize: 13.5, background: "var(--surface)" }} />
-        <button onClick={() => fire(text)} className="tap" style={{ background: "var(--primary)", color: "#fff", border: "none", borderRadius: 14, width: 46, display: "grid", placeItems: "center" }}><Send size={17} /></button>
+        <button onClick={() => fire(text)} className="tap" style={{ background: "var(--primary)", color: "var(--on-primary)", border: "none", borderRadius: 14, width: 46, display: "grid", placeItems: "center" }}><Send size={17} /></button>
       </div>
     </div>
   );

@@ -223,7 +223,7 @@ export function Onboarding({ onDone, onSkip, initial, theme }) {
       </div>
       <div style={{ display: "flex", gap: 10 }}>
         <button onClick={() => (onSkip ? onSkip() : onDone(null))} className="tap" style={{ flex: "0 0 auto", padding: "15px 18px", borderRadius: 16, border: "1px solid var(--line)", background: "var(--surface)", fontWeight: 600, color: "var(--muted)" }}>Skip</button>
-        <button onClick={next} className="tap disp glow" style={{ flex: 1, padding: 15, borderRadius: 16, border: "none", background: "linear-gradient(120deg,var(--primary),var(--primary-2))", color: "#fff", fontWeight: 700, fontSize: 15 }}>{step < steps.length - 1 ? "Continue" : "Enter Matrix"}</button>
+        <button onClick={next} className="tap disp glow" style={{ flex: 1, padding: 15, borderRadius: 16, border: "none", background: "linear-gradient(120deg,var(--primary),var(--primary-2))", color: "var(--on-primary)", fontWeight: 700, fontSize: 15 }}>{step < steps.length - 1 ? "Continue" : "Enter Matrix"}</button>
       </div>
     </div>
   );
@@ -280,7 +280,7 @@ export function LoginModal({ onClose, onAuthed }) {
             <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 3 }}>Use your phone number and a PIN to save trades, automations and preferences across visits.</div>
             <div className="pill" style={{ display: "flex", background: "var(--bg)", padding: 4, marginTop: 14, borderRadius: 12 }}>
               {["login", "register"].map((x) => (
-                <button key={x} onClick={() => { setTab(x); setErr(null); }} className="pill tap disp" style={{ flex: 1, padding: "8px 0", borderRadius: 9, border: "none", fontWeight: 800, fontSize: 13, cursor: "pointer", background: tab === x ? "var(--primary)" : "transparent", color: tab === x ? "#fff" : "var(--muted)" }}>{x === "login" ? "Log in" : "Register"}</button>
+                <button key={x} onClick={() => { setTab(x); setErr(null); }} className="pill tap disp" style={{ flex: 1, padding: "8px 0", borderRadius: 9, border: "none", fontWeight: 800, fontSize: 13, cursor: "pointer", background: tab === x ? "var(--primary)" : "transparent", color: tab === x ? "var(--on-primary)" : "var(--muted)" }}>{x === "login" ? "Log in" : "Register"}</button>
               ))}
             </div>
 
@@ -304,7 +304,7 @@ export function LoginModal({ onClose, onAuthed }) {
             </>)}
 
             {err && <div style={{ fontSize: 12, color: "var(--down)", marginTop: 12, fontWeight: 600 }}>{err}</div>}
-            <button onClick={submit} disabled={busy} className="tap disp glow" style={{ width: "100%", marginTop: 16, padding: 13, borderRadius: 12, border: "none", background: "var(--primary)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer", opacity: busy ? 0.7 : 1 }}>{busy ? "Please wait…" : tab === "login" ? "Log in" : "Create account"}</button>
+            <button onClick={submit} disabled={busy} className="tap disp glow" style={{ width: "100%", marginTop: 16, padding: 13, borderRadius: 12, border: "none", background: "var(--primary)", color: "var(--on-primary)", fontWeight: 800, fontSize: 14, cursor: "pointer", opacity: busy ? 0.7 : 1 }}>{busy ? "Please wait…" : tab === "login" ? "Log in" : "Create account"}</button>
 
             {tab === "login" && (
               <button onClick={() => { setMode("forgot"); setFStep(1); setErr(null); }} className="tap disp" style={{ width: "100%", marginTop: 10, background: "none", border: "none", color: "var(--primary)", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>Forgot PIN?</button>
@@ -321,7 +321,7 @@ export function LoginModal({ onClose, onAuthed }) {
               {label("Phone number")}
               <input value={phone} onChange={(e) => setPhone(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" className="no-ring" style={inpStyle} placeholder="10-digit mobile" />
               {err && <div style={{ fontSize: 12, color: "var(--down)", marginTop: 12, fontWeight: 600 }}>{err}</div>}
-              <button onClick={forgotLookup} disabled={busy} className="tap disp glow" style={{ width: "100%", marginTop: 16, padding: 13, borderRadius: 12, border: "none", background: "var(--primary)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer", opacity: busy ? 0.7 : 1 }}>{busy ? "Please wait…" : "Continue"}</button>
+              <button onClick={forgotLookup} disabled={busy} className="tap disp glow" style={{ width: "100%", marginTop: 16, padding: 13, borderRadius: 12, border: "none", background: "var(--primary)", color: "var(--on-primary)", fontWeight: 800, fontSize: 14, cursor: "pointer", opacity: busy ? 0.7 : 1 }}>{busy ? "Please wait…" : "Continue"}</button>
             </>) : (<>
               <div style={{ marginTop: 14, padding: 12, background: "var(--bg)", borderRadius: 12, fontSize: 13, fontWeight: 700 }}>{fQuestion}</div>
               {label("Your answer")}
@@ -329,7 +329,7 @@ export function LoginModal({ onClose, onAuthed }) {
               {label("New PIN (4+ digits)")}
               <input value={fNewPin} onChange={(e) => setFNewPin(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" type="password" className="no-ring" style={inpStyle} placeholder="••••" />
               {err && <div style={{ fontSize: 12, color: "var(--down)", marginTop: 12, fontWeight: 600 }}>{err}</div>}
-              <button onClick={forgotSubmit} disabled={busy} className="tap disp glow" style={{ width: "100%", marginTop: 16, padding: 13, borderRadius: 12, border: "none", background: "var(--primary)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer", opacity: busy ? 0.7 : 1 }}>{busy ? "Please wait…" : "Reset PIN & log in"}</button>
+              <button onClick={forgotSubmit} disabled={busy} className="tap disp glow" style={{ width: "100%", marginTop: 16, padding: 13, borderRadius: 12, border: "none", background: "var(--primary)", color: "var(--on-primary)", fontWeight: 800, fontSize: 14, cursor: "pointer", opacity: busy ? 0.7 : 1 }}>{busy ? "Please wait…" : "Reset PIN & log in"}</button>
             </>)}
 
             <button onClick={() => { setMode("auth"); setErr(null); }} className="tap disp" style={{ width: "100%", marginTop: 10, background: "none", border: "none", color: "var(--muted)", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>← Back to log in</button>
@@ -381,7 +381,7 @@ function SecurityQuestionCard() {
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="e.g. First pet's name?" style={inp} />
           <input value={ans} onChange={(e) => setAns(e.target.value)} placeholder="Answer" style={inp} />
           {msg && <div style={{ fontSize: 11.5, color: msg.e ? "var(--down)" : "var(--up)", marginTop: 8, fontWeight: 600 }}>{msg.t}</div>}
-          <button onClick={save} disabled={busy} className="tap disp glow" style={{ width: "100%", marginTop: 10, padding: 11, borderRadius: 12, border: "none", background: "var(--primary)", color: "#fff", fontWeight: 800, fontSize: 13, cursor: "pointer", opacity: busy ? 0.7 : 1 }}>
+          <button onClick={save} disabled={busy} className="tap disp glow" style={{ width: "100%", marginTop: 10, padding: 11, borderRadius: 12, border: "none", background: "var(--primary)", color: "var(--on-primary)", fontWeight: 800, fontSize: 13, cursor: "pointer", opacity: busy ? 0.7 : 1 }}>
             {busy ? "Saving\u2026" : "Save security question"}
           </button>
         </div>
@@ -564,7 +564,7 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
         <div style={{ width: 40, height: 4, background: "var(--line)", borderRadius: 9, margin: "0 auto 16px" }} />
 
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 52, height: 52, borderRadius: 16, background: "linear-gradient(135deg,var(--primary),var(--primary-2))", display: "grid", placeItems: "center", color: "#fff", fontWeight: 700, fontSize: 20 }} className="disp">{((auth && (auth.name || auth.username)) || "?").charAt(0).toUpperCase()}</div>
+          <div style={{ width: 52, height: 52, borderRadius: 16, background: "linear-gradient(135deg,var(--primary),var(--primary-2))", display: "grid", placeItems: "center", color: "var(--on-primary)", fontWeight: 700, fontSize: 20 }} className="disp">{((auth && (auth.name || auth.username)) || "?").charAt(0).toUpperCase()}</div>
           <div style={{ minWidth: 0 }}>
             <div className="disp" style={{ fontWeight: 700, fontSize: 17 }}>{auth && (auth.name || auth.username) ? (auth.name || auth.username) : "My Profile"}</div>
             <div style={{ fontSize: 12.5, color: "var(--muted)" }}>{auth ? `Logged in · ${auth.phone}` : "Guest session"}</div>
