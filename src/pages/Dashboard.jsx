@@ -986,16 +986,16 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           Indian paper trading off) — there is nothing to trade, so a ₹0 virtual portfolio would
           only mislead. */}
       {!hideDash && (
-      <div className="card flat" style={{ marginTop: 14, padding: 16, border: "1px solid rgba(0,0,0,.06)", color: "#141416", position: "relative", overflow: "hidden", boxShadow: "none", background: "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)" }}>
+      <div className="card flat" style={{ marginTop: 14, padding: 16, border: "1px solid var(--line)", color: "var(--ink)", position: "relative", overflow: "hidden", boxShadow: "none", background: "var(--card-grad)" }}>
         <div style={{ position: "relative" }}>
           {/* slider + date range on ONE row (the dropdown controls whichever view is showing) */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-            <div className="pill" style={{ display: "inline-flex", background: "rgba(0,0,0,.06)", padding: 3 }}>
+            <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", padding: 3 }}>
               {[["total", "Total"], ["auto", "Smart Auto-Buy"]].map(([k, l]) => (
-                <button key={k} onClick={() => setDashView(k)} className="pill tap disp" style={{ padding: "6px 16px", fontSize: 12, fontWeight: 800, border: "none", background: dashView === k ? "#141416" : "transparent", color: dashView === k ? "#fff" : "rgba(0,0,0,.55)" }}>{l}</button>
+                <button key={k} onClick={() => setDashView(k)} className="pill tap disp" style={{ padding: "6px 16px", fontSize: 12, fontWeight: 800, border: "none", background: dashView === k ? "var(--primary)" : "transparent", color: dashView === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
               ))}
             </div>
-            <select aria-label="Date range" value={dashView === "total" ? totPeriod : plPeriod} onChange={(e) => { const v = e.target.value; if (dashView === "total") setTotPeriod(v); else setPlPeriod(v); }} style={{ fontSize: 11, fontWeight: 700, border: "1px solid rgba(0,0,0,.14)", borderRadius: 9, padding: "5px 8px", background: "rgba(0,0,0,.04)", color: "#141416" }}>
+            <select aria-label="Date range" value={dashView === "total" ? totPeriod : plPeriod} onChange={(e) => { const v = e.target.value; if (dashView === "total") setTotPeriod(v); else setPlPeriod(v); }} style={{ fontSize: 11, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 9, padding: "5px 8px", background: "var(--elev)", color: "var(--ink)" }}>
               <option value="today">Today</option>
               <option value="month">This month</option>
               <option value="lifetime">{dashView === "total" ? "All time" : "Lifetime"}</option>
@@ -1023,7 +1023,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 {!(isReal && isLeveraged) && (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginTop: 12 }}>
                     {[["Manual", totalStats.byType.Manual], ["Auto-Buy", totalStats.byType["Auto Buy"]], ["Automate", totalStats.byType.Automate], ["Screener", totalStats.byType["Screener Auto Buy"]]].map(([label, v]) => (
-                      <div key={label} style={{ background: "rgba(0,0,0,.05)", borderRadius: 9, padding: "7px 8px", minWidth: 0 }}>
+                      <div key={label} style={{ background: "var(--elev)", borderRadius: 9, padding: "7px 8px", minWidth: 0 }}>
                         <div style={{ fontSize: 9, opacity: .65, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
                         <div className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: v >= 0 ? "var(--up)" : "var(--down)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(v >= 0 ? "+" : "") + (isReal ? money1(v) : fmt(v, market))}</div>
                       </div>
@@ -1040,21 +1040,21 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 {/* Show positions — the OPEN positions behind the Total (all types), rejected excluded. */}
                 {totalOpenRows.length > 0 && (
                   <>
-                    <button onClick={(e) => { e.stopPropagation(); setShowTotalPos((v) => !v); }} className="tap disp" style={{ marginTop: 12, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid rgba(0,0,0,.14)", background: "rgba(0,0,0,.04)", color: "#141416", borderRadius: 11, padding: "9px 12px", fontWeight: 800, fontSize: 12 }}>
+                    <button onClick={(e) => { e.stopPropagation(); setShowTotalPos((v) => !v); }} className="tap disp" style={{ marginTop: 12, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--primary)", borderRadius: 11, padding: "9px 12px", fontWeight: 800, fontSize: 12 }}>
                       {showTotalPos ? "Hide positions" : `Show positions (${totalOpenRows.length})`}<ChevronRight size={15} style={{ transform: showTotalPos ? "rotate(-90deg)" : "rotate(90deg)", transition: "transform .2s" }} />
                     </button>
                     {showTotalPos && (
                       <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
                         {totalOpenRows.map((t) => (
-                          <div key={t.id || `${t.sym}-${t.entryAt}`} style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,.6)", borderRadius: 9, padding: "8px 10px" }}>
+                          <div key={t.id || `${t.sym}-${t.entryAt}`} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--elev)", borderRadius: 9, padding: "8px 10px" }}>
                             <div style={{ flex: "1 1 0", minWidth: 0 }}>
-                              <div className="disp" style={{ fontWeight: 800, fontSize: 12.5, color: "#141416" }}>{t.sym} <span style={{ fontSize: 9.5, fontWeight: 700, opacity: .6 }}>{t.tradeType || "Manual"}</span></div>
-                              <div style={{ fontSize: 9.5, color: "rgba(0,0,0,.55)", fontWeight: 700 }}>Entry {isReal ? money1(t.entry) : fmt(t.entry, market)} · now {isReal ? money1(t.cur) : fmt(t.cur, market)}</div>
+                              <div className="disp" style={{ fontWeight: 800, fontSize: 12.5, color: "var(--primary)" }}>{t.sym} <span style={{ fontSize: 9.5, fontWeight: 700, opacity: .6 }}>{t.tradeType || "Manual"}</span></div>
+                              <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>Entry {isReal ? money1(t.entry) : fmt(t.entry, market)} · now {isReal ? money1(t.cur) : fmt(t.cur, market)}</div>
                             </div>
                             <div className="mono" style={{ flex: "0 0 auto", fontWeight: 800, fontSize: 13, color: (t.livePnl || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{(t.livePnl || 0) >= 0 ? "+" : ""}{isReal ? money1(t.livePnl) : fmt(t.livePnl, market)}</div>
                           </div>
                         ))}
-                        <div style={{ fontSize: 10, color: "rgba(0,0,0,.5)", fontWeight: 600, marginTop: 2 }}>Rejected orders aren't positions — find them under Orders.</div>
+                        <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600, marginTop: 2 }}>Rejected orders aren't positions — find them under Orders.</div>
                       </div>
                     )}
                   </>
@@ -1078,7 +1078,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                         lsSet("mx_autobuy_warned", true);
                       }
                       setAutoOnMap((m) => ({ ...m, [autoKey]: !m[autoKey] }));
-                    }} style={{ width: 38, height: 22, borderRadius: 999, background: autoOn ? "#22C55E" : "rgba(0,0,0,.2)", position: "relative", transition: "background .2s", flexShrink: 0 }}>
+                    }} style={{ width: 38, height: 22, borderRadius: 999, background: autoOn ? "#22C55E" : "var(--line)", position: "relative", transition: "background .2s", flexShrink: 0 }}>
                       <span style={{ position: "absolute", top: 2, left: autoOn ? 18 : 2, width: 18, height: 18, borderRadius: 999, background: "#fff", transition: "left .2s" }} />
                     </span>
                   </label>
@@ -1087,9 +1087,9 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
               {showProduct && (
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
                   <span style={{ fontSize: 10.5, opacity: .8, fontWeight: 700 }}>Product</span>
-                  <div className="pill" style={{ display: "inline-flex", background: "rgba(0,0,0,.06)", padding: 2 }}>
+                  <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", padding: 2 }}>
                     {[["INTRADAY", "Intraday"], ["NRML", "NRML"]].map(([k, l]) => (
-                      <button key={k} onClick={() => setProduct(k)} className="pill tap disp" style={{ padding: "5px 12px", fontSize: 10.5, fontWeight: 800, border: "none", background: product === k ? "#141416" : "transparent", color: product === k ? "#fff" : "rgba(0,0,0,.55)" }}>{l}</button>
+                      <button key={k} onClick={() => setProduct(k)} className="pill tap disp" style={{ padding: "5px 12px", fontSize: 10.5, fontWeight: 800, border: "none", background: product === k ? "var(--primary)" : "transparent", color: product === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
                     ))}
                   </div>
                   <span style={{ fontSize: 9.5, opacity: .6 }}>{product === "INTRADAY" ? "auto-squared off same day" : "carried forward"}</span>
@@ -1130,20 +1130,20 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
 
               {/* SL/TP mode. Default = each pick keeps its own target/stop (from Top Picks). Custom = one
                   SL/TP for all picks, prefilled 0.5% / 1.5%. A per-position edit still overrides either. */}
-              <div style={{ marginTop: 12, background: "rgba(0,0,0,.05)", borderRadius: 12, padding: "10px 12px" }}>
+              <div style={{ marginTop: 12, background: "var(--elev)", borderRadius: 12, padding: "10px 12px" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                   <div style={{ fontSize: 9.5, opacity: .8, fontWeight: 700 }}>STOP-LOSS / TARGET</div>
-                  <div className="pill" style={{ display: "inline-flex", background: "rgba(0,0,0,.06)", padding: 2 }}>
+                  <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", padding: 2 }}>
                     {[["default", "Default"], ["custom", "Custom"]].map(([k, l]) => (
-                      <button key={k} onClick={() => setSlMode(k)} className="pill tap disp" style={{ padding: "4px 12px", fontSize: 10.5, fontWeight: 800, border: "none", background: slMode === k ? "#141416" : "transparent", color: slMode === k ? "#fff" : "rgba(0,0,0,.55)" }}>{l}</button>
+                      <button key={k} onClick={() => setSlMode(k)} className="pill tap disp" style={{ padding: "4px 12px", fontSize: 10.5, fontWeight: 800, border: "none", background: slMode === k ? "var(--primary)" : "transparent", color: slMode === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
                     ))}
                   </div>
                 </div>
                 {slMode === "custom" ? (
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 9 }}>
-                    <input value={autoSL} onChange={(e) => setAutoSL(+e.target.value.replace(/[^0-9.]/g, "") || 0)} inputMode="decimal" className="no-ring mono" style={{ width: 52, textAlign: "center", border: "none", background: "rgba(0,0,0,.06)", borderRadius: 8, padding: "5px 4px", fontWeight: 800, fontSize: 13, color: "#141416" }} />
+                    <input value={autoSL} onChange={(e) => setAutoSL(+e.target.value.replace(/[^0-9.]/g, "") || 0)} inputMode="decimal" className="no-ring mono" style={{ width: 52, textAlign: "center", border: "none", background: "var(--elev)", borderRadius: 8, padding: "5px 4px", fontWeight: 800, fontSize: 13, color: "var(--primary)" }} />
                     <span style={{ fontSize: 11, color: "var(--down)", fontWeight: 800 }}>% SL</span>
-                    <input value={autoTP} onChange={(e) => setAutoTP(+e.target.value.replace(/[^0-9.]/g, "") || 0)} inputMode="decimal" className="no-ring mono" style={{ width: 52, textAlign: "center", border: "none", background: "rgba(0,0,0,.06)", borderRadius: 8, padding: "5px 4px", fontWeight: 800, fontSize: 13, color: "#141416" }} />
+                    <input value={autoTP} onChange={(e) => setAutoTP(+e.target.value.replace(/[^0-9.]/g, "") || 0)} inputMode="decimal" className="no-ring mono" style={{ width: 52, textAlign: "center", border: "none", background: "var(--elev)", borderRadius: 8, padding: "5px 4px", fontWeight: 800, fontSize: 13, color: "var(--primary)" }} />
                     <span style={{ fontSize: 11, color: "var(--up)", fontWeight: 800 }}>% TP</span>
                   </div>
                 ) : (
@@ -1152,16 +1152,16 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
               </div>
 
               {/* capital — type then Save */}
-              <div style={{ marginTop: 12, background: "rgba(0,0,0,.05)", borderRadius: 12, padding: "8px 12px", display: "flex", alignItems: "flex-end", gap: 8 }}>
+              <div style={{ marginTop: 12, background: "var(--elev)", borderRadius: 12, padding: "8px 12px", display: "flex", alignItems: "flex-end", gap: 8 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 9.5, opacity: .8, fontWeight: 700 }}>CAPITAL TO DEPLOY ({CUR[aggCur]})</div>
-                  <input value={capDraft} onChange={(e) => { setCapDraft(e.target.value.replace(/[^0-9]/g, "")); setCapSaved(false); }} inputMode="numeric" placeholder={capDefault(market)} className="no-ring mono" style={{ width: "100%", background: "transparent", border: "none", color: "#141416", fontSize: 17, fontWeight: 800, marginTop: 2 }} />
+                  <input value={capDraft} onChange={(e) => { setCapDraft(e.target.value.replace(/[^0-9]/g, "")); setCapSaved(false); }} inputMode="numeric" placeholder={capDefault(market)} className="no-ring mono" style={{ width: "100%", background: "transparent", border: "none", color: "var(--primary)", fontSize: 17, fontWeight: 800, marginTop: 2 }} />
                 </div>
                 <button
                   onClick={() => { setDeployCapital(capDraft); setCapSaved(true); setTimeout(() => setCapSaved(false), 2500); }}
                   disabled={capDraft === deployCapital}
                   className="tap disp"
-                  style={{ flex: "0 0 auto", border: "none", borderRadius: 10, padding: "8px 16px", fontWeight: 800, fontSize: 12.5, background: capDraft === deployCapital ? "rgba(0,0,0,.08)" : "#141416", color: capDraft === deployCapital ? "rgba(0,0,0,.35)" : "#fff" }}
+                  style={{ flex: "0 0 auto", border: "none", borderRadius: 10, padding: "8px 16px", fontWeight: 800, fontSize: 12.5, background: capDraft === deployCapital ? "var(--line)" : "var(--primary)", color: capDraft === deployCapital ? "var(--muted)" : "var(--on-primary)" }}
                 >
                   {capSaved ? "Saved ✓" : "Save"}
                 </button>
@@ -1169,7 +1169,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
 
               {/* Positions — REAL. Planned entries when Auto-Buy is off; live/closed
                   positions (with real P&L) once it is on. Nothing is simulated. */}
-              <button onClick={() => setShowTrades((v) => !v)} className="tap disp" style={{ width: "100%", marginTop: 12, background: "rgba(0,0,0,.06)", color: "#141416", border: "1px solid rgba(0,0,0,.12)", borderRadius: 12, padding: 11, fontWeight: 800, fontSize: 12.5, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}>
+              <button onClick={() => setShowTrades((v) => !v)} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--elev)", color: "var(--primary)", border: "1px solid var(--line)", borderRadius: 12, padding: 11, fontWeight: 800, fontSize: 12.5, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}>
                 {showTrades ? "Hide positions" : (autoOn ? `Show Positions (${autoRows.filter((r) => !r.rejected).length})` : `Show Today's Plan (${autoTrades.length})`)}<ChevronRight size={15} style={{ transform: showTrades ? "rotate(-90deg)" : "rotate(90deg)", transition: "transform .2s" }} />
               </button>
 
@@ -1182,7 +1182,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     const statusLabel = t.rejected ? "⛔ Order rejected" : t.status === "partial" ? "◑ PARTIAL" : t.open ? "● OPEN" : (t.exitType || "CLOSED");
                     const statusColor = t.rejected ? "var(--down)" : t.status === "partial" ? "#B26B00" : undefined;
                     return (
-                    <div key={t.id} style={{ background: t.rejected ? "rgba(232,72,85,.12)" : "rgba(0,0,0,.05)", borderRadius: 12, padding: "10px 12px", border: t.rejected ? "1px solid rgba(232,72,85,.4)" : "none" }}>
+                    <div key={t.id} style={{ background: t.rejected ? "rgba(232,72,85,.12)" : "var(--elev)", borderRadius: 12, padding: "10px 12px", border: t.rejected ? "1px solid rgba(232,72,85,.4)" : "none" }}>
                       <div onClick={() => { const st = ALL.find((a) => a.sym === t.sym); st && onOpen(st); }} className="tap" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
                         <span className="disp" style={{ fontWeight: 800, fontSize: 12.5 }}>{t.sym} <span style={{ fontSize: 10, opacity: .7, fontWeight: 600 }}>×{t.qty}</span></span>
                         <span style={{ fontSize: 9.5, opacity: .9, fontWeight: 800, color: statusColor }}>{statusLabel}</span>
@@ -1198,7 +1198,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                             <div><div style={{ opacity: .7 }}>Entry</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.entry, cyc)}</div><div style={{ opacity: .7 }}>{t.entryAt ? new Date(t.entryAt).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</div></div>
                             <div style={{ textAlign: "right" }}><div style={{ opacity: .7 }}>{t.open ? "Current" : "Exit"}</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.cur, cyc)}</div><div style={{ opacity: .7 }}>{t.open ? "position open" : (t.exitAt ? new Date(t.exitAt).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—")}</div></div>
                           </div>
-                          {(t.tp || t.sl) && <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(0,0,0,.08)", fontSize: 10.5, fontWeight: 700 }}>🎯 Target <span style={{ color: "var(--up)" }}>+{t.tp}%</span> · 🛑 Stop <span style={{ color: "var(--down)" }}>−{t.sl}%</span></div>}
+                          {(t.tp || t.sl) && <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--line)", fontSize: 10.5, fontWeight: 700 }}>🎯 Target <span style={{ color: "var(--up)" }}>+{t.tp}%</span> · 🛑 Stop <span style={{ color: "var(--down)" }}>−{t.sl}%</span></div>}
                         </>
                       )}
                     </div>
@@ -1208,26 +1208,26 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
                   <div style={{ fontSize: 11, opacity: .8, lineHeight: 1.5 }}>Today's plan — these are the positions Smart Auto-Buy would enter at the live price, with the target/stop it would arm. Turn it on to place them for real.</div>
                   {autoTrades.map((t) => (
-                    <div key={t.sym} style={{ background: "rgba(0,0,0,.05)", borderRadius: 12, padding: "10px 12px" }}>
+                    <div key={t.sym} style={{ background: "var(--elev)", borderRadius: 12, padding: "10px 12px" }}>
                       <div onClick={() => { const st = ALL.find((a) => a.sym === t.sym); st && onOpen(st); }} className="tap" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
                         <span className="disp" style={{ fontWeight: 800, fontSize: 12.5 }}>{t.sym} <span style={{ fontSize: 10, opacity: .7, fontWeight: 600 }}>×{t.qty}</span></span>
                         <span className="mono" style={{ fontWeight: 800, fontSize: 13 }}>{fmt(t.entry, t.m)}</span>
                       </div>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(0,0,0,.08)" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--line)" }}>
                         <span style={{ fontSize: 10.5, fontWeight: 700 }}>🎯 Target <span style={{ color: "var(--up)" }}>+{t.tpPct}%</span> · 🛑 Stop <span style={{ color: "var(--down)" }}>−{t.slPct}%</span>{autoOverrides[t.sym] ? " · edited" : ""}</span>
-                        <button onClick={() => setEditSym(editSym === t.sym ? null : t.sym)} className="tap" style={{ border: "none", background: "rgba(0,0,0,.06)", borderRadius: 8, padding: 6, display: "grid", placeItems: "center", color: "#141416" }}><Pencil size={12} /></button>
+                        <button onClick={() => setEditSym(editSym === t.sym ? null : t.sym)} className="tap" style={{ border: "none", background: "var(--elev)", borderRadius: 8, padding: 6, display: "grid", placeItems: "center", color: "var(--primary)" }}><Pencil size={12} /></button>
                       </div>
                       {editSym === t.sym && (
                         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                          <div style={{ flex: 1, background: "rgba(0,0,0,.06)", borderRadius: 10, padding: "6px 9px" }}>
+                          <div style={{ flex: 1, background: "var(--elev)", borderRadius: 10, padding: "6px 9px" }}>
                             <div style={{ fontSize: 8.5, opacity: .8, fontWeight: 700 }}>TARGET %</div>
-                            <input defaultValue={t.tpPct} onChange={(e) => setOv(t, "tp", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={{ width: "100%", background: "transparent", border: "none", color: "#141416", fontSize: 13, fontWeight: 800 }} />
+                            <input defaultValue={t.tpPct} onChange={(e) => setOv(t, "tp", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={{ width: "100%", background: "transparent", border: "none", color: "var(--primary)", fontSize: 13, fontWeight: 800 }} />
                           </div>
-                          <div style={{ flex: 1, background: "rgba(0,0,0,.06)", borderRadius: 10, padding: "6px 9px" }}>
+                          <div style={{ flex: 1, background: "var(--elev)", borderRadius: 10, padding: "6px 9px" }}>
                             <div style={{ fontSize: 8.5, opacity: .8, fontWeight: 700 }}>STOP %</div>
-                            <input defaultValue={t.slPct} onChange={(e) => setOv(t, "sl", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={{ width: "100%", background: "transparent", border: "none", color: "#141416", fontSize: 13, fontWeight: 800 }} />
+                            <input defaultValue={t.slPct} onChange={(e) => setOv(t, "sl", e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={{ width: "100%", background: "transparent", border: "none", color: "var(--primary)", fontSize: 13, fontWeight: 800 }} />
                           </div>
-                          <button onClick={() => setEditSym(null)} className="tap disp" style={{ alignSelf: "stretch", border: "none", background: "#141416", color: "#fff", borderRadius: 10, padding: "0 14px", fontWeight: 800, fontSize: 12 }}>Done</button>
+                          <button onClick={() => setEditSym(null)} className="tap disp" style={{ alignSelf: "stretch", border: "none", background: "var(--primary)", color: "var(--on-primary)", borderRadius: 10, padding: "0 14px", fontWeight: 800, fontSize: 12 }}>Done</button>
                         </div>
                       )}
                     </div>
