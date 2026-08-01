@@ -3014,7 +3014,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       {/* Automation Dashboard — moved ABOVE the deployed lists so the headline P&L is the first
           thing you see. Collapsed: a Win/Loss + P&L strip with an expand chevron. */}
       {!dashOpen ? (
-        <button onClick={() => setDashOpen(true)} className="tap disp card flat" style={{ width: "100%", marginTop: 14, border: "1px solid var(--line)", boxShadow: "none", background: "var(--card-grad)", color: "var(--ink)", borderRadius: 24, padding: "13px 16px", display: "flex", alignItems: "center", gap: 14 }}>
+        <button onClick={() => setDashOpen(true)} className="tap disp card flat" style={{ width: "100%", marginTop: 14, border: "1px solid var(--line)", outline: "none", boxShadow: "inset 0 1px 0 rgba(255,255,255,.10), inset 0 0 0 1px rgba(255,255,255,.02), 0 10px 30px rgba(0,0,0,.28)", background: "var(--card-grad)", color: "var(--ink)", borderRadius: 24, padding: "13px 16px", display: "flex", alignItems: "center", gap: 14 }}>
           <div style={{ textAlign: "left" }}>
             <div style={{ fontSize: 10, opacity: .8, fontWeight: 700 }}>WIN / LOSS</div>
             <div className="mono" style={{ fontWeight: 800, fontSize: 15 }}>{agg.wins} : {dLosses}</div>
@@ -3026,7 +3026,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           <span style={{ marginLeft: "auto", display: "grid", placeItems: "center" }}><ChevronDown size={16} /></span>
         </button>
       ) : (
-      <div className="card flat" style={{ marginTop: 14, padding: 18, border: "1px solid var(--line)", boxShadow: "none", background: "var(--card-grad)", color: "var(--ink)" }}>
+      <div className="card flat" style={{ marginTop: 14, padding: 18, border: "1px solid var(--line)", outline: "none", boxShadow: "inset 0 1px 0 rgba(255,255,255,.10), inset 0 0 0 1px rgba(255,255,255,.02), 0 10px 30px rgba(0,0,0,.28)", background: "var(--card-grad)", color: "var(--ink)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div className="disp" style={{ fontWeight: 700, fontSize: 15 }}>Automation Dashboard</div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

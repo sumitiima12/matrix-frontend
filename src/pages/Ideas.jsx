@@ -80,7 +80,7 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
   // Collapsed: just Win/Loss + P&L and an expand arrow.
   if (collapsed) {
     return (
-      <button onClick={onExpand} className="tap disp card glow" style={{ width: "100%", marginTop: 14, border: "1px solid var(--line)", background: "var(--card-grad)", boxShadow: "none", color: "var(--ink)", borderRadius: 24, padding: "13px 16px", display: "flex", alignItems: "center", gap: 14 }}>
+      <button onClick={onExpand} className="tap disp card glow" style={{ width: "100%", marginTop: 14, border: "1px solid var(--line)", outline: "none", background: "var(--card-grad)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.10), inset 0 0 0 1px rgba(255,255,255,.02), 0 10px 30px rgba(0,0,0,.28)", color: "var(--ink)", borderRadius: 24, padding: "13px 16px", display: "flex", alignItems: "center", gap: 14 }}>
         <div style={{ textAlign: "left" }}>
           <div style={{ fontSize: 10, opacity: .85, fontWeight: 700 }}>WIN / LOSS</div>
           <div className="mono" style={{ fontWeight: 800, fontSize: 15 }}>{wins} : {losses}</div>
@@ -94,7 +94,7 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
     );
   }
   return (
-    <div className="card glow" style={{ marginTop: 14, padding: 16, border: "1px solid var(--line)", background: "var(--card-grad)", boxShadow: "none", color: "var(--ink)" }}>
+    <div className="card glow" style={{ marginTop: 14, padding: 16, border: "1px solid var(--line)", outline: "none", background: "var(--card-grad)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.10), inset 0 0 0 1px rgba(255,255,255,.02), 0 10px 30px rgba(0,0,0,.28)", color: "var(--ink)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div className="disp" style={{ fontWeight: 700, fontSize: 15 }}>Ideas Dashboard</div>
         <span style={{ fontSize: 10.5, opacity: .85, marginRight: 34 }}>{periodLabel}</span>
