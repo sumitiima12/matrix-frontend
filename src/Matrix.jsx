@@ -1006,10 +1006,6 @@ function AppInner() {
               <Wordmark height={28} />
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-              {/* Light / dark theme — a compact icon toggle up here by the wallet & profile. */}
-              <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label="Toggle light or dark mode" title="Light / dark mode" className="tap" style={{ border: "1px solid var(--line)", background: "transparent", borderRadius: 10, width: 34, height: 34, display: "grid", placeItems: "center", cursor: "pointer", flexShrink: 0 }}>
-                {theme === "dark" ? <Moon size={16} color="var(--muted)" /> : <Sun size={16} color="var(--muted)" />}
-              </button>
               {/* Balance — in REAL mode this is your broker's actual cash (never the paper
                   wallet), tinted red so real money is never mistaken for virtual capital.
                   Hidden entirely when virtual trading is disabled for this market (non-admin):
@@ -1109,12 +1105,18 @@ function AppInner() {
               />
             )}
 
-            {/* Last tick — sits right beside the Virtual/Real switch (the theme toggle moved up top). */}
-            {(brokerTick || liveAt) && (
-              <span className="mono" style={{ fontSize: 9, color: "var(--muted)", fontWeight: 700, marginLeft: 2 }}>
-                {new Date(brokerTick || liveAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-              </span>
-            )}
+            {/* Right cluster, sitting directly under the profile icon: last tick + the light/dark toggle,
+               vertically aligned with each other. */}
+            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+              {(brokerTick || liveAt) && (
+                <span className="mono" style={{ fontSize: 9, color: "var(--muted)", fontWeight: 700 }}>
+                  {new Date(brokerTick || liveAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              )}
+              <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label="Toggle light or dark mode" title="Light / dark mode" className="tap" style={{ border: "1px solid var(--line)", background: "transparent", borderRadius: 9, width: 30, height: 30, display: "grid", placeItems: "center", cursor: "pointer", flexShrink: 0 }}>
+                {theme === "dark" ? <Moon size={15} color="var(--muted)" /> : <Sun size={15} color="var(--muted)" />}
+              </button>
+            </div>
           </div>
 
           {/* DAILY RECONNECT NUDGE — a broker connected on a prior day whose token has since expired.
