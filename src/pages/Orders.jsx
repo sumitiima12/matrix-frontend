@@ -116,7 +116,8 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
     if (!isOpen(t)) return { ...t, livePnl: t.pnl || 0, open: false };
     const s = ALL.find((a) => a.sym === t.sym);
     const cur = s ? s.price : t.entry;
-    return { ...t, open: true, cur, livePnl: +((cur - t.entry) * (t.qty || 1)).toFixed(2) };
+    const dir = (t.side === "SELL" || t.short) ? -1 : 1;   // short profits when price falls
+    return { ...t, open: true, cur, livePnl: +((cur - t.entry) * (t.qty || 1) * dir).toFixed(2) };
   };
   /* Date a trade by its EXIT if it's closed, its ENTRY if it's still open. A position
      opened in March and still running is "current", not a March trade — filtering an

@@ -46,7 +46,8 @@ export function isMarketOpen(market, now = new Date()) {
       return mins >= 810 && mins <= 1260;      // fallback
     }
   }
-  if (market === "Commodity") return mins >= 240 && mins <= 1410;
+  // Commodity = MCX (Indian, INR). Regular session 09:00–23:30 IST = 03:30–18:00 UTC (210–1080 min).
+  if (market === "Commodity") return mins >= 210 && mins <= 1080;
   return true;
 }
 
@@ -55,7 +56,7 @@ export function isMarketOpen(market, now = new Date()) {
 export function marketCloseMins(market) {
   if (market === "IN") return 600;    // 15:30 IST
   if (market === "US") return 1260;                       // 16:00 ET (approx)
-  if (market === "Commodity") return 1410;
+  if (market === "Commodity") return 1080;               // 23:30 IST (MCX close)
   return null;                                            // Crypto never closes
 }
 

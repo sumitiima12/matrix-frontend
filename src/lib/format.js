@@ -28,9 +28,20 @@ export function fmt(n, market = "IN") {
   return c + grouped;
 }
 
-export function compact(n) {
+/* Abbreviate a big number. Indian markets read in Lakh/Crore; US, Crypto and USD commodities read in
+   K/M/B/T. `market` picks the convention (defaults to Indian so existing Indian call sites are unchanged).
+   Passing a US/Crypto market stops absurdities like a US market cap showing "300000 Cr". */
+export function compact(n, market = "IN") {
   if (n == null || isNaN(n)) return "—";
   const a = Math.abs(n);
+  const western = market === "US" || market === "Crypto" || (market === "Commodity" && !_commodityINR);
+  if (western) {
+    if (a >= 1e12) return (n / 1e12).toFixed(2) + "T";
+    if (a >= 1e9) return (n / 1e9).toFixed(2) + "B";
+    if (a >= 1e6) return (n / 1e6).toFixed(2) + "M";
+    if (a >= 1e3) return (n / 1e3).toFixed(1) + "K";
+    return String(n);
+  }
   if (a >= 1e7) return (n / 1e7).toFixed(2) + " Cr";
   if (a >= 1e5) return (n / 1e5).toFixed(2) + " L";
   if (a >= 1e3) return (n / 1e3).toFixed(1) + "K";

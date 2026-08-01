@@ -43,7 +43,7 @@ export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1,
   const [val, setVal] = useState(step);            // amount ($) for crypto, else quantity
 
   const light = variant === "light";
-  const priced = s?.price != null;
+  const priced = s?.price > 0;   // must be a real positive price, else qty maths (amount/price) blows up
   // For crypto the "total" spent is the amount itself; for stocks it's price × qty.
   const total = priced ? (isCrypto ? (Number(val) || 0) : s.price * (Number(val) || 0)) : null;
 
@@ -66,7 +66,7 @@ export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1,
     if (amount <= 0) return;
     // Crypto: convert the dollar amount to units at the live price. Fractional is allowed.
     const qty = isCrypto ? +(amount / s.price).toFixed(6) : amount;
-    if (qty <= 0) return;
+    if (!Number.isFinite(qty) || qty <= 0) return;   // never send a NaN/Infinity qty to an order
     onBuy(s, qty, { ...opts, amount: isCrypto ? amount : undefined, ...(side === "SELL" ? { side: "SELL", short: true } : {}) });
     setVal(step);
   };

@@ -502,6 +502,40 @@ const PHRASE_RULES = [
   { re: /(?:reject|rejected|rejects|rejecting|fail|fails|failing|failed|reverses?)(?:\s+(?:at|from|off|near|the))*\s+resistance|(?:near|at|off|from)\s+resistance|hits?\s+resistance/i, cond: { la: "Price", op: "<", b: "Resistance", bType: "ind" }, defs: [] },
   { re: /break(?:s|ing|out)?\s*(?:above|over|through|past)?\s*resistance|breakout/i, cond: { la: "Price", op: "crosses_above", b: "Resistance", bType: "ind" }, defs: [] },
   { re: /break(?:s|ing|down)?\s*(?:below|under|through)?\s*support|breakdown/i, cond: { la: "Price", op: "crosses_below", b: "Support", bType: "ind" }, defs: [] },
+  /* Extended trader vocabulary — every rule below maps to an operand the engine ALREADY computes, so
+     Neo understands the term locally (no LLM call, no GROQ tokens) and can never invent an operator. */
+  // Stochastic
+  { re: /stoch(?:astic)?\s*(?:is\s*)?oversold|stoch(?:astic)?\s*below\s*20/i, cond: { la: "Stoch.k", op: "<", b: "20", bType: "num" }, defs: [{ type: "Stoch", len: "14", name: "Stoch" }] },
+  { re: /stoch(?:astic)?\s*(?:is\s*)?overbought|stoch(?:astic)?\s*above\s*80/i, cond: { la: "Stoch.k", op: ">", b: "80", bType: "num" }, defs: [{ type: "Stoch", len: "14", name: "Stoch" }] },
+  { re: /stoch(?:astic)?\s*(?:bull(?:ish)?\s*)?cross(?:es|over)?\s*(?:up)?/i, cond: { la: "Stoch.k", op: "crosses_above", b: "Stoch.d", bType: "ind" }, defs: [{ type: "Stoch", len: "14", name: "Stoch" }] },
+  // Trend strength (ADX / DMI)
+  { re: /strong(?:ly)?\s*trend(?:ing)?|trending\s*strongly|adx\s*(?:above|over|>)\s*25|strong\s*adx/i, cond: { la: "DMI.adx", op: ">", b: "25", bType: "num" }, defs: [{ type: "DMI", len: "14", name: "DMI" }] },
+  { re: /(?:bullish|positive)\s*(?:di|dmi)\s*cross|di\s*plus\s*(?:above|over)\s*di\s*minus/i, cond: { la: "DMI.plus", op: "crosses_above", b: "DMI.minus", bType: "ind" }, defs: [{ type: "DMI", len: "14", name: "DMI" }] },
+  // VWAP
+  { re: /(?:above|over|reclaims?|back\s*above)\s*vwap/i, cond: { la: "Price", op: ">", b: "VWAP", bType: "ind" }, defs: [{ type: "VWAP", len: "", name: "VWAP" }] },
+  { re: /(?:below|under|loses?|breaks?\s*below)\s*vwap/i, cond: { la: "Price", op: "<", b: "VWAP", bType: "ind" }, defs: [{ type: "VWAP", len: "", name: "VWAP" }] },
+  // Candlestick patterns — CDL:* operands need NO def, so these are pure boolean triggers.
+  { re: /bullish\s*engulf(?:ing)?/i, cond: { la: "CDL:bull-engulfing", op: ">", b: "0", bType: "num" }, defs: [] },
+  { re: /bearish\s*engulf(?:ing)?/i, cond: { la: "CDL:bear-engulfing", op: ">", b: "0", bType: "num" }, defs: [] },
+  { re: /hammer(?:\s*candle)?/i, cond: { la: "CDL:hammer", op: ">", b: "0", bType: "num" }, defs: [] },
+  { re: /shooting\s*star/i, cond: { la: "CDL:shooting-star", op: ">", b: "0", bType: "num" }, defs: [] },
+  { re: /morning\s*star/i, cond: { la: "CDL:morning-star", op: ">", b: "0", bType: "num" }, defs: [] },
+  { re: /evening\s*star/i, cond: { la: "CDL:evening-star", op: ">", b: "0", bType: "num" }, defs: [] },
+  { re: /\bdoji\b/i, cond: { la: "CDL:doji", op: ">", b: "0", bType: "num" }, defs: [] },
+  // Gaps (current vs previous candle)
+  { re: /gap(?:s|ped|ping)?\s*up|gaps?\s*higher/i, cond: { la: "CC.open", op: ">", b: "PC.close", bType: "ind" }, defs: [CC_DEF, { type: "PrevCandle", name: "PC" }] },
+  { re: /gap(?:s|ped|ping)?\s*down|gaps?\s*lower/i, cond: { la: "CC.open", op: "<", b: "PC.close", bType: "ind" }, defs: [CC_DEF, { type: "PrevCandle", name: "PC" }] },
+  // New highs (map to a resistance breakout, which is how the engine models fresh highs)
+  { re: /new\s*(?:high|highs)|52[\s-]*week\s*high|all[\s-]*time\s*high|fresh\s*highs?|breaks?\s*to\s*new\s*highs?/i, cond: { la: "Price", op: "crosses_above", b: "Resistance", bType: "ind" }, defs: [] },
+  // Above / below the PREVIOUS DAY'S close (or price/high/low) — WITHOUT a percentage. "price is above
+  // previous day close/price" -> Price > PC.close. On a daily chart PC is literally yesterday's candle.
+  { re: /(?:is\s+)?(?:above|over|higher\s*than|greater\s*than|crosses?\s*above|breaks?\s*above)\s+(?:the\s+)?(?:previous|prev|last|prior|yesterday(?:'?s)?)\s*(?:day'?s?\s*)?(?:clos\w*|price|high)/i, cond: { la: "Price", op: ">", b: "PC.close", bType: "ind" }, defs: [{ type: "PrevCandle", name: "PC" }] },
+  { re: /(?:is\s+)?(?:below|under|lower\s*than|less\s*than|crosses?\s*below|breaks?\s*below)\s+(?:the\s+)?(?:previous|prev|last|prior|yesterday(?:'?s)?)\s*(?:day'?s?\s*)?(?:clos\w*|price|low)/i, cond: { la: "Price", op: "<", b: "PC.close", bType: "ind" }, defs: [{ type: "PrevCandle", name: "PC" }] },
+  // "showing momentum" / "strong momentum" / "momentum building" -> MACD line above its signal.
+  { re: /(?:showing|strong|good|positive|building|rising)\s*momentum|momentum\s*(?:is\s*)?(?:building|turning\s*up|positive|strong)|has\s*momentum/i, cond: { la: "MACD.line", op: ">", b: "MACD.signal", bType: "ind" }, defs: [{ type: "MACD", len: "", name: "MACD" }] },
+  // "showing bullish signals" / "looks bullish" -> trading above the 50 EMA (the canonical bullish state).
+  { re: /bullish\s*signals?|looks?\s*bullish|showing\s*bullish|turning\s*bullish|is\s*bullish/i, cond: { la: "Price", op: ">", b: "EMA50", bType: "ind" }, defs: [{ type: "EMA", len: "50", name: "EMA50" }] },
+  { re: /bearish\s*signals?|looks?\s*bearish|showing\s*bearish|turning\s*bearish|is\s*bearish/i, cond: { la: "Price", op: "<", b: "EMA50", bType: "ind" }, defs: [{ type: "EMA", len: "50", name: "EMA50" }] },
 ];
 
 export function interpretText(text) {

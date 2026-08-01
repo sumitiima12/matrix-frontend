@@ -86,20 +86,20 @@ export async function scanMomentum({ tf, pct, dir, bars, syms }) {
    past entry signals (a grid sweep over real candles), with an out-of-sample check. `mode:"metric"`
    evaluates My-Screener metric conditions candle-by-candle; otherwise it uses the candle entry chain
    (Popular screeners / builder strategies). Returns { entries, best, current, oos, top }. */
-export async function optimizeExits({ mode, defs, entry, tf, appSyms, currentSl, currentTp, objective = "pnl", rrMin = 1.5, maxSl = 0 }) {
+export async function optimizeExits({ mode, defs, entry, tf, appSyms, currentSl, currentTp, objective = "pnl", rrMin = 1.5, maxSl = 0, short = false }) {
   if (!BACKEND_URL || !appSyms || !appSyms.length || !entry || !entry.length) return null;
   try {
     const ySyms = appSyms.map(yahooSymbol);
     const r = await fetch(`${BACKEND_URL}/api/optimize-exits`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode, defs, entry, tf, symbols: ySyms, currentSl, currentTp, objective, rrMin, maxSl }),
+      body: JSON.stringify({ mode, defs, entry, tf, symbols: ySyms, currentSl, currentTp, objective, rrMin, maxSl, short: !!short }),
     });
     return await r.json().catch(() => null);
   } catch { return null; }
 }
 /* Optimise the INDICATOR lengths + a shared timeframe (≤1h) that maximise win rate or P&L on the
    strategy's own past entry signals. Returns { best:{defs,tf,winRate,pnl,retPct,...}, current, changes }. */
-export async function optimizeIndicators({ mode, defs, entry, tf, appSyms, currentSl, currentTp, objective = "pnl", lockTf = null }) {
+export async function optimizeIndicators({ mode, defs, entry, tf, appSyms, currentSl, currentTp, objective = "pnl", lockTf = null, short = false }) {
   // `defs` may be EMPTY for metric screeners (RSI, Price change %, …) — the optimiser can still sweep the
   // TIMEFRAME even with no tunable indicator lengths. So we require an entry + symbols, not defs.
   if (!BACKEND_URL || !appSyms || !appSyms.length || !entry || !entry.length) return null;
@@ -107,7 +107,7 @@ export async function optimizeIndicators({ mode, defs, entry, tf, appSyms, curre
     const ySyms = appSyms.map(yahooSymbol);
     const r = await fetch(`${BACKEND_URL}/api/optimize-indicators`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode, defs: defs || [], entry, tf, symbols: ySyms, currentSl, currentTp, objective, ...(lockTf ? { lockTf } : {}) }),
+      body: JSON.stringify({ mode, defs: defs || [], entry, tf, symbols: ySyms, currentSl, currentTp, objective, short: !!short, ...(lockTf ? { lockTf } : {}) }),
     });
     return await r.json().catch(() => null);
   } catch { return null; }
@@ -174,14 +174,35 @@ export async function resolveExitFromCandles(trade, risk = {}) {
   const tsl = risk.tsl ?? trade.tsl;
   if (!tp && !sl && !tsl) return null;                  // no exit rules -> stays open
   const entry = trade.entry;
-  const target = tp ? entry * (1 + tp / 100) : null;
-  const hardStop = sl ? entry * (1 - sl / 100) : null;
+  const short = (trade.side === "SELL" || trade.short === true);   // shorts mirror the levels
   let candles = null;
   try { candles = await fetchHistory(trade.sym, "5m"); } catch { return null; }
   if (!candles || !candles.length) return null;
 
   // Only look at candles AFTER the entry timestamp.
   const after = candles.filter((c) => c.t && c.t > (trade.entryAt || 0));
+
+  if (short) {
+    // Short: profit when price FALLS. TP below entry, stops above. Trailing stop tracks the low.
+    const target = tp ? entry * (1 - tp / 100) : null;
+    const hardStop = sl ? entry * (1 + sl / 100) : null;
+    let trough = entry;                                  // lowest price seen since entry
+    for (const c of after) {
+      const trailStop = tsl ? trough * (1 + tsl / 100) : null;
+      const stop = Math.min(hardStop ?? Infinity, trailStop ?? Infinity);
+      const hasStop = stop < Infinity;
+      const hitStop = hasStop && c.h >= stop;            // price rose into the stop → loss
+      const hitTarget = target != null && c.l <= target; // price fell to target → profit
+      const stopLabel = trailStop != null && stop === trailStop ? "Trailing stop" : "Stop loss";
+      if (hitStop) return { exit: +stop.toFixed(2), exitAt: c.t, exitType: stopLabel };
+      if (hitTarget) return { exit: +target.toFixed(2), exitAt: c.t, exitType: "Exit trigger" };
+      if (c.l < trough) trough = c.l;
+    }
+    return null;
+  }
+
+  const target = tp ? entry * (1 + tp / 100) : null;
+  const hardStop = sl ? entry * (1 - sl / 100) : null;
   let peak = entry;                                     // highest price seen since entry
   for (const c of after) {
     // Trailing stop ratchets up with the peak, but only using peaks from PRIOR

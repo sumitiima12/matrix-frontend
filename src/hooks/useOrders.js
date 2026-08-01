@@ -207,9 +207,10 @@ export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, us
           const hit = await resolveExitFromCandles(t, risk);
           if (!hit) continue;
           const qty = t.qty || 1;
+          const dir = (t.side === "SELL" || t.short) ? -1 : 1;   // short profits when price falls
           const closed = {
             ...t, ...hit,
-            pnl: +((hit.exit - t.entry) * qty).toFixed(2),
+            pnl: +((hit.exit - t.entry) * qty * dir).toFixed(2),
           };
           applyClose(t, closed);
           postTrade(userId, closed);

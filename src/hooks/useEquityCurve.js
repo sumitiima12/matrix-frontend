@@ -92,10 +92,14 @@ export function useEquityCurve(market, portfolio = [], trades = [], deposits = [
           let capital = opening;
           (deposits || []).forEach((d) => { if (d.market === market && d.at <= end) capital += d.amount; });
 
+          // dir flips the cash flows and mark-to-market for a SHORT: it RECEIVES proceeds on entry,
+          // carries a negative (liability) mark, and PAYS to buy back on exit — the mirror of a long.
+          const dirOf = (t) => (t.side === "SELL" || t.short) ? -1 : 1;
           let cash = capital;
           usable.forEach((t) => {
-            if (t.entryAt <= end) cash -= t.qty * t.entry;
-            if (t.exitAt != null && t.exit != null && t.exitAt <= end) cash += t.qty * t.exit;
+            const dir = dirOf(t);
+            if (t.entryAt <= end) cash -= t.qty * t.entry * dir;
+            if (t.exitAt != null && t.exit != null && t.exitAt <= end) cash += t.qty * t.exit * dir;
           });
 
           let held = 0;
@@ -106,14 +110,14 @@ export function useEquityCurve(market, portfolio = [], trades = [], deposits = [
             const px = priced[t.sym].byDay[day];
             if (px == null) return;       // no real close that day -> contributes nothing
             anyPrice = true;
-            held += t.qty * px;
+            held += t.qty * px * dirOf(t);
           });
 
           // REALISED: locked in by trades actually closed on or before D.
           let realised = 0;
           usable.forEach((t) => {
             if (t.exitAt != null && t.exit != null && t.exitAt <= end) {
-              realised += (t.exit - t.entry) * t.qty;
+              realised += (t.exit - t.entry) * t.qty * dirOf(t);
             }
           });
 

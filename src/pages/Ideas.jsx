@@ -226,7 +226,10 @@ function CommunityIdeas({ market, me, isAdmin, adminKey = "", onOpen }) {
                   {idea.tags.map((t) => <span key={t} className="pill" style={{ fontSize: 9.5, fontWeight: 700, background: "var(--elev)", color: "var(--muted)", padding: "2px 8px" }}>#{t}</span>)}
                 </div>
               )}
-              {idea.screenshot && <img src={idea.screenshot} alt="idea" style={{ width: "100%", borderRadius: 10, border: "1px solid var(--line)", marginTop: 8 }} />}
+              {/* Screenshot loads lazily from the backend only for cards actually rendered — the list
+                  payload no longer carries base64 blobs (major DB-egress cut). `loading=lazy` +
+                  browser caching mean off-screen and other-market ideas never fetch their image. */}
+              {(idea.hasScreenshot || idea.screenshot) && <img src={idea.screenshot || `${BACKEND_URL}/api/ideas/${idea.id}/screenshot`} loading="lazy" alt="idea" style={{ width: "100%", borderRadius: 10, border: "1px solid var(--line)", marginTop: 8 }} />}
               {(idea.target || idea.stop) && (
                 <div style={{ display: "flex", gap: 14, marginTop: 8, fontSize: 11.5 }}>
                   {idea.target && <span style={{ color: "var(--muted)" }}>Target <b className="mono" style={{ color: "var(--up)" }}>{idea.target}</b></span>}

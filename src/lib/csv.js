@@ -74,16 +74,18 @@ export function tradeColumns(livePriceOf = () => null) {
 
   const exitPrice = (t) => (isOpen(t) ? livePriceOf(t.sym) : t.exit);
 
+  const dirOf = (t) => (t.side === "SELL" || t.short) ? -1 : 1;   // short profits when price falls
+
   const pnl = (t) => {
     const px = exitPrice(t);
     if (px == null || t.entry == null) return null;
-    return (px - t.entry) * (t.qty || 1);
+    return (px - t.entry) * (t.qty || 1) * dirOf(t);
   };
 
   const pnlPct = (t) => {
     const px = exitPrice(t);
     if (px == null || !t.entry) return null;
-    return ((px - t.entry) / t.entry) * 100;
+    return ((px - t.entry) / t.entry) * 100 * dirOf(t);
   };
 
   return [

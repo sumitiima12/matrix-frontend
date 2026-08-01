@@ -15,7 +15,7 @@ const pct = (x) => (x == null || isNaN(x)) ? "—" : (x >= 0 ? "+" : "") + Numbe
 const amt = (x) => (x == null || isNaN(x)) ? "—" : (x >= 0 ? "+" : "") + Number(x).toFixed(2);
 const cnt = (x) => (x == null || isNaN(x)) ? "—" : String(x);
 
-export default function ExitOptimizer({ mode, defs, entry, tf, appSyms, currentSl, currentTp, onApply }) {
+export default function ExitOptimizer({ mode, defs, entry, tf, appSyms, currentSl, currentTp, onApply, short = false }) {
   const [state, setState] = useState({ loading: false, res: null, ran: false });
   const [objective, setObjective] = useState(null);   // null until the user picks an option
   const [rrMin, setRrMin] = useState(1.5);            // minimum reward/risk the optimiser must respect
@@ -28,7 +28,7 @@ export default function ExitOptimizer({ mode, defs, entry, tf, appSyms, currentS
       return;
     }
     setState({ loading: true, res: null, ran: true });
-    const res = await optimizeExits({ mode, defs, entry, tf, appSyms, currentSl, currentTp, objective: obj, rrMin, maxSl });
+    const res = await optimizeExits({ mode, defs, entry, tf, appSyms, currentSl, currentTp, objective: obj, rrMin, maxSl, short });
     setState({ loading: false, ran: true, res });
   };
 

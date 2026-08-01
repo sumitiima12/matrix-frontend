@@ -22,8 +22,9 @@ const pct = (a, b) => (b ? ((a - b) / b) * 100 : 0);
  */
 export function analyzeHolding(h, s, signal) {
   const price = s?.price ?? h.buy;
-  const pnlPct = pct(price, h.buy);
-  const pnl = (price - h.buy) * (h.qty || 0);
+  const dir = (h.side === "SELL" || h.short) ? -1 : 1;   // a short profits when price falls
+  const pnlPct = pct(price, h.buy) * dir;
+  const pnl = (price - h.buy) * (h.qty || 0) * dir;
   const value = price * (h.qty || 0);
 
   // No real data -> refuse to advise.
@@ -53,10 +54,11 @@ export function analyzeHolding(h, s, signal) {
   const risk = atrPct == null ? "Unknown" : atrPct > 4 ? "High" : atrPct > 2 ? "Medium" : "Low";
 
   // ---- suggested levels: prefer the user's own, else the engine's ----
-  const suggestedStop = h.sl ? +(h.buy * (1 - h.sl / 100)).toFixed(2) : (signal?.stop ?? null);
-  const suggestedTarget = h.tp ? +(h.buy * (1 + h.tp / 100)).toFixed(2) : (signal?.target ?? null);
-  const riskPerUnit = suggestedStop != null ? h.buy - suggestedStop : null;
-  const rMultiple = riskPerUnit && riskPerUnit > 0 ? +((price - h.buy) / riskPerUnit).toFixed(2) : null;
+  // For a SHORT the stop sits ABOVE entry and the target BELOW — the mirror of a long.
+  const suggestedStop = h.sl ? +(h.buy * (1 - dir * h.sl / 100)).toFixed(2) : (signal?.stop ?? null);
+  const suggestedTarget = h.tp ? +(h.buy * (1 + dir * h.tp / 100)).toFixed(2) : (signal?.target ?? null);
+  const riskPerUnit = suggestedStop != null ? Math.abs(h.buy - suggestedStop) : null;
+  const rMultiple = riskPerUnit && riskPerUnit > 0 ? +(((price - h.buy) * dir) / riskPerUnit).toFixed(2) : null;
 
   // ---- action ----
   const reasons = [];

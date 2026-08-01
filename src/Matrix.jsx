@@ -479,14 +479,15 @@ function AppInner() {
     if (!bsym) { setBuyToast({ t: `${route.meta.name} can't trade ${s.sym} — no symbol mapping`, e: true }); return false; }
     try {
       const isDelta = route.id === "delta";
-      const wantExit = side === "BUY" && (opts.sl > 0 || opts.tp > 0 || opts.tsl > 0 || !!opts.strategy);
+      // SL/TP/exits apply to BOTH longs and shorts — the backend mirrors the levels by side.
+      const wantExit = (opts.sl > 0 || opts.tp > 0 || opts.tsl > 0 || !!opts.strategy);
       const useEngine = wantExit && (!isDelta || opts.tsl > 0 || !!opts.strategy);
       const r = await brokerPlaceOrder(route.session, userId, {
         symbol: bsym, side, qty: q, orderType: "MARKET", product: prod || "CNC",
         entryPrice: s.price ?? undefined,
-        slPct: (side === "BUY" && opts.sl > 0) ? opts.sl : undefined,
-        tpPct: (side === "BUY" && opts.tp > 0) ? opts.tp : undefined,
-        tslPct: (side === "BUY" && opts.tsl > 0) ? opts.tsl : undefined,
+        slPct: opts.sl > 0 ? opts.sl : undefined,
+        tpPct: opts.tp > 0 ? opts.tp : undefined,
+        tslPct: opts.tsl > 0 ? opts.tsl : undefined,
         autoExit: useEngine || undefined,
         strategy: opts.strategy || undefined,
       }, true);
@@ -494,26 +495,23 @@ function AppInner() {
       const fillPx = Number(r.avgPrice) > 0 ? Number(r.avgPrice) : (s.price ?? undefined);
       const status = r.status || "filled";                 // filled | partial
       let t = `Real ${side.toLowerCase()} ${status === "partial" ? `PARTIALLY filled (${fillQty}/${q})` : "filled"} on ${route.meta.name}`;
-      if (side === "BUY" && (opts.sl > 0 || opts.tp > 0)) { if (isDelta && r.bracket && r.bracket.placed) t += " · SL/TP set"; else if (r.autoExitId) t += " · auto-exit armed"; }
-      // Journal the real order with its FILL STATUS so the user sees Filled/Partial in history and
-      // positions. recordTrade only appends to the journal — it never touches the paper book.
-      if (side === "BUY") {
-        try {
-          recordTrade({
-            id: `real-${r.orderId || Date.now()}`, sym: s.sym, market: mkt, qty: fillQty, side: "BUY",
-            entry: fillPx, entryAt: Date.now(), tradeType: opts.tradeType || "Manual",
-            real: true, status, orderId: r.orderId || null, tp: opts.tp || undefined, sl: opts.sl || undefined,
-          });
-        } catch {}
-      }
+      if (opts.sl > 0 || opts.tp > 0) { if (isDelta && r.bracket && r.bracket.placed) t += " · SL/TP set"; else if (r.autoExitId) t += " · auto-exit armed"; }
+      // Journal the real order (long OR short) with its FILL STATUS so the user sees Filled/Partial in
+      // history and positions. recordTrade only appends to the journal — it never touches the paper book.
+      try {
+        recordTrade({
+          id: `real-${r.orderId || Date.now()}`, sym: s.sym, market: mkt, qty: fillQty, side,
+          short: side === "SELL" || undefined,
+          entry: fillPx, entryAt: Date.now(), tradeType: opts.tradeType || "Manual",
+          real: true, status, orderId: r.orderId || null, tp: opts.tp || undefined, sl: opts.sl || undefined,
+        });
+      } catch {}
       setBuyToast({ t }); refreshPortfolio(); return true;
     } catch (e) {
       // REJECTED (e.g. insufficient balance). Record the reject WITH the reason so it shows in
       // history with a status — never as a phantom position with P&L — and tell the user why.
       const reason = e && e.reason ? e.reason : String(e.message || e);
-      if (side === "BUY") {
-        try { recordTrade({ id: `rej-${Date.now()}-${s.sym}`, sym: s.sym, market: mkt, qty: q, side: "BUY", entryAt: Date.now(), tradeType: opts.tradeType || "Manual", real: true, status: "rejected", rejectReason: reason }); } catch {}
-      }
+      try { recordTrade({ id: `rej-${Date.now()}-${s.sym}`, sym: s.sym, market: mkt, qty: q, side, short: side === "SELL" || undefined, entryAt: Date.now(), tradeType: opts.tradeType || "Manual", real: true, status: "rejected", rejectReason: reason }); } catch {}
       setBuyToast({ t: `Order rejected: ${reason}`, e: true }); return false;
     }
   };
@@ -1019,7 +1017,7 @@ function AppInner() {
                     ? ((brokerFor(market) && realPortfolio && realPortfolio.cash != null)
                         ? ((market === "Crypto" || market === "US") ? "$" : "₹") + Number(realPortfolio.cash).toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: Math.abs(Number(realPortfolio.cash)) < 1 ? 4 : 1 })
                         : "—")   /* no broker for THIS market -> no real cash; never fall back to the paper/other-market balance */
-                    : compact(wallet)}
+                    : compact(wallet, market)}
                 </span>
               </button>
               )}

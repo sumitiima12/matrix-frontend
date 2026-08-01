@@ -147,9 +147,9 @@ const isScreenerActive = (key, market, short) => lsGet(autoKeyFor(key, market, s
 /* Backtest stats + List of Trades for a screener card — the same numbers the Automate strategy cards
    show, by running the screener's rules over its symbols (capped for cost). Mounted lazily (only when
    the user expands the section) so 13 cards don't all backtest on load. */
-function ScreenerStats({ screenerKey, market, defs, entry, exit, sl, tp, tf, symbols }) {
-  const pseudo = useMemo(() => ({ id: `scr-${screenerKey}-${market}`, cfg: { mode: "builder", defs, entry, exit, sl, tp, tf }, symbols, tf, cap: 100000 }),
-    [screenerKey, market, defs, entry, exit, sl, tp, tf, symbols]);
+function ScreenerStats({ screenerKey, market, defs, entry, exit, sl, tp, tf, symbols, short = false }) {
+  const pseudo = useMemo(() => ({ id: `scr-${screenerKey}-${market}${short ? "-sell" : ""}`, cfg: { mode: "builder", defs, entry, exit, sl, tp, tf, side: short ? "SELL" : undefined, short: !!short }, symbols, tf, cap: 100000, side: short ? "SELL" : undefined, short: !!short }),
+    [screenerKey, market, defs, entry, exit, sl, tp, tf, symbols, short]);
   const { loading, stats } = useBacktestStats(pseudo, {});
   if (loading) return <div style={{ fontSize: 11, color: "var(--muted)", padding: "8px 2px" }}>Backtesting…</div>;
   if (!stats || !stats.trades) return <div style={{ fontSize: 11, color: "var(--muted)", padding: "8px 2px" }}>{stats ? "No trades in the backtest window." : "No data to backtest."}</div>;
@@ -385,7 +385,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
   useEffect(() => {
     if (!autoOn || !(onScreenerBuy || onAutoBuy || onBuy) || !matches.length) return;
     if (!marketOpen(market)) return;
-    const key = `mx_scrbuy_${screener.key}_${market}_${mode}${short ? "_sell" : ""}_${DAY}`;
+    const key = `mx_scrbuy_${screener.key}_${market}_${mode}${short ? "_sell" : ""}_${Math.floor(Date.now() / 864e5)}`;   // fresh day index (module `DAY` never rolls in a long session)
     if (lsGet(key, false)) return;
     matches.forEach((m) => {
       const inst = ALL.find((a) => a.sym === m.sym);
@@ -494,9 +494,9 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
                 <input value={tpDraft} onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, ""); setTpDraft(v); writeSLTP(Number(slDraft) || defSL, Number(v) || defTP); }} inputMode="decimal" className="no-ring mono" style={inBox} />
               </label>
             </div>
-            <ExitOptimizer defs={eDefs} entry={eEntry} tf={eTf} appSyms={optSyms(8)} currentSl={defSL} currentTp={defTP} onApply={(sl, tp) => applyExits(sl, tp)} />
+            <ExitOptimizer defs={eDefs} entry={eEntry} tf={eTf} appSyms={optSyms(8)} currentSl={defSL} currentTp={defTP} short={short} onApply={(sl, tp) => applyExits(sl, tp)} />
             <div style={{ height: 8 }} />
-            <IndicatorOptimizer defs={eDefs} entry={eEntry} tf={eTf} appSyms={optSyms(6)} currentSl={defSL} currentTp={defTP} onApply={(nd, ntf) => applyIndicators(nd, ntf)} />
+            <IndicatorOptimizer defs={eDefs} entry={eEntry} tf={eTf} appSyms={optSyms(6)} currentSl={defSL} currentTp={defTP} short={short} onApply={(nd, ntf) => applyIndicators(nd, ntf)} />
           </div>
         )}
       </div>
@@ -508,7 +508,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
         </button>
         {statsOpen && (
           <div style={{ marginTop: 8, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: 10 }}>
-            <ScreenerStats screenerKey={screener.key} market={market} defs={eDefs} entry={eEntry} exit={(ovr && ovr.exit) || screener.exit || []} sl={defSL} tp={defTP} tf={eTf} symbols={eSel.length ? eSel.slice(0, 10) : (UNIVERSE[market] || []).map((s) => s.sym).slice(0, 6)} />
+            <ScreenerStats screenerKey={screener.key} market={market} defs={eDefs} entry={eEntry} exit={(ovr && ovr.exit) || screener.exit || []} sl={defSL} tp={defTP} tf={eTf} short={short} symbols={eSel.length ? eSel.slice(0, 10) : (UNIVERSE[market] || []).map((s) => s.sym).slice(0, 6)} />
           </div>
         )}
       </div>
@@ -580,6 +580,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
             appSyms={(edit.selSyms && edit.selSyms.length) ? edit.selSyms.slice(0, 8) : (UNIVERSE[market] || []).map((s) => s.sym).slice(0, 8)}
             currentSl={edit.sl}
             currentTp={edit.tp}
+            short={short}
             onApply={(sl, tp) => setEdit((s) => ({ ...s, sl, tp }))}
           />
 
@@ -593,6 +594,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
             appSyms={(edit.selSyms && edit.selSyms.length) ? edit.selSyms.slice(0, 6) : (UNIVERSE[market] || []).map((s) => s.sym).slice(0, 6)}
             currentSl={edit.sl}
             currentTp={edit.tp}
+            short={short}
             onApply={(nd, ntf) => setEdit((s) => ({ ...s, defs: nd, tf: ntf }))}
           />
 

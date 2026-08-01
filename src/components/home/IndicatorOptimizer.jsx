@@ -14,7 +14,7 @@ const wr = (x) => (x == null || isNaN(x)) ? "—" : Number(x).toFixed(0) + "%";
 const pct = (x) => (x == null || isNaN(x)) ? "—" : (x >= 0 ? "+" : "") + Number(x).toFixed(1) + "%";
 const amt = (x) => (x == null || isNaN(x)) ? "—" : (x >= 0 ? "+" : "") + Number(x).toFixed(2);
 
-export default function IndicatorOptimizer({ mode, defs, entry, tf, appSyms, currentSl, currentTp, onApply, tfTunable = true }) {
+export default function IndicatorOptimizer({ mode, defs, entry, tf, appSyms, currentSl, currentTp, onApply, tfTunable = true, short = false }) {
   const [state, setState] = useState({ loading: false, res: null, ran: false, applied: false });
   const [objective, setObjective] = useState(null);   // null until the user picks an option
   const [lockTf, setLockTf] = useState(true);          // default ON — keep tf fixed; tune only lengths
@@ -34,7 +34,7 @@ export default function IndicatorOptimizer({ mode, defs, entry, tf, appSyms, cur
       return;
     }
     setState({ loading: true, res: null, ran: true, applied: false });
-    const res = await optimizeIndicators({ mode, defs, entry, tf, appSyms, currentSl, currentTp, objective: obj, lockTf: tfFixed ? tf : null });
+    const res = await optimizeIndicators({ mode, defs, entry, tf, appSyms, currentSl, currentTp, objective: obj, lockTf: tfFixed ? tf : null, short });
     setState({ loading: false, ran: true, res, applied: false });
   };
 

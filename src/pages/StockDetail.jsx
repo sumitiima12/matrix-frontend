@@ -315,7 +315,7 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
               <>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 16px" }}>
                   {[
-                    ["Market cap", fund.marketCap != null ? compact(fund.marketCap) : "—"],
+                    ["Market cap", fund.marketCap != null ? compact(fund.marketCap, market) : "—"],
                     ["P/E (TTM)", fund.peTrailing != null ? fund.peTrailing.toFixed(1) : "—"],
                     ["P/E (fwd)", fund.peForward != null ? fund.peForward.toFixed(1) : "—"],
                     ["P/B", fund.pb != null ? fund.pb.toFixed(1) : "—"],

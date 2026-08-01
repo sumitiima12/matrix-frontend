@@ -17,14 +17,15 @@ const DAY_MS = 86_400_000;
 export function journalEntry(t) {
   const closed = t.exitAt != null && t.exit != null;
   const qty = t.qty || 1;
-  const pnl = closed ? (t.exit - t.entry) * qty : null;
-  const retPct = closed && t.entry ? ((t.exit - t.entry) / t.entry) * 100 : null;
+  const dir = (t.side === "SELL" || t.short) ? -1 : 1;   // a short profits when price falls
+  const pnl = closed ? (t.exit - t.entry) * qty * dir : null;
+  const retPct = closed && t.entry ? ((t.exit - t.entry) / t.entry) * 100 * dir : null;
   const holdMs = closed ? t.exitAt - t.entryAt : Date.now() - (t.entryAt || Date.now());
   const holdDays = holdMs / DAY_MS;
 
   // R-multiple: how many units of planned risk did we make/lose?
   const riskPerUnit = t.sl ? t.entry * (t.sl / 100) : null;
-  const rMultiple = closed && riskPerUnit ? +(((t.exit - t.entry) / riskPerUnit)).toFixed(2) : null;
+  const rMultiple = closed && riskPerUnit ? +(((t.exit - t.entry) * dir / riskPerUnit)).toFixed(2) : null;
 
   return {
     ...t,

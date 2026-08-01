@@ -291,7 +291,8 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
   useEffect(() => {
     if (!autoOn || !onScreenerBuy || !matched.length) return;
     if (!marketOpen(market)) return;
-    const k = `${LSK}_buy_${DAY_KEY}`;
+    // Fresh date key (module-load DAY_KEY never rolls in a session left open past midnight).
+    const k = `${LSK}_buy_${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`;
     if (lsGet(k, false)) return;
     matched.forEach((sym) => {
       const inst = bySym.get(sym);

@@ -643,7 +643,8 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     /* Ranked by POTENTIAL LEFT to the engine's real target, not by raw signal score:
        a pick that has already run to its target is the least useful one to show first. */
     // Crypto also gets SHORT picks; every other market stays long-only.
-    const base = dailyPicks(list, { allowShorts: market === "Crypto" })
+    // Scan the WHOLE market universe (not the profile-sorted `list`) so no symbol is ever excluded.
+    const base = dailyPicks(UNIVERSE[market], { allowShorts: market === "Crypto" })
       .map((s) => ({
         s,
         // Rank by the favourable move LEFT to target: upside for longs, downside for shorts.
@@ -851,7 +852,9 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     // toggling ON early (while UNIVERSE prices are still null → autoTrades empty) marks the day
     // "done" and buys nothing, leaving 0 positions until tomorrow. Wait for real picks first.
     if (!autoTrades.length) return;
-    const key = `mx_autobuy_${market}_${mode}_${DAY}`;   // scoped by mode so virtual & real each fire once/day
+    // Fresh day index (NOT the module-load `DAY` const, which never rolls in a session left open across
+    // midnight — that would keep blocking the next day's first auto-buy until a reload, esp. 24/7 crypto).
+    const key = `mx_autobuy_${market}_${mode}_${Math.floor(Date.now() / 864e5)}`;   // scoped by mode so virtual & real each fire once/day
     if (lsGet(key, false)) return;
     autoTrades.forEach((t) => {
       const u = ALL.find((a) => a.sym === (t.under || t.sym));
@@ -878,7 +881,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       (onAutoBuy || onBuy)(u, t.qty, { tp: t.tpPct, sl: t.slPct, tradeType: "Auto Buy", product: prodCode });
       placed += 1;
     });
-    lsSet(`mx_autobuy_${market}_${mode}_${DAY}`, true);
+    lsSet(`mx_autobuy_${market}_${mode}_${Math.floor(Date.now() / 864e5)}`, true);
     setRunMsg(`Placed ${placed} ${MKT_LABEL[market]} auto-buy position${placed === 1 ? "" : "s"} at live prices.`);
   };
   const setOv = (t, field, val) => setAutoOverrides((o) => { const cur = o[t.sym] || { tp: t.tpPct, sl: t.slPct }; return { ...o, [t.sym]: { ...cur, [field]: val === "" ? cur[field] : +val } }; });

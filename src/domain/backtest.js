@@ -17,17 +17,21 @@ import { resolveOperand, chainEval, parseClause, mapToken, detectOp, interpretTe
  */
 export function backtest(cfg, c, startIdx = 1, baseTf = null) {
   const closes = c.map((x) => x.c), vols = c.map((x) => x.v || 0), cache = {};
+  // A SHORT strategy (its sell-mirror carries side:"SELL") profits when price FALLS, so its per-bar
+  // equity step, trade return and SL/TP triggers are all the MIRROR of a long. `dir` flips them.
+  const short = !!(cfg && (cfg.side === "SELL" || cfg.short === true));
+  const dir = short ? -1 : 1;
   // baseTf lets a def on a HIGHER timeframe (e.g. a 1D EMA) resolve on daily candles even though the
   // backtest runs on, say, 5-minute bars — instead of silently becoming a wrong 5-minute EMA.
   const get = (op) => resolveOperand(op, cfg.defs, c, closes, vols, cache, baseTf);
   const trades = []; let pos = null, equity = 1, peak = 1, maxDD = 0; const eq = [{ i: 0, eq: 100 }];
   const from = Math.max(1, startIdx | 0);
   for (let i = 1; i < c.length; i++) {
-    if (pos) equity *= closes[i] / closes[i - 1];
+    if (pos) equity *= 1 + dir * (closes[i] / closes[i - 1] - 1);   // short gains when price drops
     eq.push({ i, eq: +(equity * 100).toFixed(2) });
     peak = Math.max(peak, equity); maxDD = Math.max(maxDD, (peak - equity) / peak);
     if (pos) {
-      const ret = closes[i] / pos.entry - 1;
+      const ret = dir * (closes[i] / pos.entry - 1);               // return in the trade's direction
       const hitSL = cfg.sl && ret <= -Math.abs(Number(cfg.sl)) / 100;
       const hitTP = cfg.tp && ret >= Math.abs(Number(cfg.tp)) / 100;
       const sig = chainEval(cfg.exit, i, get);
@@ -38,7 +42,7 @@ export function backtest(cfg, c, startIdx = 1, baseTf = null) {
       pos = { i, entry: closes[i] };
     }
   }
-  if (pos) { const i = c.length - 1; trades.push({ entryIdx: pos.i, exitIdx: i, entry: pos.entry, exit: closes[i], ret: closes[i] / pos.entry - 1, reason: "EOD" }); }
+  if (pos) { const i = c.length - 1; trades.push({ entryIdx: pos.i, exitIdx: i, entry: pos.entry, exit: closes[i], ret: dir * (closes[i] / pos.entry - 1), reason: "EOD" }); }
   const totalRet = (trades.reduce((a, t) => a * (1 + t.ret), 1) - 1) * 100;
   const wins = trades.filter((t) => t.ret > 0).length;
   const bh = (closes[closes.length - 1] / closes[0] - 1) * 100;

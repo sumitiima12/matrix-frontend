@@ -113,7 +113,7 @@ function SavedRow({ scr, market, mode, trades = [], list, onOpen, onScreenerBuy,
   useEffect(() => {
     if (!autoOn || !onScreenerBuy || !matched.length) return;
     if (!marketOpen(market)) return;
-    const k = `mx_savedbuy_${scr.id}_${market}_${mode}_${DAY}`;
+    const k = `mx_savedbuy_${scr.id}_${market}_${mode}_${Math.floor(Date.now() / 864e5)}`;   // fresh day index (module `DAY` never rolls in a long session)
     if (lsGet(k, false)) return;
     matched.forEach((sym) => {
       const inst = bySym.get(sym); if (!inst) return;

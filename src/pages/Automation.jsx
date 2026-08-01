@@ -1837,7 +1837,7 @@ function PerSymbolIndicatorOptimizer({ strats, sym, tf, onApplyIndicators, onCre
    LENGTHS + a shared timeframe (≤1h) that maximise win rate or P&L on the strategy's own past entry
    signals, then reports Earlier vs Now and applies the tuned defs (+ tf) to the strategy on Apply.
    Props: { defs, entry, mode, tf, appSyms, currentSl, currentTp, onApply(defs, tf) } */
-function IndicatorOptimizer({ defs, entry, mode, tf, appSyms, currentSl, currentTp, onApply }) {
+function IndicatorOptimizer({ defs, entry, mode, tf, appSyms, currentSl, currentTp, onApply, short = false }) {
   const [state, setState] = useState({ loading: false, res: null, ran: false, applied: false });
   const [objective, setObjective] = useState(null);   // null until the user picks an option
   const [lockTf, setLockTf] = useState(true);         // default ON — keep the timeframe fixed; tune only lengths
@@ -1851,7 +1851,7 @@ function IndicatorOptimizer({ defs, entry, mode, tf, appSyms, currentSl, current
     setObjective(obj);
     if (!entry || !entry.length || !appSyms || !appSyms.length || !numeric) { setState({ loading: false, ran: true, res: { entries: 0 }, applied: false }); return; }
     setState({ loading: true, res: null, ran: true, applied: false });
-    const res = await optimizeIndicators({ mode, defs, entry, tf, appSyms, currentSl, currentTp, objective: obj, lockTf: (lockTf && lockable) ? tf : null });
+    const res = await optimizeIndicators({ mode, defs, entry, tf, appSyms, currentSl, currentTp, objective: obj, lockTf: (lockTf && lockable) ? tf : null, short });
     setState({ loading: false, ran: true, res, applied: false });
   };
   const { loading, res, ran, applied } = state;
@@ -2302,6 +2302,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         name: s.name || null, symbol: sym, brokerSym: bsym, market: mkt, cfg,
         notional: amt, interval: s.tf || "5m", product: liveProduct,
         sl: s.cfg.sl || null, tp: s.cfg.tp || null, tsl: s.cfg.tsl || null,
+        short: (s.side === "SELL" || (s.cfg && s.cfg.side === "SELL")),   // arm a SHORT if this is a sell mirror
       });
       setLiveMsg({ t: r.already ? "Already live — this strategy is already armed." : (r.live ? "Armed — the engine will trade this live." : "Armed (engine in dry-run until AUTO_BUY_LIVE is on).") });
       setLiveStrat(null); setLiveAmt(""); refreshArmed();
@@ -2965,7 +2966,8 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     const livePnl = openTrades.reduce((a, t) => {
       const st = ALL.find((x) => x.sym === t.sym);
       const cur = st && st.price != null ? st.price : t.entry;
-      return a + (cur - t.entry) * (t.qty || 1);
+      const dir = (t.side === "SELL" || t.short) ? -1 : 1;   // short profits when price falls
+      return a + (cur - t.entry) * (t.qty || 1) * dir;
     }, 0);
     const liveMkt = openTrades[0] ? (marketOf(openTrades[0].sym) || "IN") : "IN";
     return (
