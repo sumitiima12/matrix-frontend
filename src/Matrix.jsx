@@ -163,7 +163,7 @@ const CSS = `
 .disp{font-family:'Quicksand','Nunito',sans-serif;letter-spacing:-.01em}
 .mono{font-family:'Nunito',sans-serif;font-variant-numeric:tabular-nums;font-feature-settings:'tnum' 1}
 .card{background:var(--card-grad);border:1px solid var(--line);border-radius:24px;box-shadow:var(--shadow)}
-.flat{box-shadow:none}
+.flat{box-shadow:var(--shadow)}
 .pill{border-radius:999px}
 .hide-scroll::-webkit-scrollbar{display:none}
 .hide-scroll{-ms-overflow-style:none;scrollbar-width:none}
