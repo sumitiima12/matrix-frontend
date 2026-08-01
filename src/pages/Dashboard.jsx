@@ -1028,8 +1028,11 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   );
                 })()}
                 {isReal && realCash != null && <div style={{ marginTop: 8, fontSize: 11.5, opacity: .9 }}>Available cash <b style={{ fontWeight: 800, color: "var(--ink)" }}>{money1(realCash)}</b></div>}
-                {/* Per-type P&L breakdown — equal, subtle boxes so all four sources read at a glance. */}
-                {!(isReal && isLeveraged) && (
+                {/* Per-type P&L breakdown — equal, subtle boxes so all four sources read at a glance.
+                    Shown in BOTH virtual and real mode (including leveraged crypto): even when the
+                    headline P&L comes from the broker wallet, the user still wants to see how much of
+                    their recorded activity came from Manual vs Auto-Buy vs Automate vs Screener. */}
+                {(
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginTop: 12 }}>
                     {[["Manual", totalStats.byType.Manual], ["Auto-Buy", totalStats.byType["Auto Buy"]], ["Automate", totalStats.byType.Automate], ["Screener", totalStats.byType["Screener Auto Buy"]]].map(([label, v]) => (
                       <div key={label} style={{ background: "var(--elev)", borderRadius: 9, padding: "7px 8px", minWidth: 0 }}>

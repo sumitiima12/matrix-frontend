@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ALL, UNIVERSE, marketOf } from "../../domain/universe";
+import { ALL, UNIVERSE, marketOf, yahooSymbol } from "../../domain/universe";
 import { CUR, DAY, chgColor, fmt, lsGet, lsSet } from "../../lib/format";
 import { scanScreener, marketOpen } from "../../domain/api";
+import { getHistory } from "../../services/marketService";
+import { backtest } from "../../domain/backtest";
 import Section from "../common/Section";
 import CustomScreener from "./CustomScreener";
 import MyScreeners from "./SavedScreeners";
@@ -11,7 +13,7 @@ import MultiSelect from "../common/MultiSelect";
 import ScreenerTradeList from "./ScreenerTradeList";
 import { CondBuilder2, IndicatorDefs, TFS } from "../../pages/Automation";
 import { defOperands } from "../../domain/strategyLang";
-import { Pencil, SlidersHorizontal } from "lucide-react";
+import { Pencil, SlidersHorizontal, Sparkles } from "lucide-react";
 
 /* THE THREE POPULAR SCREENERS. Each is a real strategy config (indicators + entry chain) evaluated live
    on 5-minute candles by the backend /api/screener-scan. A symbol appears in a carousel only while its
@@ -42,6 +44,79 @@ const SCREENERS = [
       { la: "EMA13", op: "crosses_above", b: "SMA83", bType: "ind" },
       { gate: "AND", la: "RSI1", op: ">", b: "50", bType: "num" },
     ],
+  },
+
+  /* Premium-strategy screeners — entry + exit chains lifted verbatim from the matching Premium
+     strategies in Automate. SL/TP are NOT copied from the strategies: every Popular screener uses a
+     uniform 1% stop / 3% target (screener.sl / screener.tp below feed the card's default SL/TP). */
+  {
+    key: "support-resistance", name: "Support & Resistance", tf: "5m", sl: "1", tp: "3",
+    defs: [{ type: "LastNCandles", len: "10", name: "SW" }],
+    entry: [{ la: "Price", op: "<=", b: "SW.low", bType: "ind" }],
+    exit: [{ la: "Price", op: ">=", b: "SW.high", bType: "ind" }],
+  },
+  {
+    key: "bollinger-mean-reversion", name: "Bollinger Mean Reversion", tf: "5m", sl: "1", tp: "3",
+    defs: [{ type: "BB", len: "20", name: "BB1" }, { type: "RSI", len: "14", name: "RSI1" }],
+    entry: [{ la: "Price", op: "<=", b: "BB1.lower", bType: "ind" }, { gate: "AND", la: "RSI1", op: "<", b: "35", bType: "num" }],
+    exit: [{ la: "Price", op: ">=", b: "BB1.middle", bType: "ind" }],
+  },
+  {
+    key: "swing-catcher", name: "Swing Catcher", tf: "5m", sl: "1", tp: "3",
+    defs: [{ type: "LastNCandles", len: "5", name: "SW" }],
+    entry: [{ la: "Price", op: "<=", b: "SW.low", bType: "ind" }],
+    exit: [{ la: "Price", op: ">=", b: "SW.high", bType: "ind" }],
+  },
+  {
+    key: "multi-timeframe-momentum", name: "Multi-Timeframe Momentum", tf: "3m", sl: "1", tp: "3",
+    defs: [
+      { type: "EMA", len: "9", tf: "3m", name: "E3f" }, { type: "EMA", len: "21", tf: "3m", name: "E3s" },
+      { type: "EMA", len: "9", tf: "5m", name: "E5f" }, { type: "EMA", len: "21", tf: "5m", name: "E5s" },
+      { type: "EMA", len: "9", tf: "15m", name: "E15f" }, { type: "EMA", len: "21", tf: "15m", name: "E15s" }],
+    entry: [{ la: "E3f", op: ">", b: "E3s", bType: "ind" }, { gate: "AND", la: "E5f", op: ">", b: "E5s", bType: "ind" }, { gate: "AND", la: "E15f", op: ">", b: "E15s", bType: "ind" }],
+    exit: [{ la: "E3f", op: "crosses_below", b: "E3s", bType: "ind" }],
+  },
+  {
+    key: "alphax-nexus", name: "AlphaX Nexus", tf: "5m", sl: "1", tp: "3",
+    defs: [{ type: "EMA", len: "21", name: "EMA_f" }, { type: "EMA", len: "50", name: "EMA_m" }, { type: "EMA", len: "200", name: "EMA_s" }, { type: "Volume", len: "", name: "Volume" }, { type: "SMA", len: "20", name: "VMA" }],
+    entry: [{ la: "EMA_f", op: ">", b: "EMA_m", bType: "ind" }, { gate: "AND", la: "EMA_m", op: ">", b: "EMA_s", bType: "ind" }, { gate: "AND", la: "Volume", op: ">", b: "VMA", bType: "ind" }],
+    exit: [{ la: "EMA_f", op: "crosses_below", b: "EMA_m", bType: "ind" }],
+  },
+  {
+    key: "ema-zone-inversion", name: "EMA Zone Inversion", tf: "5m", sl: "1", tp: "3",
+    defs: [{ type: "EMA", len: "33", name: "EMA1" }, { type: "EMA", len: "50", name: "EMA2" }, { type: "EMA", len: "200", name: "EMA3" }],
+    entry: [{ la: "EMA1", op: ">", b: "EMA2", bType: "ind" }, { gate: "AND", la: "EMA2", op: ">", b: "EMA3", bType: "ind" }, { gate: "AND", la: "Price", op: "crosses_above", b: "EMA1", bType: "ind" }],
+    exit: [{ la: "Price", op: "crosses_below", b: "EMA1", bType: "ind" }],
+  },
+  {
+    key: "alphax-prism", name: "AlphaX Prism", tf: "5m", sl: "1", tp: "3",
+    defs: [{ type: "EMA", len: "21", name: "EMA_f" }, { type: "EMA", len: "50", name: "EMA_m" }, { type: "EMA", len: "200", name: "EMA_s" }, { type: "RSI", len: "14", name: "RSI1" }, { type: "ADX", len: "14", name: "ADX1" }],
+    entry: [{ la: "EMA_f", op: ">", b: "EMA_m", bType: "ind" }, { gate: "AND", la: "EMA_m", op: ">", b: "EMA_s", bType: "ind" }, { gate: "AND", la: "RSI1", op: ">", b: "50", bType: "num" }, { gate: "AND", la: "ADX1", op: ">", b: "20", bType: "num" }],
+    exit: [{ la: "RSI1", op: ">", b: "75", bType: "num" }, { gate: "OR", la: "Price", op: "crosses_below", b: "EMA_m", bType: "ind" }],
+  },
+  {
+    key: "vwap-reclaim", name: "VWAP Reclaim", tf: "5m", sl: "1", tp: "3",
+    defs: [{ type: "VWAP", len: "", name: "VWAP1" }, { type: "RSI", len: "14", name: "RSI1" }],
+    entry: [{ la: "Price", op: "crosses_above", b: "VWAP1", bType: "ind" }, { gate: "AND", la: "RSI1", op: ">", b: "50", bType: "num" }],
+    exit: [{ la: "Price", op: "crosses_below", b: "VWAP1", bType: "ind" }],
+  },
+  {
+    key: "golden-cross-adx", name: "Golden Cross + ADX", tf: "5m", sl: "1", tp: "3",
+    defs: [{ type: "EMA", len: "50", name: "EMA50" }, { type: "EMA", len: "200", name: "EMA200" }, { type: "ADX", len: "14", name: "ADX1" }],
+    entry: [{ la: "EMA50", op: ">", b: "EMA200", bType: "ind" }, { gate: "AND", la: "ADX1", op: ">", b: "20", bType: "num" }],
+    exit: [{ la: "EMA50", op: "crosses_below", b: "EMA200", bType: "ind" }],
+  },
+  {
+    key: "triple-ema-dual-momentum", name: "Triple-EMA Dual Momentum", tf: "5m", sl: "1", tp: "3",
+    defs: [{ type: "EMA", len: "21", name: "EMA_f" }, { type: "EMA", len: "50", name: "EMA_m" }, { type: "EMA", len: "200", name: "EMA_s" }, { type: "RSI", len: "14", name: "RSI1" }],
+    entry: [{ la: "EMA_f", op: ">", b: "EMA_m", bType: "ind" }, { gate: "AND", la: "EMA_m", op: ">", b: "EMA_s", bType: "ind" }, { gate: "AND", la: "RSI1", op: ">", b: "55", bType: "num" }],
+    exit: [{ la: "Price", op: "crosses_below", b: "EMA_m", bType: "ind" }],
+  },
+  {
+    key: "vwap-trend-pullback", name: "VWAP Trend Pullback", tf: "5m", sl: "1", tp: "3",
+    defs: [{ type: "VWAP", len: "", name: "VWAP1" }, { type: "EMA", len: "50", name: "EMA50" }, { type: "RSI", len: "14", name: "RSI1" }],
+    entry: [{ la: "Price", op: ">", b: "EMA50", bType: "ind" }, { gate: "AND", la: "Price", op: "crosses_above", b: "VWAP1", bType: "ind" }, { gate: "AND", la: "RSI1", op: ">", b: "50", bType: "num" }],
+    exit: [{ la: "Price", op: "crosses_below", b: "EMA50", bType: "ind" }],
   },
 ];
 
@@ -88,8 +163,8 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
   const [edit, setEdit] = useState(null);   // null | { name, sl, tp, defs, entry, exit, tf } while the panel is open
   const [ovr, setOvr] = useState(() => lsGet(EDK, {}));
   const dispName = ((ovr && ovr.name) || screener.name) + (short ? " -Sell" : "");
-  const defSL = (ovr && ovr.sl != null) ? ovr.sl : 0.4;
-  const defTP = (ovr && ovr.tp != null) ? ovr.tp : 1.0;
+  const defSL = (ovr && ovr.sl != null) ? ovr.sl : (screener.sl != null ? +screener.sl : 0.4);
+  const defTP = (ovr && ovr.tp != null) ? ovr.tp : (screener.tp != null ? +screener.tp : 1.0);
   // Effective scan config — admin's edited rules if present, else the built-in screener definition.
   const eDefs = (ovr && ovr.defs) || screener.defs;
   const eEntry = (ovr && ovr.entry) || screener.entry;
@@ -116,6 +191,39 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
     selSyms: [...eSel], ov: { ...eOv }, published,
   });
   const editOperands = useMemo(() => ["Price", "Volume", ...defOperands((edit && edit.defs) || [])], [edit]);
+
+  /* AUTO-SELECT SYMBOLS — backtest this screener's rules (entry/exit + the card's SL/TP) over EVERY
+     symbol in the current market, and keep only the ones with win rate > 50% AND total return > 10%.
+     The winners become this screener's curated basket (selSyms), so the live scan and Auto-Buy then
+     only consider those symbols. Requires ≥2 backtested trades so a single lucky trade can't qualify. */
+  const [autoSel, setAutoSel] = useState({ running: false, done: false, n: 0, total: 0, kept: 0 });
+  const runAutoSelect = async () => {
+    const syms = (UNIVERSE[market] || []).map((s) => s.sym);
+    if (!syms.length || autoSel.running) return;
+    setAutoSel({ running: true, done: false, n: 0, total: syms.length, kept: 0 });
+    const cfg = { defs: eDefs, entry: eEntry, exit: (ovr && ovr.exit) || screener.exit || [], sl: defSL, tp: defTP, tf: eTf };
+    const winners = [];
+    let processed = 0;
+    const CHUNK = 6;   // small parallel batches — fast but doesn't hammer the backend
+    for (let i = 0; i < syms.length; i += CHUNK) {
+      const batch = syms.slice(i, i + CHUNK);
+      const res = await Promise.all(batch.map(async (sym) => {
+        try {
+          const candles = await getHistory(yahooSymbol(sym), eTf, true);
+          if (!candles || candles.length < 30) return null;
+          const { stats } = backtest(cfg, candles, 1, eTf);
+          return (stats && stats.n >= 2 && stats.winRate > 50 && stats.totalRet > 10) ? sym : null;
+        } catch { return null; }
+      }));
+      res.forEach((s) => { if (s) winners.push(s); });
+      processed += batch.length;
+      setAutoSel((st) => ({ ...st, n: Math.min(processed, syms.length), kept: winners.length }));
+    }
+    const next = { ...(ovr || {}), selSyms: winners };
+    setOvr(next); lsSet(EDK, next);
+    setAutoSel({ running: false, done: true, n: syms.length, total: syms.length, kept: winners.length });
+  };
+  const clearAutoSelect = () => { const next = { ...(ovr || {}), selSyms: [] }; setOvr(next); lsSet(EDK, next); setAutoSel({ running: false, done: false, n: 0, total: 0, kept: 0 }); };
 
   // Live scan for THIS market's universe.
   useEffect(() => {
@@ -228,6 +336,29 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
           {isAdmin && <button onClick={() => edit ? setEdit(null) : startEdit()} className="tap" title="Edit screener (admin)" style={{ border: "none", background: "transparent", padding: 2, flexShrink: 0 }}><Pencil size={14} color="var(--muted)" /></button>}
         </div>
       </div>
+
+      {/* AUTO-SELECT SYMBOLS — backtest the whole market and keep only symbols with win rate > 50%
+          and return > 10%. Those become this screener's basket. Available to everyone. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+        <button onClick={runAutoSelect} disabled={autoSel.running} className="tap disp" style={{
+          flex: 1, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)",
+          borderRadius: 10, padding: "8px 12px", fontSize: 11.5, fontWeight: 800, cursor: autoSel.running ? "default" : "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 7, opacity: autoSel.running ? 0.7 : 1,
+        }}>
+          <Sparkles size={13} color="var(--primary)" />
+          {autoSel.running ? `Backtesting… ${autoSel.n}/${autoSel.total}` : (eSel.length ? "Re-run Auto-Select Symbols" : "Auto-Select Symbols")}
+        </button>
+        {eSel.length > 0 && !autoSel.running && (
+          <button onClick={clearAutoSelect} className="tap disp" title="Clear the auto-selected basket (scan the whole market again)" style={{ flexShrink: 0, border: "1px solid var(--line)", background: "transparent", color: "var(--muted)", borderRadius: 10, padding: "8px 11px", fontSize: 11, fontWeight: 800 }}>Clear</button>
+        )}
+      </div>
+      {autoSel.done && !autoSel.running && (
+        <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600, marginTop: 5 }}>
+          {autoSel.kept > 0
+            ? `Kept ${autoSel.kept} of ${autoSel.total} symbols (win rate > 50% and return > 10% on ${eTf} backtest).`
+            : `No symbols met win rate > 50% and return > 10% — showing the whole market instead.`}
+        </div>
+      )}
 
       {/* Admin edit panel — name, default SL/TP, timeframe, indicators and entry/exit rules. */}
       {isAdmin && edit && (

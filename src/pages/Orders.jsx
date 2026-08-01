@@ -327,6 +327,12 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
               <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: isRejected(t) ? "var(--down-soft)" : t.open ? "var(--primary-soft)" : "var(--elev)", color: isRejected(t) ? "var(--down)" : exitColor(exitOf(t)) }}>{isRejected(t) ? "Rejected" : `Exit: ${exitOf(t)}`}</span>
               <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: "var(--muted)" }}>Strategy by: {stratBy(t)}</span>
             </div>
+            {/* WHY it was rejected — the broker/risk reason, so a rejected order isn't a mystery. */}
+            {isRejected(t) && t.rejectReason && (
+              <div style={{ marginTop: 7, fontSize: 10.5, fontWeight: 700, color: "var(--down)", background: "var(--down-soft)", borderRadius: 8, padding: "6px 9px", lineHeight: 1.4 }}>
+                {String(t.rejectReason)}
+              </div>
+            )}
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 9, fontSize: 11 }}>
               <div><div style={{ color: "var(--muted)", fontSize: 9.5 }}>Entry</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.entry, t.market || "IN")}</div><div style={{ color: "var(--muted)", fontSize: 9.5 }}>{dt(t.entryAt)}</div></div>
               <div style={{ textAlign: "right" }}>
