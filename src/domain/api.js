@@ -211,11 +211,13 @@ export async function resolveExitFromCandles(trade, risk = {}) {
 export async function fetchNewsFeed(symbols, { taggedOnly = false } = {}) {
   if (!BACKEND_URL || !symbols || !symbols.length) return [];
   try {
-    // Send EXCHANGE-QUALIFIED tickers (HAL -> HAL.NS) so the backend can tell an Indian stock from
-    // its US namesake (HAL = Halliburton), then map the returned items back to our app symbols.
-    const ySyms = symbols.map(yahooSymbol);
-    const back = new Map(symbols.map((s) => [String(yahooSymbol(s)).toUpperCase(), s]));
-    const u = `${BACKEND_URL}/api/news/feed?symbols=${encodeURIComponent(ySyms.join(","))}${taggedOnly ? "&tagged=1" : ""}`;
+    // Accept bare symbol strings OR { sym, name }. Send EXCHANGE-QUALIFIED tickers (HAL -> HAL.NS) so
+    // the backend can tell an Indian stock from its US namesake (HAL = Halliburton), plus the COMPANY
+    // NAME ("SYM|Name") so Indian headlines that use the name (not the ticker) are matched.
+    const norm = symbols.map((s) => (typeof s === "string" ? { sym: s, name: "" } : { sym: s.sym, name: s.name || "" }));
+    const parts = norm.map(({ sym, name }) => `${yahooSymbol(sym)}${name ? "|" + String(name).replace(/[|,]/g, " ") : ""}`);
+    const back = new Map(norm.map(({ sym }) => [String(yahooSymbol(sym)).toUpperCase(), sym]));
+    const u = `${BACKEND_URL}/api/news/feed?symbols=${encodeURIComponent(parts.join(","))}${taggedOnly ? "&tagged=1" : ""}`;
     const r = await fetch(u);
     if (!r.ok) return [];
     const d = await r.json();

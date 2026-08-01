@@ -231,7 +231,9 @@ function LiveNewsStrip({ symbols = [], onOpen, onBuy, list = [], market = "IN" }
     setItems([]);
     if (!BACKEND_URL || !symbols.length) { setLoading(false); return undefined; }
 
-    fetchNewsFeed(symbols.slice(0, 30))
+    // Pass company NAMES so the backend can match Indian headlines (which use the name, not the ticker).
+    const withNames = symbols.slice(0, 30).map((s) => { const st = list.find((a) => a.sym === s); return { sym: s, name: st ? st.name : "" }; });
+    fetchNewsFeed(withNames)
       .then((n) => { if (!stop) { setItems(n); setLoading(false); } })
       .catch(() => { if (!stop) setLoading(false); });
 
