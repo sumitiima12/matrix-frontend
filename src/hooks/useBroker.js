@@ -115,18 +115,38 @@ export function useBroker({ onTick, userId, intervalMs = 2000 } = {}) {
   /* AUTO-RESUME across devices. Broker CREDENTIALS live on the server (encrypted, per-user), but
      the session HANDLE is saved per-device. So logging in on mobile after connecting on a laptop
      showed "not connected". On login we ask the server which brokers it holds creds for and
-     re-establish those sessions here — no manual reconnect on the new device. */
+     re-establish those sessions here — no manual reconnect on the new device.
+
+     RESILIENT: a free-tier Render dyno routinely 502s the first call or two while it wakes. If
+     the status probe simply fails once, a device that opened against a cold server would never
+     resume and would wrongly show "not connected" (then push the user into a manual reconnect,
+     which for Delta needlessly hits the trading proxy). So we retry the probe a few times with
+     backoff, and only give up once the server has actually answered. */
   useEffect(() => {
     if (!userId) return undefined;
     let alive = true;
-    brokerStatus(userId).then((d) => {
-      if (!alive || !d || !d.brokers) return;
+
+    const resumeHeld = (d) => {
+      if (!d || !d.brokers) return false;
       Object.entries(d.brokers).forEach(([id, info]) => {
         if (info && info.hasCreds && !sessions[id]) {
-          resumeBroker(id, userId).then((s) => { if (s && alive) setSessions((p) => (p[s.broker] ? p : { ...p, [s.broker]: s })); }).catch(() => {});
+          resumeBroker(id, userId)
+            .then((s) => { if (s && alive) setSessions((p) => (p[s.broker] ? p : { ...p, [s.broker]: s })); })
+            .catch(() => {});
         }
       });
-    }).catch(() => {});
+      return true;
+    };
+
+    (async () => {
+      for (let attempt = 0; attempt < 4 && alive; attempt++) {
+        let d = null;
+        try { d = await brokerStatus(userId); } catch { d = null; }
+        if (alive && resumeHeld(d)) return;                 // server answered — done
+        await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));  // back off: 1.5s, 3s, 4.5s
+      }
+    })();
+
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
