@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { } from "../../domain/universe";
 import { fmt, profileSummary } from "../../lib/format";
-import { Check, ChevronLeft, Clock, Copy, LogIn, LogOut, Sparkles, User } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Clock, Copy, LogIn, LogOut, Sparkles, User } from "lucide-react";
 import { apiLogin, apiRegister, apiForgotQuestion, apiForgotReset, apiGetSecurityQuestion, apiSetSecurityQuestion, apiSetUsername, apiSetEmail, apiChangePin } from "../../domain/api";
 import EquityCurve from "../common/EquityCurve";
 import headerLogo from "../../assets/brand/header-logo.png";
@@ -493,7 +493,73 @@ function AdminGates({ settings, onSave }) {
   );
 }
 
-export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, onAdmin, isAdminUser = false, adminMode = false, onToggleAdminMode, portfolio = [], trades = [], deposits = [], market = "IN", onBroker, brokerName, onUsernameChanged, onEmailChanged, marketBrokers = {}, houseFeeds = {}, onDisconnectBroker, appSettings = null, onSaveAppSettings, onDeleteAccount, onClearVirtual }) {
+/* RISK LIMITS — user-set safety caps on trading. ALL OFF by default; each cap is opt-in. When off, the
+   value is the engine's "unlimited" sentinel; when on, the user's number is enforced (frontend + server).
+   Fields: pct/count values; cooldown is shown in seconds but stored in ms. */
+const RL_OFF = { maxPositionPct: 100, maxOpenPositions: 100000, maxTradesPerDay: 100000, maxDailyLossPct: 100, cooldownMs: 0 };
+const RL_FIELDS = [
+  { key: "maxPositionPct", label: "Max position size", help: "Cap one position at this % of the market's equity.", unit: "%", on: 25, off: 100 },
+  { key: "maxOpenPositions", label: "Max open positions", help: "Most positions open at once, per market.", unit: "", on: 10, off: 100000 },
+  { key: "maxTradesPerDay", label: "Max trades per day", help: "Daily order ceiling, per market.", unit: "", on: 20, off: 100000 },
+  { key: "maxDailyLossPct", label: "Daily loss halt", help: "Stop opening trades after losing this % of the day's starting equity.", unit: "%", on: 5, off: 100 },
+  { key: "cooldownMs", label: "Same-symbol cooldown", help: "Minimum seconds between two orders in the same symbol.", unit: "s", on: 60, off: 0, scale: 1000 },
+];
+function RiskLimitsSection({ riskLimits, onSave }) {
+  const cur = { ...RL_OFF, ...(riskLimits || {}) };
+  const [open, setOpen] = useState(false);
+  const isOn = (f) => Number(cur[f.key]) !== f.off;
+  const anyOn = RL_FIELDS.some(isOn);
+  const setField = (f, on, rawVal) => {
+    const next = { ...cur };
+    if (!on) { next[f.key] = f.off; }
+    else {
+      const scale = f.scale || 1;
+      const v = rawVal != null ? Number(rawVal) : (isOn(f) ? cur[f.key] / scale : f.on);
+      next[f.key] = (Number.isFinite(v) && v > 0 ? v : f.on) * scale;
+    }
+    onSave && onSave(next);
+  };
+  const lab = { fontSize: 8.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.3 };
+  return (
+    <div className="card" style={{ padding: 0, marginBottom: 9, border: "1px solid var(--line)", overflow: "hidden" }}>
+      <button onClick={() => setOpen((v) => !v)} className="tap" style={{ width: "100%", textAlign: "left", padding: "13px 15px", background: "transparent", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>Risk limits <span style={{ fontSize: 11, fontWeight: 700, color: anyOn ? "var(--up)" : "var(--muted)" }}>· {anyOn ? "On" : "Off"}</span></span>
+        <ChevronRight size={16} style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform .15s", color: "var(--muted)" }} />
+      </button>
+      {open && (
+        <div style={{ padding: "4px 15px 14px" }}>
+          <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.5, marginBottom: 12 }}>
+            Safety caps on your real trading. All off by default — turn on only what you want. When off, strategies fire freely.
+          </div>
+          {RL_FIELDS.map((f) => {
+            const on = isOn(f);
+            const shown = on ? cur[f.key] / (f.scale || 1) : f.on;
+            return (
+              <div key={f.key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderTop: "1px solid var(--line)" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink)" }}>{f.label}</div>
+                  <div style={{ fontSize: 10.5, color: "var(--muted)", lineHeight: 1.4 }}>{f.help}</div>
+                </div>
+                {on && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
+                    <input type="number" min="0" value={shown} onChange={(e) => setField(f, true, e.target.value)}
+                      style={{ width: 58, textAlign: "right", border: "1px solid var(--line)", borderRadius: 8, padding: "6px 7px", fontSize: 12.5, fontWeight: 800, background: "var(--elev)", color: "var(--ink)" }} />
+                    {f.unit && <span style={{ ...lab, fontSize: 10 }}>{f.unit}</span>}
+                  </div>
+                )}
+                <span onClick={() => setField(f, !on)} className="tap" style={{ width: 36, height: 21, borderRadius: 999, background: on ? "#22C55E" : "var(--line)", position: "relative", flexShrink: 0, transition: "background .2s", cursor: "pointer" }}>
+                  <span style={{ position: "absolute", top: 2, left: on ? 17 : 2, width: 17, height: 17, borderRadius: "50%", background: "#fff", transition: "left .2s" }} />
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, onAdmin, isAdminUser = false, adminMode = false, onToggleAdminMode, portfolio = [], trades = [], deposits = [], market = "IN", onBroker, brokerName, onUsernameChanged, onEmailChanged, marketBrokers = {}, houseFeeds = {}, onDisconnectBroker, appSettings = null, onSaveAppSettings, riskLimits = null, onSaveRiskLimits, onDeleteAccount, onClearVirtual }) {
   const [confirmDel, setConfirmDel] = useState(false);
   const [delBusy, setDelBusy] = useState(false);
   const [clearBusy, setClearBusy] = useState(false);
@@ -784,6 +850,8 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
             Admin console
           </button>
         )}
+        {auth && onSaveRiskLimits && <RiskLimitsSection riskLimits={riskLimits} onSave={onSaveRiskLimits} />}
+
         {auth ? (
           <button onClick={() => { onClose && onClose(); onLogout && onLogout(); }} className="tap disp" style={{ width: "100%", margin: "16px 0 8px", background: "var(--surface)", color: "var(--down)", border: "1px solid var(--line)", borderRadius: 14, padding: 12, fontWeight: 800, fontSize: 13.5, display: "flex", gap: 7, alignItems: "center", justifyContent: "center" }}><LogOut size={16} /> Log out</button>
         ) : (

@@ -3,7 +3,7 @@ import { BACKEND_URL } from "../config";
 import { ALL, marketOf } from "../domain/universe";
 import { postTrade, resolveExitFromCandles } from "../domain/api";
 import { validateOrder, DEFAULT_LIMITS } from "../services/riskService";
-import { fmt } from "../lib/format";
+import { fmt, lsGet, lsSet } from "../lib/format";
 
 /**
  * useOrders — THE ORDER EXECUTION PIPELINE.
@@ -22,7 +22,10 @@ import { fmt } from "../lib/format";
  */
 export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, userId, broker, notify }) {
   const [trades, setTrades] = useState([]);
-  const [riskLimits, setRiskLimits] = useState(DEFAULT_LIMITS);
+  // Risk caps are OFF by default; the user opts in from Profile. Persisted so the choice survives reloads
+  // and is applied to every order (paper here; the real-order path also sends them to the server check).
+  const [riskLimits, setRiskLimitsRaw] = useState(() => ({ ...DEFAULT_LIMITS, ...(lsGet("mx_risklimits", {}) || {}) }));
+  const setRiskLimits = useCallback((v) => { const next = { ...DEFAULT_LIMITS, ...(v || {}) }; lsSet("mx_risklimits", next); setRiskLimitsRaw(next); }, []);
   const resolving = useRef(false);
 
   /* ------------------------------ journal ------------------------------ */
