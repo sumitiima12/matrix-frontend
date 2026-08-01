@@ -118,6 +118,22 @@ const SCREENERS = [
     entry: [{ la: "Price", op: ">", b: "EMA50", bType: "ind" }, { gate: "AND", la: "Price", op: "crosses_above", b: "VWAP1", bType: "ind" }, { gate: "AND", la: "RSI1", op: ">", b: "50", bType: "num" }],
     exit: [{ la: "Price", op: "crosses_below", b: "EMA50", bType: "ind" }],
   },
+
+  /* Momentum screeners on the price-change / day-change operands.
+     1) enter on a >2% move over the last 5 minutes, exit when the last-5-min move turns below -1%.
+     2) enter when the day is up >10% (vs previous close), exit when the last-5-min move drops below -2%. */
+  {
+    key: "price-surge-5m", name: "5-Min Price Surge", tf: "5m", sl: "1", tp: "3",
+    defs: [{ type: "PriceChange", name: "PriceChange", winMin: 5, len: "1" }],
+    entry: [{ la: "PriceChange", op: ">", b: "2", bType: "num" }],
+    exit: [{ la: "PriceChange", op: "<", b: "-1", bType: "num" }],
+  },
+  {
+    key: "day-gainer-10", name: "Big Daily Gainer", tf: "5m", sl: "1", tp: "3",
+    defs: [{ type: "DayChangePrevClose", name: "DayChangePrevClose" }, { type: "PriceChange", name: "PriceChange", winMin: 5, len: "1" }],
+    entry: [{ la: "DayChangePrevClose", op: ">", b: "10", bType: "num" }],
+    exit: [{ la: "PriceChange", op: "<", b: "-2", bType: "num" }],
+  },
 ];
 
 /* Buy (long) vs Sell (short) toggle — mirrors the Automate Samples/Premium toggle. In "Sell"
