@@ -41,6 +41,41 @@ function periodLabel(sets) {
 /* opts (optional): { tf } overrides the backtest timeframe; { days } trims the candles to the last
    N days (period selection). Both are used by the admin Backtesting panel; the strategy cards pass
    nothing and get the default (strategy's own tf, full available window). */
+/* Load the backtest candles for one symbol on a timeframe, trimmed to the last `days` (0 = full window).
+   Shared so the optimiser previews score on the SAME candles the results table uses. */
+export async function loadBtCandles(sym, tf, days = 0) {
+  const c0 = await fetchHistory(sym, tf, true).catch(() => null);
+  if (!c0 || !c0.length) return null;
+  const cutoff = days ? Date.now() - days * 864e5 : 0;
+  return cutoff ? c0.filter((x) => (x.t || 0) >= cutoff) : c0;
+}
+
+/* Score a cfg on a pre-fetched candle array with the SAME sizing model useBacktestStats uses:
+   an explicit per-trade qty/USD-amount when given (absolute P&L on deployed capital), else the
+   capital-split model. Returns { trades, winRate, slHit, tpHit, pnl, retPct } or null. */
+export function scoreCfg(cfg, candles, tf, { qty = null, amount = null, market = null, cap = 100000 } = {}) {
+  if (!cfg || !candles || candles.length < 30) return null;
+  const { trades } = backtest(cfg, candles, 1, tf);
+  const n = trades.length;
+  if (!n) return { trades: 0, winRate: null, slHit: 0, tpHit: 0, pnl: 0, retPct: 0 };
+  const wins = trades.filter((t) => t.ret > 0).length;
+  const slHit = trades.filter((t) => t.reason === "SL").length;
+  const tpHit = trades.filter((t) => t.reason === "TP").length;
+  const sumRet = trades.reduce((a, t) => a + (t.ret || 0), 0);
+  const hasSize = qty != null || amount != null;
+  let pnl, retPct;
+  if (hasSize) {
+    if (market === "Crypto") { const amt = Number(amount) || 0; pnl = amt * sumRet; retPct = amt ? (pnl / amt) * 100 : null; }
+    else {
+      const q = Number(qty) || 0;
+      pnl = q * trades.reduce((a, t) => a + ((t.exit || 0) - (t.entry || 0)), 0);
+      const avgEntry = trades.reduce((a, t) => a + (t.entry || 0), 0) / n;
+      const base = q * avgEntry; retPct = base ? (pnl / base) * 100 : null;
+    }
+  } else { pnl = cap * sumRet; retPct = sumRet * 100; }
+  return { trades: n, winRate: (wins / n) * 100, slHit, tpHit, pnl, retPct };
+}
+
 export function useBacktestStats(strat, opts = {}) {
   const [state, setState] = useState({ loading: true, stats: null });
   const tfOverride = ALLOWED_TF.has(opts.tf) ? opts.tf : null;
@@ -137,6 +172,15 @@ export function useBacktestStats(strat, opts = {}) {
 
         /* Detailed trade ledger for the "List of Trades" view: each executed round-trip with its entry
            and exit timestamps (resolved from the candle it fired on), prices, return % and sized P&L. */
+        /* Per-trade INVESTED amount (deployed capital) and QUANTITY: with an explicit size, crypto
+           deploys the USD amount (qty = amount ÷ entry coins), stocks deploy qty × entry (qty shares);
+           with no size, the capital-split per-symbol slice is deployed. */
+        const investedOf = (entry) => hasSize
+          ? (sizeMarket === "Crypto" ? (Number(amount) || 0) : (Number(qty) || 0) * (entry || 0))
+          : perSym;
+        const qtyOf = (entry) => hasSize
+          ? (sizeMarket === "Crypto" ? (entry ? (Number(amount) || 0) / entry : 0) : (Number(qty) || 0))
+          : (entry ? perSym / entry : 0);
         const tradeList = trades.map((t, i) => {
           const c = t._c || [];
           return {
@@ -145,6 +189,8 @@ export function useBacktestStats(strat, opts = {}) {
             exitTime: c[t.exitIdx] ? c[t.exitIdx].t : null,
             entryPrice: t.entry,
             exitPrice: t.exit,
+            invested: investedOf(t.entry),
+            qty: qtyOf(t.entry),
             retPct: (t.ret || 0) * 100,
             pnl: perTradePnl[i],
             reason: t.reason,

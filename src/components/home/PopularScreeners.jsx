@@ -187,9 +187,12 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
   const eTf = (ovr && ovr.tf) || screener.tf;
   // Admin curation: an explicit symbol basket, per-symbol qty/SL/TP overrides, and a publish flag.
   const eSel = (ovr && Array.isArray(ovr.selSyms)) ? ovr.selSyms : [];
+  // Auto-Select ran and NOTHING qualified → an intentional EMPTY basket ("None"), not "show the whole
+  // market". Distinguishes "no basket set" (scan everything) from "auto-select found none" (scan nothing).
+  const eNone = !!(ovr && ovr.selNone);
   const eOv = (ovr && ovr.ov) || {};
   const published = !(ovr && ovr.published === false);
-  const cfgSig = useMemo(() => JSON.stringify({ d: eDefs, e: eEntry, t: eTf, s: eSel }), [eDefs, eEntry, eTf, eSel]);
+  const cfgSig = useMemo(() => JSON.stringify({ d: eDefs, e: eEntry, t: eTf, s: eSel, n: eNone }), [eDefs, eEntry, eTf, eSel, eNone]);
   const saveEdit = () => {
     const next = {
       name: (edit.name || "").trim() || screener.name,
@@ -241,17 +244,18 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
       processed += batch.length;
       setAutoSel((st) => ({ ...st, n: Math.min(processed, syms.length), kept: winners.length }));
     }
-    const next = { ...(ovr || {}), selSyms: winners };
+    // When nothing qualifies, set an intentional EMPTY basket ("None") — show no symbols, NOT the whole market.
+    const next = { ...(ovr || {}), selSyms: winners, selNone: winners.length === 0 };
     setOvr(next); lsSet(EDK, next);
     setAutoSel({ running: false, done: true, n: syms.length, total: syms.length, kept: winners.length, win: wMin, ret: rMin });
   };
-  const clearAutoSelect = () => { const next = { ...(ovr || {}), selSyms: [] }; setOvr(next); lsSet(EDK, next); setAutoSel({ running: false, done: false, n: 0, total: 0, kept: 0 }); };
+  const clearAutoSelect = () => { const next = { ...(ovr || {}), selSyms: [], selNone: false }; setOvr(next); lsSet(EDK, next); setAutoSel({ running: false, done: false, n: 0, total: 0, kept: 0 }); };
 
   // Live scan for THIS market's universe.
   useEffect(() => {
     let stop = false;
-    // Admin-curated basket if set, else the market's universe (capped for cost).
-    const syms = eSel.length ? eSel : (UNIVERSE[market] || []).map((s) => s.sym).slice(0, 40);
+    // None (auto-select found nothing) → scan no symbols. Else curated basket if set, else the market.
+    const syms = eNone ? [] : (eSel.length ? eSel : (UNIVERSE[market] || []).map((s) => s.sym).slice(0, 40));
     setCapital(lsGet(capKey, capDefault(market)));
     setAutoOn(lsGet(autoKey, false));
     if (!syms.length) { setMatches([]); return undefined; }
@@ -346,7 +350,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
             {dispName}
             {!published && <span className="pill" style={{ fontSize: 8, fontWeight: 800, padding: "2px 7px", background: "var(--down-soft, rgba(232,72,85,.14))", color: "var(--down)" }}>UNPUBLISHED</span>}
           </div>
-          <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 2, fontWeight: 600 }}>{eTf} · {matches.length} live{eSel.length ? ` · ${eSel.length} symbols` : ""}</div>
+          <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 2, fontWeight: 600 }}>{eTf} · {matches.length} live{eNone ? " · None selected" : eSel.length ? ` · ${eSel.length} symbols` : ""}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           <label className="tap" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, fontWeight: 800, color: "var(--ink)" }}>
@@ -379,9 +383,9 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
           display: "flex", alignItems: "center", justifyContent: "center", gap: 7, opacity: autoSel.running ? 0.7 : 1,
         }}>
           <Sparkles size={13} color="var(--primary)" />
-          {autoSel.running ? `Backtesting… ${autoSel.n}/${autoSel.total}` : (eSel.length ? "Re-run Auto-Select Symbols" : "Auto-Select Symbols")}
+          {autoSel.running ? `Backtesting… ${autoSel.n}/${autoSel.total}` : ((eSel.length || eNone) ? "Re-run Auto-Select Symbols" : "Auto-Select Symbols")}
         </button>
-        {eSel.length > 0 && !autoSel.running && (
+        {(eSel.length > 0 || eNone) && !autoSel.running && (
           <button onClick={clearAutoSelect} className="tap disp" title="Clear the auto-selected basket (scan the whole market again)" style={{ flexShrink: 0, border: "1px solid var(--line)", background: "transparent", color: "var(--muted)", borderRadius: 10, padding: "8px 11px", fontSize: 11, fontWeight: 800 }}>Clear</button>
         )}
       </div>
@@ -389,7 +393,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
         <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600, marginTop: 5 }}>
           {autoSel.kept > 0
             ? `Kept ${autoSel.kept} of ${autoSel.total} symbols (win rate > ${autoSel.win}% and return > ${autoSel.ret}% on ${eTf} backtest).`
-            : `No symbols met win rate > ${autoSel.win}% and return > ${autoSel.ret}% — showing the whole market instead. Lower the thresholds and re-run.`}
+            : `No symbols met win rate > ${autoSel.win}% and return > ${autoSel.ret}% — selected None. Lower the thresholds and re-run, or tap Clear to scan the whole market.`}
         </div>
       )}
 

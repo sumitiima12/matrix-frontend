@@ -6,7 +6,7 @@ import { Activity, Bell, Bolt, Check, ChevronDown, ChevronUp, Copy, Globe, ListC
 import { Area, AreaChart, Bar, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { BACKEND_URL } from "../config";
 import { chgColor, clamp, fmt, pct, DAY, lsGet, lsSet } from "../lib/format";
-import { useBacktestStats } from "../hooks/useBacktestStats";
+import { useBacktestStats, loadBtCandles, scoreCfg } from "../hooks/useBacktestStats";
 import { SMAarr, EMAarr, RSIarr, MACDarr, BBarr, CCIarr, ATRarr, VWAParr, ADXarr, CF } from "../lib/series";
 import { ALL, UNIVERSE, marketOf } from "../domain/universe";
 import { apiListPublicStrategies, apiPublishStrategy, apiUnpublishStrategy, aiInterpretStrategyAI, optimizeExits, optimizeIndicators, scanScreener, marketOpen } from "../domain/api";
@@ -127,6 +127,8 @@ function TradeLog({ trades, market = "IN", showSym = false, accent = "#7C3AED" }
   cols.push(["Entry Time", (r) => dt(r.entryTime).t]);
   cols.push(["Exit Date", (r) => dt(r.exitTime).d]);
   cols.push(["Exit Time", (r) => dt(r.exitTime).t]);
+  cols.push(["Invested", (r) => (r.invested != null ? r.invested : "")]);
+  cols.push(["Qty", (r) => (r.qty != null ? r.qty : "")]);
   cols.push(["Entry Price", (r) => (r.entryPrice != null ? r.entryPrice : "")]);
   cols.push(["Exit Price", (r) => (r.exitPrice != null ? r.exitPrice : "")]);
   cols.push(["Return %", (r) => (r.retPct >= 0 ? "+" : "") + (r.retPct || 0).toFixed(2) + "%"]);
@@ -156,12 +158,15 @@ function TradeLog({ trades, market = "IN", showSym = false, accent = "#7C3AED" }
             <button onClick={exportCsv} className="tap disp" style={{ border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 8, padding: "5px 10px", fontWeight: 800, fontSize: 10.5, display: "inline-flex", alignItems: "center", gap: 5 }}>⬇ Export CSV</button>
           </div>
           <div style={{ overflowX: "auto", maxHeight: 320, overflowY: "auto" }}>
-            <table style={{ borderCollapse: "collapse", width: "100%", minWidth: showSym ? 560 : 500 }}>
+            <table style={{ borderCollapse: "collapse", width: "100%", minWidth: showSym ? 760 : 700 }}>
               <thead><tr>
                 <th style={th}>#</th>
                 {showSym && <th style={th}>Symbol</th>}
                 <th style={th}>Entry</th>
                 <th style={th}>Exit</th>
+                <th style={{ ...th, textAlign: "right" }}>Invested</th>
+                <th style={{ ...th, textAlign: "right" }}>Entry Price</th>
+                <th style={{ ...th, textAlign: "right" }}>Exit Price</th>
                 <th style={{ ...th, textAlign: "right" }}>Return</th>
                 <th style={{ ...th, textAlign: "right" }}>P&amp;L</th>
                 <th style={th}>Exit</th>
@@ -169,12 +174,17 @@ function TradeLog({ trades, market = "IN", showSym = false, accent = "#7C3AED" }
               <tbody>
                 {list.map((r, i) => {
                   const e = dt(r.entryTime), x = dt(r.exitTime);
+                  const qtyStr = r.qty == null ? "" : (Math.abs(r.qty) >= 1 ? r.qty.toFixed(2) : r.qty.toFixed(6));
                   return (
                     <tr key={i}>
                       <td style={{ ...td, color: "var(--muted)" }}>{i + 1}</td>
                       {showSym && <td style={{ ...td, fontWeight: 800 }}>{r.sym}</td>}
                       <td style={td}><span style={{ fontWeight: 800 }}>{e.d}</span> <span style={{ color: "var(--muted)" }}>{e.t}</span></td>
                       <td style={td}><span style={{ fontWeight: 800 }}>{x.d}</span> <span style={{ color: "var(--muted)" }}>{x.t}</span></td>
+                      {/* Invested notional on top, quantity below (qty is fractional for crypto). */}
+                      <td style={{ ...td, textAlign: "right" }}>{r.invested == null ? "—" : <><span style={{ fontWeight: 800 }}>{fmt(r.invested, market)}</span>{qtyStr ? <><br /><span style={{ color: "var(--muted)", fontWeight: 600, fontSize: 9 }}>{qtyStr} qty</span></> : null}</>}</td>
+                      <td style={{ ...td, textAlign: "right" }}>{r.entryPrice == null ? "—" : fmt(r.entryPrice, market)}</td>
+                      <td style={{ ...td, textAlign: "right" }}>{r.exitPrice == null ? "—" : fmt(r.exitPrice, market)}</td>
                       <td style={{ ...td, textAlign: "right", color: r.retPct >= 0 ? "var(--up)" : "var(--down)" }}>{(r.retPct >= 0 ? "+" : "") + (r.retPct || 0).toFixed(2)}%</td>
                       <td style={{ ...td, textAlign: "right", color: (r.pnl || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{r.pnl == null ? "—" : (r.pnl >= 0 ? "+" : "") + fmt(r.pnl, market)}</td>
                       <td style={{ ...td, color: "var(--muted)" }}>{r.reason || "—"}</td>
@@ -1378,13 +1388,13 @@ function CompareRow({ s, td, opts, onReport, market = "IN", sym, onCreateCopy, c
           : !stats || !stats.trades ? <td style={{ ...td, color: "var(--muted)" }} colSpan={9}>{stats ? "no trades" : "no data"}</td>
           : <>
               <td style={td}>{stats.trades}</td>
+              <td style={c(stats.pnl)}>{stats.pnl == null ? "—" : (stats.pnl >= 0 ? "+" : "") + fmt(stats.pnl, market)}</td>
+              <td style={c(stats.retPct)}>{(stats.retPct >= 0 ? "+" : "") + (stats.retPct || 0).toFixed(1)}%</td>
               <td style={{ ...td, color: "var(--up)" }}>{stats.wins}</td>
               <td style={{ ...td, color: "var(--down)" }}>{stats.losses}</td>
               <td style={{ ...td, color: (stats.winRate ?? 0) >= 50 ? "var(--up)" : "var(--down)" }}>{stats.winRate != null ? stats.winRate.toFixed(0) + "%" : "—"}</td>
               <td style={{ ...td, color: "var(--up)" }}>{stats.tpHit}</td>
               <td style={{ ...td, color: "var(--down)" }}>{stats.slHit}</td>
-              <td style={c(stats.retPct)}>{(stats.retPct >= 0 ? "+" : "") + (stats.retPct || 0).toFixed(1)}%</td>
-              <td style={c(stats.pnl)}>{stats.pnl == null ? "—" : (stats.pnl >= 0 ? "+" : "") + fmt(stats.pnl, market)}</td>
               <td style={{ ...td, color: stats.maxDD > 0 ? "var(--down)" : "var(--muted)" }}>{stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmt(stats.maxDD, market) : fmt(0, market)) : "—"}</td>
             </>}
       </tr>
@@ -1432,13 +1442,13 @@ function SymbolRow({ strat, sym, td, opts, onReport, market = "IN", onCreateCopy
           : !stats || !stats.trades ? <td style={{ ...td, color: "var(--muted)" }} colSpan={9}>{stats ? "no trades" : "no data"}</td>
           : <>
               <td style={td}>{stats.trades}</td>
+              <td style={c(stats.pnl)}>{stats.pnl == null ? "—" : (stats.pnl >= 0 ? "+" : "") + fmt(stats.pnl, market)}</td>
+              <td style={c(stats.retPct)}>{(stats.retPct >= 0 ? "+" : "") + (stats.retPct || 0).toFixed(1)}%</td>
               <td style={{ ...td, color: "var(--up)" }}>{stats.wins}</td>
               <td style={{ ...td, color: "var(--down)" }}>{stats.losses}</td>
               <td style={{ ...td, color: (stats.winRate ?? 0) >= 50 ? "var(--up)" : "var(--down)" }}>{stats.winRate != null ? stats.winRate.toFixed(0) + "%" : "—"}</td>
               <td style={{ ...td, color: "var(--up)" }}>{stats.tpHit}</td>
               <td style={{ ...td, color: "var(--down)" }}>{stats.slHit}</td>
-              <td style={c(stats.retPct)}>{(stats.retPct >= 0 ? "+" : "") + (stats.retPct || 0).toFixed(1)}%</td>
-              <td style={c(stats.pnl)}>{stats.pnl == null ? "—" : (stats.pnl >= 0 ? "+" : "") + fmt(stats.pnl, market)}</td>
               <td style={{ ...td, color: stats.maxDD > 0 ? "var(--down)" : "var(--muted)" }}>{stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmt(stats.maxDD, market) : fmt(0, market)) : "—"}</td>
             </>}
       </tr>
@@ -1513,7 +1523,7 @@ function ObjSelect({ objective, onPick, accent = "#7C3AED" }) {
    • Per Symbol   — many strategies × ONE symbol (pass `strats` + `sym`); one row per strategy.
    • Per Strategy — ONE strategy × many symbols (pass `singleStrat` + `symList`); one row per SYMBOL,
      so you see the ideal SL/TP for EACH selected symbol, not one blended figure. */
-function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits, onCreateCopy, copyExists, singleStrat, symList }) {
+function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits, onCreateCopy, copyExists, singleStrat, symList, days = 0, qty = null, amount = null, market = "IN" }) {
   const [objective, setObjective] = useState("pnl");
   const [state, setState] = useState({ loading: false, rows: null, ran: false });
   const [applied, setApplied] = useState(false);
@@ -1537,10 +1547,24 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits, onCreateCop
     if (!jobs.length) { setState({ loading: false, ran: true, rows: [] }); return; }
     setApplied(false);
     setState({ loading: true, rows: null, ran: true });
+    // Candle cache per symbol so the client-side re-score fetches each symbol's history only once.
+    const candleCache = {};
+    const sizing = { qty, amount, market };
     const rows = await Promise.all(jobs.map(async (j) => {
       try {
         const res = await optimizeExits({ mode: j.cfg.mode === "metric" ? "metric" : undefined, defs: j.cfg.defs || [], entry: j.cfg.entry, tf, appSyms: [j.sym], currentSl: j.cfg.sl != null ? Number(j.cfg.sl) : null, currentTp: j.cfg.tp != null ? Number(j.cfg.tp) : null, objective: obj, rrMin, maxSl });
-        return { j, best: res && res.best ? res.best : null, current: res ? res.current : null };
+        const best = res && res.best ? res.best : null;
+        // RE-SCORE Earlier (current cfg) and Now (cfg at the optimum SL/TP) with the SAME backtest
+        // engine, sizing and period the results table uses — so the preview lines up with it.
+        let current = res ? res.current : null, nowM = best;
+        if (candleCache[j.sym] === undefined) candleCache[j.sym] = await loadBtCandles(j.sym, tf, days);
+        const candles = candleCache[j.sym];
+        if (candles && candles.length >= 30) {
+          const cur = scoreCfg(j.cfg, candles, tf, sizing);
+          if (cur) current = cur;
+          if (best) { const nw = scoreCfg({ ...j.cfg, sl: best.sl, tp: best.tp }, candles, tf, sizing); if (nw) nowM = { ...best, ...nw }; }
+        }
+        return { j, best: nowM, current };
       } catch { return { j, best: null }; }
     }));
     setState({ loading: false, ran: true, rows });
@@ -1964,6 +1988,35 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators,
   const [results, setResults] = useState({});
   const report = useCallback((label, stats) => setResults((r) => (r[label] === stats ? r : { ...r, [label]: stats })), []);
 
+  /* Column sorting. Click a header to sort by that stat; click again to flip direction. Rows are
+     sorted on the stats collected in `results` (keyed by strategy name / symbol). Rows whose backtest
+     hasn't produced stats yet (or that took no trades) always sink to the bottom. */
+  const [sortKey, setSortKey] = useState(null);
+  const [sortDir, setSortDir] = useState("desc");
+  const onSort = (k) => { if (sortKey === k) setSortDir((d) => (d === "desc" ? "asc" : "desc")); else { setSortKey(k); setSortDir(k === "label" ? "asc" : "desc"); } };
+  const sortRows = (rows, nameOf) => {
+    if (!sortKey) return rows;
+    const valOf = (row) => {
+      const nm = nameOf(row);
+      if (sortKey === "label") return nm;
+      const st = results[nm];
+      return st && st[sortKey] != null ? st[sortKey] : null;
+    };
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      const va = valOf(a), vb = valOf(b);
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;   // missing stats always sink to the bottom
+      if (vb == null) return -1;
+      if (typeof va === "string") return dir * String(va).localeCompare(String(vb));
+      return dir * (va - vb);
+    });
+  };
+  const SortArrow = ({ k }) => {
+    const active = sortKey === k;
+    return <span style={{ fontSize: 7.5, marginLeft: 2, color: active ? "var(--primary)" : "var(--line)" }}>{active ? (sortDir === "asc" ? "▲" : "▼") : "▼"}</span>;
+  };
+
   useEffect(() => {
     setSym(DEF_SYM[market] || "NIFTY50"); setRun(null); setPickStrats([]);
     setPRun(null); setPSyms([]); setPStratId(strats[0] ? strats[0].id : ""); setResults({});
@@ -1983,11 +2036,14 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators,
     <button onClick={onClick} className="tap disp" style={{ border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", borderRadius: 9, padding: "6px 11px", fontWeight: 800, fontSize: 11, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5 }}>⬇ Export CSV</button>
   );
 
+  // Sortable columns: [statKey, label]. Click a header to sort; the ▼/▲ shows it's sortable + the direction.
+  const HEAD_COLS = [["trades", "Trades"], ["pnl", "P&L"], ["retPct", "Return"], ["wins", "Wins"], ["losses", "Loss"], ["winRate", "Win %"], ["tpHit", "Target"], ["slHit", "SL Hit"], ["maxDD", "Max DD"]];
   const Head = () => (
     <thead><tr>
-      <th style={{ ...th, textAlign: "left" }}>{view === "perSymbol" ? "Strategy" : "Symbol"}</th>
-      <th style={th}>Trades</th><th style={th}>Wins</th><th style={th}>Loss</th><th style={th}>Win %</th>
-      <th style={th}>Target</th><th style={th}>SL Hit</th><th style={th}>Return</th><th style={th}>P&amp;L</th><th style={th}>Max DD</th>
+      <th style={{ ...th, textAlign: "left", cursor: "pointer", userSelect: "none" }} onClick={() => onSort("label")}>{view === "perSymbol" ? "Strategy" : "Symbol"}<SortArrow k="label" /></th>
+      {HEAD_COLS.map(([k, l]) => (
+        <th key={k} style={{ ...th, cursor: "pointer", userSelect: "none" }} onClick={() => onSort(k)}>{l}<SortArrow k={k} /></th>
+      ))}
     </tr></thead>
   );
 
@@ -2039,7 +2095,7 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators,
 
           {/* Ideal SL/TP for EACH strategy on the selected symbol. */}
           {strats.length > 0 && (
-            <PerSymbolStrategyOptimizer strats={pickStrats.length ? strats.filter((s) => pickStrats.includes(s.name)) : strats} sym={sym} tf={tf} onApplyExits={onApplyExits} onCreateCopy={onCreateCopy} copyExists={copyExists} />
+            <PerSymbolStrategyOptimizer strats={pickStrats.length ? strats.filter((s) => pickStrats.includes(s.name)) : strats} sym={sym} tf={tf} days={days} qty={isCrypto ? null : Number(size)} amount={isCrypto ? Number(size) : null} market={market} onApplyExits={onApplyExits} onCreateCopy={onCreateCopy} copyExists={copyExists} />
           )}
           {/* Ideal INDICATORS (lengths + timeframe) for EACH strategy on the selected symbol. */}
           {strats.length > 0 && (
@@ -2071,7 +2127,7 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators,
                     {resBucket === "new" && <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600, padding: "0 2px 6px" }}>Not on {run.sym} yet — tap Create to add under My Copies.</div>}
                     <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 500 }}>
                       <Head />
-                      <tbody>{rows.map((s) => <CompareRow key={s.id + run.tf + run.days + run.sym} s={s} td={td} opts={{ tf: run.tf, days: run.days, sym: run.sym, qty: run.qty, amount: run.amount, market: run.market }} onReport={report} market={market} sym={run.sym} onCreateCopy={onCreateCopy} copyExists={copyExists} isActive={isActive} onToggleActive={onToggleActive} bucket={resBucket} />)}</tbody>
+                      <tbody>{sortRows(rows, (s) => s.name).map((s) => <CompareRow key={s.id + run.tf + run.days + run.sym} s={s} td={td} opts={{ tf: run.tf, days: run.days, sym: run.sym, qty: run.qty, amount: run.amount, market: run.market }} onReport={report} market={market} sym={run.sym} onCreateCopy={onCreateCopy} copyExists={copyExists} isActive={isActive} onToggleActive={onToggleActive} bucket={resBucket} />)}</tbody>
                     </table>
                   </>
                 );
@@ -2112,7 +2168,7 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators,
           {curStrat && curCfg && (curCfg.entry || []).length > 0 && (() => {
             const syms = pSyms.length ? pSyms.slice(0, 8) : symOptions.slice(0, 8);
             return (<>
-              <PerSymbolStrategyOptimizer singleStrat={curStrat} symList={syms} sym={syms[0]} tf={pTf} onApplyExits={onApplyExits} onCreateCopy={onCreateCopy} copyExists={copyExists} />
+              <PerSymbolStrategyOptimizer singleStrat={curStrat} symList={syms} sym={syms[0]} tf={pTf} days={pDays} qty={isCrypto ? null : Number(size)} amount={isCrypto ? Number(size) : null} market={market} onApplyExits={onApplyExits} onCreateCopy={onCreateCopy} copyExists={copyExists} />
               <PerSymbolIndicatorOptimizer singleStrat={curStrat} symList={syms.slice(0, 5)} sym={syms[0]} tf={pTf} onApplyIndicators={onApplyIndicators} onCreateCopy={onCreateCopy} copyExists={copyExists} />
             </>);
           })()}
@@ -2130,7 +2186,7 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators,
               </div>
               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 500 }}>
                 <Head />
-                <tbody>{pRun.syms.map((sy) => <SymbolRow key={pStrat.id + pRun.tf + pRun.days + sy} strat={pStrat} sym={sy} td={td} opts={{ tf: pRun.tf, days: pRun.days, qty: pRun.qty, amount: pRun.amount, market: pRun.market }} onReport={report} market={market} onCreateCopy={onCreateCopy} copyExists={copyExists} />)}</tbody>
+                <tbody>{sortRows(pRun.syms, (sy) => sy).map((sy) => <SymbolRow key={pStrat.id + pRun.tf + pRun.days + sy} strat={pStrat} sym={sy} td={td} opts={{ tf: pRun.tf, days: pRun.days, qty: pRun.qty, amount: pRun.amount, market: pRun.market }} onReport={report} market={market} onCreateCopy={onCreateCopy} copyExists={copyExists} />)}</tbody>
               </table>
             </div>
           )}
