@@ -385,7 +385,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
   useEffect(() => {
     if (!autoOn || !(onScreenerBuy || onAutoBuy || onBuy) || !matches.length) return;
     if (!marketOpen(market)) return;
-    const key = `mx_scrbuy_${screener.key}_${market}${short ? "_sell" : ""}_${DAY}`;
+    const key = `mx_scrbuy_${screener.key}_${market}_${mode}${short ? "_sell" : ""}_${DAY}`;
     if (lsGet(key, false)) return;
     matches.forEach((m) => {
       const inst = ALL.find((a) => a.sym === m.sym);

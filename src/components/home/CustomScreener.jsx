@@ -181,7 +181,7 @@ function PerSymbolOptimizer({ entry, syms, market, onApplyAll }) {
 }
 
 export default function CustomScreener({ market, mode = "virtual", list = [], onOpen, onScreenerBuy, liveTick = 0, editing = null, onDoneEditing }) {
-  const LSK = `mx_customscr_${market}`;   // still used to namespace the once-a-day auto-buy key
+  const LSK = `mx_customscr_${market}_${mode}`;   // once-a-day auto-buy key — scoped by market AND mode (paper/real)
   /* Build-a-screener always starts BLANK in a new session — its state is NOT persisted. (Saved
      screeners live separately under "My Screeners".) So every fresh visit gets the defaults below and
      no leftover symbol selection. */

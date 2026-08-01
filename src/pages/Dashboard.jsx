@@ -851,7 +851,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     // toggling ON early (while UNIVERSE prices are still null → autoTrades empty) marks the day
     // "done" and buys nothing, leaving 0 positions until tomorrow. Wait for real picks first.
     if (!autoTrades.length) return;
-    const key = `mx_autobuy_${market}_${DAY}`;
+    const key = `mx_autobuy_${market}_${mode}_${DAY}`;   // scoped by mode so virtual & real each fire once/day
     if (lsGet(key, false)) return;
     autoTrades.forEach((t) => {
       const u = ALL.find((a) => a.sym === (t.under || t.sym));
@@ -864,7 +864,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     // `autoTrades.length` is in the deps so this fires the moment the day's picks finish loading —
     // without it, turning Auto-Buy on before prices arrived left the effect never re-running, so
     // nothing was ever placed (0 trades). The once-per-day key still prevents a second placement.
-  }, [autoOn, market, autoTrades.length]);
+  }, [autoOn, market, mode, autoTrades.length]);
   /* MANUAL "Run now" — place today's picks immediately instead of waiting for the once-a-day effect to
      catch the right moment. Respects market hours and needs the picks loaded; sets the daily guard so the
      effect won't then double-place. */
@@ -878,7 +878,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       (onAutoBuy || onBuy)(u, t.qty, { tp: t.tpPct, sl: t.slPct, tradeType: "Auto Buy", product: prodCode });
       placed += 1;
     });
-    lsSet(`mx_autobuy_${market}_${DAY}`, true);
+    lsSet(`mx_autobuy_${market}_${mode}_${DAY}`, true);
     setRunMsg(`Placed ${placed} ${MKT_LABEL[market]} auto-buy position${placed === 1 ? "" : "s"} at live prices.`);
   };
   const setOv = (t, field, val) => setAutoOverrides((o) => { const cur = o[t.sym] || { tp: t.tpPct, sl: t.slPct }; return { ...o, [t.sym]: { ...cur, [field]: val === "" ? cur[field] : +val } }; });
