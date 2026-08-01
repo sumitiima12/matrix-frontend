@@ -422,7 +422,10 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
           const pnlPct = (h.avg && h.ltp) ? ((h.ltp / h.avg) - 1) * 100 : null;
           // Neo's read on the REAL holding — same engine the virtual cards use, fed the broker's
           // avg cost + qty. Only when the symbol is in our tracked universe (needs real indicators).
-          const ana = uni && sig ? analyzeHolding({ sym: h.sym, buy: h.avg != null ? h.avg : h.ltp, qty: h.qty, sl: null, tp: null, short: h.short || h.side === "SELL" }, uni, sig) : null;
+          // A real short comes back with NEGATIVE qty and no side flag (Delta returns size<0). Feed the
+          // analyzer a positive qty + an explicit short flag so its P&L%/trend read the right direction.
+          const anaShort = h.short || h.side === "SELL" || Number(h.qty) < 0;
+          const ana = uni && sig ? analyzeHolding({ sym: h.sym, buy: h.avg != null ? h.avg : h.ltp, qty: Math.abs(Number(h.qty) || 0), sl: null, tp: null, short: anaShort }, uni, sig) : null;
           const vColor = ana && /Exit|Reduce/.test(ana.action) ? "var(--down)" : ana && /Add|Take profit/.test(ana.action) ? "var(--up)" : "var(--muted)";
           return (
             <div key={h.sym} className="card" style={{ marginTop: 9, padding: 13 }}>
