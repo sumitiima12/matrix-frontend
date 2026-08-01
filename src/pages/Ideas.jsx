@@ -166,7 +166,7 @@ function CommunityIdeas({ market, me, isAdmin, adminKey = "", onOpen }) {
     <div style={{ marginTop: 22 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <div className="disp" style={{ fontWeight: 700, fontSize: 16 }}>Community ideas</div>
-        <button onClick={() => setShowForm((v) => !v)} className="tap disp" style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid var(--primary)", background: showForm ? "var(--primary-soft)" : "var(--primary)", color: showForm ? "var(--primary)" : "#fff", borderRadius: 11, padding: "8px 12px", fontWeight: 800, fontSize: 12 }}>{showForm ? <><X size={14} /> Close</> : <><Plus size={15} /> Post an idea</>}</button>
+        <button onClick={() => setShowForm((v) => !v)} className="tap disp" style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid var(--primary)", background: showForm ? "var(--primary-soft)" : "var(--primary)", color: showForm ? "var(--primary)" : "var(--on-primary)", borderRadius: 11, padding: "8px 12px", fontWeight: 800, fontSize: 12 }}>{showForm ? <><X size={14} /> Close</> : <><Plus size={15} /> Post an idea</>}</button>
       </div>
 
       {showForm && (
@@ -192,7 +192,7 @@ function CommunityIdeas({ market, me, isAdmin, adminKey = "", onOpen }) {
               ? <div style={{ position: "relative", display: "inline-block" }}><img src={shot} alt="idea" style={{ maxHeight: 120, borderRadius: 10, border: "1px solid var(--line)" }} /><button onClick={() => setShot(null)} className="tap" style={{ position: "absolute", top: 4, right: 4, background: "rgba(0,0,0,.6)", color: "#fff", border: "none", borderRadius: 8, padding: "2px 6px", fontSize: 11 }}>Remove</button></div>
               : <label className="tap disp" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px dashed var(--line)", borderRadius: 10, padding: "8px 12px", fontSize: 11.5, fontWeight: 700, color: "var(--muted)", cursor: "pointer" }}>📎 Add a screenshot<input type="file" accept="image/*" onChange={onShot} style={{ display: "none" }} /></label>}
           </div>
-          <button onClick={submit} disabled={busy || !sym || !me} className="tap disp glow" style={{ width: "100%", marginTop: 10, background: (sym && me) ? "linear-gradient(120deg,var(--primary),var(--primary-2))" : "var(--elev)", color: (sym && me) ? "#fff" : "var(--muted)", border: "none", borderRadius: 12, padding: 12, fontWeight: 800, fontSize: 13 }}>{busy ? "Posting…" : "Post idea"}</button>
+          <button onClick={submit} disabled={busy || !sym || !me} className="tap disp glow" style={{ width: "100%", marginTop: 10, background: (sym && me) ? "linear-gradient(120deg,var(--primary),var(--primary-2))" : "var(--elev)", color: (sym && me) ? "var(--on-primary)" : "var(--muted)", border: "none", borderRadius: 12, padding: 12, fontWeight: 800, fontSize: 13 }}>{busy ? "Posting…" : "Post idea"}</button>
           <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 6, textAlign: "center" }}>Posted as @{me || "you"} · goes live after admin approval.</div>
         </div>
       )}

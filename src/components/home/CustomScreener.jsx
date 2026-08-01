@@ -461,7 +461,7 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
       )}
 
       {/* Run ⇄ Stop. Running shows live results; Stop clears them. Disabled with no symbols or no entry rule. */}
-      <button onClick={() => setRan((r) => !r)} disabled={!ran && !canRun} className="tap disp" style={{ marginTop: 16, width: "100%", border: "none", borderRadius: 14, padding: 13, fontSize: 13.5, fontWeight: 800, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", background: ran ? "var(--down)" : (canRun ? "var(--primary)" : "var(--elev)"), color: ran ? "#fff" : (canRun ? "var(--on-primary)" : "var(--muted)"), cursor: (ran || canRun) ? "pointer" : "not-allowed", opacity: (ran || canRun) ? 1 : 0.7 }}>
+      <button onClick={() => setRan((r) => !r)} disabled={!ran && !canRun} className="tap disp" style={{ marginTop: 16, width: "100%", border: "none", borderRadius: 14, padding: 13, fontSize: 13.5, fontWeight: 800, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", background: ran ? "var(--down)" : (canRun ? "var(--primary)" : "var(--elev)"), color: ran ? "var(--on-primary)" : (canRun ? "var(--on-primary)" : "var(--muted)"), cursor: (ran || canRun) ? "pointer" : "not-allowed", opacity: (ran || canRun) ? 1 : 0.7 }}>
         {ran ? <><Square size={15} /> Stop screener</> : <><Filter size={16} /> Run screener</>}
       </button>
       {ran && (

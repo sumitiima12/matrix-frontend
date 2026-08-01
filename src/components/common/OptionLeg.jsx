@@ -70,7 +70,7 @@ export default function OptionLeg({ symbols = [], value, onChange }) {
   const pill = (active) => ({
     padding: "6px 11px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", borderRadius: 9,
     border: "1px solid " + (active ? "var(--primary)" : "var(--line)"),
-    background: active ? "var(--primary)" : "var(--surface)", color: active ? "#fff" : "var(--ink)",
+    background: active ? "var(--primary)" : "var(--surface)", color: active ? "var(--on-primary)" : "var(--ink)",
   });
   const selStyle = { border: "1px solid var(--line)", borderRadius: 8, padding: "7px 4px", fontSize: 11.5, fontWeight: 700, background: "var(--elev)", color: "var(--ink)", minWidth: 0 };
 

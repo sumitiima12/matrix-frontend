@@ -1075,7 +1075,7 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, onPersist, onClone, 
         <button
           onClick={() => onToggle(symSel, size, { sl, tp, tf: tfSel })}
           className="tap disp"
-          style={{ flex: "1 1 120px", minWidth: 110, border: "1px solid " + (active ? "var(--up)" : "var(--primary)"), background: active ? "var(--up-soft)" : "var(--primary)", color: active ? "var(--up)" : "#fff", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" }}
+          style={{ flex: "1 1 120px", minWidth: 110, border: "1px solid " + (active ? "var(--up)" : "var(--primary)"), background: active ? "var(--up-soft)" : "var(--primary)", color: active ? "var(--up)" : "var(--on-primary)", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" }}
         >
           {active ? "✓ Activated" : "Activate"}
         </button>
@@ -1327,7 +1327,7 @@ function CopyStrategyCard({ s, active, onToggle, onPersist, onDelete, market = "
         <button onClick={() => setBt((v) => !v)} className="tap disp" style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: bt ? "var(--elev)" : "transparent", color: "var(--ink)", borderRadius: 11, padding: "10px 12px", fontWeight: 800, fontSize: 12 }}>
           <Activity size={14} /> Backtest
         </button>
-        <button onClick={() => onToggle(symSel, size, { sl, tp, tf: tfSel })} className="tap disp" style={{ flex: "1 1 120px", minWidth: 110, border: "1px solid " + (active ? "var(--up)" : "var(--primary)"), background: active ? "var(--up-soft)" : "var(--primary)", color: active ? "var(--up)" : "#fff", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, whiteSpace: "nowrap" }}>
+        <button onClick={() => onToggle(symSel, size, { sl, tp, tf: tfSel })} className="tap disp" style={{ flex: "1 1 120px", minWidth: 110, border: "1px solid " + (active ? "var(--up)" : "var(--primary)"), background: active ? "var(--up-soft)" : "var(--primary)", color: active ? "var(--up)" : "var(--on-primary)", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, whiteSpace: "nowrap" }}>
           {active ? "✓ Deployed" : "Deploy"}
         </button>
       </div>
@@ -2964,7 +2964,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
               </div>
             );
           })()}
-          <button onClick={() => setEditStrat(null)} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--primary)", color: "#fff", border: "none", borderRadius: 11, padding: 10, fontWeight: 700, fontSize: 12.5 }}>Done</button>
+          <button onClick={() => setEditStrat(null)} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--primary)", color: "var(--on-primary)", border: "none", borderRadius: 11, padding: 10, fontWeight: 700, fontSize: 12.5 }}>Done</button>
         </div>
       )}
       {ledgerOpen === s.id && (() => {
@@ -3365,7 +3365,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={() => saveStrategy(false)} className="tap disp" style={{ flex: 1, background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 14, padding: 13, fontWeight: 700, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}><Check size={16} color="var(--primary)" /> {editingId ? "Update" : "Save strategy"}</button>
-                <button onClick={() => saveStrategy(true)} className="tap disp glow" style={{ flex: 1, background: "linear-gradient(120deg,var(--primary),var(--primary-2))", color: "#fff", border: "none", borderRadius: 14, padding: 13, fontWeight: 700, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}><Bolt size={16} /> {editingId ? "Update & deploy" : "Save & deploy"}</button>
+                <button onClick={() => saveStrategy(true)} className="tap disp glow" style={{ flex: 1, background: "linear-gradient(120deg,var(--primary),var(--primary-2))", color: "var(--on-primary)", border: "none", borderRadius: 14, padding: 13, fontWeight: 700, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}><Bolt size={16} /> {editingId ? "Update & deploy" : "Save & deploy"}</button>
               </div>
             </div>
           </div>
@@ -3405,7 +3405,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       {/* Sub-sections under Strategies — shown directly (no redundant "Strategies" heading). */}
       <div ref={stratsRef} className="hide-scroll" style={{ display: "flex", gap: 7, margin: "18px 0 14px", scrollMarginTop: 80, overflowX: "auto" }}>
         {[["deployed", "Deployed"], ["sample", "Samples"], ["premium", "Premium"], ["public", "Public"], ["mine", "Mine"], ["copies", "My Copies"]].map(([k, label]) => (
-          <button key={k} onClick={() => setStratTab(k)} className="tap disp" style={{ flex: "0 0 auto", borderRadius: 999, padding: "7px 14px", fontWeight: 800, fontSize: 11.5, whiteSpace: "nowrap", border: "1px solid " + (stratTab === k ? "var(--primary)" : "var(--line)"), background: stratTab === k ? "var(--primary)" : "var(--surface)", color: stratTab === k ? "#fff" : "var(--ink)" }}>{label}</button>
+          <button key={k} onClick={() => setStratTab(k)} className="tap disp" style={{ flex: "0 0 auto", borderRadius: 999, padding: "7px 14px", fontWeight: 800, fontSize: 11.5, whiteSpace: "nowrap", border: "1px solid " + (stratTab === k ? "var(--primary)" : "var(--line)"), background: stratTab === k ? "var(--primary)" : "var(--surface)", color: stratTab === k ? "var(--on-primary)" : "var(--ink)" }}>{label}</button>
         ))}
       </div>
 

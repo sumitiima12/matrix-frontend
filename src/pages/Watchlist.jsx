@@ -18,13 +18,13 @@ export default function WatchlistView({ watchlists, activeWl, setActiveWl, creat
     <div className="mx fade">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
         <div className="disp" style={{ fontWeight: 700, fontSize: 20 }}>Watchlists</div>
-        <button onClick={() => setAdding(!adding)} className="tap pill disp glow" style={{ background: "linear-gradient(120deg,var(--primary),var(--primary-2))", color: "#fff", border: "none", padding: "8px 14px", fontWeight: 700, fontSize: 12.5, display: "flex", gap: 5, alignItems: "center" }}><Plus size={15} /> New list</button>
+        <button onClick={() => setAdding(!adding)} className="tap pill disp glow" style={{ background: "linear-gradient(120deg,var(--primary),var(--primary-2))", color: "var(--on-primary)", border: "none", padding: "8px 14px", fontWeight: 700, fontSize: 12.5, display: "flex", gap: 5, alignItems: "center" }}><Plus size={15} /> New list</button>
       </div>
 
       {adding && (
         <div className="card" style={{ marginTop: 12, padding: 12, display: "flex", gap: 8 }}>
           <input autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="Watchlist name (e.g. High Beta)" className="no-ring" style={{ flex: 1, border: "1px solid var(--line)", borderRadius: 12, padding: "10px 12px", fontSize: 13.5, background: "var(--surface)" }} />
-          <button onClick={submit} className="tap disp" style={{ background: "var(--primary)", color: "#fff", border: "none", borderRadius: 12, padding: "0 16px", fontWeight: 700 }}>Create</button>
+          <button onClick={submit} className="tap disp" style={{ background: "var(--primary)", color: "var(--on-primary)", border: "none", borderRadius: 12, padding: "0 16px", fontWeight: 700 }}>Create</button>
         </div>
       )}
 

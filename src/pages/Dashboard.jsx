@@ -1115,7 +1115,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
               {/* RUN NOW — place today's picks on demand instead of waiting for the once-a-day auto-fire. */}
               {autoOn && marketOpen(market) && (
                 <div style={{ marginTop: 8 }}>
-                  <button onClick={runAutoBuyNow} disabled={!autoTrades.length} className="tap disp" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid rgba(255,255,255,.35)", background: "rgba(255,255,255,.16)", color: "#fff", borderRadius: 10, padding: "8px 14px", fontWeight: 800, fontSize: 12, cursor: autoTrades.length ? "pointer" : "not-allowed", opacity: autoTrades.length ? 1 : 0.6 }}>
+                  <button onClick={runAutoBuyNow} disabled={!autoTrades.length} className="tap disp" style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: "8px 14px", fontWeight: 800, fontSize: 12, cursor: autoTrades.length ? "pointer" : "not-allowed", opacity: autoTrades.length ? 1 : 0.6 }}>
                     ⚡ Run auto-buy now
                   </button>
                   {runMsg && <div style={{ fontSize: 10.5, opacity: .9, marginTop: 5, fontWeight: 700 }}>{runMsg}</div>}

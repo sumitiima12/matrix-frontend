@@ -10,7 +10,7 @@ export default function MultiSelect({ label, options, value, onChange, allLabel 
   const txt = dark ? "var(--on-primary)" : "var(--ink)";
   const summary = value.length === 0 ? allLabel : value.length === 1 ? value[0] : value.length + " selected";
   const chipBtn = (sel, on, key, lbl) => (
-    <button key={key} onClick={on} className="tap pill" style={{ fontSize: 11, fontWeight: 700, padding: "6px 12px", border: "1px solid " + (sel ? "var(--primary)" : dark ? "rgba(255,255,255,.28)" : "var(--line)"), background: sel ? "var(--primary)" : dark ? "rgba(255,255,255,.1)" : "var(--surface)", color: sel ? "#fff" : txt }}>{lbl}</button>
+    <button key={key} onClick={on} className="tap pill" style={{ fontSize: 11, fontWeight: 700, padding: "6px 12px", border: "1px solid " + (sel ? "var(--primary)" : dark ? "rgba(255,255,255,.28)" : "var(--line)"), background: sel ? "var(--primary)" : dark ? "rgba(255,255,255,.1)" : "var(--surface)", color: sel ? "var(--on-primary)" : txt }}>{lbl}</button>
   );
   const bg = dark ? "rgba(255,255,255,.12)" : "var(--elev)";
   const bd = dark ? "rgba(255,255,255,.28)" : "var(--line)";

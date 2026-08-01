@@ -12,11 +12,14 @@
  */
 
 export const DEFAULT_LIMITS = {
-  maxPositionPct: 25,      // max % of that market's wallet in a single position
-  maxOpenPositions: 15,    // per market
-  maxTradesPerDay: 30,     // per market
-  maxDailyLossPct: 5,      // stop trading after losing this % of the wallet today
-  cooldownMs: 60_000,      // min gap between two orders in the same symbol
+  // Auto-buy runs unthrottled by request: no per-day trade cap, no open-position cap, no daily-loss
+  // halt, no cooldown, and no position-size cap. (These were paper-trading guard rails; the user wants
+  // strategies to fire freely.) Kept as very large / off values rather than deleting the checks.
+  maxPositionPct: 100,     // a single position may use the whole wallet
+  maxOpenPositions: 100000,
+  maxTradesPerDay: 100000,
+  maxDailyLossPct: 100,    // effectively no daily-loss halt
+  cooldownMs: 0,           // no gap required between two orders in the same symbol
   allowOutsideMarketHours: true,  // paper trading: allowed, but flagged
 };
 

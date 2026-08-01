@@ -179,7 +179,7 @@ function AnalyzeBlock({ onRun, loading, review }) {
         onClick={onRun}
         disabled={loading}
         className="tap disp glow"
-        style={{ width: "100%", padding: "13px", borderRadius: 12, border: "none", background: "var(--primary)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: loading ? "default" : "pointer", opacity: loading ? 0.7 : 1 }}
+        style={{ width: "100%", padding: "13px", borderRadius: 12, border: "none", background: "var(--primary)", color: "var(--on-primary)", fontWeight: 800, fontSize: 14, cursor: loading ? "default" : "pointer", opacity: loading ? 0.7 : 1 }}
       >
         {loading ? "Neo is analyzing…" : "✨ Analyze my portfolio"}
       </button>
