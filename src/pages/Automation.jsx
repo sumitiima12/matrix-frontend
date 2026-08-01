@@ -2882,7 +2882,6 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   };
   const publicByOptions = useMemo(() => Array.from(new Set(publicList.map((s) => s.owner_name).filter(Boolean))), [publicList]);
   const publicSymOptions = useMemo(() => Array.from(new Set(publicList.flatMap((s) => s.symbols || []))), [publicList]);
-  const [activeTab, setActiveTab] = useState("active"); // active | inactive (inside My strategies)
   const [stratSymFilter, setStratSymFilter] = useState([]);   // symbol multi-select for the buckets ([] = All)
   const stratsRef = useRef(null);
   const sampleStrats = perf.filter(({ s }) => s.by === "Matrix" && !s.premium);
@@ -2926,6 +2925,13 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const deployedInactive = strats.filter((s) => !s.active && stratInMarket(s) && symOk(s)).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
   const myActive     = deployedActive;
   const myInactive   = deployedInactive;
+  /* Deployed spans active + inactive, grouped by DIRECTION (Long / Short) and then by REAL-LIVE status:
+     "Real Live" = armed for real money (isArmedReal); "Not Live" = everything else deployed. */
+  const deployedAll = deployedActive.concat(deployedInactive);
+  const deployedGroups = [
+    ["long", "▲ Long", "var(--up)", deployedAll.filter(({ s }) => !isShortStrat(s))],
+    ["short", "▼ Short", "var(--down)", deployedAll.filter(({ s }) => isShortStrat(s))],
+  ];
   const byOptions = ["All", "Matrix", "You", "Community"];
   const dsel = { ...selStyle, flex: "1 1 0", minWidth: 0, padding: "8px 8px", fontSize: 11.5 };
   const fmtDate = (t) => new Date(t).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" });
@@ -3655,44 +3661,40 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         </>
       ) : stratTab === "deployed" ? (
         <>
-          {/* DEPLOYED — every strategy (any type), split Active / Inactive. */}
-          <div style={{ display: "flex", gap: 7, marginBottom: 12 }}>
-            {[["active", `Active (${deployedActive.length})`], ["inactive", `Inactive (${deployedInactive.length})`]].map(([k, label]) => (
-              <button
-                key={k}
-                onClick={() => setActiveTab(k)}
-                className="tap disp"
-                style={{
-                  flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 12, cursor: "pointer",
-                  border: "1px solid " + (activeTab === k ? "var(--primary)" : "var(--line)"),
-                  background: activeTab === k ? "var(--primary-soft)" : "var(--surface)",
-                  color: activeTab === k ? "var(--primary)" : "var(--ink)",
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {activeTab === "active" ? (
-            deployedActive.length === 0
-              ? <div style={{ fontSize: 12.5, color: "var(--muted)" }}>None active.</div>
-              : <>
-                  {/* EXIT ALL — flattens every active strategy's open position at once. */}
-                  <button
-                    onClick={() => { if (onExitAll && (typeof window === "undefined" || window.confirm("Exit all open positions and stop every active strategy?"))) onExitAll(); }}
-                    className="tap disp"
-                    style={{ width: "100%", marginBottom: 12, padding: "11px", borderRadius: 11, border: "1px solid var(--down)", background: "transparent", color: "var(--down)", fontWeight: 800, fontSize: 13, cursor: "pointer" }}
-                  >
-                    Exit all active strategies
-                  </button>
-                  <CollapsibleList items={deployedActive} render={({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>} />
-                </>
-          ) : (
-            deployedInactive.length === 0
-              ? <div style={{ fontSize: 12.5, color: "var(--muted)" }}>None inactive.</div>
-              : <CollapsibleList items={deployedInactive} render={({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>} />
+          {/* DEPLOYED — grouped by direction (Long / Short), each split into Real Live vs Not Live. */}
+          {deployedActive.length > 0 && (
+            <button
+              onClick={() => { if (onExitAll && (typeof window === "undefined" || window.confirm("Exit all open positions and stop every active strategy?"))) onExitAll(); }}
+              className="tap disp"
+              style={{ width: "100%", marginBottom: 12, padding: "11px", borderRadius: 11, border: "1px solid var(--down)", background: "transparent", color: "var(--down)", fontWeight: 800, fontSize: 13, cursor: "pointer" }}
+            >
+              Exit all active strategies
+            </button>
           )}
+          {deployedAll.length === 0
+            ? <div style={{ fontSize: 12.5, color: "var(--muted)" }}>No deployed strategies for this market.</div>
+            : deployedGroups.map(([key, label, col, arr]) => {
+                const live = arr.filter(({ s }) => isArmedReal(s));
+                const notLive = arr.filter(({ s }) => !isArmedReal(s));
+                return (
+                  <div key={key} style={{ marginBottom: 16 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "2px 2px 8px", borderBottom: "2px solid var(--line)", paddingBottom: 6 }}>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: col }}>{label}</span>
+                      <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted)" }}>· {arr.length}</span>
+                    </div>
+                    {arr.length === 0 ? <div style={{ fontSize: 11.5, color: "var(--muted)", padding: "0 2px 8px", fontWeight: 600 }}>None.</div> : (
+                      [["Real Live", live, "var(--up)"], ["Not Live", notLive, "var(--muted)"]].map(([subLabel, subArr, subCol]) => (
+                        <div key={subLabel} style={{ marginBottom: 10 }}>
+                          <div style={{ fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".04em", color: subCol, padding: "4px 2px 6px" }}>{subLabel} · {subArr.length}</div>
+                          {subArr.length === 0
+                            ? <div style={{ fontSize: 11, color: "var(--muted)", padding: "0 2px 4px", fontWeight: 600 }}>None.</div>
+                            : <CollapsibleList items={subArr} render={({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>} />}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                );
+              })}
         </>
       ) : mineOwn.length === 0 ? (
         <div className="card" style={{ marginTop: 12, padding: 20, textAlign: "center", color: "var(--muted)", fontSize: 12.5, lineHeight: 1.6 }}>

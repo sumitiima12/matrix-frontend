@@ -956,9 +956,12 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       if (!closed && totPeriod === "today" && (t.entryAt || 0) < todayStart && st.chg != null && last != null) {
         ref = last / (1 + st.chg / 100);
       }
-      // Crypto qty is USD NOTIONAL (not coins), so P&L = notional × (cur/ref − 1); stocks use (cur−ref)×qty.
-      const p = market === "Crypto" ? (t.qty || 0) * ((cur / ref) - 1) : (cur - ref) * (t.qty || 1);
-      pnl += p; invested += (market === "Crypto" ? (t.qty || 0) : t.entry * (t.qty || 1));
+      // P&L = price move × quantity held. t.qty is the amount of the asset (coins / shares / lots) for
+      // ALL markets — do NOT treat crypto qty as a USD notional (that multiplied a small stop by the
+      // return fraction and blew a tiny loss into a huge phantom one). Shorts profit when price falls.
+      const dir = (t.side === "SELL" || t.short) ? -1 : 1;
+      const p = (cur - ref) * (t.qty != null ? t.qty : (market === "Crypto" ? 0 : 1)) * dir;
+      pnl += p; invested += t.entry * (t.qty || (market === "Crypto" ? 0 : 1));
       if (!closed) open++; else { closedN++; if (p > 0) wins++; }
       const key = t.tradeType === "Auto Buy" ? "Auto Buy" : t.tradeType === "Automate" ? "Automate" : t.tradeType === "Screener Auto Buy" ? "Screener Auto Buy" : "Manual";
       byType[key] += p;
