@@ -68,7 +68,9 @@ export function scoreCfg(cfg, candles, tf, { qty = null, amount = null, market =
     if (market === "Crypto") { const amt = Number(amount) || 0; pnl = amt * sumRet; retPct = amt ? (pnl / amt) * 100 : null; }
     else {
       const q = Number(qty) || 0;
-      pnl = q * trades.reduce((a, t) => a + ((t.exit || 0) - (t.entry || 0)), 0);
+      // entry×ret is the DIRECTION-AWARE absolute move (ret is already +ve when a short profits), so this
+      // sizes short P&L correctly — unlike a raw (exit−entry) which would read a winning short as a loss.
+      pnl = q * trades.reduce((a, t) => a + (t.entry || 0) * (t.ret || 0), 0);
       const avgEntry = trades.reduce((a, t) => a + (t.entry || 0), 0) / n;
       const base = q * avgEntry; retPct = base ? (pnl / base) * 100 : null;
     }
@@ -150,7 +152,9 @@ export function useBacktestStats(strat, opts = {}) {
             retBase = amt;
           } else {
             const q = Number(qty) || 0;
-            pnl = q * trades.reduce((a, t) => a + ((t.exit || 0) - (t.entry || 0)), 0);
+            // entry×ret is the DIRECTION-AWARE absolute move (ret is already +ve when a short profits), so this
+      // sizes short P&L correctly — unlike a raw (exit−entry) which would read a winning short as a loss.
+      pnl = q * trades.reduce((a, t) => a + (t.entry || 0) * (t.ret || 0), 0);
             // Deployed capital for a stock/commodity trade = shares × entry price (averaged over trades).
             const avgEntry = trades.length ? trades.reduce((a, t) => a + (t.entry || 0), 0) / trades.length : 0;
             retBase = q * avgEntry;

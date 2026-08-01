@@ -26,6 +26,30 @@ import PopularScreeners from "../components/home/PopularScreeners";
  * Dashboard — the trading desk. Composes the market strips, Matrix's Picks, trending, gainers/losers, news and the auto-buy panel.
  */
 
+/* The next-open time for a market, expressed in IST and computed live so the US label follows US
+   daylight saving (9:30 ET = 7:00 PM IST in summer / EDT, 8:00 PM IST in winter / EST) instead of a
+   hardcoded string that drifts half the year. IN/Commodity/Crypto are IST-native so they're fixed. */
+function tzOffsetMin(tz, at) {
+  // How many minutes `tz` is ahead of UTC at instant `at` (handles DST via Intl).
+  const p = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour12: false, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    .formatToParts(at).reduce((a, x) => (a[x.type] = x.value, a), {});
+  const asUTC = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour === 24 ? 0 : +p.hour, +p.minute, +p.second);
+  return Math.round((asUTC - at.getTime()) / 60000);
+}
+function marketOpenLabelIST(market) {
+  if (market === "US") {
+    try {
+      const etOff = tzOffsetMin("America/New_York", new Date());   // -240 (EDT) or -300 (EST)
+      const istMin = (570 - etOff + 330) % 1440;                   // 9:30 ET (570) -> UTC -> +5:30 IST
+      const h = Math.floor(istMin / 60), m = istMin % 60;
+      const h12 = ((h + 11) % 12) + 1;
+      return `${h12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"} IST`;
+    } catch { return "7:00 PM IST"; }
+  }
+  if (market === "Commodity") return "9:00 AM IST";
+  return "9:15 AM IST";   // Indian equities/F&O
+}
+
 /**
  * GlobalStrip — the live markets ticker, now MARKET-AWARE.
  *
@@ -1124,7 +1148,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   only fires during that market's hours. Say so instead of leaving a bare zero. */}
               {!marketOpen(market) && (
                 <div style={{ fontSize: 10.5, marginTop: 5, padding: "6px 10px", borderRadius: 9, background: "rgba(178,107,0,.12)", color: "#8A5200", fontWeight: 700, display: "inline-block" }}>
-                  {MKT_LABEL[market]} market is closed now — auto-buy runs at the next open ({market === "US" ? "7:00 PM IST" : market === "Commodity" ? "9:00 AM IST" : "9:15 AM IST"}). Today's plan is below.
+                  {MKT_LABEL[market]} market is closed now — auto-buy runs at the next open ({marketOpenLabelIST(market)}). Today's plan is below.
                 </div>
               )}
               {autoRows.some((r) => r.rejected) && (
