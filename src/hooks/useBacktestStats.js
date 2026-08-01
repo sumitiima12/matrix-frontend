@@ -50,6 +50,12 @@ export function useBacktestStats(strat, opts = {}) {
   const qty = opts.qty != null ? opts.qty : null;
   const amount = opts.amount != null ? opts.amount : null;
   const sizeMarket = opts.market || null;
+  /* Re-run whenever the strategy's CONFIG changes — not just its id. Optimising SL&TP (or indicator
+     lengths / timeframe / rules) mutates strat.cfg in place while the id stays the same; keying the
+     effect on id alone left the backtest showing the OLD result after Apply. Signing the fields the
+     backtest actually reads makes it recompute the moment they change. */
+  const cfg0 = strat && strat.cfg;
+  const cfgSig = cfg0 ? JSON.stringify({ sl: cfg0.sl, tp: cfg0.tp, tf: cfg0.tf, defs: cfg0.defs, entry: cfg0.entry, exit: cfg0.exit, sy: strat.symbols }) : "";
 
   useEffect(() => {
     let stop = false;
@@ -182,7 +188,7 @@ export function useBacktestStats(strat, opts = {}) {
 
     return () => { stop = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [strat && strat.id, tfOverride, days, symOverride, qty, amount, sizeMarket]);
+  }, [strat && strat.id, cfgSig, tfOverride, days, symOverride, qty, amount, sizeMarket]);
 
   return state;
 }
