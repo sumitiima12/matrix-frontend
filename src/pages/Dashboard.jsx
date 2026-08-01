@@ -583,8 +583,15 @@ function TrendingRow({ s, market, onOpen, onBuy, onWhy }) {
         </div>
       )}
 
-      {/* REAL technical tags (empty when the instrument has no signal yet). */}
-      <div style={{ marginTop: 8 }}>
+      {/* WHY it's trending. A card is here because it's MOVING on 5-min candles, so we always show a
+         momentum reason (a mover like SOXLB otherwise had a blank tag row and looked reasonless), plus
+         any detected chart-pattern tags (bull flag, higher high…) when present. */}
+      <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 5, alignItems: "center" }}>
+        {m5 != null && (
+          <span style={{ fontSize: 9, fontWeight: 800, borderRadius: 999, padding: "2px 8px", background: "var(--elev)", color: tone(m5), whiteSpace: "nowrap" }}>
+            {m5 >= 0 ? "▲ Rising" : "▼ Falling"} · 5m
+          </span>
+        )}
         <TagRow s={s} max={2} />
       </div>
 
@@ -1353,8 +1360,9 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       </Pop>
       )}
 
-      {/* Ideas carousel (not for F&O or Commodity) */}
-      {market !== "Commodity" && market !== "Crypto" && <StockIdeasStrip onOpen={onOpen} onBuy={onBuy} market={market} liveTick={liveTick} />}
+      {/* Ideas carousel — every market except Commodity (Crypto now included; the strip scans the crypto
+         universe for bullish patterns and hides itself if none are found). */}
+      {market !== "Commodity" && <StockIdeasStrip onOpen={onOpen} onBuy={onBuy} market={market} liveTick={liveTick} />}
 
       {/* Popular Screeners — 3 live-scanning strategy carousels, market-aware. */}
       <PopularScreeners market={market} mode={mode} list={list} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} liveTick={liveTick} trades={trades} />
