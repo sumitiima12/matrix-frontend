@@ -1344,7 +1344,7 @@ function CopyStrategyCard({ s, active, onToggle, onPersist, onDelete, market = "
 /* One row of the strategy-comparison table. Reuses useBacktestStats — the SAME hook the premium
    cards use — so opening the table doesn't fire a fresh burst of history requests (results are
    already cached from the cards). Columns: trades / wins / losses / target-hits / SL-hits / return. */
-function CompareRow({ s, td, opts, onReport, market = "IN", sym, onCreateCopy, copyExists, isActive, onToggleActive }) {
+function CompareRow({ s, td, opts, onReport, market = "IN", sym, onCreateCopy, copyExists, isActive, onToggleActive, bucket }) {
   const { loading, stats } = useBacktestStats(s, opts);
   const [open, setOpen] = useState(false);
   // Report finished stats up to the panel so it can export the whole table to CSV.
@@ -1352,20 +1352,26 @@ function CompareRow({ s, td, opts, onReport, market = "IN", sym, onCreateCopy, c
   const c = (v) => ({ ...td, color: v >= 0 ? "var(--up)" : "var(--down)" });
   const canExpand = !loading && stats && stats.trades > 0 && (stats.tradeList || []).length > 0;
   const active = isActive ? isActive(s) : !!s.active;
+  const created = !!(copyExists && sym && copyExists(s, sym));   // a copy for this symbol already exists
   return (
     <>
       <tr onClick={canExpand ? () => setOpen((v) => !v) : undefined} style={{ cursor: canExpand ? "pointer" : "default" }}>
         <td style={{ ...td, textAlign: "left", fontWeight: 800 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
             <span>{canExpand && <span style={{ display: "inline-block", width: 12, color: "var(--muted)", fontSize: 9 }}>{open ? "▾" : "▸"}</span>} {s.name}</span>
-            {/* Activate / Deactivate this strategy right from the backtest results. */}
-            {onToggleActive && (
+            {/* NEW bucket → Create this strategy for the selected symbol (under My Copies).
+                EXISTING bucket → Activate / Deactivate it. */}
+            {bucket === "new" && onCreateCopy && sym ? (
+              created
+                ? <span className="pill" style={{ flexShrink: 0, fontSize: 9, fontWeight: 800, padding: "3px 9px", background: "var(--up-soft, rgba(16,185,129,.12))", color: "var(--up)" }}>✓ Created</span>
+                : <button onClick={(e) => { e.stopPropagation(); onCreateCopy(s, sym); }} className="tap disp" style={{ flexShrink: 0, border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 999, padding: "3px 10px", fontSize: 9.5, fontWeight: 800, whiteSpace: "nowrap", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}><Plus size={11} /> Create</button>
+            ) : (bucket !== "new" && onToggleActive && (
               <button onClick={(e) => { e.stopPropagation(); onToggleActive(s); }} className="tap disp" style={{
                 flexShrink: 0, border: "1px solid " + (active ? "var(--down)" : "var(--up)"),
                 background: active ? "var(--down-soft, rgba(232,72,85,.12))" : "var(--up-soft, rgba(16,185,129,.12))",
                 color: active ? "var(--down)" : "var(--up)", borderRadius: 999, padding: "3px 10px", fontSize: 9.5, fontWeight: 800, whiteSpace: "nowrap", cursor: "pointer",
               }}>{active ? "Deactivate" : "Activate"}</button>
-            )}
+            ))}
           </div>
         </td>
         {loading ? <td style={{ ...td, color: "var(--muted)" }} colSpan={9}>backtesting…</td>
@@ -1384,11 +1390,6 @@ function CompareRow({ s, td, opts, onReport, market = "IN", sym, onCreateCopy, c
       </tr>
       {open && canExpand && (
         <tr><td colSpan={10} style={{ padding: "0 8px 12px", background: "var(--elev)" }}>
-          {onCreateCopy && sym && (
-            copyExists && copyExists(s, sym)
-              ? <div style={{ fontSize: 10, color: "var(--muted)", padding: "8px 2px 0", fontWeight: 700 }}>✓ Saved as “{s.name} - {sym}” in My Copies.</div>
-              : <button onClick={() => onCreateCopy(s, sym)} className="tap disp" style={{ margin: "8px 0 2px", border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 9, padding: "7px 12px", fontWeight: 800, fontSize: 11, display: "inline-flex", alignItems: "center", gap: 5 }}><Plus size={13} /> Create strategy — {s.name} - {sym}</button>
-          )}
           <TradeLog trades={stats.tradeList} market={market} />
         </td></tr>
       )}
@@ -1990,6 +1991,12 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators,
   );
 
   const runSymRows = run ? strats.filter((s) => run.names.includes(s.name)) : [];
+  /* A strategy "exists" for the backtested symbol if it already carries that symbol, or a copy of it
+     for that symbol has already been created. Those go under EXISTING (Activate/Deactivate); the rest
+     go under NEW (Create for this symbol). */
+  const existsForSym = (s) => (run ? ((s.symbols || []).includes(run.sym) || !!(copyExists && copyExists(s, run.sym))) : false);
+  const existingSymRows = runSymRows.filter(existsForSym);
+  const newSymRows = runSymRows.filter((s) => !existsForSym(s));
   const pStrat = pRun ? strats.find((s) => s.id === pRun.id) : null;
   const curStrat = strats.find((s) => s.id === pStratId) || null;   // selected strategy (for the optimiser)
   const curCfg = curStrat && curStrat.cfg;
@@ -2048,10 +2055,24 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators,
                 <div className="disp" style={{ fontSize: 12, fontWeight: 800 }}>{run.sym} · {run.tf} · {run.names.length} strategies</div>
                 {exportBtn(() => exportBacktestCsv({ results, order: runSymRows.map((s) => s.name), labelHeader: "Strategy", meta: [["Symbol", run.sym], ["Timeframe", run.tf], ["Period (days)", run.days], [isCrypto ? "Amount (USD)" : "Qty", size]], filename: `matrix-backtest-${run.sym}-${run.tf}-${run.days}d.csv` }))}
               </div>
-              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 500 }}>
-                <Head />
-                <tbody>{runSymRows.map((s) => <CompareRow key={s.id + run.tf + run.days + run.sym} s={s} td={td} opts={{ tf: run.tf, days: run.days, sym: run.sym, qty: run.qty, amount: run.amount, market: run.market }} onReport={report} market={market} sym={run.sym} onCreateCopy={onCreateCopy} copyExists={copyExists} isActive={isActive} onToggleActive={onToggleActive} />)}</tbody>
-              </table>
+              {/* Two buckets: EXISTING (this strategy already runs on the selected symbol — Activate/Deactivate)
+                  and NEW (it doesn't yet — Create it for this symbol under My Copies). */}
+              {[["Existing", existingSymRows, "existing"], ["New", newSymRows, "new"]].map(([label, rows, bucket]) => (
+                <div key={bucket} style={{ marginTop: 2 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".04em", padding: "9px 4px 4px" }}>
+                    {label} · {rows.length}
+                    {bucket === "new" && rows.length > 0 && <span style={{ textTransform: "none", fontWeight: 600, opacity: .8 }}> — not on {run.sym} yet; tap Create to add under My Copies</span>}
+                  </div>
+                  {rows.length === 0
+                    ? <div style={{ fontSize: 11, color: "var(--muted)", padding: "0 4px 8px", fontWeight: 600 }}>None.</div>
+                    : (
+                      <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 500 }}>
+                        <Head />
+                        <tbody>{rows.map((s) => <CompareRow key={s.id + run.tf + run.days + run.sym} s={s} td={td} opts={{ tf: run.tf, days: run.days, sym: run.sym, qty: run.qty, amount: run.amount, market: run.market }} onReport={report} market={market} sym={run.sym} onCreateCopy={onCreateCopy} copyExists={copyExists} isActive={isActive} onToggleActive={onToggleActive} bucket={bucket} />)}</tbody>
+                      </table>
+                    )}
+                </div>
+              ))}
             </div>
           )}
         </>
