@@ -2656,6 +2656,12 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
      when a symbol currently matches, records ONE paper trade per strategy per day (tagged
      "Automate") sized from the strategy's own capital/qty with its SL/TP. Long-only for now (short
      P&L needs sign-aware aggregation); real mode is left to the server engine. */
+  // Latest trades, readable inside the scan loop without re-subscribing the effect — used to enforce
+  // "one open position per strategy+symbol" (don't stack a new entry while the previous is still open).
+  const tradesLiveRef = useRef([]);
+  tradesLiveRef.current = trades || [];
+  const hasOpenPaperPos = (sid, sym) => (tradesLiveRef.current || []).some((t) =>
+    t.strategyId === sid && t.sym === sym && t.status !== "rejected" && t.entry != null && (t.exitAt == null || t.exit == null));
   useEffect(() => {
     if (appMode === "real" || !onRecord) return;
     let stop = false;
@@ -2665,7 +2671,9 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         && s.cfg && (s.cfg.entry || []).length > 0 && (s.symbols || []).some((x) => marketOf(x) === market));
       for (const s of cands) {
         if (stop) return;
-        const gkey = `mx_autostrat_${s.id}_${market}_${Math.floor(Date.now() / DAY)}`;
+        // ONE day = 864e5 ms (NOT the imported day-index `DAY`, which made this key roll every ~20s and
+        // re-fire the strategy on every scan — stacking dozens of open positions).
+        const gkey = `mx_autostrat_${s.id}_${market}_${Math.floor(Date.now() / 864e5)}`;
         if (lsGet(gkey, false)) continue;
         const syms = (s.symbols || []).filter((x) => marketOf(x) === market);
         if (!syms.length) continue;
@@ -2680,6 +2688,8 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         if (!matches || !matches.length) continue;
         const isCrypto = market === "Crypto";
         matches.forEach((m) => {
+          // Don't open a second position for this strategy on a symbol it's already holding open.
+          if (hasOpenPaperPos(s.id, m.sym)) return;
           const inst = ALL.find((a) => a.sym === m.sym);
           const price = (inst && inst.price) || m.entryPrice;
           if (!inst || !price) return;
@@ -2978,20 +2988,37 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             {rows.length === 0 ? (
               <div style={{ fontSize: 11.5, color: "var(--muted)" }}>No trades yet — this strategy hasn't triggered.</div>
             ) : (
-              <div style={{ display: "grid", gap: 6 }}>
-                {rows.slice(0, 40).map((t, i) => {
-                  const closed = t.exitAt != null && t.exit != null;
-                  const pnl = closed ? (t.exit - t.entry) * (t.qty || 1) : null;
-                  return (
-                    <div key={t.id || i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, padding: "7px 9px", background: "var(--elev)", borderRadius: 9 }}>
-                      <span style={{ fontWeight: 800, flex: "0 0 auto" }}>{t.sym}</span>
-                      <span style={{ color: "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(t.side || "BUY")} {t.qty || 1} @ {fmt(t.entry, mkt(t))}{closed ? ` → ${fmt(t.exit, mkt(t))}` : ""}</span>
-                      <span className="mono" style={{ marginLeft: "auto", fontWeight: 800, flex: "0 0 auto", color: closed ? chgColor(pnl) : "var(--muted)" }}>
-                        {closed ? `${pnl >= 0 ? "+" : ""}${fmt(pnl, mkt(t))}` : "open"}
-                      </span>
-                    </div>
-                  );
-                })}
+              <div style={{ overflowX: "auto", maxHeight: 340, overflowY: "auto" }}>
+                <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 620 }}>
+                  <thead>
+                    <tr>
+                      {["Symbol", "Side", "Entry", "Entry time", "Exit", "Exit time", "Exit type", "P&L"].map((h, hi) => (
+                        <th key={h} style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", padding: "6px 7px", textAlign: hi === 7 ? "right" : "left", whiteSpace: "nowrap", borderBottom: "1px solid var(--line)" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.slice(0, 60).map((t, i) => {
+                      const closed = t.exitAt != null && t.exit != null && t.exitType !== "Open";
+                      const dir = (t.side === "SELL" || t.short) ? -1 : 1;   // shorts profit when price falls
+                      const pnl = closed ? (t.exit - t.entry) * (t.qty || 1) * dir : null;
+                      const dtf = (ms) => ms ? new Date(ms).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
+                      const td = { fontSize: 10.5, fontWeight: 700, padding: "6px 7px", borderTop: "1px solid var(--line)", whiteSpace: "nowrap" };
+                      return (
+                        <tr key={t.id || i}>
+                          <td style={{ ...td, fontWeight: 800 }}>{t.sym}</td>
+                          <td style={{ ...td, color: dir < 0 ? "var(--down)" : "var(--up)" }}>{t.side || "BUY"}</td>
+                          <td style={td}>{fmt(t.entry, mkt(t))}</td>
+                          <td style={{ ...td, color: "var(--muted)" }}>{dtf(t.entryAt)}</td>
+                          <td style={td}>{closed ? fmt(t.exit, mkt(t)) : <span style={{ color: "var(--primary)", fontWeight: 800 }}>Open</span>}</td>
+                          <td style={{ ...td, color: "var(--muted)" }}>{closed ? dtf(t.exitAt) : "—"}</td>
+                          <td style={{ ...td, color: "var(--muted)" }}>{closed ? (t.exitType || "Closed") : "—"}</td>
+                          <td style={{ ...td, textAlign: "right", color: closed ? chgColor(pnl) : "var(--muted)" }}>{closed ? `${pnl >= 0 ? "+" : ""}${fmt(pnl, mkt(t))}` : "open"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
