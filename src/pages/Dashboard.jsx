@@ -908,7 +908,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       const reconciledClosed = realHeld && !rejected && t.exitAt == null && t.real && !realHeld.has(t.sym);
       const open = !rejected && t.exitAt == null && !reconciledClosed;
       const cur = open ? (last ?? t.entry) : (reconciledClosed ? (last ?? t.entry) : t.exit);
-      const realPnl = rejected || t.entry == null ? 0 : +((market === "Crypto" ? (t.qty || 0) * ((cur / t.entry) - 1) : (cur - t.entry) * (t.qty || 1))).toFixed(2);
+      const realPnl = rejected || t.entry == null ? 0 : +(((cur - t.entry) * (t.qty || (market === "Crypto" ? 0 : 1)) * ((t.side === "SELL" || t.short) ? -1 : 1))).toFixed(2);
       return { ...t, rejected, open, cur, realPnl, reconciledClosed, exitType: reconciledClosed ? "Closed (est.)" : t.exitType };
     }), [trades, market, periodFrom, realHeld]);
   const closedRows = autoRows.filter((t) => !t.open && !t.rejected);
@@ -980,7 +980,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     .map((t) => {
       const last = (ALL.find((a) => a.sym === t.sym) || {}).price;
       const cur = last != null ? last : t.entry;
-      const lp = market === "Crypto" ? (t.qty || 0) * ((cur / t.entry) - 1) : (cur - t.entry) * (t.qty || 1);
+      const lp = (cur - t.entry) * (t.qty || (market === "Crypto" ? 0 : 1)) * ((t.side === "SELL" || t.short) ? -1 : 1);
       return { ...t, cur, livePnl: +lp.toFixed(2) };
     })
     .sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0)),

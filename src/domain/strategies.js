@@ -356,14 +356,14 @@ export function stratPerf(strat, trades = [], rangeDays = 365, priceOf = null) {
   const openPos = mine.filter((t) => t.entry != null && (t.exitAt == null || t.exit == null));
   const cap = strat.cap || 100000;
 
-  /* P&L per trade. For CRYPTO, `qty` is the USD NOTIONAL per trade ("Amount per trade $200"), NOT a
-     coin count — so a $200 position that moves 0.5% makes ±$1, i.e. amount × (exit/entry − 1). Using
-     (exit − entry) × qty there treated $200 as 200 COINS and blew a 0.5% move up into a −164% "loss".
-     For stocks/others qty is a share/lot count, so (exit − entry) × qty is correct. */
+  /* P&L per trade = price move × quantity held. The recorded `qty` is the ASSET AMOUNT for every market
+     — coins for crypto (the buy path stores amount ÷ price), shares/lots elsewhere — so (exit − entry) ×
+     qty is uniform and correct. (Do NOT treat crypto qty as a USD notional × return: qty is coins, so
+     that form is off by a factor of the entry price.) Shorts profit when price falls. */
   const tradePnl = (t, exitPx) => {
     if (t.entry == null || exitPx == null) return 0;
-    if (marketOf(t.sym) === "Crypto") return (Number(t.qty) || 0) * ((exitPx / t.entry) - 1);
-    return (exitPx - t.entry) * (Number(t.qty) || 1);
+    const dir = (t.side === "SELL" || t.short) ? -1 : 1;
+    return (exitPx - t.entry) * (Number(t.qty) || (marketOf(t.sym) === "Crypto" ? 0 : 1)) * dir;
   };
   const realised = closed.reduce((a, t) => a + tradePnl(t, t.exit), 0);
   const unrealised = openPos.reduce((a, t) => {

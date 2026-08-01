@@ -2222,7 +2222,7 @@ function StrategyPnLView({ strats, trades, market, onDelete }) {
   const rows = strats.filter(inMkt).map((s) => ({ s, p: stratPerf(s, trades, range, priceOf) })).sort((a, b) => (b.p.pnl || 0) - (a.p.pnl || 0));
   const dt = (t) => (t ? new Date(t).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
   const tradesFor = (s) => (trades || []).filter((t) => (t.strategyId === s.id || t.strategy === s.name) && t.status !== "rejected" && (t.exitAt || t.entryAt || 0) >= Date.now() - range * 864e5).sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
-  const tPnl = (t) => { const px = t.exit != null ? t.exit : priceOf(t.sym); if (t.entry == null || px == null) return null; return marketOf(t.sym) === "Crypto" ? (Number(t.qty) || 0) * ((px / t.entry) - 1) : (px - t.entry) * (Number(t.qty) || 1); };
+  const tPnl = (t) => { const px = t.exit != null ? t.exit : priceOf(t.sym); if (t.entry == null || px == null) return null; const dir = (t.side === "SELL" || t.short) ? -1 : 1; return (px - t.entry) * (Number(t.qty) || (marketOf(t.sym) === "Crypto" ? 0 : 1)) * dir; };
   return (
     <div className="fade">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "18px 2px 4px" }}>
