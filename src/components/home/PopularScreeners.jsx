@@ -77,6 +77,10 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
   // editing it on one card must not move every other card's capital.
   const capKey = `mx_scrcap_${screener.key}_${market}${short ? "_sell" : ""}`;
   const [capital, setCapital] = useState(() => lsGet(capKey, capDefault(market)));
+  // Draft value for the capital input — the deployed capital only changes when the user hits Save,
+  // so a stray keystroke doesn't silently resize live auto-buys.
+  const [capDraft, setCapDraft] = useState(capital);
+  useEffect(() => { setCapDraft(capital); }, [capital]);
   const [ov, setOv] = useState({});   // per-symbol { sl, tp } override
   // Admin-editable overrides for this Popular screener: display name, default SL/TP, and the actual
   // scan rules (indicators + entry/exit chains + timeframe). Absent fields fall back to the built-in.
@@ -347,11 +351,14 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
       {/* Footer — date range · capital · live P&L. Only shown when Auto-Buy is on (off = a plain discovery list). */}
       {autoOn && (
       <>
-      {/* Capital on its OWN full-width row (it was crammed next to P&L before). It auto-saves the moment
-         you edit it — the deployed capital for this screener updates immediately. */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 12, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 9, padding: "7px 11px" }}>
+      {/* Capital on its OWN full-width row. Editing it only stages a DRAFT — a Save button appears while
+         it differs from the deployed value, so a stray keystroke never silently resizes live auto-buys. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 12, background: "var(--surface)", border: "1px solid " + (String(capDraft) !== String(capital) ? "var(--primary)" : "var(--line)"), borderRadius: 9, padding: "7px 11px" }}>
         <span style={{ fontSize: 9, color: "var(--muted)", fontWeight: 800, flexShrink: 0 }}>CAPITAL DEPLOYED ({cur})</span>
-        <input value={capital} onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ""); setCapital(v); lsSet(capKey, v); }} inputMode="numeric" className="no-ring mono" style={{ flex: "1 1 0", minWidth: 0, background: "transparent", border: "none", color: "var(--ink)", fontSize: 14, fontWeight: 800, textAlign: "right" }} />
+        <input value={capDraft} onChange={(e) => setCapDraft(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" className="no-ring mono" style={{ flex: "1 1 0", minWidth: 0, background: "transparent", border: "none", color: "var(--ink)", fontSize: 14, fontWeight: 800, textAlign: "right" }} />
+        {String(capDraft) !== String(capital) && (
+          <button onClick={() => { const v = capDraft || capDefault(market); setCapDraft(v); setCapital(v); lsSet(capKey, v); }} className="tap disp" style={{ flexShrink: 0, border: "none", background: "var(--primary)", color: "var(--on-primary)", borderRadius: 7, padding: "5px 12px", fontSize: 10.5, fontWeight: 800 }}>Save</button>
+        )}
       </div>
       {/* Date range (left) + P&L (right) — P&L now has room and doubles as the List-of-Trades toggle. */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
