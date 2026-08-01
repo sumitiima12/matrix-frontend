@@ -422,7 +422,12 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
           const baseSym = String(h.sym).replace(/USDT?$/i, "").replace(/\.P$/i, "");
           const uni = ALL.find((a) => a.sym === h.sym) || ALL.find((a) => a.sym === baseSym);
           const sig = uni ? techSignal(uni) : null;
-          const pnlPct = (h.avg && h.ltp) ? ((h.ltp / h.avg) - 1) * 100 : null;
+          // Return %: on a leveraged venue (Delta) show ROE = P&L ÷ margin, matching the exchange's own
+          // dashboard (a +1% price move on 25× reads as ~+25% on the ~4% margin). unrealized_pnl already
+          // carries the right sign for shorts. Off-leverage, fall back to the plain price-move return.
+          const pnlPct = (leveraged && h.pnl != null && h.margin)
+            ? (h.pnl / h.margin) * 100
+            : (h.avg && h.ltp) ? ((h.ltp / h.avg) - 1) * 100 : null;
           // Neo's read on the REAL holding — same engine the virtual cards use, fed the broker's
           // avg cost + qty. Only when the symbol is in our tracked universe (needs real indicators).
           // A real short comes back with NEGATIVE qty and no side flag (Delta returns size<0). Feed the

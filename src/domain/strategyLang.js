@@ -30,10 +30,18 @@ function srSeries(c, kind) {
    pivot, which is look-ahead. Mirrors backend strategyEngine.patternSeries. */
 function patternSeries(c, key, within = 3) {
   const s = new Array(c.length).fill(0);
+  // ONE formation must fire ONCE. detectPatterns keeps returning the same recent formation for many
+  // slices, so we de-dupe by formation identity (its `at` pivot index): a signal is only emitted when a
+  // NEW formation appears, then held `within` bars. Without this, an old double-bottom re-fired every
+  // few bars forever (R2-P1-03).
+  let lastAt = -1;
   for (let i = 12; i < c.length; i++) {
-    if (s[i]) continue;                                   // already held from a prior confirmation
     const pats = detectPatterns(c.slice(0, i + 1)).filter((p) => p.key === key);
-    if (pats.length) for (let j = i; j <= Math.min(c.length - 1, i + within); j++) s[j] = 1;
+    if (!pats.length) continue;
+    const at = pats[pats.length - 1].at;
+    if (at === lastAt) continue;                          // same formation still detected — don't re-fire
+    lastAt = at;
+    for (let j = i; j <= Math.min(c.length - 1, i + within); j++) s[j] = 1;
   }
   return s;
 }
@@ -184,6 +192,26 @@ export const PATTERN_OPERAND_PREFIX = "PAT:";
  * (to show the generated pseudo-code and the operand pickers).
  */
 function rollExt(c, len, field, max) { const o = Array(c.length).fill(NaN); for (let i = 0; i < c.length; i++) { let v = c[i][field]; for (let j = Math.max(0, i - len + 1); j <= i; j++) v = max ? Math.max(v, c[j][field]) : Math.min(v, c[j][field]); o[i] = v; } return o; }
+/* True where bar i begins a new trading SESSION — used by ORB / FirstN opening-range operands. A new
+   session is: the first bar; a change of UTC calendar date (each equity session — IN/US/MCX — sits on
+   a distinct UTC date, so this segments them, and crypto resets at 00:00 UTC); OR a time gap far larger
+   than the normal bar spacing (a feed starting mid-session or an intraday halt still opens a fresh
+   session rather than fusing two days). Mirrors backend strategyEngine.sessionStarts. */
+function sessionStarts(c) {
+  const n = c.length, out = new Array(n).fill(false);
+  if (!n) return out;
+  out[0] = true;
+  let base = Infinity;
+  for (let i = 1; i < n; i++) { const g = c[i].t - c[i - 1].t; if (g > 0 && g < base) base = g; }
+  if (!Number.isFinite(base) || base <= 0) base = 60000;
+  const bigGap = Math.max(4 * base, 30 * 60000);
+  const utcDay = (t) => { const d = new Date(t); return d.getUTCFullYear() + "-" + d.getUTCMonth() + "-" + d.getUTCDate(); };
+  for (let i = 1; i < n; i++) {
+    if (utcDay(c[i].t) !== utcDay(c[i - 1].t) || (c[i].t - c[i - 1].t) >= bigGap) out[i] = true;
+  }
+  return out;
+}
+
 /* One indicator def -> its value series, over WHATEVER OHLC series you pass. Pulled out of
    resolveOperand so the identical logic can run on the base candles OR on a higher-timeframe
    aggregate of them (multi-timeframe support). */
@@ -213,19 +241,29 @@ function computeIndicator(d, attr, c, closes, vols) {
     case "CurrentCandle": case "CurrentDay": { const f = CF[attr] || "c"; return c.map((x) => x[f]); }
     case "PrevCandle": case "PrevDay": { const f = CF[attr] || "c"; return c.map((x, i) => i > 0 ? c[i - 1][f] : NaN); }
     case "LastNCandles": { const f = CF[attr] || "c"; return attr === "high" ? rollExt(c, len, "h", true) : attr === "low" ? rollExt(c, len, "l", false) : c.map((x, i) => (i - len + 1 >= 0 ? c[i - len + 1][f] : x[f])); }
-    case "FirstNCandles": { const f = CF[attr] || "c"; const head = c.slice(0, Math.max(1, len)); const val = attr === "high" ? Math.max(...head.map((x) => x.h)) : attr === "low" ? Math.min(...head.map((x) => x.l)) : (attr === "open" ? head[0].o : head[head.length - 1].c); return closes.map(() => val); }
-    /* OPENING RANGE — the high/low of the first `len` MINUTES of each trading day. Resets every day.
-       `len` defaults to 15. Used for opening-range-breakout: entry when price crosses above ORB.high.
-       Day boundary is the first candle of each UTC date, which for NSE/US sessions is the market open
-       (their sessions don't straddle UTC midnight). */
+    /* FIRST N CANDLES of the CURRENT session (opening range), reset each session and built CAUSALLY:
+       at bar i the value covers only session bars up to min(i, start+len-1), so a backtest never sees
+       the completed range before those bars print. The old code took the first N bars of the whole
+       fetched window and held one number forever — wrong across days. Mirrors backend. */
+    case "FirstNCandles": {
+      const n = Math.max(1, len), sf = sessionStarts(c), out = new Array(c.length);
+      let start = 0, hi = -Infinity, lo = Infinity, openV = NaN, lastClose = NaN;
+      for (let i = 0; i < c.length; i++) {
+        if (sf[i]) { start = i; hi = -Infinity; lo = Infinity; openV = c[i].o; }
+        if (i - start < n) { if (c[i].h > hi) hi = c[i].h; if (c[i].l < lo) lo = c[i].l; lastClose = c[i].c; }
+        out[i] = attr === "high" ? hi : attr === "low" ? lo : attr === "open" ? openV : lastClose;
+      }
+      return out;
+    }
+    /* OPENING RANGE — the high/low of the first `len` MINUTES of each trading SESSION. Resets every
+       session (via sessionStarts: UTC-date change or overnight/halt gap). `len` defaults to 15. Used
+       for opening-range-breakout: entry when price crosses above ORB.high. */
     case "ORB": {
       const mins = Number(d.len) || 15;
-      const out = new Array(c.length);
-      let dayKey = null, hi = -Infinity, lo = Infinity, dayStart = 0;
+      const sf = sessionStarts(c), out = new Array(c.length);
+      let hi = -Infinity, lo = Infinity, dayStart = 0;
       for (let i = 0; i < c.length; i++) {
-        const dt = new Date(c[i].t);
-        const key = dt.getUTCFullYear() + "-" + dt.getUTCMonth() + "-" + dt.getUTCDate();
-        if (key !== dayKey) { dayKey = key; hi = -Infinity; lo = Infinity; dayStart = c[i].t; }
+        if (sf[i]) { hi = -Infinity; lo = Infinity; dayStart = c[i].t; }
         if (c[i].t - dayStart < mins * 60000) { if (c[i].h > hi) hi = c[i].h; if (c[i].l < lo) lo = c[i].l; }
         out[i] = attr === "low" ? lo : hi;
       }

@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { defOperands, chainCode, IND_CATALOG, TEMPLATES, detectTf, detectAllTfs, tfMinutes } from "../domain/strategyLang";
-import { backtest, parseRules } from "../domain/backtest";
+import { backtest, parseRules, getBtCosts, setBtCosts } from "../domain/backtest";
 import { stratPerf } from "../domain/strategies";
 import { Activity, Bell, Bolt, Check, ChevronDown, ChevronUp, Copy, Globe, ListChecks, Pause, Pencil, Play, Plus, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
 import { Area, AreaChart, Bar, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { BACKEND_URL } from "../config";
 import { chgColor, clamp, fmt, pct, DAY, lsGet, lsSet } from "../lib/format";
+import { confirmDialog } from "../lib/confirmDialog";   // in-app confirm (reliable in webviews/PWA) for money-moving gates
+import EntryKillSwitch from "../components/common/EntryKillSwitch";
 import { useBacktestStats, loadBtCandles, scoreCfg } from "../hooks/useBacktestStats";
 import { SMAarr, EMAarr, RSIarr, MACDarr, BBarr, CCIarr, ATRarr, VWAParr, ADXarr, CF } from "../lib/series";
 import { ALL, UNIVERSE, marketOf } from "../domain/universe";
@@ -200,7 +202,7 @@ export function TradeLog({ trades, market = "IN", showSym = false, accent = "#7C
   );
 }
 
-function BacktestResult({ cfg, defaultSym, blocked = false, onConnect, defaultTf = "5m" }) {
+function BacktestResult({ cfg, defaultSym, blocked = false, onConnect, defaultTf = "5m", market = null }) {
   // Default to the symbol the strategy is ACTIVATED on. Backtesting a NIFTY50
   // strategy against RELIANCE by default tests something you never deployed.
   const [sym, setSym] = useState(defaultSym || "RELIANCE");
@@ -210,6 +212,11 @@ function BacktestResult({ cfg, defaultSym, blocked = false, onConnect, defaultTf
   // backtest window defaults to this. Otherwise picking "5 min" leaves a 6-month window almost empty.
   const TF_LOOKBACK = { "1m": 5, "3m": 365, "5m": 365, "15m": 365, "30m": 365, "1h": 730, "4h": 730, "1d": 1825 };
   const [tf, setTf] = useState(defaultTf);
+  // Trading costs — loaded from the per-market store (market defaults first time), editable, and
+  // persisted so the SL/TP & indicator optimisers use the SAME numbers the user set here.
+  const _mkt = market || (cfg && cfg.market);
+  const [costs, setCosts] = useState(() => getBtCosts(_mkt));
+  useEffect(() => { setBtCosts(_mkt, costs); }, [_mkt, costs]);
   const [from, setFrom] = useState(iso(Date.now() - (TF_LOOKBACK[defaultTf] || 180) * 864e5));
   const [to, setTo] = useState(iso(Date.now()));
   const [preset, setPreset] = useState("auto");
@@ -253,8 +260,8 @@ function BacktestResult({ cfg, defaultSym, blocked = false, onConnect, defaultTf
   }, [realData, fromMs, toMs]);
 
   const res = useMemo(
-    () => (!cfg || cfg.mode === "plain" || !data ? null : backtest(cfg, data, startIdx, tf)),
-    [cfg, data, startIdx, tf]
+    () => (!cfg || cfg.mode === "plain" || !data ? null : backtest(cfg, data, startIdx, tf, { costs })),
+    [cfg, data, startIdx, tf, costs]
   );
 
   const bars = covered ? covered.inWindow : 0;
@@ -345,6 +352,31 @@ function BacktestResult({ cfg, defaultSym, blocked = false, onConnect, defaultTf
             <input type="date" value={to} min={from} max={iso(Date.now())} onChange={(e) => { setTo(e.target.value); setPreset("custom"); }} className="no-ring mono" style={{ ...selStyle, width: "100%", colorScheme: "light dark" }} />
           </div>
         </div>
+        {/* Trading costs & slippage — pre-filled with market defaults, editable; 0 = gross. */}
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, marginBottom: 3 }}>Costs &amp; slippage <span style={{ fontWeight: 500, textTransform: "none" }}>· market defaults, edit or set 0</span></div>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ flex: "1 1 88px" }}>
+              <div style={{ fontSize: 9.5, color: "var(--muted)", marginBottom: 3 }}>Slippage %</div>
+              <input type="number" step="0.01" min="0" value={costs.slipPct} onChange={(e) => setCosts((s) => ({ ...s, slipPct: e.target.value }))} className="no-ring mono" style={{ ...selStyle, width: "100%" }} />
+            </div>
+            <div style={{ flex: "1 1 88px" }}>
+              <div style={{ fontSize: 9.5, color: "var(--muted)", marginBottom: 3 }}>{costs.brokMode === "amount" ? "Brokerage / trade" : "Brokerage %"}</div>
+              <input type="number" step={costs.brokMode === "amount" ? "1" : "0.01"} min="0" value={costs.brokMode === "amount" ? costs.brokerageAmt : costs.brokeragePct} onChange={(e) => setCosts((s) => s.brokMode === "amount" ? { ...s, brokerageAmt: e.target.value } : { ...s, brokeragePct: e.target.value })} className="no-ring mono" style={{ ...selStyle, width: "100%" }} />
+            </div>
+            <div className="pill" style={{ display: "flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3 }}>
+              {[["pct", "% of value"], ["amount", "Amt / trade"]].map(([k, l]) => (
+                <button key={k} onClick={() => setCosts((s) => ({ ...s, brokMode: k }))} className="pill tap disp" style={{ padding: "5px 10px", fontSize: 11, fontWeight: 700, border: "none", background: costs.brokMode === k ? "var(--primary)" : "transparent", color: costs.brokMode === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
+              ))}
+            </div>
+            {costs.brokMode === "amount" && (
+              <div style={{ flex: "1 1 88px" }}>
+                <div style={{ fontSize: 9.5, color: "var(--muted)", marginBottom: 3 }}>Capital / trade</div>
+                <input type="number" step="1000" min="1" value={costs.tradeValue} onChange={(e) => setCosts((s) => ({ ...s, tradeValue: e.target.value }))} className="no-ring mono" style={{ ...selStyle, width: "100%" }} />
+              </div>
+            )}
+          </div>
+        </div>
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {tile("Return", (st.totalRet >= 0 ? "+" : "") + st.totalRet.toFixed(1) + "%", st.totalRet >= 0 ? "var(--up)" : "var(--down)")}
@@ -366,6 +398,7 @@ function BacktestResult({ cfg, defaultSym, blocked = false, onConnect, defaultTf
       </div>
       <div style={{ fontSize: 11.5, color: "var(--ink-soft)", marginTop: 10 }}>
         Strategy <b style={{ color: st.totalRet >= st.bh ? "var(--up)" : "var(--down)" }}>{st.totalRet >= st.bh ? "beat" : "lagged"}</b> buy-and-hold ({(st.bh >= 0 ? "+" : "") + st.bh.toFixed(1)}%). Avg trade {(st.avg >= 0 ? "+" : "") + st.avg.toFixed(2)}%.
+        {st.costPct > 0 && <span style={{ color: "var(--muted)" }}> Net of ~{st.costPct}% est. costs &amp; slippage per trade.</span>}
       </div>
       {/* List of Trades — every round-trip with real entry/exit date-time, price, return & per-unit P&L.
           Replaces the old raw "Bar N → M" dump. Exportable to CSV once opened. */}
@@ -604,12 +637,17 @@ function NumF({ label, v, set }) {
  * candles and report exactly what came out — and we label it a backtest, because
  * that is what it is. Hindsight is not performance.
  */
+/* Assumed crypto leverage for the margin-equivalent hints on SL/TP (Delta perps). Delta leverage is
+   per-product and user-set; 25× is the app's working default for these display hints only — it never
+   changes an order, just annotates "1% price ≈ 25% of margin". */
+const CRYPTO_LEV = 25;
+
 /* Deploy-size control shown on every strategy card — "Amount per trade ($)" for crypto
    (default 10, ±10), "Quantity per trade" for other markets (default 1, ±1). */
 function DeploySizeField({ market, value, onChange }) {
   const isC = market === "Crypto";
   const step = isC ? 10 : 1;
-  const val = value != null ? value : (isC ? 200 : 1);
+  const val = value != null ? value : (isC ? 10 : 1);   // crypto default: $10 NOTIONAL/trade (~$0.40 margin at 25×)
   const set = (n) => onChange(Math.max(1, n));
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, gap: 8 }}>
@@ -734,17 +772,29 @@ function CardSymTfPanel({ market, sym, setSym, tf, setTf }) {
   );
 }
 
-function StratSLTP({ sl, tp, setSl, setTp }) {
+function StratSLTP({ sl, tp, setSl, setTp, market = "IN" }) {
   const box = { width: 54, textAlign: "center", border: "1px solid var(--line)", borderRadius: 8, padding: "5px 4px", fontWeight: 800, fontSize: 12.5, background: "var(--elev)", color: "var(--ink)" };
+  // SL/TP are PRICE moves. On leveraged crypto (Delta ~25×) a 1% price move is ~25% of the margin, so
+  // we show the margin-equivalent as a hint — the value sent to the broker stays the price %.
+  const marginHint = market === "Crypto" ? (() => {
+    const s = parseFloat(sl), t = parseFloat(tp);
+    const parts = [];
+    if (Number.isFinite(s) && s > 0) parts.push(`SL ${s}% ≈ ${(s * CRYPTO_LEV).toFixed(0)}% of margin`);
+    if (Number.isFinite(t) && t > 0) parts.push(`TP ${t}% ≈ ${(t * CRYPTO_LEV).toFixed(0)}%`);
+    return parts.join(" · ");
+  })() : "";
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10, gap: 8 }}>
-      <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>Stop-loss / Target</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <input value={sl} onChange={(e) => setSl(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={box} />
-        <span style={{ fontSize: 11, color: "var(--down)", fontWeight: 800 }}>% SL</span>
-        <input value={tp} onChange={(e) => setTp(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={box} />
-        <span style={{ fontSize: 11, color: "var(--up)", fontWeight: 800 }}>% TP</span>
+    <div style={{ marginTop: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>Stop-loss / Target</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <input value={sl} onChange={(e) => setSl(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={box} />
+          <span style={{ fontSize: 11, color: "var(--down)", fontWeight: 800 }}>% SL</span>
+          <input value={tp} onChange={(e) => setTp(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={box} />
+          <span style={{ fontSize: 11, color: "var(--up)", fontWeight: 800 }}>% TP</span>
+        </div>
       </div>
+      {marginHint && <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 4, textAlign: "right" }}>{marginHint} · at {CRYPTO_LEV}× leverage</div>}
     </div>
   );
 }
@@ -939,7 +989,7 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, onPersist, market 
       )}
 
       <DeploySizeField market={market} value={size} onChange={setSize} />
-      <StratSLTP sl={sl} tp={tp} setSl={setSl} setTp={setTp} />
+      <StratSLTP sl={sl} tp={tp} setSl={setSl} setTp={setTp} market={market} />
       <CardOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} setSl={setSl} setTp={setTp} />
       <CardIndicatorOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} onApply={(defs, newTf) => { onPersist && onPersist(s.id, { defs, tf: newTf }); setTfSel(newTf); }} />
 
@@ -979,7 +1029,7 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, onPersist, market 
 
       {bt && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-          <BacktestResult cfg={cfgTf} defaultSym={symSel || undefined} defaultTf={tfSel} blocked={!canBacktest} onConnect={onConnect} />
+          <BacktestResult cfg={cfgTf} defaultSym={symSel || undefined} defaultTf={tfSel} blocked={!canBacktest} onConnect={onConnect} market={market} />
         </div>
       )}
     </div>
@@ -1052,7 +1102,7 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, onPersist, onClone, 
       ) : null}
 
       <DeploySizeField market={market} value={size} onChange={setSize} />
-      <StratSLTP sl={sl} tp={tp} setSl={setSl} setTp={setTp} />
+      <StratSLTP sl={sl} tp={tp} setSl={setSl} setTp={setTp} market={market} />
       <CardOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} setSl={setSl} setTp={setTp} />
       <CardIndicatorOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} onApply={(defs, newTf) => { onPersist && onPersist(s.id, { defs, tf: newTf }); setTfSel(newTf); }} />
 
@@ -1093,7 +1143,7 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, onPersist, onClone, 
 
       {bt && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-          <BacktestResult cfg={cfgTf} defaultSym={symSel || undefined} defaultTf={tfSel} blocked={!canBacktest} onConnect={onConnect} />
+          <BacktestResult cfg={cfgTf} defaultSym={symSel || undefined} defaultTf={tfSel} blocked={!canBacktest} onConnect={onConnect} market={market} />
         </div>
       )}
     </div>
@@ -1151,7 +1201,7 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
   /* Stop = CLOSE the position now: a reduce-only market SELL that flattens it at the broker, then stops
      the strategy. Real money moves, so we confirm first. */
   const doClose = async (s) => {
-    if (typeof window !== "undefined" && !window.confirm(`Close ${s.name || s.symbol} now?\n\nThis places a market SELL to flatten the position at ${s.broker}. This cannot be undone.`)) return;
+    if (!(await confirmDialog(`Close ${s.name || s.symbol} now?\n\nThis places a market SELL to flatten the position at ${s.broker}. This cannot be undone.`, { title: "Close real position", confirmLabel: "Close position" }))) return;
     setData((d) => ({ ...d, strategies: (d.strategies || []).map((x) => x.id === s.id ? { ...x, inPosition: false, status: "cancelled" } : x) }));
     try { const r = await closeAutoBuy(userId, s.id); if (r && r.dryRun) alert("Engine is in dry-run — position marked closed, no real order was placed."); }
     catch (e) { alert(String(e.message || e)); }
@@ -1324,7 +1374,7 @@ function CopyStrategyCard({ s, active, onToggle, onPersist, onDelete, market = "
         ) : null}
 
       <DeploySizeField market={market} value={size} onChange={setSize} />
-      <StratSLTP sl={sl} tp={tp} setSl={setSl} setTp={setTp} />
+      <StratSLTP sl={sl} tp={tp} setSl={setSl} setTp={setTp} market={market} />
       <CardOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} setSl={setSl} setTp={setTp} />
       <CardIndicatorOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} onApply={(defs, newTf) => { onPersist && onPersist(s.id, { defs, tf: newTf }); setTfSel(newTf); }} />
 
@@ -1344,7 +1394,7 @@ function CopyStrategyCard({ s, active, onToggle, onPersist, onDelete, market = "
 
       {bt && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-          <BacktestResult cfg={cfgTf} defaultSym={symSel || undefined} defaultTf={tfSel} blocked={!canBacktest} onConnect={onConnect} />
+          <BacktestResult cfg={cfgTf} defaultSym={symSel || undefined} defaultTf={tfSel} blocked={!canBacktest} onConnect={onConnect} market={market} />
         </div>
       )}
     </div>
@@ -2333,7 +2383,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const [tp, setTp] = useState(defTP(market));
   // When you switch market (fresh builder context), reset SL/TP to that market's default.
   useEffect(() => { setSl(defSL(market)); setTp(defTP(market)); /* eslint-disable-next-line */ }, [market]);
-  const [capital, setCapital] = useState(market === "Crypto" ? "200" : "1");   // crypto: $ amount (default 200 — enough for ≥1 Delta contract); else quantity (default 1)
+  const [capital, setCapital] = useState(market === "Crypto" ? "10" : "1");   // crypto: $ NOTIONAL amount/trade (default 10 ≈ $0.40 margin at 25×); else quantity (default 1)
 
   /* Order-execution defaults for the automation. */
   const [buyType, setBuyType] = useState("Intraday");   // Intraday (MIS) | NRML
@@ -2661,14 +2711,14 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   };
   /* Bulk activate/deactivate every strategy in a section (Premium / Mine / My Copies). Activating snaps
      each to a symbol relevant to the current market and carries its saved qty. */
-  const bulkSetActive = (items, on) => {
+  const bulkSetActive = async (items, on) => {
     const rows = (items || []).map((x) => (x && x.s) ? x.s : x);
     // Only touch the strategies that ACTUALLY need to change: activating skips ones already live in
     // this market; deactivating skips ones already off. So "Activate All" over 4 strategies where 3
     // are already active only flips the 1 that's off — and the toast reports that real number.
     const targets = rows.filter((s) => (on ? !activeInMarket(s) : activeInMarket(s)));
     if (!targets.length) { setToast(on ? "All selected strategies are already active." : "None of the selected strategies are active."); return; }
-    if (on && typeof window !== "undefined" && !window.confirm(`Activate ${targets.length} strateg${targets.length > 1 ? "ies" : "y"}? They'll place orders when their rules trigger.`)) return;
+    if (on && !(await confirmDialog(`Activate ${targets.length} strateg${targets.length > 1 ? "ies" : "y"}? They'll place orders when their rules trigger.`, { title: "Activate strategies", confirmLabel: "Activate", danger: false }))) return;
     const ids = new Set(targets.map((s) => s.id));
     setStrats((p) => p.map((s) => {
       if (!ids.has(s.id)) return s;
@@ -3245,8 +3295,8 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
            flip flags on the local strategy — there's no broker involved in paper mode. */
         const vPause = (s) => setStrats((p) => p.map((x) => x.id === s.id ? { ...x, paused: !x.paused } : x));
         /* Stop = close the open paper position(s) at the live price (realising P&L), then deactivate. */
-        const vStop = (s) => {
-          if (typeof window !== "undefined" && !window.confirm(`Close ${s.name || (s.symbols && s.symbols[0]) || "this strategy"} now? This sells its open paper position at the live price.`)) return;
+        const vStop = async (s) => {
+          if (!(await confirmDialog(`Close ${s.name || (s.symbols && s.symbols[0]) || "this strategy"} now? This sells its open paper position at the live price.`, { title: "Close position", confirmLabel: "Close" }))) return;
           if (onCloseStrategy) onCloseStrategy(s.id);
           else setStrats((p) => p.map((x) => x.id === s.id ? { ...x, active: false } : x));
         };
@@ -3445,9 +3495,16 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
               <NumF label="Stop loss %" v={sl} set={setSl} />
               <NumF label="Take profit %" v={tp} set={setTp} />
             </div>
+            {/* SL/TP are PRICE moves; on leveraged crypto show the margin-equivalent (1% price ≈ 25% margin). */}
+            {market === "Crypto" && (() => {
+              const s = parseFloat(sl), t = parseFloat(tp), parts = [];
+              if (Number.isFinite(s) && s > 0) parts.push(`SL ${s}% ≈ ${(s * CRYPTO_LEV).toFixed(0)}% of margin`);
+              if (Number.isFinite(t) && t > 0) parts.push(`TP ${t}% ≈ ${(t * CRYPTO_LEV).toFixed(0)}%`);
+              return parts.length ? <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 6 }}>{parts.join(" · ")} · at {CRYPTO_LEV}× leverage</div> : null;
+            })()}
             <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>{market === "Crypto" ? "Amount to be deployed" : "Quantity"}</div>
-              <input value={capital} onChange={(e) => setCapital(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder={market === "Crypto" ? "100" : "100000"} className="no-ring mono" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 14, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }} />
+              <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>{market === "Crypto" ? "Amount to be deployed (notional)" : "Quantity"}</div>
+              <input value={capital} onChange={(e) => setCapital(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder={market === "Crypto" ? "10" : "100000"} className="no-ring mono" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 14, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }} />
               <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 5 }}>{market === "Crypto" ? "Amount (in your wallet currency) spent on each entry." : "Number of shares (or lots, for options) placed on each entry."}</div>
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
@@ -3667,9 +3724,12 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       ) : stratTab === "deployed" ? (
         <>
           {/* DEPLOYED — grouped by direction (Long / Short), each split into Real Live vs Not Live. */}
+          {/* Kill switch: pause NEW real entries (auto-buy + screener auto-buy) while open positions stay
+              protected by the exit engine. Off by default, so normal automation runs untouched. */}
+          <EntryKillSwitch />
           {deployedActive.length > 0 && (
             <button
-              onClick={() => { if (onExitAll && (typeof window === "undefined" || window.confirm("Exit all open positions and stop every active strategy?"))) onExitAll(); }}
+              onClick={async () => { if (onExitAll && await confirmDialog("Exit all open positions and stop every active strategy?", { title: "Exit everything", confirmLabel: "Exit all" })) onExitAll(); }}
               className="tap disp"
               style={{ width: "100%", marginBottom: 12, padding: "11px", borderRadius: 11, border: "1px solid var(--down)", background: "transparent", color: "var(--down)", fontWeight: 800, fontSize: 13, cursor: "pointer" }}
             >

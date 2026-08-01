@@ -272,7 +272,6 @@ function AppInner() {
   // Theme persists across sessions — it reset to light on every reload before.
   const [theme, setTheme] = useState(() => lsGet("mx_theme", "light"));
   useEffect(() => { lsSet("mx_theme", theme); }, [theme]);
-  const [guest, setGuest] = useState(false);
   const [onboardSkipped, setOnboardSkipped] = useState(false);
   const [profile, setProfile] = useState(null);
   /* Auto-Buy on/off PER MARKET. Lifted here (was local to the dashboard, so it reset on
@@ -623,7 +622,8 @@ function AppInner() {
     const token = p.get("request_token") || p.get("auth_code") || p.get("tokenId");
     if (!token) return;
     const which = p.get("request_token") ? "zerodha" : p.get("tokenId") ? "dhan" : "fyers";
-    connectBroker(which, token)
+    const oauthState = p.get("state") || undefined;   // CSRF nonce the broker echoed back (fyers/schwab)
+    connectBroker(which, token, undefined, undefined, oauthState)
       .then(() => setBuyToast({ t: "Broker connected — prices are now live" }))
       .catch((e) => setBuyToast({ t: String(e.message || e), e: true }))
       .finally(() => window.history.replaceState({}, "", window.location.pathname));
@@ -865,23 +865,23 @@ function AppInner() {
     return () => { alive = false; };
   }, [userId]);
 
-  const ADMIN_AUTH_TTL = 24 * 60 * 60 * 1000;   // re-use a verified admin key for 24h
   const openAdmin = async () => {
-    // Skip the password prompt if the admin authenticated within the last 24 hours.
-    try {
-      const saved = JSON.parse(localStorage.getItem("mx_admin_auth") || "null");
-      if (saved && saved.key && saved.at && (Date.now() - saved.at) < ADMIN_AUTH_TTL) {
-        const ok = await adminCheck(userId, saved.key);
-        if (ok) { setAdminKey(saved.key); setAdminOpen(true); setShowProfile(false); return; }
-        localStorage.removeItem("mx_admin_auth");   // stale/invalid — fall through to prompt
-      }
-    } catch { /* ignore */ }
+    /* P2-07 — the admin key is kept ONLY in memory (React state) for the session, never written to
+       localStorage. Persisting it made a long-lived secret readable by any XSS; now a page reload just
+       re-prompts. Within a session we reuse the in-memory key so it's entered at most once. Admin is
+       double-gated server-side anyway (verified token uid in ADMIN_USER_IDS AND the key). */
+    if (adminKey) {
+      const ok = await adminCheck(userId, adminKey);
+      if (ok) { setAdminOpen(true); setShowProfile(false); return; }
+      setAdminKey("");                              // stale — fall through to re-prompt
+    }
+    // Clean up any admin key a previous build may have left in storage.
+    try { localStorage.removeItem("mx_admin_auth"); } catch { /* ignore */ }
     const key = typeof window !== "undefined" ? window.prompt("Admin key:") : "";
     if (!key) return;
     const ok = await adminCheck(userId, key);
     if (!ok) { setBuyToast({ t: "Not authorized for admin.", e: true }); return; }
-    try { localStorage.setItem("mx_admin_auth", JSON.stringify({ key, at: Date.now() })); } catch { /* ignore */ }
-    setAdminKey(key);
+    setAdminKey(key);                               // in-memory only, this session
     setAdminOpen(true);
     setShowProfile(false);
   };
@@ -955,6 +955,28 @@ function AppInner() {
   const [why, setWhy] = useState(null);
   const openWhy = (s, ctx = null) => setWhy({ s, ctx });
 
+  /* P2-19 — Escape dismisses the top-most open overlay, so every modal/sheet/drawer is keyboard-
+     closable (previously only a tap on the backdrop or an X worked). Ordered most-modal first. */
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      if (confirmOrder) return setConfirmOrder(null);
+      if (why) return setWhy(null);
+      if (search) return setSearch(false);
+      if (walletOpen) return setWalletOpen(false);
+      if (brokerOpen) return setBrokerOpen(false);
+      if (adminOpen) return setAdminOpen(false);
+      if (activityOpen) return setActivityOpen(false);
+      if (brokerPrompt) return setBrokerPrompt(false);
+      if (showProfile) return setShowProfile(false);
+      if (detail) return setDetail(null);
+      if (drawer) return setDrawer(null);
+      if (histOpen) return setHistOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [confirmOrder, why, search, walletOpen, brokerOpen, adminOpen, activityOpen, brokerPrompt, showProfile, detail, drawer, histOpen]);
+
   const openStock = (s) => setDrawer(s);
   const openDetail = (s) => { setDrawer(null); setDetail(s); };
   const goTrade = (s) => { setDrawer(null); setDetail(null); setTradePreset(s); setTab("trade"); };
@@ -983,8 +1005,8 @@ function AppInner() {
       <style>{CSS}</style>
       {/* fixed gradient backdrop so it stays behind scroll */}
       <div style={{ position: "fixed", inset: 0, background: "var(--app-bg, var(--bg))", zIndex: 0, pointerEvents: "none" }} />
-      {!authed && <LoginScreen onGuest={() => { setGuest(true); setAuthed(true); }} onAuthed={(a, opts) => { onAuthed(a, opts); setGuest(false); setAuthed(true); }} />}
-      {authed && !guest && auth && !auth.username && getAuthToken() && (
+      {!authed && <LoginScreen onAuthed={(a, opts) => { onAuthed(a, opts); setAuthed(true); }} />}
+      {authed && auth && !auth.username && getAuthToken() && (
         <SetUsernameModal onDone={(username) => onAuthed({ ...auth, username })} />
       )}
       {onboarding && (
@@ -1206,14 +1228,17 @@ function AppInner() {
           is both visually wrong and a real hazard: the tap targets overlap the sheet's own
           controls, so a thumb reaching for "Buy" can land on "Watch". */}
       {!detail && !onboarding && !drawer && !confirmOrder && !walletOpen && !brokerOpen && !search && !showProfile && (
-        <div className="glass" style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--header-bg)", borderTop: "1px solid var(--line)", borderRadius: "22px 22px 0 0", boxShadow: "0 -10px 34px rgba(40,10,80,.3)", display: "flex", padding: "8px 2px 13px", zIndex: 100 }}>
-          {nav.map(([k, Icon, label]) => (
-            <button key={k} onClick={() => { if (k === "orders") { setHistOpen(true); return; } setHistOpen(false); setTab(k); setTradePreset(null); }} className="tap" style={{ flex: 1, minWidth: 0, border: "none", background: "transparent", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "5px 1px", minHeight: 46, color: (k === "orders" ? histOpen : (tab === k && !histOpen)) ? "var(--primary)" : "var(--muted)" }}>
-              <Icon size={17} fill={k === "watchlist" && tab === k ? "var(--primary)" : "none"} />
-              <span style={{ fontSize: 8.5, fontWeight: 700, maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
-            </button>
-          ))}
-        </div>
+        <nav aria-label="Main navigation" className="glass" style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--header-bg)", borderTop: "1px solid var(--line)", borderRadius: "22px 22px 0 0", boxShadow: "0 -10px 34px rgba(40,10,80,.3)", display: "flex", padding: "8px 2px 13px", zIndex: 100 }}>
+          {nav.map(([k, Icon, label]) => {
+            const current = k === "orders" ? histOpen : (tab === k && !histOpen);
+            return (
+              <button key={k} aria-current={current ? "page" : undefined} onClick={() => { if (k === "orders") { setHistOpen(true); return; } setHistOpen(false); setTab(k); setTradePreset(null); }} className="tap" style={{ flex: 1, minWidth: 0, border: "none", background: "transparent", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "5px 1px", minHeight: 46, color: current ? "var(--primary)" : "var(--muted)" }}>
+                <Icon size={17} fill={k === "watchlist" && tab === k ? "var(--primary)" : "none"} />
+                <span style={{ fontSize: 8.5, fontWeight: 700, maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
+              </button>
+            );
+          })}
+        </nav>
       )}
 
       {/* NEO — floating chatbot button, bottom-right, just above the bottom bar. Replaces the old Neo
@@ -1375,7 +1400,7 @@ function AppInner() {
           <SearchOverlay onClose={() => setSearch(false)} onOpen={openStock} />
         </ErrorBoundary>
       )}
-      {showProfile && <ProfileSheet onAdmin={effAdmin ? openAdmin : undefined} isAdminUser={isAdminUser} adminMode={adminMode} onToggleAdminMode={() => setAdminMode((v) => !v)} onBroker={openBrokers} brokerName={liveBroker ? liveBroker.name : null} profile={profile} walletMap={walletMap} portfolio={portfolio} trades={trades} deposits={deposits} market={market} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={() => { doLogout(); setGuest(false); setProfile(null); setOnboardSkipped(false); setAuthed(false); setLoginOpen(false); }} onPersonalise={() => setRepersonalise(true)} onUsernameChanged={(u) => onAuthed({ ...auth, username: u })} onEmailChanged={(em) => onAuthed({ ...auth, email: em })} marketBrokers={brokerMarketMap} houseFeeds={houseFeeds} onDisconnectBroker={(bid) => { disconnectBroker(bid); setBuyToast({ t: "Broker disconnected" }); }} appSettings={appSettings} onSaveAppSettings={saveAppSettings} riskLimits={riskLimits} onSaveRiskLimits={setRiskLimits} onDeleteAccount={async () => { try { await apiDeleteAccount(); } catch { /* proceed to sign out regardless */ } setShowProfile(false); doLogout(); setGuest(false); setProfile(null); setOnboardSkipped(false); setAuthed(false); setBuyToast({ t: "Your account and all data have been deleted." }); }} onClearVirtual={async () => { const r = await clearVirtualTrades(); setTrades((prev) => { const kept = (prev || []).filter((t) => t.real === true); try { lsSet("mx_trades_" + userId, kept); } catch (e) { /* cache best-effort */ } return kept; }); setBuyToast({ t: "Virtual trades cleared." }); return r; }} />}
+      {showProfile && <ProfileSheet onAdmin={effAdmin ? openAdmin : undefined} isAdminUser={isAdminUser} adminMode={adminMode} onToggleAdminMode={() => setAdminMode((v) => !v)} onBroker={openBrokers} brokerName={liveBroker ? liveBroker.name : null} profile={profile} walletMap={walletMap} portfolio={portfolio} trades={trades} deposits={deposits} market={market} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={() => { doLogout(); setProfile(null); setOnboardSkipped(false); setAuthed(false); setLoginOpen(false); }} onPersonalise={() => setRepersonalise(true)} onUsernameChanged={(u) => onAuthed({ ...auth, username: u })} onEmailChanged={(em) => onAuthed({ ...auth, email: em })} marketBrokers={brokerMarketMap} houseFeeds={houseFeeds} onDisconnectBroker={(bid) => { disconnectBroker(bid); setBuyToast({ t: "Broker disconnected" }); }} appSettings={appSettings} onSaveAppSettings={saveAppSettings} riskLimits={riskLimits} onSaveRiskLimits={setRiskLimits} onDeleteAccount={async () => { try { await apiDeleteAccount(); } catch { /* proceed to sign out regardless */ } setShowProfile(false); doLogout(); setProfile(null); setOnboardSkipped(false); setAuthed(false); setBuyToast({ t: "Your account and all data have been deleted." }); }} onClearVirtual={async () => { const r = await clearVirtualTrades(); setTrades((prev) => { const kept = (prev || []).filter((t) => t.real === true); try { lsSet("mx_trades_" + userId, kept); } catch (e) { /* cache best-effort */ } return kept; }); setBuyToast({ t: "Virtual trades cleared." }); return r; }} />}
       {adminOpen && <AdminPanel userId={userId} adminKey={adminKey} onClose={() => setAdminOpen(false) /* keep key in memory so admin actions (idea approval) work this session */} />}
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} onAuthed={onAuthed} />}
       {histOpen && (

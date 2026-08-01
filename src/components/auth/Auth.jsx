@@ -49,7 +49,7 @@ export function SetUsernameModal({ onDone }) {
   );
 }
 
-export function LoginScreen({ onAuthed, onGuest }) {
+export function LoginScreen({ onAuthed }) {   // guest mode removed — login/signup is required to enter
   /* ONE screen for Login and Sign-up. The user enters their number + PIN and taps
      "Login / Sign up":
        - existing account, correct PIN  -> logged straight in

@@ -53,9 +53,9 @@ export async function loadBtCandles(sym, tf, days = 0) {
 /* Score a cfg on a pre-fetched candle array with the SAME sizing model useBacktestStats uses:
    an explicit per-trade qty/USD-amount when given (absolute P&L on deployed capital), else the
    capital-split model. Returns { trades, winRate, slHit, tpHit, pnl, retPct } or null. */
-export function scoreCfg(cfg, candles, tf, { qty = null, amount = null, market = null, cap = 100000 } = {}) {
+export function scoreCfg(cfg, candles, tf, { qty = null, amount = null, market = null, cap = 100000, costs = null } = {}) {
   if (!cfg || !candles || candles.length < 30) return null;
-  const { trades } = backtest(cfg, candles, 1, tf);
+  const { trades } = backtest(cfg, candles, 1, tf, { costs });
   const n = trades.length;
   if (!n) return { trades: 0, winRate: null, slHit: 0, tpHit: 0, pnl: 0, retPct: 0 };
   const wins = trades.filter((t) => t.ret > 0).length;
@@ -127,7 +127,7 @@ export function useBacktestStats(strat, opts = {}) {
         sets.forEach((c, si) => {
           if (!c || c.length < 30) return;
           usable += 1;
-          const r = backtest(cfg, c, 1, tf);
+          const r = backtest(cfg, c, 1, tf, { costs: opts.costs });
           // Tag each trade with its candle array + symbol so we can resolve entry/exit timestamps later.
           r.trades.forEach((t) => { trades.push({ ...t, _c: c, _sym: syms[si] }); capPnl += perSym * t.ret; });
         });

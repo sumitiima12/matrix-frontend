@@ -4,6 +4,57 @@ import { resolveOperand, chainEval, parseClause, mapToken, detectOp, interpretTe
  * Backtest engine — runs a strategy over REAL candles and reports win rate, P&L and drawdown.
  */
 
+/* TRADING COSTS & SLIPPAGE — user-supplied, default ZERO (a fresh backtest is gross unless the user
+   enters costs). `costs` = { slipPct, brokMode, brokeragePct, brokerageAmt, tradeValue }:
+     • slipPct       — slippage as % of price on EACH fill; a round trip loses 2×slipPct of notional.
+     • brokMode      — "pct" (brokerage as % of trade value) or "amount" (flat currency per trade).
+     • brokeragePct  — used when brokMode === "pct"; charged on BOTH legs ⇒ 2×.
+     • brokerageAmt  — used when brokMode === "amount"; a flat fee per round-trip trade, expressed as a
+                       fraction of `tradeValue` (the capital deployed per trade) so it lands in return-space.
+   Returns the fraction of notional deducted from every trade's return and from equity when it closes. */
+/* Per-side default estimates the backtest UI pre-fills (the user can edit or zero them). slipPct +
+   brokeragePct are each charged on BOTH legs, so the round-trip cost ≈ 2×(slip + brokerage). Rough,
+   conservative retail figures — IN equity ≈0.10% RT, F&O ≈0.12%, US ≈0.04%, crypto ≈0.16%, MCX ≈0.12%. */
+export const MARKET_COST_DEFAULTS = {
+  IN:        { slipPct: 0.02, brokeragePct: 0.03 },
+  FNO:       { slipPct: 0.03, brokeragePct: 0.03 },
+  US:        { slipPct: 0.01, brokeragePct: 0.01 },
+  // Crypto (Delta perps): fee is on NOTIONAL value. A round trip pays MAKER 0.05% on the buy + TAKER
+  // 0.02% on the sell = 0.07% total. The cost model charges brokeragePct on BOTH legs, so we store the
+  // per-leg AVERAGE (0.035%) → 2×0.035 = 0.07% round-trip fees. Leverage (25×) scales notional return
+  // and fee equally, so the cost as a % of the notional return is leverage-independent.
+  Crypto:    { slipPct: 0.03, brokeragePct: 0.035 },
+  Commodity: { slipPct: 0.03, brokeragePct: 0.03 },
+};
+export function marketCostDefaults(market) {
+  return MARKET_COST_DEFAULTS[market] || { slipPct: 0.02, brokeragePct: 0.03 };
+}
+
+export function tradeCostFrac(costs) {
+  const c = costs || {};
+  const slip = Math.max(0, +c.slipPct || 0);
+  const pct = c.brokMode === "amount" ? 0 : Math.max(0, +c.brokeragePct || 0);
+  const flat = (c.brokMode === "amount" && +c.brokerageAmt > 0 && +c.tradeValue > 0)
+    ? Math.max(0, +c.brokerageAmt) / Math.max(1e-9, +c.tradeValue) : 0;
+  return (2 * slip + 2 * pct) / 100 + flat;
+}
+/* Round-trip cost as a PERCENT (what the optimiser endpoints take as body.costPct). */
+export function costPctOf(costs) { return +(tradeCostFrac(costs) * 100).toFixed(4); }
+
+/* The backtest cost inputs persist PER MARKET so the panel and every optimiser (which live in separate
+   components) share one source of truth: whatever the user typed for that market. Falls back to the
+   market default the first time. Guarded for non-browser/SSR contexts. */
+const BT_COST_KEY = (market) => "mx_bt_costs_" + (market || "IN");
+export function getBtCosts(market) {
+  const dflt = marketCostDefaults(market);
+  const base = { slipPct: dflt.slipPct, brokMode: "pct", brokeragePct: dflt.brokeragePct, brokerageAmt: 0, tradeValue: 100000 };
+  try { const raw = localStorage.getItem(BT_COST_KEY(market)); if (raw) return { ...base, ...JSON.parse(raw) }; } catch { /* ignore */ }
+  return base;
+}
+export function setBtCosts(market, costs) {
+  try { localStorage.setItem(BT_COST_KEY(market), JSON.stringify(costs || {})); } catch { /* ignore */ }
+}
+
 /**
  * @param cfg      the strategy
  * @param c        FULL candle history — indicators are computed over all of it
@@ -24,47 +75,68 @@ import { resolveOperand, chainEval, parseClause, mapToken, detectOp, interpretTe
  *     touched inside one bar, we assume the STOP filled first (conservative).
  *   • SHORT strategies (side:"SELL") mirror direction, stop-above / target-below.
  */
-export function backtest(cfg, c, startIdx = 1, baseTf = null) {
+export function backtest(cfg, c, startIdx = 1, baseTf = null, opts = {}) {
   const closes = c.map((x) => x.c), vols = c.map((x) => x.v || 0), cache = {};
   const short = !!(cfg && (cfg.side === "SELL" || cfg.short === true));
   const dir = short ? -1 : 1;
   const slPct = cfg.sl ? Math.abs(Number(cfg.sl)) : null;
   const tpPct = cfg.tp ? Math.abs(Number(cfg.tp)) : null;
+  // Round-trip cost fraction (user-supplied, default 0), deducted from each realized trade and equity.
+  const costFrac = tradeCostFrac(opts.costs);
   const get = (op) => resolveOperand(op, cfg.defs, c, closes, vols, cache, baseTf);
-  const trades = []; let pos = null, equity = 1, peak = 1, maxDD = 0; const eq = [{ i: 0, eq: 100 }];
+  const trades = []; let pos = null, realized = 1, peak = 1, maxDD = 0; const eq = [{ i: 0, eq: 100 }];
   const from = Math.max(1, startIdx | 0);
+  // Realize a closed trade: record it (net of round-trip cost) AND compound its return into `realized`,
+  // so the equity curve and maxDD actually reflect the exit. The previous version cleared `pos` before
+  // the mark-to-market ran, so realized exits — including losses — never hit the curve (R2-P0-01).
+  const closeTrade = (entryI, entryPx, exitI, exitPx, reason) => {
+    const gross = dir * (exitPx / entryPx - 1), net = gross - costFrac;
+    trades.push({ entryIdx: entryI, exitIdx: exitI, entry: entryPx, exit: +exitPx, ret: net, gross, reason });
+    realized *= (1 + net);
+  };
+  const levels = (entryPx) => ({
+    stop: slPct != null ? (dir > 0 ? entryPx * (1 - slPct / 100) : entryPx * (1 + slPct / 100)) : null,
+    tgt:  tpPct != null ? (dir > 0 ? entryPx * (1 + tpPct / 100) : entryPx * (1 - tpPct / 100)) : null,
+  });
   for (let i = 1; i < c.length; i++) {
     const bar = c[i];
-    // ── 1. Manage an OPEN position on bar i ──────────────────────────────────────────────────
+    // P2-15 — skip malformed candles (NaN/negative prices, high<low). Acting on garbage OHLC would
+    // fabricate stop/target hits and corrupt the equity curve; a bad bar is simply passed over.
+    if (!bar || !Number.isFinite(bar.o) || !Number.isFinite(bar.h) || !Number.isFinite(bar.l) || !Number.isFinite(bar.c) || bar.c <= 0 || bar.h < bar.l) continue;
+    let exitedThisBar = false;
+    // ── 1. Manage a position opened on a PRIOR bar: intrabar SL/TP, else exit-signal at this open ──
     if (pos) {
-      const stop = slPct != null ? (dir > 0 ? pos.entry * (1 - slPct / 100) : pos.entry * (1 + slPct / 100)) : null;
-      const tgt = tpPct != null ? (dir > 0 ? pos.entry * (1 + tpPct / 100) : pos.entry * (1 - tpPct / 100)) : null;
+      const { stop, tgt } = levels(pos.entry);
       const hitStop = stop != null && (dir > 0 ? bar.l <= stop : bar.h >= stop);
-      const hitTgt = tgt != null && (dir > 0 ? bar.h >= tgt : bar.l <= tgt);
-      let exitPx = null, reason = null;
-      if (hitStop) { exitPx = stop; reason = "SL"; }               // tie -> stop first (conservative)
-      else if (hitTgt) { exitPx = tgt; reason = "TP"; }
-      else if (i > pos.i && chainEval(cfg.exit, i - 1, get)) { exitPx = bar.o; reason = "Signal"; }  // signal on closed bar, fill next open
-      if (exitPx != null) {
-        const ret = dir * (exitPx / pos.entry - 1);
-        trades.push({ entryIdx: pos.i, exitIdx: i, entry: pos.entry, exit: +exitPx, ret, reason });
-        pos = null;
-      }
+      const hitTgt  = tgt  != null && (dir > 0 ? bar.h >= tgt  : bar.l <= tgt);
+      if (hitStop) { closeTrade(pos.i, pos.entry, i, stop, "SL"); pos = null; exitedThisBar = true; }   // tie → stop first
+      else if (hitTgt) { closeTrade(pos.i, pos.entry, i, tgt, "TP"); pos = null; exitedThisBar = true; }
+      else if (chainEval(cfg.exit, i - 1, get)) { closeTrade(pos.i, pos.entry, i, bar.o, "Signal"); pos = null; exitedThisBar = true; }
     }
-    // ── equity curve: mark-to-market a still-open position on the close ──
-    if (pos) equity *= 1 + dir * (closes[i] / closes[i - 1] - 1);
-    eq.push({ i, eq: +(equity * 100).toFixed(2) });
-    peak = Math.max(peak, equity); maxDD = Math.max(maxDD, (peak - equity) / peak);
-    // ── 2. ENTRY: signal read on the last CLOSED bar (i-1), filled at THIS bar's OPEN ──
-    if (!pos && i >= from && i > 1 && chainEval(cfg.entry, i - 1, get)) {
+    // ── 2. ENTRY: signal on the CLOSED bar (i-1) fills at THIS bar's OPEN. NOT on a bar we just exited
+    //    (re-entering at an already-passed open is time-travel — R2-P1-01). The entry bar's own high/low
+    //    is then eligible for SL/TP, matching the optimizer (R2-P1-02). ──
+    if (!pos && !exitedThisBar && i >= from && i > 1 && chainEval(cfg.entry, i - 1, get)) {
       pos = { i, entry: bar.o };
+      const { stop, tgt } = levels(pos.entry);
+      const hitStop = stop != null && (dir > 0 ? bar.l <= stop : bar.h >= stop);
+      const hitTgt  = tgt  != null && (dir > 0 ? bar.h >= tgt  : bar.l <= tgt);
+      if (hitStop) { closeTrade(pos.i, pos.entry, i, stop, "SL"); pos = null; }        // stopped out on entry bar
+      else if (hitTgt) { closeTrade(pos.i, pos.entry, i, tgt, "TP"); pos = null; }
     }
+    // ── 3. equity curve = realized P&L × unrealised MTM of any still-open position at this close ──
+    const curveEq = realized * (pos ? (1 + dir * (bar.c / pos.entry - 1)) : 1);
+    eq.push({ i, eq: +(curveEq * 100).toFixed(2) });
+    peak = Math.max(peak, curveEq); maxDD = Math.max(maxDD, (peak - curveEq) / peak);
   }
-  if (pos) { const i = c.length - 1; trades.push({ entryIdx: pos.i, exitIdx: i, entry: pos.entry, exit: closes[i], ret: dir * (closes[i] / pos.entry - 1), reason: "EOD" }); }
-  const totalRet = (trades.reduce((a, t) => a * (1 + t.ret), 1) - 1) * 100;
+  // Force-close anything still open at the END OF THE DATASET (note: end of data, not necessarily EOD session).
+  if (pos) closeTrade(pos.i, pos.entry, c.length - 1, closes[c.length - 1], "EOD");
+  const totalRet = (realized - 1) * 100;
   const wins = trades.filter((t) => t.ret > 0).length;
-  const bh = (closes[closes.length - 1] / closes[0] - 1) * 100;
-  return { trades, eq, stats: { n: trades.length, wins, winRate: trades.length ? wins / trades.length * 100 : 0, totalRet, maxDD: maxDD * 100, bh, avg: trades.length ? trades.reduce((a, t) => a + t.ret, 0) / trades.length * 100 : 0 } };
+  // Buy & hold over the SAME test window (from the warm-up boundary), not the whole fetched history.
+  const bhStart = closes[Math.min(from, closes.length - 1)] || closes[0];
+  const bh = (closes[closes.length - 1] / bhStart - 1) * 100 - costFrac * 100;
+  return { trades, eq, stats: { n: trades.length, wins, winRate: trades.length ? wins / trades.length * 100 : 0, totalRet, maxDD: maxDD * 100, bh, avg: trades.length ? trades.reduce((a, t) => a + t.ret, 0) / trades.length * 100 : 0, costPct: +(costFrac * 100).toFixed(3) } };
 }
 
 /* Delegates to the shared interpreter (strategyLang.interpretText), which now also understands

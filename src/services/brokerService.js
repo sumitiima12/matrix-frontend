@@ -208,12 +208,12 @@ export async function brokerConnectInfo() {
 
 /** Step 2: the SERVER exchanges the request token and keeps the access token.
     `extra` carries bring-your-own credentials (Dhan/IND Money token, Angel One login). */
-export async function brokerSession(broker, requestToken, userId, extra) {
+export async function brokerSession(broker, requestToken, userId, extra, state) {
   if (!BACKEND_URL) throw new Error("no-backend");
   const r = await fetch(`${BACKEND_URL}/api/broker/session`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...tokenHdr() },
-    body: JSON.stringify({ broker, requestToken, userId, extra: extra || undefined }),
+    body: JSON.stringify({ broker, requestToken, userId, extra: extra || undefined, state: state || undefined }),
   });
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
@@ -254,6 +254,21 @@ export async function brokerLogout(session, userId) {
   try {
     await fetch(`${BACKEND_URL}/api/broker/logout`, { method: "POST", headers: authHeaders(session, userId) });
   } catch { /* local session is cleared regardless */ }
+}
+
+/** KILL SWITCH — is this account's NEW-real-entry pause on? (Protective exits always keep running.) */
+export async function getEntryHalt() {
+  if (!BACKEND_URL) return false;
+  try { const r = await fetch(`${BACKEND_URL}/api/automation/entry-halt`, { headers: { ...tokenHdr() } }); const d = await r.json().catch(() => ({})); return !!d.halted; }
+  catch { return false; }
+}
+/** Pause (halt) or resume NEW real entries for this account. Server-side, survives restart. */
+export async function setEntryHalt(halt) {
+  if (!BACKEND_URL) throw new Error("no-backend");
+  const r = await fetch(`${BACKEND_URL}/api/automation/entry-halt`, { method: "POST", headers: { "Content-Type": "application/json", ...tokenHdr() }, body: JSON.stringify({ halt: !!halt }) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+  return !!d.halted;
 }
 
 /**

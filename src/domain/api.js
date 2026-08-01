@@ -11,6 +11,7 @@
  */
 import { MATRIX_PERSONA, BACKEND_URL } from "../config";
 import { yahooSymbol, marketOf } from "./universe";
+import { getBtCosts, costPctOf } from "./backtest";
 import { getQuotes, getHistory, getNews, getIndicators, getIntraday, getFundamentals, getEarnings } from "../services/marketService";
 import { ask as aiAsk, interpretScreen, interpretStrategy, interpretStrategyAI, marketBrief } from "../services/aiService";
 import { saveTrade, listTrades, clearVirtualTrades as _cvt, register, login, changePin as _cp, verifyPin as _vp, forgotQuestion as _fq, forgotReset as _fr, getMySecurityQuestion as _gsq, setMySecurityQuestion as _ssq, checkUsername as _cu, setUsername as _su, setEmail as _se, listPublicStrategies as _lps, publishStrategy as _pub, unpublishStrategy as _unpub, listIdeas as _li, postIdea as _pi, deleteIdea as _di, reviewIdea as _ri, getAppSettings as _gas, saveAppSettings as _sas, deleteAccount as _dacc } from "../services/tradeService";
@@ -90,9 +91,12 @@ export async function optimizeExits({ mode, defs, entry, tf, appSyms, currentSl,
   if (!BACKEND_URL || !appSyms || !appSyms.length || !entry || !entry.length) return null;
   try {
     const ySyms = appSyms.map(yahooSymbol);
+    const market = marketOf(appSyms[0]);
+    // Net the SAME costs the backtest panel uses for this market (the user's typed slippage/brokerage).
+    const costPct = costPctOf(getBtCosts(market));
     const r = await fetch(`${BACKEND_URL}/api/optimize-exits`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode, defs, entry, tf, symbols: ySyms, currentSl, currentTp, objective, rrMin, maxSl, short: !!short }),
+      body: JSON.stringify({ mode, defs, entry, tf, symbols: ySyms, currentSl, currentTp, objective, rrMin, maxSl, short: !!short, market, costPct }),
     });
     return await r.json().catch(() => null);
   } catch { return null; }
@@ -105,9 +109,11 @@ export async function optimizeIndicators({ mode, defs, entry, tf, appSyms, curre
   if (!BACKEND_URL || !appSyms || !appSyms.length || !entry || !entry.length) return null;
   try {
     const ySyms = appSyms.map(yahooSymbol);
+    const market = marketOf(appSyms[0]);
+    const costPct = costPctOf(getBtCosts(market));   // same per-market costs as the backtest panel
     const r = await fetch(`${BACKEND_URL}/api/optimize-indicators`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode, defs: defs || [], entry, tf, symbols: ySyms, currentSl, currentTp, objective, short: !!short, ...(lockTf ? { lockTf } : {}) }),
+      body: JSON.stringify({ mode, defs: defs || [], entry, tf, symbols: ySyms, currentSl, currentTp, objective, short: !!short, market, costPct, ...(lockTf ? { lockTf } : {}) }),
     });
     return await r.json().catch(() => null);
   } catch { return null; }

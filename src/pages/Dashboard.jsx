@@ -5,6 +5,7 @@ import { dailyPicks, techSignal } from "../domain/signals";
 import { Building2, ChevronRight, Lightbulb, Newspaper, Pencil, Sparkles, TrendingUp, X, Zap } from "lucide-react";
 import { BACKEND_URL, RECONCILE_REAL_CLOSES } from "../config";
 import { CUR, DAY, chgColor, clamp, compact, fmt, lsGet, lsSet, pct, timeAgo } from "../lib/format";
+import { confirmDialog } from "../lib/confirmDialog";   // in-app confirm (reliable in webviews/PWA)
 import { ALL, GLOBAL_MKTS, UNIVERSE, marketOf } from "../domain/universe";
 import { askMatrix, fetchNews, fetchNewsFeed, scanIdeas } from "../domain/api";
 import AddBtn from "../components/common/AddBtn";
@@ -1110,11 +1111,12 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <label className="tap" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700 }}>
                     {autoOn ? "On" : "Off"}
-                    <span onClick={() => {
+                    <span onClick={async () => {
                       const turningOn = !autoOn;
                       if (turningOn && mode === "real" && !lsGet("mx_autobuy_warned", false)) {
-                        const ok = typeof window === "undefined" || window.confirm(
-                          "Smart Auto-Buy will place REAL orders on its own, without asking you each time. It will also auto-sell when your stop-loss or target is hit. Turn it on?"
+                        const ok = await confirmDialog(
+                          "Smart Auto-Buy will place REAL orders on its own, without asking you each time. It will also auto-sell when your stop-loss or target is hit. Turn it on?",
+                          { title: "Enable real Auto-Buy", confirmLabel: "Turn on", danger: false }
                         );
                         if (!ok) return;
                         lsSet("mx_autobuy_warned", true);

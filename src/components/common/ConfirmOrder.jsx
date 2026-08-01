@@ -4,6 +4,10 @@ import { fmt, pct } from "../../lib/format";
 import OptionPicker from "./OptionPicker";
 import { isOptionable } from "../../domain/fno";
 
+/* Assumed Delta crypto leverage for the SL/TP margin-equivalent hint (display-only; never changes an
+   order). Delta leverage is per-product/user-set — 25× is the app's working default for the hint. */
+const CRYPTO_LEV = 25;
+
 /**
  * ConfirmOrder — the "are you sure" step before any MANUAL buy or sell.
  *
@@ -275,6 +279,14 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
                 {tp !== "" ? `Auto-sell if it rises to ${fmt(price * (1 + (parseFloat(tp) || 0) / 100), market)}.` : ""}
               </div>
             )}
+            {/* Leveraged-crypto margin equivalent: SL/TP are PRICE moves; at ~25× a 1% move is ~25% of margin.
+                Display-only hint — the bracket order still uses the price %. */}
+            {isCrypto && (() => {
+              const s = parseFloat(sl), t = parseFloat(tp), parts = [];
+              if (Number.isFinite(s) && s > 0) parts.push(`SL ${s}% ≈ ${(s * CRYPTO_LEV).toFixed(0)}% of margin`);
+              if (Number.isFinite(t) && t > 0) parts.push(`TP ${t}% ≈ ${(t * CRYPTO_LEV).toFixed(0)}%`);
+              return parts.length ? <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 4 }}>{parts.join(" · ")} · at {CRYPTO_LEV}× leverage</div> : null;
+            })()}
             {/* Risk in MONEY, not just %. A real user thinks in "how much can I lose", not
                 percentages — so we show the max loss / target profit and the reward:risk. */}
             {total != null && (sl !== "" || tp !== "") && (
