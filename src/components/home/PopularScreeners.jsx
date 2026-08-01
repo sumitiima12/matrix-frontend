@@ -212,11 +212,17 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
      symbol in the current market, and keep only the ones with win rate > 50% AND total return > 10%.
      The winners become this screener's curated basket (selSyms), so the live scan and Auto-Buy then
      only consider those symbols. Requires ≥2 backtested trades so a single lucky trade can't qualify. */
-  const [autoSel, setAutoSel] = useState({ running: false, done: false, n: 0, total: 0, kept: 0 });
+  // User-tunable Auto-Select thresholds (defaults: win rate > 50%, return > 10%). Persisted per screener.
+  const critKey = `mx_scrcrit_${screener.key}`;
+  const [winMin, setWinMin] = useState(() => lsGet(critKey + "_w", 50));
+  const [retMin, setRetMin] = useState(() => lsGet(critKey + "_r", 10));
+  const [autoSel, setAutoSel] = useState({ running: false, done: false, n: 0, total: 0, kept: 0, win: 50, ret: 10 });
   const runAutoSelect = async () => {
     const syms = (UNIVERSE[market] || []).map((s) => s.sym);
     if (!syms.length || autoSel.running) return;
-    setAutoSel({ running: true, done: false, n: 0, total: syms.length, kept: 0 });
+    const wMin = Number(winMin) || 0, rMin = Number(retMin) || 0;
+    lsSet(critKey + "_w", wMin); lsSet(critKey + "_r", rMin);
+    setAutoSel({ running: true, done: false, n: 0, total: syms.length, kept: 0, win: wMin, ret: rMin });
     const cfg = { defs: eDefs, entry: eEntry, exit: (ovr && ovr.exit) || screener.exit || [], sl: defSL, tp: defTP, tf: eTf };
     const winners = [];
     let processed = 0;
@@ -228,7 +234,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
           const candles = await getHistory(yahooSymbol(sym), eTf, true);
           if (!candles || candles.length < 30) return null;
           const { stats } = backtest(cfg, candles, 1, eTf);
-          return (stats && stats.n >= 2 && stats.winRate > 50 && stats.totalRet > 10) ? sym : null;
+          return (stats && stats.n >= 2 && stats.winRate > wMin && stats.totalRet > rMin) ? sym : null;
         } catch { return null; }
       }));
       res.forEach((s) => { if (s) winners.push(s); });
@@ -237,7 +243,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
     }
     const next = { ...(ovr || {}), selSyms: winners };
     setOvr(next); lsSet(EDK, next);
-    setAutoSel({ running: false, done: true, n: syms.length, total: syms.length, kept: winners.length });
+    setAutoSel({ running: false, done: true, n: syms.length, total: syms.length, kept: winners.length, win: wMin, ret: rMin });
   };
   const clearAutoSelect = () => { const next = { ...(ovr || {}), selSyms: [] }; setOvr(next); lsSet(EDK, next); setAutoSel({ running: false, done: false, n: 0, total: 0, kept: 0 }); };
 
@@ -353,9 +359,20 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
         </div>
       </div>
 
-      {/* AUTO-SELECT SYMBOLS — backtest the whole market and keep only symbols with win rate > 50%
-          and return > 10%. Those become this screener's basket. Available to everyone. */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+      {/* AUTO-SELECT SYMBOLS — backtest the whole market and keep only symbols that clear the user's
+          win-rate and return thresholds (defaults: > 50% and > 10%). Those become the screener's basket. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+        {/* Editable criteria */}
+        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 800, color: "var(--muted)" }}>
+          Win % &gt;
+          <input value={winMin} onChange={(e) => setWinMin(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" disabled={autoSel.running} className="no-ring mono" style={inBox} />
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 800, color: "var(--muted)" }}>
+          Return % &gt;
+          <input value={retMin} onChange={(e) => setRetMin(e.target.value.replace(/[^0-9.-]/g, ""))} inputMode="decimal" disabled={autoSel.running} className="no-ring mono" style={inBox} />
+        </label>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
         <button onClick={runAutoSelect} disabled={autoSel.running} className="tap disp" style={{
           flex: 1, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)",
           borderRadius: 10, padding: "8px 12px", fontSize: 11.5, fontWeight: 800, cursor: autoSel.running ? "default" : "pointer",
@@ -371,8 +388,8 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
       {autoSel.done && !autoSel.running && (
         <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600, marginTop: 5 }}>
           {autoSel.kept > 0
-            ? `Kept ${autoSel.kept} of ${autoSel.total} symbols (win rate > 50% and return > 10% on ${eTf} backtest).`
-            : `No symbols met win rate > 50% and return > 10% — showing the whole market instead.`}
+            ? `Kept ${autoSel.kept} of ${autoSel.total} symbols (win rate > ${autoSel.win}% and return > ${autoSel.ret}% on ${eTf} backtest).`
+            : `No symbols met win rate > ${autoSel.win}% and return > ${autoSel.ret}% — showing the whole market instead. Lower the thresholds and re-run.`}
         </div>
       )}
 
