@@ -11,9 +11,10 @@ import ExitOptimizer from "./ExitOptimizer";
 import IndicatorOptimizer from "./IndicatorOptimizer";
 import MultiSelect from "../common/MultiSelect";
 import ScreenerTradeList from "./ScreenerTradeList";
-import { CondBuilder2, IndicatorDefs, TFS } from "../../pages/Automation";
+import { CondBuilder2, IndicatorDefs, TFS, TradeLog } from "../../pages/Automation";
+import { useBacktestStats } from "../../hooks/useBacktestStats";
 import { defOperands } from "../../domain/strategyLang";
-import { Pencil, SlidersHorizontal, Sparkles, ChevronRight } from "lucide-react";
+import { Pencil, SlidersHorizontal, Sparkles, ChevronRight, Activity } from "lucide-react";
 
 /* THE THREE POPULAR SCREENERS. Each is a real strategy config (indicators + entry chain) evaluated live
    on 5-minute candles by the backend /api/screener-scan. A symbol appears in a carousel only while its
@@ -143,6 +144,37 @@ const DEFAULT_ACTIVE_KEYS = ["swing-catcher", "bollinger-mean-reversion", "suppo
 const autoKeyFor = (key, market, short) => `mx_scrauto_${key}_${market}${short ? "_sell" : ""}`;
 const isScreenerActive = (key, market, short) => lsGet(autoKeyFor(key, market, short), DEFAULT_ACTIVE_KEYS.includes(key));
 
+/* Backtest stats + List of Trades for a screener card — the same numbers the Automate strategy cards
+   show, by running the screener's rules over its symbols (capped for cost). Mounted lazily (only when
+   the user expands the section) so 13 cards don't all backtest on load. */
+function ScreenerStats({ screenerKey, market, defs, entry, exit, sl, tp, tf, symbols }) {
+  const pseudo = useMemo(() => ({ id: `scr-${screenerKey}-${market}`, cfg: { mode: "builder", defs, entry, exit, sl, tp, tf }, symbols, tf, cap: 100000 }),
+    [screenerKey, market, defs, entry, exit, sl, tp, tf, symbols]);
+  const { loading, stats } = useBacktestStats(pseudo, {});
+  if (loading) return <div style={{ fontSize: 11, color: "var(--muted)", padding: "8px 2px" }}>Backtesting…</div>;
+  if (!stats || !stats.trades) return <div style={{ fontSize: 11, color: "var(--muted)", padding: "8px 2px" }}>{stats ? "No trades in the backtest window." : "No data to backtest."}</div>;
+  const cell = (label, val, col) => (
+    <div style={{ background: "var(--elev)", borderRadius: 8, padding: "6px 8px", minWidth: 0 }}>
+      <div style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", whiteSpace: "nowrap" }}>{label}</div>
+      <div className="mono" style={{ fontSize: 12, fontWeight: 800, color: col || "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{val}</div>
+    </div>
+  );
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginBottom: 8 }}>
+        {cell("Trades", stats.trades)}
+        {cell("Win %", stats.winRate != null ? stats.winRate.toFixed(0) + "%" : "—", (stats.winRate ?? 0) >= 50 ? "var(--up)" : "var(--down)")}
+        {cell("Return", (stats.retPct >= 0 ? "+" : "") + (stats.retPct || 0).toFixed(1) + "%", stats.retPct >= 0 ? "var(--up)" : "var(--down)")}
+        {cell("P&L", stats.pnl == null ? "—" : (stats.pnl >= 0 ? "+" : "") + fmt(stats.pnl, market), (stats.pnl || 0) >= 0 ? "var(--up)" : "var(--down)")}
+        {cell("Max DD", stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmt(stats.maxDD, market) : fmt(0, market)) : "—", "var(--down)")}
+        {cell("Symbols", stats.symbols || 0)}
+      </div>
+      <TradeLog trades={stats.tradeList} market={market} showSym />
+      <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 4 }}>Backtested on {symbols.length} symbol{symbols.length === 1 ? "" : "s"} — hindsight, not a guarantee.</div>
+    </div>
+  );
+}
+
 /* Buy (long) vs Sell (short) toggle — mirrors the Automate Samples/Premium toggle. In "Sell"
    mode a Popular screener shorts its matches instead of buying them (same setup, opposite side). */
 function ScreenerDirToggle({ dir, setDir }) {
@@ -158,7 +190,7 @@ function ScreenerDirToggle({ dir, setDir }) {
   );
 }
 
-const capDefault = (m) => (m === "US" || m === "Crypto") ? "1000" : "100000";
+const capDefault = (m) => (m === "US" || m === "Crypto") ? "100" : "10000";   // US/Crypto: 100 (USD); Indian/Commodity: 10,000 (₹)
 // Per-symbol quantity default: crypto is a USD notional (100), everything else is 1 unit/share.
 const qtyDefaultFor = (m) => (m === "Crypto" ? 100 : 1);
 const GRAD = "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)";
@@ -192,11 +224,15 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
   const eDefs = (ovr && ovr.defs) || screener.defs;
   const eEntry = (ovr && ovr.entry) || screener.entry;
   const eTf = (ovr && ovr.tf) || screener.tf;
-  // Admin curation: an explicit symbol basket, per-symbol qty/SL/TP overrides, and a publish flag.
-  const eSel = (ovr && Array.isArray(ovr.selSyms)) ? ovr.selSyms : [];
+  // The symbol BASKET (auto-selected / hand-picked symbols) is PER MARKET — a crypto auto-select must
+  // not carry its BTC/ETH picks into US. Stored separately from the (global) admin rule overrides, keyed
+  // by screener + market + side. Falls back to the admin-curated basket in `ovr` when unset for a market.
+  const basketKey = `mx_scrbasket_${screener.key}_${market}${short ? "_sell" : ""}`;
+  const [basket, setBasket] = useState(() => lsGet(basketKey, null));
+  const eSel = (basket && Array.isArray(basket.selSyms)) ? basket.selSyms : [];
   // Auto-Select ran and NOTHING qualified → an intentional EMPTY basket ("None"), not "show the whole
   // market". Distinguishes "no basket set" (scan everything) from "auto-select found none" (scan nothing).
-  const eNone = !!(ovr && ovr.selNone);
+  const eNone = !!(basket && basket.selNone);
   const eOv = (ovr && ovr.ov) || {};
   const published = !(ovr && ovr.published === false);
   const cfgSig = useMemo(() => JSON.stringify({ d: eDefs, e: eEntry, t: eTf, s: eSel, n: eNone }), [eDefs, eEntry, eTf, eSel, eNone]);
@@ -207,7 +243,11 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
       defs: edit.defs, entry: edit.entry, exit: edit.exit, tf: edit.tf || screener.tf,
       selSyms: edit.selSyms || [], ov: edit.ov || {}, published: edit.published !== false,
     };
-    setOvr(next); lsSet(EDK, next); setEdit(null);
+    setOvr(next); lsSet(EDK, next);
+    // The symbol basket is per-market — write the admin's edited basket to THIS market's basket too.
+    const nb = { selSyms: edit.selSyms || [], selNone: false };
+    setBasket(nb); lsSet(basketKey, nb);
+    setEdit(null);
   };
   const startEdit = () => setEdit({
     name: dispName, sl: defSL, tp: defTP, tf: eTf,
@@ -224,12 +264,31 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
      only consider those symbols. Requires ≥2 backtested trades so a single lucky trade can't qualify. */
   // User-tunable Auto-Select thresholds (defaults: win rate > 50%, return > 10%). Persisted per screener.
   const critKey = `mx_scrcrit_${screener.key}`;
-  const [winMin, setWinMin] = useState(() => lsGet(critKey + "_w", 50));
-  const [retMin, setRetMin] = useState(() => lsGet(critKey + "_r", 10));
-  const [autoSel, setAutoSel] = useState({ running: false, done: false, n: 0, total: 0, kept: 0, win: 50, ret: 10 });
+  const [winMin, setWinMin] = useState(() => lsGet(critKey + "_w", 45));
+  const [retMin, setRetMin] = useState(() => lsGet(critKey + "_r", 5));
+  const [autoSel, setAutoSel] = useState({ running: false, done: false, n: 0, total: 0, kept: 0, win: 45, ret: 5 });
   // Inline symbol basket editor (available to everyone, via the pencil on the card).
   const [symEdit, setSymEdit] = useState(false);
-  const setSelSyms = (v) => { const next = { ...(ovr || {}), selSyms: v, selNone: false }; setOvr(next); lsSet(EDK, next); };
+  const setSelSyms = (v) => { const nb = { selSyms: v, selNone: false }; setBasket(nb); lsSet(basketKey, nb); };
+  /* When the MARKET (or Buy/Sell side) changes, reload THIS market's basket and reset the auto-select
+     UI — otherwise a crypto run's "Kept 2 of 44 / Re-run" state and picks leak onto US. */
+  useEffect(() => {
+    setBasket(lsGet(basketKey, null));
+    setAutoSel({ running: false, done: false, n: 0, total: 0, kept: 0, win: 45, ret: 5 });
+    setSymEdit(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [basketKey]);
+
+  /* Card-level DEFAULT SL/TP + optimizers — available to everyone. The SL/TP the user types (or an
+     optimiser applies) is stored on the screener's override so the card's auto-buy uses it. */
+  const [optOpen, setOptOpen] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
+  const [slDraft, setSlDraft] = useState(String(defSL));
+  const [tpDraft, setTpDraft] = useState(String(defTP));
+  const writeSLTP = (sl, tp) => { const next = { ...(ovr || {}), sl, tp }; setOvr(next); lsSet(EDK, next); };
+  const applyExits = (sl, tp) => { setSlDraft(String(sl)); setTpDraft(String(tp)); writeSLTP(sl, tp); };
+  const applyIndicators = (nd, ntf) => { const next = { ...(ovr || {}), defs: nd, tf: ntf }; setOvr(next); lsSet(EDK, next); };
+  const optSyms = (n) => (eSel.length ? eSel : (UNIVERSE[market] || []).map((s) => s.sym)).slice(0, n);
   const runAutoSelect = async () => {
     const syms = (UNIVERSE[market] || []).map((s) => s.sym);
     if (!syms.length || autoSel.running) return;
@@ -255,11 +314,11 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
       setAutoSel((st) => ({ ...st, n: Math.min(processed, syms.length), kept: winners.length }));
     }
     // When nothing qualifies, set an intentional EMPTY basket ("None") — show no symbols, NOT the whole market.
-    const next = { ...(ovr || {}), selSyms: winners, selNone: winners.length === 0 };
-    setOvr(next); lsSet(EDK, next);
+    const nb = { selSyms: winners, selNone: winners.length === 0 };
+    setBasket(nb); lsSet(basketKey, nb);
     setAutoSel({ running: false, done: true, n: syms.length, total: syms.length, kept: winners.length, win: wMin, ret: rMin });
   };
-  const clearAutoSelect = () => { const next = { ...(ovr || {}), selSyms: [], selNone: false }; setOvr(next); lsSet(EDK, next); setAutoSel({ running: false, done: false, n: 0, total: 0, kept: 0 }); };
+  const clearAutoSelect = () => { const nb = { selSyms: [], selNone: false }; setBasket(nb); lsSet(basketKey, nb); setAutoSel({ running: false, done: false, n: 0, total: 0, kept: 0, win: 45, ret: 5 }); };
 
   // Live scan for THIS market's universe.
   useEffect(() => {
@@ -419,6 +478,40 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
           <MultiSelect label="Symbols" options={(UNIVERSE[market] || []).map((s) => s.sym)} value={eSel} onChange={setSelSyms} allLabel="Whole market" />
         </div>
       )}
+
+      {/* DEFAULT SL/TP (editable) + Optimize SL & TP + Optimize Indicators — available to everyone. */}
+      <div style={{ marginTop: 8 }}>
+        <button onClick={() => setOptOpen((v) => !v)} className="tap disp" style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--line)", background: optOpen ? "var(--primary-soft)" : "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: "8px 12px", fontSize: 11.5, fontWeight: 800 }}>
+          <SlidersHorizontal size={13} color="var(--primary)" /> Default SL/TP & Optimize {optOpen ? "▲" : "▼"}
+        </button>
+        {optOpen && (
+          <div style={{ marginTop: 8, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, fontWeight: 800, color: "var(--down)" }}>Default SL %
+                <input value={slDraft} onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, ""); setSlDraft(v); writeSLTP(Number(v) || defSL, Number(tpDraft) || defTP); }} inputMode="decimal" className="no-ring mono" style={inBox} />
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, fontWeight: 800, color: "var(--up)" }}>Default TP %
+                <input value={tpDraft} onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, ""); setTpDraft(v); writeSLTP(Number(slDraft) || defSL, Number(v) || defTP); }} inputMode="decimal" className="no-ring mono" style={inBox} />
+              </label>
+            </div>
+            <ExitOptimizer defs={eDefs} entry={eEntry} tf={eTf} appSyms={optSyms(8)} currentSl={defSL} currentTp={defTP} onApply={(sl, tp) => applyExits(sl, tp)} />
+            <div style={{ height: 8 }} />
+            <IndicatorOptimizer defs={eDefs} entry={eEntry} tf={eTf} appSyms={optSyms(6)} currentSl={defSL} currentTp={defTP} onApply={(nd, ntf) => applyIndicators(nd, ntf)} />
+          </div>
+        )}
+      </div>
+
+      {/* Backtest STATS + List of Trades — like the Automate strategy cards. Lazy: backtests only when opened. */}
+      <div style={{ marginTop: 8 }}>
+        <button onClick={() => setStatsOpen((v) => !v)} className="tap disp" style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--line)", background: statsOpen ? "var(--primary-soft)" : "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: "8px 12px", fontSize: 11.5, fontWeight: 800 }}>
+          <Activity size={13} color="var(--primary)" /> Stats & Trades {statsOpen ? "▲" : "▼"}
+        </button>
+        {statsOpen && (
+          <div style={{ marginTop: 8, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: 10 }}>
+            <ScreenerStats screenerKey={screener.key} market={market} defs={eDefs} entry={eEntry} exit={(ovr && ovr.exit) || screener.exit || []} sl={defSL} tp={defTP} tf={eTf} symbols={eSel.length ? eSel.slice(0, 10) : (UNIVERSE[market] || []).map((s) => s.sym).slice(0, 6)} />
+          </div>
+        )}
+      </div>
 
       {/* Admin edit panel — name, default SL/TP, timeframe, indicators and entry/exit rules. */}
       {isAdmin && edit && (

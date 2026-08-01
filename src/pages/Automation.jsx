@@ -113,7 +113,7 @@ function MaxSlSelect({ value, onChange }) {
 /* LIST OF TRADES — a collapsible ledger of every round-trip a backtest executed: entry & exit
    date/time, prices, return and (sized) P&L. The button reveals the table; once open it can be
    exported to CSV. Reused by the strategy-card backtest and the Automate ▸ Backtest rows. */
-function TradeLog({ trades, market = "IN", showSym = false, accent = "#7C3AED" }) {
+export function TradeLog({ trades, market = "IN", showSym = false, accent = "#7C3AED" }) {
   const [open, setOpen] = useState(false);
   const list = trades || [];
   const dt = (ms) => {
@@ -2581,8 +2581,10 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
      before deploying. Works from Samples and from your own strategies. */
   const cloneStrategy = (s) => {
     const id = "c" + Date.now();
+    // Default the copy's suffix to its SYMBOL (market-relevant one first), e.g. "Golden Cross - RELIANCE".
+    const sym = (s.symbols || []).find((x) => marketOf(x) === market) || (s.symbols || [])[0];
     setStrats((p) => [
-      { id, name: s.name + " (copy)", by: creator, active: false, alerts: false, cfg: s.cfg, cap: s.cap || 100000, symbols: (s.symbols || []).slice(), tf: s.tf, created: Date.now() },
+      { id, name: sym ? `${s.name} - ${sym}` : `${s.name} (copy)`, by: creator, active: false, alerts: false, cfg: s.cfg, cap: s.cap || 100000, symbols: (s.symbols || []).slice(), tf: s.tf, created: Date.now() },
       ...p,
     ]);
     setToast(`Cloned "${s.name}" into My strategies — edit it there.`);
@@ -2711,8 +2713,10 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const clonePremium = (s) => {
     const id = "cp" + Date.now();
     const dsz = market === "Crypto" ? 200 : 1;
+    // Default the copy's suffix to its SYMBOL (market-relevant one first), matching the backtest "Create" naming.
+    const sym = (s.symbols || []).find((x) => marketOf(x) === market) || (s.symbols || [])[0];
     setStrats((p) => [
-      { id, name: `${s.name} (copy)`, by: creator, active: false, alerts: false, copy: true, locked: true, sourceName: s.name,
+      { id, name: sym ? `${s.name} - ${sym}` : `${s.name} (copy)`, by: creator, active: false, alerts: false, copy: true, locked: true, sourceName: s.name,
         cfg: { ...(s.cfg || {}) }, cap: s.cap || dsz, qty: s.qty || dsz, symbols: (s.symbols || []).slice(),
         tf: s.tf || (s.cfg && s.cfg.tf) || "5m", created: Date.now() },
       ...p,
