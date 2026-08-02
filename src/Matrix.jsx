@@ -615,15 +615,19 @@ function AppInner() {
     fetch(`${BACKEND_URL}/health`).catch(() => {});
   }, []);
 
-  /* Finish the broker OAuth handshake. Zerodha comes back with ?request_token=, FYERS with
-     ?auth_code=, and Dhan's partner consent with ?tokenId=. We strip it from the URL immediately
-     afterwards — a token sitting in the address bar ends up in history and in referrer headers. */
+  /* Finish the broker OAuth handshake. Zerodha comes back with ?request_token=, FYERS with ?auth_code=,
+     Schwab with the standard ?code=, and Dhan's partner consent with ?tokenId=. We strip it from the URL
+     immediately afterwards — a token in the address bar ends up in history and referrer headers. */
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
-    const token = p.get("request_token") || p.get("auth_code") || p.get("tokenId");
+    const token = p.get("request_token") || p.get("auth_code") || p.get("code") || p.get("tokenId");
     if (!token) return;
-    const which = p.get("request_token") ? "zerodha" : p.get("tokenId") ? "dhan" : "fyers";
     const oauthState = p.get("state") || undefined;   // CSRF nonce the broker echoed back (fyers/schwab)
+    // R7-P1-02: resolve the broker from the TRUSTED state we stored at login (so Schwab's ?code= isn't
+    // mis-routed as FYERS). Fall back to the param shape only if the stored broker is unavailable.
+    let which = null;
+    try { which = oauthState ? sessionStorage.getItem("mx_oauth_bk_" + oauthState) : null; } catch { which = null; }
+    if (!which) which = p.get("request_token") ? "zerodha" : p.get("tokenId") ? "dhan" : p.get("code") && !p.get("auth_code") ? "schwab" : "fyers";
     connectBroker(which, token, undefined, undefined, oauthState)
       .then(() => setBuyToast({ t: "Broker connected — prices are now live" }))
       .catch((e) => setBuyToast({ t: String(e.message || e), e: true }))

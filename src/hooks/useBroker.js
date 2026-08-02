@@ -87,7 +87,7 @@ export function useBroker({ onTick, userId, intervalMs = 2000 } = {}) {
       // verify the OAuth transaction is bound to it.
       let rd; try { rd = state ? sessionStorage.getItem("mx_oauth_rd_" + state) : null; } catch { rd = null; }
       const s = await brokerSession(brokerId, requestToken, userId, extra, state, rd || undefined);
-      try { if (state) sessionStorage.removeItem("mx_oauth_rd_" + state); } catch { /* ignore */ }
+      try { if (state) { sessionStorage.removeItem("mx_oauth_rd_" + state); sessionStorage.removeItem("mx_oauth_bk_" + state); } } catch { /* ignore */ }
       saveSession(s);                               // ADDS to the map; does not evict others
       recordConnect(s.broker);                      // remember for the daily-reconnect nudge
       // Connected FOR a specific market -> make it the preferred driver for that market.

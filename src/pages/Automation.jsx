@@ -1019,11 +1019,17 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
         const a = await pauseAutoBuy(userId, s.id, false, "filled");   // adopt the real broker position
         if (a && a.needsReview) await confirmDialog(a.reason || "Couldn't adopt a position. If it already closed, resolve as no-fill; otherwise use Stop & sell.", { title: "Couldn't adopt", confirmLabel: "OK", cancelLabel: "OK" });
       } else {
+        const delta = s.broker === "delta";
         const noFill = await confirmDialog(
-          "Confirm the order did NOT fill and there is NO open position for this strategy at your broker. Only then is it safe to resume.",
-          { title: "Confirm no fill", confirmLabel: "Confirmed — no position", cancelLabel: "Keep paused" }
+          delta
+            ? "Confirm the order did NOT fill. We'll re-check your Delta account is flat before resuming — if it shows a position, you'll be asked to adopt instead."
+            : "Confirm the order did NOT fill. We can't verify this broker, so the strategy will be STOPPED (not resumed) to prevent a duplicate — re-arm it once you've confirmed your account is flat.",
+          { title: "Confirm no fill", confirmLabel: delta ? "Confirmed — no position" : "Confirm & stop strategy", cancelLabel: "Keep paused" }
         );
-        if (noFill) await pauseAutoBuy(userId, s.id, false, "nofill");
+        if (noFill) {
+          const nf = await pauseAutoBuy(userId, s.id, false, "nofill");
+          if (nf && nf.needsReview) await confirmDialog(nf.reason || "Your broker shows a position — adopt it instead.", { title: "Still open at broker", confirmLabel: "OK", cancelLabel: "OK" });
+        }
       }
     }
     refresh();

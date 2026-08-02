@@ -183,9 +183,17 @@ export async function brokerLoginUrl(broker, redirect, userId) {
     `/api/broker/login-url?broker=${broker}&redirect=${encodeURIComponent(redirect || "")}${userId ? `&userId=${encodeURIComponent(userId)}` : ""}`,
     { ...tokenHdr(), ...(userId ? { "X-User-Id": String(userId) } : {}) }
   );
-  // R6-P1-02: remember the EXACT redirect used, keyed by the state nonce, so we echo the identical value
-  // back at session completion for the server's redirect-binding check.
-  try { if (d.state && redirect) sessionStorage.setItem("mx_oauth_rd_" + d.state, redirect); } catch { /* ignore */ }
+  // R7-P1-01: remember the EFFECTIVE redirect the SERVER used (canonical FYERS_REDIRECT_URI when it pins
+  // one), keyed by the state nonce, so we echo the identical value at session completion — not the browser
+  // URL we requested, which the server may have overridden. R7-P1-02: also remember the initiating broker
+  // keyed by state, so a callback (e.g. Schwab's ?code=) resolves to the right broker, not a guess.
+  try {
+    if (d.state) {
+      const effRedirect = (d.redirect != null ? d.redirect : redirect);
+      if (effRedirect) sessionStorage.setItem("mx_oauth_rd_" + d.state, effRedirect);
+      sessionStorage.setItem("mx_oauth_bk_" + d.state, broker);
+    }
+  } catch { /* ignore */ }
   return d.url;
 }
 
