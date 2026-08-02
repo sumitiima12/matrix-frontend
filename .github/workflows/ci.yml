@@ -1,0 +1,28 @@
+name: CI
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Unit + domain + parity tests
+        run: node --import ./test/register.mjs --test test/*.test.mjs
+      - name: Production build
+        run: npm run build
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+      - name: Playwright (desktop + mobile)
+        continue-on-error: true
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:e2e --if-present
