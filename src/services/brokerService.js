@@ -326,7 +326,17 @@ export async function brokerPlaceOrder(session, userId, order, confirmLive) {
   const d = await r.json().catch(() => ({}));
   // A rejected order comes back 400 with a human reason (e.g. insufficient balance). Surface
   // that reason verbatim so the user sees WHY, not a generic HTTP code.
-  if (!r.ok) { const e = new Error(d.reason || d.error || `HTTP ${r.status}`); e.status = d.status || "rejected"; e.reason = d.reason || d.error; throw e; }
+  if (!r.ok) {
+    const e = new Error(d.reason || d.error || `HTTP ${r.status}`);
+    e.status = d.status || "rejected"; e.reason = d.reason || d.error; e.httpStatus = r.status;
+    /* R21-P1-01: mark whether the broker outcome is KNOWN. A 400/422 with a reason is a CONCLUSIVE rejection
+       (nothing executed → safe to retry with a new id). A 409 (idempotency in-flight/unknown), 408/425/429,
+       423 (risk-lock) or 5xx is AMBIGUOUS — the order may have reached the broker — so the caller must keep
+       the SAME idempotency id and prompt the user to reconcile, never silently fire a new order. */
+    e.conclusiveReject = (r.status === 400 || r.status === 422) && !!(d.reason || d.error) && d.status !== "unknown";
+    e.ambiguous = !e.conclusiveReject;
+    throw e;
+  }
   return d;
 }
 

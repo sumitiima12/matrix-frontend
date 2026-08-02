@@ -485,10 +485,17 @@ function AppInner() {
     /* R20-P1-01: block a duplicate submission of the SAME intent while one is in flight, and reuse ONE stable
        clientRequestId for it (so a legitimate retry reconciles rather than double-submits). A caller with its
        own durable identity (e.g. a candle-keyed auto/screener buy) can pass opts.intentKey/opts.clientRequestId. */
-    const intentKey = opts.intentKey || `${route.id}|${bsym}|${side}|${q}`;
-    if (inFlightOrdersRef.current.has(intentKey)) { setBuyToast({ t: "That order is already being placed — please wait.", e: true }); return false; }
-    const reqId = opts.clientRequestId || newActionId();
-    inFlightOrdersRef.current.set(intentKey, reqId);
+    // R21-P2-03: the intent key includes PRODUCT + protection so two deliberately-different orders (e.g. a plain
+    // buy vs the same buy with a stop) aren't treated as one duplicate. Same-config rapid taps still collapse.
+    const intentKey = opts.intentKey || `${route.id}|${bsym}|${side}|${q}|${prod || "CNC"}|${opts.sl || 0}|${opts.tp || 0}|${opts.tsl || 0}|${opts.strategy ? "S" : ""}`;
+    /* R21-P1-01: the lock entry carries { reqId, state }. `inflight` blocks a concurrent duplicate. `ambiguous`
+       (a prior attempt whose broker outcome is UNKNOWN — timeout/5xx/idempotency-block) does NOT block; instead a
+       retry REUSES the same reqId so the server replays/blocks the one order rather than placing a second, and the
+       user is told to reconcile. The id is only released on a CONCLUSIVE outcome (success or a definite reject). */
+    const existing = inFlightOrdersRef.current.get(intentKey);
+    if (existing && existing.state === "inflight") { setBuyToast({ t: "That order is already being placed — please wait.", e: true }); return false; }
+    const reqId = (existing && existing.state === "ambiguous" && !opts.clientRequestId) ? existing.reqId : (opts.clientRequestId || newActionId());
+    inFlightOrdersRef.current.set(intentKey, { reqId, state: "inflight" });
     opts = { ...opts, clientRequestId: reqId };
     try {
       const isDelta = route.id === "delta";
@@ -537,16 +544,24 @@ function AppInner() {
           real: true, status, orderId: r.orderId || null, tp: opts.tp || undefined, sl: opts.sl || undefined,
         });
       } catch {}
+      // Conclusive success → release the intent lock.
+      inFlightOrdersRef.current.delete(intentKey);
       setBuyToast({ t }); refreshPortfolio(); return true;
     } catch (e) {
-      // REJECTED (e.g. insufficient balance). Record the reject WITH the reason so it shows in
-      // history with a status — never as a phantom position with P&L — and tell the user why.
       const reason = e && e.reason ? e.reason : String(e.message || e);
-      try { recordTrade({ id: `rej-${Date.now()}-${s.sym}`, sym: s.sym, market: mkt, qty: q, side, short: side === "SELL" || undefined, broker: route.id, entryAt: Date.now(), tradeType: opts.tradeType || "Manual", real: true, status: "rejected", rejectReason: reason }); } catch {}
-      setBuyToast({ t: `Order rejected: ${reason}`, e: true }); return false;
-    } finally {
-      // Release the in-flight lock for this intent once the submission reaches a terminal outcome.
-      inFlightOrdersRef.current.delete(intentKey);
+      /* R21-P1-01: only a CONCLUSIVE broker rejection means nothing executed — release the lock so a fresh order
+         (new id) is allowed. An AMBIGUOUS failure (timeout / 5xx / idempotency in-flight / risk-lock) leaves the
+         SAME reqId parked as `ambiguous`: a retry reuses it (server dedupes/replays) and we prompt to reconcile
+         rather than mint a new action that could double the order. */
+      if (e && e.conclusiveReject) {
+        inFlightOrdersRef.current.delete(intentKey);
+        try { recordTrade({ id: `rej-${Date.now()}-${s.sym}`, sym: s.sym, market: mkt, qty: q, side, short: side === "SELL" || undefined, broker: route.id, entryAt: Date.now(), tradeType: opts.tradeType || "Manual", real: true, status: "rejected", rejectReason: reason }); } catch {}
+        setBuyToast({ t: `Order rejected: ${reason}`, e: true });
+      } else {
+        inFlightOrdersRef.current.set(intentKey, { reqId, state: "ambiguous" });
+        setBuyToast({ t: `Couldn't confirm your ${side.toLowerCase()} order — check your broker before retrying. A retry will reuse the same order (no duplicate).`, e: true });
+      }
+      return false;
     }
   };
   const buyStockNow  = (stock, qty = 1, opts = {}) => {
