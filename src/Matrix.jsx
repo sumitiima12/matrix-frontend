@@ -312,6 +312,11 @@ function AppInner() {
      homepage. We flag it here; the per-user hydration effect reads the flag and marks
      onboarding as skipped for this account. */
   const freshSignupRef = useRef(false);
+  // R20-P1-01: serialize real order submissions that DON'T go through the confirm sheet (instant buy, homepage
+  // auto-buy, screener auto-buy). Maps an in-flight intent key → the stable clientRequestId used for that
+  // submission, so a rapid double-tap / repeated signal callback / rerender race can't fire two real orders,
+  // and a genuine retry reuses the same idempotency identity.
+  const inFlightOrdersRef = useRef(new Map());
   const onAuthed = (a, opts) => { doLogin(a); setAuthed(true); if (opts && opts.fresh) freshSignupRef.current = true; };
   const { portfolio, setPortfolio, walletMap, setWalletMap, adjustWallet, updateHolding, intel, health, sectors } = usePortfolio();
 
@@ -477,6 +482,14 @@ function AppInner() {
     if (!route) { setBuyToast({ t: `No broker connected for ${MKT_LABEL[mkt] || mkt} — cannot place a real order`, e: true }); return false; }
     const bsym = brokerSymbol(s.sym, route.id);
     if (!bsym) { setBuyToast({ t: `${route.meta.name} can't trade ${s.sym} — no symbol mapping`, e: true }); return false; }
+    /* R20-P1-01: block a duplicate submission of the SAME intent while one is in flight, and reuse ONE stable
+       clientRequestId for it (so a legitimate retry reconciles rather than double-submits). A caller with its
+       own durable identity (e.g. a candle-keyed auto/screener buy) can pass opts.intentKey/opts.clientRequestId. */
+    const intentKey = opts.intentKey || `${route.id}|${bsym}|${side}|${q}`;
+    if (inFlightOrdersRef.current.has(intentKey)) { setBuyToast({ t: "That order is already being placed — please wait.", e: true }); return false; }
+    const reqId = opts.clientRequestId || newActionId();
+    inFlightOrdersRef.current.set(intentKey, reqId);
+    opts = { ...opts, clientRequestId: reqId };
     try {
       const isDelta = route.id === "delta";
       // SL/TP/exits apply to BOTH longs and shorts — the backend mirrors the levels by side.
@@ -490,6 +503,10 @@ function AppInner() {
         tslPct: opts.tsl > 0 ? opts.tsl : undefined,
         autoExit: useEngine || undefined,
         strategy: opts.strategy || undefined,
+        // Order identity for this path too (not just the confirm sheet): mint a stable id per gesture so a
+        // transport retry replays instead of double-submitting. Callers that already own a stable id
+        // (e.g. a candle-keyed screener buy) can pass opts.clientRequestId to reuse it.
+        clientRequestId: opts.clientRequestId || newActionId(),
         riskLimits,   // user's opt-in caps (off by default) — the server check enforces them
       }, true);
       const status = r.status || "filled";                          // filled | partial | PENDING | REJECTED | FILLED
@@ -527,6 +544,9 @@ function AppInner() {
       const reason = e && e.reason ? e.reason : String(e.message || e);
       try { recordTrade({ id: `rej-${Date.now()}-${s.sym}`, sym: s.sym, market: mkt, qty: q, side, short: side === "SELL" || undefined, broker: route.id, entryAt: Date.now(), tradeType: opts.tradeType || "Manual", real: true, status: "rejected", rejectReason: reason }); } catch {}
       setBuyToast({ t: `Order rejected: ${reason}`, e: true }); return false;
+    } finally {
+      // Release the in-flight lock for this intent once the submission reaches a terminal outcome.
+      inFlightOrdersRef.current.delete(intentKey);
     }
   };
   const buyStockNow  = (stock, qty = 1, opts = {}) => {
