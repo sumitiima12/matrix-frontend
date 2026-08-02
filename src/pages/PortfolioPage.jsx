@@ -453,7 +453,8 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
                     )}
                   </div>
                   <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>
-                    {h.qty} @ {h.avg != null ? ccy + h.avg.toFixed(2) : "—"}
+                    {(() => { const q = Number(h.qty); return !Number.isFinite(q) ? h.qty : Math.abs(q) >= 1 ? (+q.toFixed(4)).toString() : (+q.toPrecision(4)).toString(); })()} @ {h.avg != null ? ccy + h.avg.toFixed(2) : "—"}
+                    {h.notional != null && <span style={{ opacity: .75 }}> · {ccy}{Math.abs(h.notional) >= 100 ? Math.abs(h.notional).toFixed(0) : Math.abs(h.notional).toFixed(2)}</span>}
                   </div>
                 </div>
                 <div style={{ textAlign: "right" }}>

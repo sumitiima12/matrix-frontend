@@ -671,12 +671,64 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
    "Screener Auto Buy" trade in the current market (excluding rejects): realised P&L on closed trades plus
    unrealised P&L on still-open ones (against the live price), with Win/Loss and return-on-deployed. Mirrors
    the Automate dashboard so the two feel consistent. */
+/* Shared trade/position table for a dashboard drill-down. `rows` are trade objects already scoped to the
+   selected market + order type. Columns match the product spec: Symbol, Amount, entry date/time, entry price,
+   exit price, exit date/time, exit type, P&L, Return. Set onlyOpen to render just the live positions. */
+export function DashTradeTable({ rows = [], market, priceOf, onlyOpen = false, cap = 0 }) {
+  const dt = (ms) => { if (!ms) return { d: "—", t: "" }; const x = new Date(ms); return { d: x.toLocaleDateString("en-GB"), t: x.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) }; };
+  const list = useMemo(() => {
+    const mapped = (rows || []).map((t) => {
+      const isOpen = t.exitAt == null || t.exit == null;
+      const cur = isOpen ? (priceOf(t.sym) != null ? priceOf(t.sym) : t.entry) : t.exit;
+      const dir = (t.side === "SELL" || t.short) ? -1 : 1;
+      const qty = Number(t.qty || 0);
+      const pnl = (Number(cur) - Number(t.entry)) * qty * dir;
+      const retPct = Number(t.entry) ? ((Number(cur) / Number(t.entry)) - 1) * 100 * dir : 0;
+      return { sym: t.sym, amount: Number(t.entry) * qty, entryAt: t.entryAt, entry: Number(t.entry), exit: isOpen ? null : Number(t.exit), exitAt: isOpen ? null : t.exitAt, exitType: isOpen ? "Open" : (t.exitType || "Closed"), pnl, retPct, open: isOpen };
+    }).filter((r) => (onlyOpen ? r.open : true)).sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
+    return cap > 0 ? mapped.slice(0, cap) : mapped;
+  }, [rows, priceOf, onlyOpen, cap]);
+  const th = { fontSize: 8.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", padding: "6px 7px", textAlign: "left", whiteSpace: "nowrap" };
+  const td = { fontSize: 10.5, fontWeight: 700, padding: "6px 7px", borderTop: "1px solid var(--line)", whiteSpace: "nowrap" };
+  if (!list.length) return <div style={{ fontSize: 11, color: "var(--muted)", padding: "10px 4px" }}>{onlyOpen ? "No open positions." : "No trades in the selected period."}</div>;
+  return (
+    <div style={{ overflowX: "auto", maxHeight: 320, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 10, marginTop: 8 }}>
+      <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 640 }}>
+        <thead><tr>
+          <th style={th}>Symbol</th><th style={{ ...th, textAlign: "right" }}>Amount</th><th style={th}>Entry</th>
+          <th style={{ ...th, textAlign: "right" }}>Entry px</th><th style={{ ...th, textAlign: "right" }}>Exit px</th>
+          <th style={th}>Exit</th><th style={th}>Exit type</th>
+          <th style={{ ...th, textAlign: "right" }}>P&amp;L</th><th style={{ ...th, textAlign: "right" }}>Return</th>
+        </tr></thead>
+        <tbody>
+          {list.map((r, i) => { const e = dt(r.entryAt), x = dt(r.exitAt); return (
+            <tr key={i}>
+              <td style={{ ...td, fontWeight: 800 }}>{r.sym}</td>
+              <td style={{ ...td, textAlign: "right" }}>{fmt(r.amount, market)}</td>
+              <td style={td}><span style={{ fontWeight: 800 }}>{e.d}</span> <span style={{ color: "var(--muted)" }}>{e.t}</span></td>
+              <td style={{ ...td, textAlign: "right" }}>{fmt(r.entry, market)}</td>
+              <td style={{ ...td, textAlign: "right" }}>{r.exit == null ? "—" : fmt(r.exit, market)}</td>
+              <td style={td}>{r.open ? <span style={{ color: "var(--primary)", fontWeight: 800 }}>Open</span> : <><span style={{ fontWeight: 800 }}>{x.d}</span> <span style={{ color: "var(--muted)" }}>{x.t}</span></>}</td>
+              <td style={{ ...td, color: r.exitType === "Stop loss" || r.exitType === "Trailing stop" ? "var(--down)" : r.exitType === "Exit trigger" ? "var(--up)" : "var(--muted)" }}>{r.exitType}</td>
+              <td style={{ ...td, textAlign: "right", color: r.pnl >= 0 ? "var(--up)" : "var(--down)" }}>{(r.pnl >= 0 ? "+" : "") + fmt(r.pnl, market)}</td>
+              <td style={{ ...td, textAlign: "right", color: r.retPct >= 0 ? "var(--up)" : "var(--down)" }}>{(r.retPct >= 0 ? "+" : "") + r.retPct.toFixed(2)}%</td>
+            </tr>
+          ); })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function ScreenerDashboard({ trades = [], market }) {
+  const [drill, setDrill] = useState(null);      // null | 'trades' | 'open'
+  const [seeAllOpen, setSeeAllOpen] = useState(false);
   const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a && a.price != null ? a.price : null; };
   const pnlOf = (t, px) => {
     const dir = (t.side === "SELL" || t.short) ? -1 : 1;
     return ((Number(px) - Number(t.entry)) * Number(t.qty || 0)) * dir;
   };
+  // Market selection FIRST: everything here is scoped to the selected market + the Screener order type.
   const mine = (trades || []).filter((t) =>
     t && (t.tradeType === "Screener Auto Buy") && (t.market || "") === market && t.status !== "rejected" && Number(t.entry) > 0);
   const closed = mine.filter((t) => t.exitAt != null && t.exit != null);
@@ -690,12 +742,14 @@ function ScreenerDashboard({ trades = [], market }) {
   const ret = invested > 0 ? (pnl / invested) * 100 : null;
   if (!mine.length) return null;   // nothing traded yet — no empty dashboard
   const up = pnl >= 0;
-  const Tile = ({ k, v, c }) => (
-    <div style={{ flex: "1 1 0", minWidth: 0, background: "rgba(0,0,0,.05)", borderRadius: 12, padding: "9px 8px" }}>
-      <div style={{ fontSize: 9, opacity: .85, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".02em", whiteSpace: "nowrap" }}>{k}</div>
+  const Tile = ({ k, v, c, onClick, active }) => (
+    <button onClick={onClick} disabled={!onClick} className={onClick ? "tap" : undefined}
+      style={{ flex: "1 1 0", minWidth: 0, textAlign: "left", background: active ? "var(--primary-soft)" : "rgba(0,0,0,.05)", border: active ? "1px solid var(--primary)" : "1px solid transparent", borderRadius: 12, padding: "9px 8px", cursor: onClick ? "pointer" : "default" }}>
+      <div style={{ fontSize: 9, opacity: .85, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".02em", whiteSpace: "nowrap" }}>{k}{onClick ? " ›" : ""}</div>
       <div className="mono" style={{ fontWeight: 800, fontSize: 14, marginTop: 3, color: c || "var(--ink)" }}>{v}</div>
-    </div>
+    </button>
   );
+  const openCapped = open.length > 5 && !seeAllOpen;
   return (
     <div className="card" style={{ padding: 12, marginBottom: 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
@@ -703,12 +757,28 @@ function ScreenerDashboard({ trades = [], market }) {
         <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: up ? "var(--up)" : "var(--down)" }}>{up ? "+" : ""}{fmt(pnl, market)}</div>
       </div>
       <div style={{ display: "flex", gap: 6 }}>
-        <Tile k="Trades" v={mine.length} />
+        <Tile k="Trades" v={mine.length} onClick={() => setDrill(drill === "trades" ? null : "trades")} active={drill === "trades"} />
         <Tile k="Win / Loss" v={`${wins} : ${losses}`} />
-        <Tile k="Open" v={open.length} />
+        <Tile k="Open" v={open.length} onClick={() => setDrill(drill === "open" ? null : "open")} active={drill === "open"} />
         <Tile k="Return" v={ret == null ? "—" : (ret >= 0 ? "+" : "") + ret.toFixed(1) + "%"} c={ret == null ? undefined : (ret >= 0 ? "var(--up)" : "var(--down)")} />
       </div>
-      <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 7, lineHeight: 1.4 }}>Realised + unrealised P&L across your Screener Auto-Buy trades in {market}. Rejected orders are excluded.</div>
+
+      {/* Clicking Trades → full list scoped to Screener trades in this market. Clicking Open → open positions only. */}
+      {drill === "trades" && <DashTradeTable rows={mine} market={market} priceOf={priceOf} />}
+      {drill === "open" && <DashTradeTable rows={open} market={market} priceOf={priceOf} onlyOpen />}
+
+      {/* LIVE POSITIONS — like Automate's Real/Virtual Deployed: up to 5, then See all. */}
+      {open.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, color: "var(--ink)", textTransform: "uppercase", letterSpacing: ".02em" }}>Live positions <span style={{ color: "var(--muted)" }}>· {open.length}</span></div>
+            {open.length > 5 && <button onClick={() => setSeeAllOpen((v) => !v)} className="tap" style={{ border: "none", background: "none", color: "var(--primary)", fontWeight: 800, fontSize: 11, cursor: "pointer" }}>{seeAllOpen ? "Show less" : "See all"}</button>}
+          </div>
+          <DashTradeTable rows={open} market={market} priceOf={priceOf} onlyOpen cap={openCapped ? 5 : 0} />
+        </div>
+      )}
+
+      <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 7, lineHeight: 1.4 }}>Realised + unrealised P&L across your Screener Auto-Buy trades in {market}. Tap Trades or Open to drill in. Rejected orders are excluded.</div>
     </div>
   );
 }
