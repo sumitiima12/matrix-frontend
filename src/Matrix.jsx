@@ -316,7 +316,16 @@ function AppInner() {
   // auto-buy, screener auto-buy). Maps an in-flight intent key → the stable clientRequestId used for that
   // submission, so a rapid double-tap / repeated signal callback / rerender race can't fire two real orders,
   // and a genuine retry reuses the same idempotency identity.
-  const inFlightOrdersRef = useRef(new Map());
+  /* R22-C04: order-intent identity must survive a RELOAD, not just a promise. Ambiguous intents (broker outcome
+     unknown) are mirrored to localStorage; on mount we rehydrate them so a retry after a refresh reuses the SAME
+     idempotency key (the server dedupes/replays) instead of minting a new one that could double the order. */
+  const inFlightOrdersRef = useRef((() => {
+    const m = new Map();
+    try { const s = JSON.parse(localStorage.getItem("mx_pending_intents") || "{}"); for (const k in s) m.set(k, { reqId: s[k], state: "ambiguous" }); } catch { /* ignore */ }
+    return m;
+  })());
+  const persistAmbiguousIntent = (key, reqId) => { try { const s = JSON.parse(localStorage.getItem("mx_pending_intents") || "{}"); s[key] = reqId; localStorage.setItem("mx_pending_intents", JSON.stringify(s)); } catch { /* ignore */ } };
+  const clearPersistedIntent = (key) => { try { const s = JSON.parse(localStorage.getItem("mx_pending_intents") || "{}"); if (key in s) { delete s[key]; localStorage.setItem("mx_pending_intents", JSON.stringify(s)); } } catch { /* ignore */ } };
   const onAuthed = (a, opts) => { doLogin(a); setAuthed(true); if (opts && opts.fresh) freshSignupRef.current = true; };
   const { portfolio, setPortfolio, walletMap, setWalletMap, adjustWallet, updateHolding, intel, health, sectors } = usePortfolio();
 
@@ -544,8 +553,8 @@ function AppInner() {
           real: true, status, orderId: r.orderId || null, tp: opts.tp || undefined, sl: opts.sl || undefined,
         });
       } catch {}
-      // Conclusive success → release the intent lock.
-      inFlightOrdersRef.current.delete(intentKey);
+      // Conclusive success → release the intent lock (memory + persisted).
+      inFlightOrdersRef.current.delete(intentKey); clearPersistedIntent(intentKey);
       setBuyToast({ t }); refreshPortfolio(); return true;
     } catch (e) {
       const reason = e && e.reason ? e.reason : String(e.message || e);
@@ -554,11 +563,11 @@ function AppInner() {
          SAME reqId parked as `ambiguous`: a retry reuses it (server dedupes/replays) and we prompt to reconcile
          rather than mint a new action that could double the order. */
       if (e && e.conclusiveReject) {
-        inFlightOrdersRef.current.delete(intentKey);
+        inFlightOrdersRef.current.delete(intentKey); clearPersistedIntent(intentKey);
         try { recordTrade({ id: `rej-${Date.now()}-${s.sym}`, sym: s.sym, market: mkt, qty: q, side, short: side === "SELL" || undefined, broker: route.id, entryAt: Date.now(), tradeType: opts.tradeType || "Manual", real: true, status: "rejected", rejectReason: reason }); } catch {}
         setBuyToast({ t: `Order rejected: ${reason}`, e: true });
       } else {
-        inFlightOrdersRef.current.set(intentKey, { reqId, state: "ambiguous" });
+        inFlightOrdersRef.current.set(intentKey, { reqId, state: "ambiguous" }); persistAmbiguousIntent(intentKey, reqId);
         setBuyToast({ t: `Couldn't confirm your ${side.toLowerCase()} order — check your broker before retrying. A retry will reuse the same order (no duplicate).`, e: true });
       }
       return false;

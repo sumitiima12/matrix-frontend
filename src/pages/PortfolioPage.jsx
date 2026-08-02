@@ -454,11 +454,18 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
                   </div>
                   <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>
                     {(() => { const q = Number(h.qty); return !Number.isFinite(q) ? h.qty : Math.abs(q) >= 1 ? (+q.toFixed(4)).toString() : (+q.toPrecision(4)).toString(); })()} @ {h.avg != null ? ccy + h.avg.toFixed(2) : "—"}
-                    {h.notional != null && <span style={{ opacity: .75 }}> · {ccy}{Math.abs(h.notional) >= 100 ? Math.abs(h.notional).toFixed(0) : Math.abs(h.notional).toFixed(2)}</span>}
                   </div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div className="mono" style={{ fontSize: 13.5, fontWeight: 800 }}>{h.ltp != null ? ccy + h.ltp.toFixed(2) : "—"}</div>
+                  {/* HEADLINE = what THIS position is worth (qty × price), not the per-unit price — so a $106
+                      gold-token position doesn't read as "$4068". The live unit price is shown small underneath. */}
+                  {(() => {
+                    const posVal = h.value != null ? h.value : (h.notional != null ? h.notional : (h.ltp != null && Number.isFinite(Number(h.qty)) ? h.ltp * Number(h.qty) : null));
+                    return <>
+                      <div className="mono" style={{ fontSize: 13.5, fontWeight: 800 }}>{posVal != null ? ccy + (Math.abs(posVal) >= 100 ? Math.abs(posVal).toFixed(0) : Math.abs(posVal).toFixed(2)) : (h.ltp != null ? ccy + h.ltp.toFixed(2) : "—")}</div>
+                      {h.ltp != null && posVal != null && <div className="mono" style={{ fontSize: 9, color: "var(--muted)", marginTop: 1 }}>LTP {ccy}{h.ltp.toFixed(2)}</div>}
+                    </>;
+                  })()}
                   <div className="mono" style={{ fontSize: 10.5, fontWeight: 800, marginTop: 2, color: h.pnl == null ? "var(--muted)" : h.pnl >= 0 ? "var(--up)" : "var(--down)" }}>
                     {h.pnl == null ? "—" : (h.pnl >= 0 ? "+" : "") + ccy + (Math.abs(h.pnl) >= 100 ? Math.abs(h.pnl).toFixed(0) : Math.abs(h.pnl).toFixed(2))}
                     {pnlPct != null && <span style={{ opacity: .8 }}> ({pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(1)}%)</span>}
