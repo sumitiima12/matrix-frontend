@@ -50,7 +50,7 @@ import WalletSheet from "./components/common/WalletSheet";
 import ConfirmOrder from "./components/common/ConfirmOrder";
 import BrokerSheet from "./components/common/BrokerSheet";
 import { brokerSymbol } from "./domain/brokerSymbols";
-import { brokerPlaceOrder, registerAutoExit, reconcileRealTrades, BROKER_MARKETS } from "./services/brokerService";
+import { brokerPlaceOrder, brokerIntentStatus, registerAutoExit, reconcileRealTrades, BROKER_MARKETS } from "./services/brokerService";
 import MatrixRain from "./components/common/MatrixRain";
 import MLogo from "./components/common/MLogo";
 import NeoIcon from "./components/common/NeoIcon";
@@ -583,6 +583,28 @@ function AppInner() {
     placeOrder({ stock, side, qty, opts }); return true;
   };
   const sellStockNow = (stock, qty = 1, opts = {}) => { placeOrder({ stock, side: "SELL", qty, opts }); return true; };
+  /* INC-3 / ARCH-4: on load (and when auth changes) reconcile any AMBIGUOUS order intents left in localStorage
+     after a timeout/reload. Ask the server what became of each idempotency key: a terminal outcome clears the
+     pending state (and a confirmed fill refreshes the portfolio); an unresolved one is left so it stays
+     reconcilable. Never re-submits an order — read-only resolution. */
+  useEffect(() => {
+    if (!auth) return;
+    let cancelled = false;
+    (async () => {
+      let stored = {};
+      try { stored = JSON.parse(localStorage.getItem("mx_pending_intents") || "{}"); } catch { return; }
+      for (const intentKey of Object.keys(stored)) {
+        const res = await brokerIntentStatus(userId, stored[intentKey]).catch(() => null);
+        if (cancelled || !res) continue;
+        if (res.status === "succeeded" || res.status === "rejected" || res.status === "none") {
+          inFlightOrdersRef.current.delete(intentKey); clearPersistedIntent(intentKey);
+          if (res.status === "succeeded") { setBuyToast({ t: "A pending order was confirmed at your broker — your history is up to date." }); refreshPortfolio(); }
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth, userId]);
   /* Arm a stop-loss / take-profit / trailing-stop on an EXISTING real holding (from My
      Portfolio in real mode). Resolves the broker symbol, then registers a server auto-exit so
      the engine sells reduce-only when a level is hit. Entry defaults to the holding's avg cost. */

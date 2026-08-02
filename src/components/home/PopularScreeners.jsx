@@ -380,6 +380,14 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trades, dispName, mode, market, periodFrom, liveTick]);
 
+  /* Does THIS screener have any trades in the active mode? Used so its P&L stays visible even after the
+     user turns Auto-Buy OFF — turning the toggle off stops NEW entries, but the screener's realised/open
+     P&L (and any positions still live from earlier) should still be shown, not hidden. */
+  const hasScreenerTrades = useMemo(() => {
+    const isReal = mode === "real";
+    return (trades || []).some((t) => t && t.strategy === dispName && (isReal ? !!t.real : !t.real) && t.status !== "rejected" && t.entry != null);
+  }, [trades, dispName, mode]);
+
   /* AUTO-BUY. When the toggle is on, place today's matched symbols once per day (paper unless in real
      mode), each with the card's SL/TP — mirroring Smart Auto-Buy. */
   useEffect(() => {
@@ -419,7 +427,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
             {dispName}
             {!published && <span className="pill" style={{ fontSize: 8, fontWeight: 800, padding: "2px 7px", background: "var(--down-soft, rgba(232,72,85,.14))", color: "var(--down)" }}>UNPUBLISHED</span>}
           </div>
-          <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 2, fontWeight: 600 }}>{eTf} · {matches.length} live{eNone ? " · None selected" : eSel.length ? ` · ${eSel.length} symbols` : ""}</div>
+          <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 2, fontWeight: 600 }}>{eTf} · {matches.length} matching{eNone ? " · None selected" : eSel.length ? ` · ${eSel.length} symbols` : ""}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           <label className="tap" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, fontWeight: 800, color: "var(--ink)" }}>
@@ -634,11 +642,10 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
         <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 10 }}>No symbols currently matching the entry criteria.</div>
       )}
 
-      {/* Footer — date range · capital · live P&L. Only shown when Auto-Buy is on (off = a plain discovery list). */}
+      {/* CAPITAL DEPLOYED — only relevant while Auto-Buy is live, so it's the one field gated to the toggle.
+         Editing it only stages a DRAFT — a Save button appears while it differs from the deployed value, so a
+         stray keystroke never silently resizes live auto-buys. */}
       {autoOn && (
-      <>
-      {/* Capital on its OWN full-width row. Editing it only stages a DRAFT — a Save button appears while
-         it differs from the deployed value, so a stray keystroke never silently resizes live auto-buys. */}
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 12, background: "var(--surface)", border: "1px solid " + (String(capDraft) !== String(capital) ? "var(--primary)" : "var(--line)"), borderRadius: 9, padding: "7px 11px" }}>
         <span style={{ fontSize: 9, color: "var(--muted)", fontWeight: 800, flexShrink: 0 }}>CAPITAL DEPLOYED ({cur})</span>
         <input value={capDraft} onChange={(e) => setCapDraft(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" className="no-ring mono" style={{ flex: "1 1 0", minWidth: 0, background: "transparent", border: "none", color: "var(--ink)", fontSize: 14, fontWeight: 800, textAlign: "right" }} />
@@ -646,7 +653,11 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
           <button onClick={() => { const v = capDraft || capDefault(market); setCapDraft(v); setCapital(v); lsSet(capKey, v); }} className="tap disp" style={{ flexShrink: 0, border: "none", background: "var(--primary)", color: "var(--on-primary)", borderRadius: 7, padding: "5px 12px", fontSize: 10.5, fontWeight: 800 }}>Save</button>
         )}
       </div>
-      {/* Date range (left) + P&L (right) — P&L now has room and doubles as the List-of-Trades toggle. */}
+      )}
+      {/* P&L — shown whenever the screener is live OR has ever traded (in this mode), so its performance stays
+         visible after Auto-Buy is turned off. Date range (left) + P&L (right); P&L doubles as the trade-list toggle. */}
+      {(autoOn || hasScreenerTrades) && (
+      <>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
         <select aria-label="Date range" value={period} onChange={(e) => setPeriod(e.target.value)} style={{ flex: "0 0 auto", fontSize: 10.5, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 9, padding: "7px 8px", background: "var(--surface)", color: "var(--ink)" }}>
           <option value="today">Today</option>
@@ -656,7 +667,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
         </select>
         <div style={{ flex: "1 1 0" }} />
         <button type="button" onClick={() => setShowTrades((v) => !v)} className="tap" title="Tap to see the list of trades" style={{ flex: "0 0 auto", textAlign: "right", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>
-          <div style={{ fontSize: 8.5, color: "var(--primary)", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3 }}>P&amp;L <span style={{ display: "inline-block", transform: showTrades ? "rotate(180deg)" : "none", transition: "transform .15s", fontSize: 8 }}>▾</span></div>
+          <div style={{ fontSize: 8.5, color: "var(--primary)", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3 }}>P&amp;L{autoOn ? "" : " · Auto-Buy off"} <span style={{ display: "inline-block", transform: showTrades ? "rotate(180deg)" : "none", transition: "transform .15s", fontSize: 8 }}>▾</span></div>
           <div className="mono" style={{ fontWeight: 800, fontSize: 16, color: chgColor(periodPnl), textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 3 }}>{(periodPnl >= 0 ? "+" : "") + fmt(periodPnl, market)}</div>
         </button>
       </div>

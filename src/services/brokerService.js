@@ -340,6 +340,18 @@ export async function brokerPlaceOrder(session, userId, order, confirmLive) {
   return d;
 }
 
+/* INC-3 / ARCH-4: resolve an AMBIGUOUS order by asking the server what became of its idempotency key.
+   Returns { status: none|in_flight|unknown|succeeded|rejected, ageMs, response? }. Used to clear a persisted
+   "outcome unknown" intent once the server knows the terminal outcome — without ever re-submitting the order. */
+export async function brokerIntentStatus(userId, key) {
+  if (!BACKEND_URL || !key) return { status: "none" };
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/order/intent-status?key=${encodeURIComponent(key)}`, { headers: { ...tokenHdr(), "X-User-Id": String(userId || "") } });
+    const d = await r.json().catch(() => ({}));
+    return r.ok ? d : { status: "none" };
+  } catch { return { status: "none" }; }
+}
+
 /** The user's REAL holdings and cash, from the broker. Read-only. */
 export async function brokerPortfolio(session, userId) {
   return get("/api/broker/portfolio", authHeaders(session, userId));
