@@ -11,7 +11,7 @@ import ExitOptimizer from "./ExitOptimizer";
 import IndicatorOptimizer from "./IndicatorOptimizer";
 import MultiSelect from "../common/MultiSelect";
 import ScreenerTradeList from "./ScreenerTradeList";
-import { CondBuilder2, IndicatorDefs, TFS, TradeLog } from "../../pages/Automation";
+import { CondBuilder2, IndicatorDefs, TFS, TradeLog } from "../builder/BuilderKit";
 import { useBacktestStats } from "../../hooks/useBacktestStats";
 import { defOperands } from "../../domain/strategyLang";
 import { Pencil, SlidersHorizontal, Sparkles, ChevronRight, Activity } from "lucide-react";
