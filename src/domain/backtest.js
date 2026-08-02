@@ -84,7 +84,12 @@ export function backtest(cfg, c, startIdx = 1, baseTf = null, opts = {}) {
   // Round-trip cost fraction (user-supplied, default 0), deducted from each realized trade and equity.
   const costFrac = tradeCostFrac(opts.costs);
   const get = (op) => resolveOperand(op, cfg.defs, c, closes, vols, cache, baseTf);
-  const trades = []; let pos = null, realized = 1, peak = 1, maxDD = 0; const eq = [{ i: 0, eq: 100 }];
+  /* FIXED-STAKE model: the SAME fixed capital is deployed on every trade and gains are NOT reinvested,
+     so P&L is additive — each trade contributes its return to a running SUM (not a compounding product).
+     `realizedSum` is the cumulative realised return (in stake units); the equity curve is 1 + that sum
+     (+ any open MTM). This matches the strategy cards/optimiser, which also size each trade at a fixed
+     stake. (A compounding/reinvesting curve would overstate returns vs. what a fixed-stake trader sees.) */
+  const trades = []; let pos = null, realizedSum = 0, peak = 1, maxDD = 0; const eq = [{ i: 0, eq: 100 }];
   const from = Math.max(1, startIdx | 0);
   /* OPT-IN intraday square-off (default OFF — existing results are unchanged). A live intraday strategy
      flattens at the session close and never carries overnight; "EOD" in the loop below is really
@@ -94,13 +99,14 @@ export function backtest(cfg, c, startIdx = 1, baseTf = null, opts = {}) {
   const intraday = !!baseTf && /(m|h)$/i.test(String(baseTf));
   const squareOff = !!opts.squareOffEod && intraday;
   const sf = squareOff ? sessionStarts(c) : null;
-  // Realize a closed trade: record it (net of round-trip cost) AND compound its return into `realized`,
-  // so the equity curve and maxDD actually reflect the exit. The previous version cleared `pos` before
-  // the mark-to-market ran, so realized exits — including losses — never hit the curve (R2-P0-01).
+  // Realize a closed trade: record it (net of round-trip cost) AND ADD its return to `realizedSum`, so
+  // the equity curve and maxDD reflect the exit. (The previous version cleared `pos` before the mark-to-
+  // market ran, so realized exits — including losses — never hit the curve, R2-P0-01. Fixed-stake: we
+  // SUM per-trade returns rather than compounding them, since gains are not reinvested.)
   const closeTrade = (entryI, entryPx, exitI, exitPx, reason) => {
     const gross = dir * (exitPx / entryPx - 1), net = gross - costFrac;
     trades.push({ entryIdx: entryI, exitIdx: exitI, entry: entryPx, exit: +exitPx, ret: net, gross, reason });
-    realized *= (1 + net);
+    realizedSum += net;
   };
   const levels = (entryPx) => ({
     stop: slPct != null ? (dir > 0 ? entryPx * (1 - slPct / 100) : entryPx * (1 + slPct / 100)) : null,
@@ -141,8 +147,8 @@ export function backtest(cfg, c, startIdx = 1, baseTf = null, opts = {}) {
       if (hitStop) { const sf = dir > 0 ? Math.min(stop, bar.o) : Math.max(stop, bar.o); closeTrade(pos.i, pos.entry, i, sf, "SL"); pos = null; }  // R3-#5 gap-aware fill; stopped out on entry bar
       else if (hitTgt) { closeTrade(pos.i, pos.entry, i, tgt, "TP"); pos = null; }
     }
-    // ── 3. equity curve = realized P&L × unrealised MTM of any still-open position at this close ──
-    const curveEq = realized * (pos ? (1 + dir * (bar.c / pos.entry - 1)) : 1);
+    // ── 3. equity curve = 1 + realized (summed) P&L + unrealised MTM of any still-open position ──
+    const curveEq = 1 + realizedSum + (pos ? dir * (bar.c / pos.entry - 1) : 0);
     eq.push({ i, eq: +(curveEq * 100).toFixed(2) });
     peak = Math.max(peak, curveEq); maxDD = Math.max(maxDD, (peak - curveEq) / peak);
   }
@@ -156,20 +162,34 @@ export function backtest(cfg, c, startIdx = 1, baseTf = null, opts = {}) {
   if (pos && lastClose != null) {
     closeTrade(pos.i, pos.entry, lastIdx, lastClose, "EOD");
     pos = null;
-    // R3-#3: the forced exit's transaction cost is in `realized` now — reflect it in the FINAL equity
+    // R3-#3: the forced exit's transaction cost is in `realizedSum` now — reflect it in the FINAL equity
     // point and the drawdown too, so the curve/maxDD agree with totalRet instead of trailing it.
+    const finalEq = 1 + realizedSum;
     const lastPt = eq[eq.length - 1];
-    if (lastPt) lastPt.eq = +(realized * 100).toFixed(2);
-    peak = Math.max(peak, realized); maxDD = Math.max(maxDD, (peak - realized) / peak);
+    if (lastPt) lastPt.eq = +(finalEq * 100).toFixed(2);
+    peak = Math.max(peak, finalEq); maxDD = Math.max(maxDD, (peak - finalEq) / peak);
   }
-  const totalRet = (realized - 1) * 100;
+  const totalRet = realizedSum * 100;   // fixed-stake: SUM of per-trade returns (gains not reinvested)
   const wins = trades.filter((t) => t.ret > 0).length;
   // Buy & hold over the SAME test window (from the warm-up boundary), using valid closes at both ends.
   let startIdxV = Math.min(from, closes.length - 1);
   while (startIdxV < closes.length && !isNum(closes[startIdxV])) startIdxV++;
   const bhStart = isNum(closes[startIdxV]) ? closes[startIdxV] : (closes.find(isNum) || null);
   const bh = (lastClose != null && bhStart != null) ? (lastClose / bhStart - 1) * 100 - costFrac * 100 : 0;
-  return { trades, eq, stats: { n: trades.length, wins, winRate: trades.length ? wins / trades.length * 100 : 0, totalRet, maxDD: maxDD * 100, bh, avg: trades.length ? trades.reduce((a, t) => a + t.ret, 0) / trades.length * 100 : 0, costPct: +(costFrac * 100).toFixed(3) } };
+  // RETURN ON REQUIRED CAPITAL — the headline return. Capital is reused (fixed stake every trade), but
+  // the return is measured against the capital you'd actually have to RESERVE: the stake plus a buffer
+  // of 1.5× the max drawdown. In normalised (stake = 1) terms that's realizedSum / (1 + 1.5·maxDD).
+  const retCap = riskAdjustedReturnPct(realizedSum, 1, maxDD);
+  return { trades, eq, stats: { n: trades.length, wins, winRate: trades.length ? wins / trades.length * 100 : 0, totalRet, retCap, maxDD: maxDD * 100, bh, avg: trades.length ? trades.reduce((a, t) => a + t.ret, 0) / trades.length * 100 : 0, costPct: +(costFrac * 100).toFixed(3) } };
+}
+
+/* Return on REQUIRED CAPITAL (the risk-adjusted headline return). Numerator = total P&L (fixed-stake
+   sum, gains not reinvested). Denominator = the capital you must reserve = the deployed stake PLUS a
+   1.5× max-drawdown buffer. e.g. three trades of +1/+2/+3 on a 100 stake with a 2 max-drawdown →
+   (1+2+3) / (100 + 1.5·2) = 6/103 = 5.83%. With zero drawdown it's simply P&L / stake. */
+export function riskAdjustedReturnPct(pnl, base, maxDD) {
+  const denom = (Number(base) || 0) + 1.5 * Math.max(0, Number(maxDD) || 0);
+  return denom > 0 ? (pnl / denom) * 100 : null;
 }
 
 /* Delegates to the shared interpreter (strategyLang.interpretText), which now also understands

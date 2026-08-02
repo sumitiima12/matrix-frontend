@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchHistory } from "../domain/api";
-import { backtest } from "../domain/backtest";
+import { backtest, riskAdjustedReturnPct } from "../domain/backtest";
 
 /**
  * useBacktestStats — six-month performance for a strategy, from REAL candles.
@@ -55,7 +55,7 @@ export async function loadBtCandles(sym, tf, days = 0) {
    capital-split model. Returns { trades, winRate, slHit, tpHit, pnl, retPct } or null. */
 export function scoreCfg(cfg, candles, tf, { qty = null, amount = null, market = null, cap = 100000, costs = null } = {}) {
   if (!cfg || !candles || candles.length < 30) return null;
-  const { trades } = backtest(cfg, candles, 1, tf, { costs });
+  const { trades, stats } = backtest(cfg, candles, 1, tf, { costs });
   const n = trades.length;
   if (!n) return { trades: 0, winRate: null, slHit: 0, tpHit: 0, pnl: 0, retPct: 0 };
   const wins = trades.filter((t) => t.ret > 0).length;
@@ -63,18 +63,25 @@ export function scoreCfg(cfg, candles, tf, { qty = null, amount = null, market =
   const tpHit = trades.filter((t) => t.reason === "TP").length;
   const sumRet = trades.reduce((a, t) => a + (t.ret || 0), 0);
   const hasSize = qty != null || amount != null;
-  let pnl, retPct;
+  // FIXED-STAKE (capital reused, gains NOT reinvested): total P&L is the flat sum of per-trade P&L on a
+  // fixed per-trade stake (`base`). The RETURN is then measured on the required capital = base + 1.5·maxDD.
+  let pnl, base;
   if (hasSize) {
-    if (market === "Crypto") { const amt = Number(amount) || 0; pnl = amt * sumRet; retPct = amt ? (pnl / amt) * 100 : null; }
+    if (market === "Crypto") { const amt = Number(amount) || 0; pnl = amt * sumRet; base = amt; }
     else {
       const q = Number(qty) || 0;
       // entry×ret is the DIRECTION-AWARE absolute move (ret is already +ve when a short profits), so this
       // sizes short P&L correctly — unlike a raw (exit−entry) which would read a winning short as a loss.
       pnl = q * trades.reduce((a, t) => a + (t.entry || 0) * (t.ret || 0), 0);
       const avgEntry = trades.reduce((a, t) => a + (t.entry || 0), 0) / n;
-      const base = q * avgEntry; retPct = base ? (pnl / base) * 100 : null;
+      base = q * avgEntry;
     }
-  } else { pnl = cap * sumRet; retPct = sumRet * 100; }
+  } else {
+    pnl = cap * sumRet;
+    base = cap;
+  }
+  const maxDDccy = base * ((stats.maxDD || 0) / 100);   // absolute max drawdown on this stake
+  const retPct = riskAdjustedReturnPct(pnl, base, maxDDccy);
   return { trades: n, winRate: (wins / n) * 100, slHit, tpHit, pnl, retPct };
 }
 
@@ -128,7 +135,9 @@ export function useBacktestStats(strat, opts = {}) {
           if (!c || c.length < 30) return;
           usable += 1;
           const r = backtest(cfg, c, 1, tf, { costs: opts.costs });
-          // Tag each trade with its candle array + symbol so we can resolve entry/exit timestamps later.
+          /* FIXED-STAKE, capital reused (NOT compounded): each trade deploys the SAME fixed per-symbol
+             stake and gains are NOT reinvested, so total P&L is the flat sum of stake × per-trade return.
+             Tag each trade with its candle array + symbol so the ledger can resolve entry/exit times. */
           r.trades.forEach((t) => { trades.push({ ...t, _c: c, _sym: syms[si] }); capPnl += perSym * t.ret; });
         });
 
@@ -169,7 +178,7 @@ export function useBacktestStats(strat, opts = {}) {
           if (hasSize) {
             return sizeMarket === "Crypto" ? (Number(amount) || 0) * (t.ret || 0) : (Number(qty) || 0) * ((t.exit || 0) - (t.entry || 0));
           }
-          return perSym * (t.ret || 0);
+          return perSym * (t.ret || 0);   // fixed-stake P&L (gains not reinvested)
         });
         let eq = 0, peak = 0, maxDD = 0;
         for (const p of perTradePnl) { eq += p; if (eq > peak) peak = eq; const dd = peak - eq; if (dd > maxDD) maxDD = dd; }
@@ -223,9 +232,10 @@ export function useBacktestStats(strat, opts = {}) {
             tpHit,
             winRate: (wins / trades.length) * 100,
             pnl,
-            // With an explicit per-trade size, return % = total P&L ÷ capital deployed on one trade.
-            // Otherwise fall back to the capital-split model (sum of per-trade returns).
-            retPct: hasSize ? (retBase ? (pnl / retBase) * 100 : null) : (capPnl / cap) * 100,
+            // RETURN ON REQUIRED CAPITAL: total P&L ÷ (deployed stake + 1.5 × max drawdown). Capital is
+            // reused (fixed stake per trade), but the return is measured against the capital you'd have
+            // to reserve — the stake plus a 1.5× drawdown buffer.
+            retPct: riskAdjustedReturnPct(pnl, hasSize ? retBase : cap, maxDD),
             maxDD,   // absolute currency: deepest peak-to-trough fall of the equity curve
             tradeList,   // detailed per-trade ledger for the List of Trades view
             symbols: usable,

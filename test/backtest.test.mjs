@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { backtest, parseRules } from "../src/domain/backtest.js";
+import { backtest, parseRules, riskAdjustedReturnPct } from "../src/domain/backtest.js";
 
 /* Locks down the equity/drawdown realization (R2-P0-01) and event-ordering fixes: the equity curve and
-   maxDD MUST reflect realized exits, including losses, and the final curve must equal the compounded
-   ledger. Entries use "close crosses above open" (fires on a green candle after a non-green). */
+   maxDD MUST reflect realized exits, including losses, and the final curve must equal the FIXED-STAKE
+   (additive) ledger — gains are not reinvested, so per-trade returns SUM, they don't compound.
+   Entries use "close crosses above open" (fires on a green candle after a non-green). */
 const bar = (o, h, l, c) => ({ o, h, l, c, v: 1000, t: 0 });
 function run(candles, sl, tp) {
   const p = parseRules("buy when close crosses above open");
@@ -12,12 +13,23 @@ function run(candles, sl, tp) {
   candles.forEach((b, i) => (b.t = i * 300000));
   return backtest(cfg, candles, 1, "5m", {});   // costs default 0
 }
-// final equity implied by the curve must equal the compounded net ledger return
+// final equity implied by the curve must equal the FIXED-STAKE (additive) net ledger — per-trade
+// returns SUM (gains not reinvested), so equity = 1 + Σ ret.
 function curveMatchesLedger(r) {
-  const compounded = r.trades.reduce((a, t) => a * (1 + t.ret), 1);
+  const summed = 1 + r.trades.reduce((a, t) => a + t.ret, 0);
   const lastEq = r.eq[r.eq.length - 1].eq / 100;
-  return Math.abs(compounded - lastEq) < 1e-6 || r.trades.length === 0;
+  return Math.abs(summed - lastEq) < 1e-6 || r.trades.length === 0;
 }
+
+test("riskAdjustedReturnPct: return on required capital = P&L / (stake + 1.5·maxDD)", () => {
+  // User's example: three +1/+2/+3 trades on a 100 stake, no drawdown → 6/100 = 6%.
+  assert.equal(riskAdjustedReturnPct(6, 100, 0), 6);
+  // With a 2-unit max drawdown → 6 / (100 + 1.5·2) = 6/103 = 5.825…%.
+  assert.ok(Math.abs(riskAdjustedReturnPct(6, 100, 2) - (6 / 103) * 100) < 1e-9);
+  // A bigger drawdown lowers the return (penalises risk); a zero denominator is null-safe.
+  assert.ok(riskAdjustedReturnPct(6, 100, 20) < riskAdjustedReturnPct(6, 100, 2));
+  assert.equal(riskAdjustedReturnPct(5, 0, 0), null);
+});
 
 test("a take-profit trade lifts equity and the curve equals the ledger", () => {
   // bar1 green → entry at bar2 open 100; bar2 hits +2% target (102).

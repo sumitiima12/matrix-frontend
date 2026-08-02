@@ -49,13 +49,16 @@ export default function ExitOptimizer({ mode, defs, entry, tf, appSyms, currentS
     }}>{label}</button>
   );
 
+  // "Return %" = return on REQUIRED capital (retCap: P&L ÷ (stake + 1.5×maxDD)), matching the backtest;
+  // falls back to the raw sum if an older payload lacks it.
+  const ret = (x) => (x && x.retCap != null ? x.retCap : (x ? x.retPct : null));
   // Comparison rows: Win rate, SL hit, TP hit, P&L, Return %.
   const rows = best ? [
     { k: "Win rate", e: cur ? wr(cur.winRate) : "—", n: wr(best.winRate) },
     { k: "SL hit", e: cur ? cnt(cur.slHit) : "—", n: cnt(best.slHit) },
     { k: "TP hit", e: cur ? cnt(cur.tpHit) : "—", n: cnt(best.tpHit) },
     { k: "P&L", e: cur ? amt(cur.pnl) : "—", n: amt(best.pnl), nColor: best.pnl >= 0 ? "var(--up)" : "var(--down)" },
-    { k: "Return %", e: cur ? pct(cur.retPct) : "—", n: pct(best.retPct), nColor: best.retPct >= 0 ? "var(--up)" : "var(--down)" },
+    { k: "Return %", e: cur ? pct(ret(cur)) : "—", n: pct(ret(best)), nColor: ret(best) >= 0 ? "var(--up)" : "var(--down)" },
   ] : [];
 
   return (
@@ -128,7 +131,7 @@ export default function ExitOptimizer({ mode, defs, entry, tf, appSyms, currentS
 
           {oos && (
             <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 9, lineHeight: 1.5 }}>
-              Out-of-sample check (unseen {oos.trades} trades): {wr(oos.winRate)} win, {pct(oos.retPct)} return — {oos.retPct >= 0 ? "holds up" : "weaker, use with care"}.
+              Out-of-sample check (unseen {oos.trades} trades): {wr(oos.winRate)} win, {pct(ret(oos))} return — {ret(oos) >= 0 ? "holds up" : "weaker, use with care"}.
             </div>
           )}
           <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 6, lineHeight: 1.5, fontStyle: "italic" }}>

@@ -56,10 +56,12 @@ export default function IndicatorOptimizer({ mode, defs, entry, tf, appSyms, cur
     }}>{label}</button>
   );
 
+  // "Return %" = return on REQUIRED capital (retCap: P&L ÷ (stake + 1.5×maxDD)), matching the backtest.
+  const ret = (x) => (x && x.retCap != null ? x.retCap : (x ? x.retPct : null));
   const rows = best ? [
     { k: "Win rate", e: cur ? wr(cur.winRate) : "—", n: wr(best.winRate) },
     { k: "P&L", e: cur ? amt(cur.pnl) : "—", n: amt(best.pnl), nColor: best.pnl >= 0 ? "var(--up)" : "var(--down)" },
-    { k: "Return %", e: cur ? pct(cur.retPct) : "—", n: pct(best.retPct), nColor: best.retPct >= 0 ? "var(--up)" : "var(--down)" },
+    { k: "Return %", e: cur ? pct(ret(cur)) : "—", n: pct(ret(best)), nColor: ret(best) >= 0 ? "var(--up)" : "var(--down)" },
   ] : [];
 
   return (

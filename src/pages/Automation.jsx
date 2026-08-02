@@ -379,7 +379,8 @@ function BacktestResult({ cfg, defaultSym, blocked = false, onConnect, defaultTf
         </div>
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {tile("Return", (st.totalRet >= 0 ? "+" : "") + st.totalRet.toFixed(1) + "%", st.totalRet >= 0 ? "var(--up)" : "var(--down)")}
+        {/* Return on REQUIRED capital = P&L ÷ (stake + 1.5 × max drawdown); falls back to raw if absent. */}
+        {tile("Return", (() => { const r = st.retCap != null ? st.retCap : st.totalRet; return (r >= 0 ? "+" : "") + r.toFixed(1) + "%"; })(), (st.retCap != null ? st.retCap : st.totalRet) >= 0 ? "var(--up)" : "var(--down)")}
         {tile("Win rate", st.winRate.toFixed(0) + "%")}
         {tile("Trades", st.n)}
         {tile("Max DD", "-" + st.maxDD.toFixed(1) + "%", "var(--down)")}
