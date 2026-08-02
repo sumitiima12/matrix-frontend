@@ -26,7 +26,7 @@ import { ChevronDown, ChevronUp, Filter, Plus, Save, Sparkles, Square, Trash2 } 
 
 const TODAY = new Date().toISOString().slice(0, 10);
 const DAY_KEY = TODAY.replace(/-/g, "");
-const qtyDefault = (m) => (m === "Crypto" ? 200 : 1);   // crypto = USD amount, others = share/lot count
+const qtyDefault = (m) => (m === "Crypto" ? 500 : 1);   // crypto = USD amount (default $500), others = share/lot count
 
 // Same four the old Screener offered — tap to load both entry (f) and a sensible exit (x).
 const RECOMMENDED = [

@@ -171,9 +171,10 @@ async function get(path, headers = {}) {
   return d;
 }
 
-/** Which brokers this server actually has credentials for. */
-export async function brokerStatus(userId) {
-  return get(`/api/broker/status${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`);
+/** Which brokers this server actually has credentials for THIS user. Identity comes from the verified
+    token (R14-P2-05) — the server ignores any userId param, so we just send the auth header. */
+export async function brokerStatus() {
+  return get(`/api/broker/status`, tokenHdr());
 }
 
 /** Step 1: the broker's own login page. We never see the user's password.

@@ -568,7 +568,11 @@ function AppInner() {
     onBuy: (s, q, opts = {}) => buyStockNow(s, q, { ...opts, tradeType: "Automate" }),
     onSell: (s, q, opts = {}) => sellStockNow(s, q, { ...opts, tradeType: "Automate" }),
     userId,
-    enabled: !!auth,
+    /* R14-P1-01: the browser automation loop is VIRTUAL-ONLY. Real automation runs solely on the backend
+       auto-buy/auto-exit engine (armed via Go Live). Running this loop in Real mode would let BOTH engines
+       see the same signal and place separate real BUYs, and its onSell routes through the paper order path
+       (buying real but exiting on paper). Gating to virtual makes the backend the single live executor. */
+    enabled: !!auth && mode === "virtual",
   });
 
   /* EXIT ALL. Flattens every OPEN automation position at the live price, then deactivates

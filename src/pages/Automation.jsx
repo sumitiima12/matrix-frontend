@@ -1871,9 +1871,9 @@ function IndicatorOptimizer({ defs, entry, mode, tf, appSyms, currentSl, current
 function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators, onCreateCopy, copyExists, isActive, onToggleActive }) {
   const DEF_SYM = { US: "SPX", IN: "NIFTY50", Crypto: "BTC", Commodity: "GOLD", FNO: "NIFTY50" };
   const [view, setView] = useState("perSymbol");   // perSymbol | perStrategy
-  // Position sizing for absolute P&L: crypto = USD amount (default 100), everything else = quantity (default 1).
+  // Position sizing for absolute P&L: crypto = USD amount (default 500), everything else = quantity (default 1).
   const isCrypto = market === "Crypto";
-  const [size, setSize] = useState(isCrypto ? "100" : "1");
+  const [size, setSize] = useState(isCrypto ? "500" : "1");
   const [resBucket, setResBucket] = useState("existing");   // Existing | New tabs over the per-symbol results
   const sizing = () => (isCrypto ? { amount: Number(size) || 0, market } : { qty: Number(size) || 0, market });
   const symOptions = useMemo(() => (UNIVERSE[market] || []).map((s) => s.sym), [market]);
@@ -2171,7 +2171,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const canBacktest = !INDIAN_MKT.includes(market) || isAdmin || (typeof brokerFor === "function" && !!brokerFor(market));
   // Which strategy is being armed for real-money auto-buy, and the form for it.
   const [liveStrat, setLiveStrat] = useState(null);
-  const [liveAmt, setLiveAmt] = useState("");
+  const [liveAmt, setLiveAmt] = useState(market === "Crypto" ? "500" : "");   // crypto default stake $500
   const [liveProduct, setLiveProduct] = useState("Intraday");
   const [liveBusy, setLiveBusy] = useState(false);
   const [liveMsg, setLiveMsg] = useState(null);

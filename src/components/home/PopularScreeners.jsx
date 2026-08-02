@@ -192,7 +192,7 @@ function ScreenerDirToggle({ dir, setDir }) {
 
 const capDefault = (m) => (m === "US" || m === "Crypto") ? "100" : "10000";   // US/Crypto: 100 (USD); Indian/Commodity: 10,000 (₹)
 // Per-symbol quantity default: crypto is a USD notional (100), everything else is 1 unit/share.
-const qtyDefaultFor = (m) => (m === "Crypto" ? 100 : 1);
+const qtyDefaultFor = (m) => (m === "Crypto" ? 500 : 1);   // crypto = USD notional (default $500)
 const GRAD = "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)";
 
 function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin = false, onOpen, onBuy, onAutoBuy, onScreenerBuy, liveTick = 0, side = "BUY" }) {
@@ -566,7 +566,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
                   </div>
                 );
               })}
-              <div style={{ fontSize: 9.5, color: "var(--muted)", lineHeight: 1.5, marginTop: 2 }}>Defaults: {market === "Crypto" ? "$100 amount" : "qty 1"} · 0.4% SL · 1% TP. {market === "Crypto" ? "Crypto amount is USD notional." : ""}</div>
+              <div style={{ fontSize: 9.5, color: "var(--muted)", lineHeight: 1.5, marginTop: 2 }}>Defaults: {market === "Crypto" ? "$500 amount" : "qty 1"} · 0.4% SL · 1% TP. {market === "Crypto" ? "Crypto amount is USD notional." : ""}</div>
             </div>
           )}
 
