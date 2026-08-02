@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { adminListUsers, adminGetUser, adminSetBlocked, adminResetPin, adminPendingUsers, adminApproveUser, adminDeleteUser, adminClearVirtual, adminClearTradesByType } from "../../services/adminService";
-import { apiListIdeas, apiReviewIdea } from "../../domain/api";
+import { apiListIdeas, apiReviewIdea, apiDeleteIdea } from "../../domain/api";
 import { tradesToCSV, downloadCSV, tradeFilename } from "../../lib/csv";
 import { confirmDialog, promptDialog, alertDialog } from "../../lib/confirmDialog";   // in-app dialogs (reliable in webviews/PWA)
 
@@ -317,7 +317,7 @@ function IdeasModeration({ adminKey, card }) {
   const refresh = () => apiListIdeas({ adminKey }).then((l) => setList(Array.isArray(l) ? l : []));
   useEffect(() => { refresh(); /* eslint-disable-next-line */ }, []);
   const review = async (id, status) => { await apiReviewIdea(id, status, adminKey); refresh(); };
-  const del = async (id) => { const { apiDeleteIdea } = await import("../../domain/api"); await apiDeleteIdea(id); refresh(); };
+  const del = async (id) => { await apiDeleteIdea(id); refresh(); };
   const shown = (list || []).filter((i) => filter === "all" ? true : (i.status || "approved") === "pending");
   const chip = (on) => ({ border: "1px solid " + (on ? "var(--primary)" : "var(--line)"), background: on ? "var(--primary-soft)" : "var(--elev)", color: on ? "var(--primary)" : "var(--muted)", borderRadius: 9, padding: "6px 12px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" });
   return (

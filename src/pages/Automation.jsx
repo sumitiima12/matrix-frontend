@@ -1019,12 +1019,16 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
         const a = await pauseAutoBuy(userId, s.id, false, "filled");   // adopt the real broker position
         if (a && a.needsReview) await confirmDialog(a.reason || "Couldn't adopt a position. If it already closed, resolve as no-fill; otherwise use Stop & sell.", { title: "Couldn't adopt", confirmLabel: "OK", cancelLabel: "OK" });
       } else {
-        const delta = s.broker === "delta";
+        // Brokers where we can verify execution truth from the broker's own API (read the position to
+        // confirm the account is flat) → we re-check before resuming. Others can't be verified, so a
+        // "no fill" STOPS the strategy to make a duplicate impossible. Keep this in sync with the
+        // backend's RECONCILABLE_BROKERS.
+        const verifiable = s.broker === "delta" || s.broker === "fyers";
         const noFill = await confirmDialog(
-          delta
-            ? "Confirm the order did NOT fill. We'll re-check your Delta account is flat before resuming — if it shows a position, you'll be asked to adopt instead."
+          verifiable
+            ? `Confirm the order did NOT fill. We'll re-check your ${s.broker === "fyers" ? "FYERS" : "Delta"} account is flat before resuming — if it shows a position, you'll be asked to adopt instead.`
             : "Confirm the order did NOT fill. We can't verify this broker, so the strategy will be STOPPED (not resumed) to prevent a duplicate — re-arm it once you've confirmed your account is flat.",
-          { title: "Confirm no fill", confirmLabel: delta ? "Confirmed — no position" : "Confirm & stop strategy", cancelLabel: "Keep paused" }
+          { title: "Confirm no fill", confirmLabel: verifiable ? "Confirmed — no position" : "Confirm & stop strategy", cancelLabel: "Keep paused" }
         );
         if (noFill) {
           const nf = await pauseAutoBuy(userId, s.id, false, "nofill");
