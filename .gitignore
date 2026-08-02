@@ -30,3 +30,7 @@ dist/
 # After pulling this change, run once on your Mac:  git rm -r --cached test-results playwright-report
 test-results/
 playwright-report/
+
+# CI workflows are managed via the GitHub web UI (a Personal Access Token can't push .github/workflows
+# without the `workflow` scope). Ignore any local copy so `git add -A` doesn't re-trigger that push block.
+.github/

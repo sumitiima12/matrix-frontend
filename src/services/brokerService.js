@@ -304,10 +304,16 @@ export async function setEntryHalt(halt) {
 export async function brokerPlaceOrder(session, userId, order, confirmLive) {
   if (!confirmLive) throw new Error("Live order not confirmed.");
   if (!BACKEND_URL) throw new Error("no-backend");
-  /* R16-P2-09: a stable idempotency key per order ACTION. If the caller didn't supply one, mint one here so
-     a double-tap / reload / network retry replays the original outcome instead of placing a second order. */
-  const idemKey = order.clientRequestId ||
-    (globalThis.crypto && globalThis.crypto.randomUUID ? globalThis.crypto.randomUUID() : `mx_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+  /* R16-P2-09 / C2-02: a stable idempotency key per order INTENT. A caller-supplied clientRequestId always
+     wins. Otherwise we DERIVE the key deterministically from the order contents + a coarse 15s time bucket —
+     so a double-tap / re-render / network retry of the SAME order within the window produces the SAME key
+     (the server replays the one outcome instead of placing a second real order). A random UUID would defeat
+     this: repeated calls would each get a fresh key and each place an order. */
+  const idemKey = order.clientRequestId || (() => {
+    const sig = JSON.stringify({ b: session && session.broker, s: order.symbol, d: order.side, q: order.qty, t: order.orderType || "MARKET", p: order.product || "CNC", px: order.limitPrice != null ? order.limitPrice : order.price, w: Math.floor(Date.now() / 15000) });
+    let h = 5381; for (let i = 0; i < sig.length; i++) h = ((h * 33) ^ sig.charCodeAt(i)) >>> 0;
+    return `mx_${h.toString(36)}_${Math.floor(Date.now() / 15000).toString(36)}`;
+  })();
   const r = await fetch(`${BACKEND_URL}/api/broker/order`, {
     method: "POST",
     headers: {

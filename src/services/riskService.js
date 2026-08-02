@@ -75,16 +75,25 @@ export function localMins(market, now = new Date()) {
     return (h === 24 ? 0 : h) * 60 + m;
   } catch { return now.getUTCHours() * 60 + now.getUTCMinutes(); }
 }
-/* Back-compat (deprecated): fixed-UTC close. Kept only so nothing that imported it breaks; the square-off
-   engine now uses the DST-correct localMins/closeLocalMins pair above. */
-export function marketCloseMins(market) {
-  if (market === "IN") return 600;
-  if (market === "US") return 1260;
-  if (market === "Commodity") return 1080;
-  return null;
-}
+// L2-04: the deprecated fixed-UTC `marketCloseMins()` was removed — it was DST-wrong for US and unused after
+// square-off moved to the exchange-local localMins/closeLocalMins pair above. Don't reintroduce a UTC close.
 
-const startOfDay = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
+/* H-04: the daily trade-count and daily-loss windows must reset on the EXCHANGE session day, not the
+   device's local midnight — otherwise a phone in a different timezone counts trades against the wrong day
+   and the loss circuit-breaker resets at the wrong time. Derive midnight in the market's timezone
+   (IST / ET-with-DST / UTC for 24×7 crypto). Mirrors the backend riskEngine.startOfSessionDay. */
+function startOfSessionDay(market = "IN") {
+  const tz = market === "US" ? "America/New_York" : (market === "Crypto" ? "UTC" : "Asia/Kolkata");
+  const now = new Date();
+  try {
+    const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+    }).formatToParts(now).map((x) => [x.type, x.value]));
+    const wallAsUTC = Date.UTC(+p.year, +p.month - 1, +p.day, +(p.hour === "24" ? 0 : p.hour), +p.minute, +p.second);
+    const offset = wallAsUTC - now.getTime();
+    return Date.UTC(+p.year, +p.month - 1, +p.day, 0, 0, 0) - offset;
+  } catch { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); }
+}
 
 /**
  * Validate an order.
@@ -110,7 +119,8 @@ export function validateOrder(order, account) {
 
   const value = qty * price;
   const held = portfolio.find((h) => h.sym === sym);
-  const todays = trades.filter((t) => (t.entryAt || 0) >= startOfDay() && (t.market || "IN") === market);
+  const sessionStart = startOfSessionDay(market);
+  const todays = trades.filter((t) => (t.entryAt || 0) >= sessionStart && (t.market || "IN") === market);
   const openInMarket = portfolio.filter((h) => (h.market || "IN") === market);
 
   if (side === "BUY") {
@@ -155,7 +165,7 @@ export function validateOrder(order, account) {
 
   // --- daily loss limit ---
   const realisedToday = trades
-    .filter((t) => (t.exitAt || 0) >= startOfDay() && (t.market || "IN") === market)
+    .filter((t) => (t.exitAt || 0) >= sessionStart && (t.market || "IN") === market)
     .reduce((a, t) => a + (t.pnl || 0), 0);
   // Base the cap on START-OF-DAY equity, not the current wallet — otherwise the cap shrinks
   // as you lose (a moving target). Start-of-day wallet ≈ current wallet minus today's P&L.

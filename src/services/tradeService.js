@@ -286,6 +286,9 @@ export function logout() { setAuthToken(null); }
 export async function changePin(currentPin, newPin) {
   const d = await post("/api/pin/change", { currentPin, newPin });
   if (!d || d.error || !d.ok) throw new Error((d && d.error) || "Couldn't change your PIN");
+  // C2-02: the server revokes all prior tokens on a PIN change and hands back a fresh one for THIS device —
+  // store it so the current session keeps working while any stolen/old token is now invalid.
+  if (d.token) { try { setAuthToken(d.token); } catch { /* keep going */ } }
   return d;
 }
 

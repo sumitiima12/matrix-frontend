@@ -38,29 +38,38 @@ export async function getQuotes(ySyms) {
  * Anything else — e.g. relabelling a 90m bar as "4h" — misstates the period every
  * indicator is then computed on.
  */
-/* C-03: fold base candles into a higher timeframe, SESSION-ALIGNED. Buckets are formed WITHIN a calendar
-   day and never span a session boundary — so a "3m from 1m" or "4h from 60m" bucket is a real fixed-duration
-   bar, not an arbitrary group that merges the tail of one session with the head of the next. */
-function aggregate(candles, n) {
+/* C-03 / M2-02: fold base candles into a higher timeframe by CLOCK BOUNDARY. Each bar is keyed to
+   floor(epoch / (n·baseMin)) so a "3m from 1m" bar is a true clock window (09:15–09:18, …) aligned to
+   minute % 3 == 0, even if the feed starts late or has gaps — not "every n rows since the first present".
+   The trailing bucket is dropped while it's still forming (fewer than n base candles) so a half-formed bar
+   never appears as closed. `baseMin` is the base interval in minutes (1 for 1m→3m, 60 for 60m→4h). */
+function aggregate(candles, n, baseMin = 1) {
   if (!Array.isArray(candles) || n <= 1) return candles;
-  const dayKey = (t) => { const ms = t < 1e12 ? t * 1000 : t; const d = new Date(ms); return `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`; };
-  const days = new Map();
-  for (const c of candles) { const k = dayKey(c.t); if (!days.has(k)) days.set(k, []); days.get(k).push(c); }
-  const out = [];
-  for (const grp of days.values()) {
-    for (let i = 0; i < grp.length; i += n) {
-      const g = grp.slice(i, i + n);
-      if (!g.length) continue;
-      out.push({
-        t: g[0].t, o: g[0].o, c: g[g.length - 1].c,
-        h: Math.max(...g.map((x) => x.h)), l: Math.min(...g.map((x) => x.l)),
-        v: g.reduce((a, x) => a + (x.v || 0), 0),
-      });
-    }
+  const stepMs = n * baseMin * 60 * 1000;
+  const buckets = new Map();
+  for (const c of candles) {
+    const ms = c.t < 1e12 ? c.t * 1000 : c.t;
+    const key = Math.floor(ms / stepMs) * stepMs;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(c);
   }
-  out.sort((a, b) => a.t - b.t);
+  const keys = [...buckets.keys()].sort((a, b) => a - b);
+  const lastKey = keys[keys.length - 1];
+  const out = [];
+  for (const key of keys) {
+    const g = buckets.get(key).sort((a, b) => a.t - b.t);
+    if (key === lastKey && g.length < n) continue;        // drop the still-forming tail bar only
+    out.push({
+      t: g[0].t, o: g[0].o, c: g[g.length - 1].c,
+      h: Math.max(...g.map((x) => x.h)), l: Math.min(...g.map((x) => x.l)),
+      v: g.reduce((a, x) => a + (x.v || 0), 0),
+    });
+  }
   return out.map((c, i) => ({ ...c, i }));
 }
+// Base-interval minutes for a Yahoo interval string (e.g. "1m"→1, "60m"→60), so clock-bucketing knows how
+// many base candles make one aggregated bar.
+function baseMinutesOf(iv) { const m = String(iv || "").match(/^(\d+)m$/); if (m) return +m[1]; if (iv === "60m" || iv === "1h") return 60; return 1; }
 
 export async function getHistory(ySym, tf, useBt = false) {
   const table = useBt ? BT_YF : TF_YF;
@@ -74,7 +83,7 @@ export async function getHistory(ySym, tf, useBt = false) {
     .filter((c) => c.o != null && c.c != null && c.h != null && c.l != null)
     .map((c, i) => ({ i, t: c.t, o: r(c.o), h: r(c.h), l: r(c.l), c: r(c.c), v: c.v }));
 
-  return m.agg ? aggregate(rows, m.agg) : rows;
+  return m.agg ? aggregate(rows, m.agg, baseMinutesOf(m.i)) : rows;
 }
 
 /** Real fundamentals from Yahoo quoteSummary (via backend crumb flow). Returns the object,
