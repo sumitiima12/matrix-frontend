@@ -14,7 +14,7 @@
     "predeploy": "eslint src && node --import ./test/register.mjs --test test/*.test.mjs && node scripts/smoke.mjs && vite build",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:e2e:ci": "vite build && playwright test",
+    "test:e2e:ci": "playwright install chromium && vite build && playwright test",
     "e2e:setup": "npm ci && npx playwright install --with-deps chromium"
   },
   "dependencies": {

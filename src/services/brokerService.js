@@ -360,13 +360,14 @@ export async function loadAutoBuys(userId) {
     return { strategies: Array.isArray(d.strategies) ? d.strategies : [], engineLive: !!d.engineLive, last: d.last || null };
   } catch { return { strategies: [], engineLive: false }; }
 }
-/* Resume returns the server's decision. Resuming a strategy that's under unknown-order review can be
-   BLOCKED (HTTP 409 { needsReview, reason }) until the user confirms the broker outcome — pass
-   force:true to override after they've checked. Returns { ok, needsReview?, reason?, linked?, note? }. */
-export async function pauseAutoBuy(userId, id, paused, force = false) {
+/* Resume returns the server's decision. Resuming a strategy under unknown-order review can be BLOCKED
+   (HTTP 409 { needsReview, reason }) until the user declares the outcome: pass resolution:"filled" to
+   ADOPT the real broker position (no new entry) or resolution:"nofill" to clear after confirming nothing
+   filled. Returns { ok, needsReview?, reason?, adopted?, linked?, note? }. */
+export async function pauseAutoBuy(userId, id, paused, resolution = null) {
   if (!BACKEND_URL) return { ok: true };
   try {
-    const r = await fetch(`${BACKEND_URL}/api/autobuy/pause`, { method: "POST", headers: { "Content-Type": "application/json", ...tokenHdr(), "X-User-Id": String(userId || "") }, body: JSON.stringify({ id, paused, force }) });
+    const r = await fetch(`${BACKEND_URL}/api/autobuy/pause`, { method: "POST", headers: { "Content-Type": "application/json", ...tokenHdr(), "X-User-Id": String(userId || "") }, body: JSON.stringify({ id, paused, resolution }) });
     const d = await r.json().catch(() => ({}));
     return { ok: r.ok && d.ok !== false, status: r.status, ...d };
   } catch { return { ok: false }; }

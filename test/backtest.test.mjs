@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { backtest, parseRules, riskAdjustedReturnPct } from "../src/domain/backtest.js";
+import { backtest, parseRules, riskAdjustedReturnPct, sizedTradePnl } from "../src/domain/backtest.js";
 
 /* Locks down the equity/drawdown realization (R2-P0-01) and event-ordering fixes: the equity curve and
    maxDD MUST reflect realized exits, including losses, and the final curve must equal the FIXED-STAKE
@@ -20,6 +20,18 @@ function curveMatchesLedger(r) {
   const lastEq = r.eq[r.eq.length - 1].eq / 100;
   return Math.abs(summed - lastEq) < 1e-6 || r.trades.length === 0;
 }
+
+// R5-P1-02: sized P&L must be DIRECTION-AWARE — a PROFITABLE short (t.ret > 0, exit < entry) must be a
+// POSITIVE P&L in the drawdown/return path, not a loss from a raw (exit−entry).
+test("sizedTradePnl is direction-aware for shorts (drawdown regression guard)", () => {
+  const winShort = { entry: 100, exit: 98, ret: 0.02 };   // short won: price fell 2%
+  const lossShort = { entry: 100, exit: 103, ret: -0.03 };  // short lost: price rose 3%
+  assert.ok(sizedTradePnl(winShort, { qty: 10 }) > 0, "a winning short must be positive P&L");
+  assert.equal(sizedTradePnl(winShort, { qty: 10 }), 10 * 100 * 0.02);   // = +20, not qty*(exit-entry) = -20
+  assert.ok(sizedTradePnl(lossShort, { qty: 10 }) < 0, "a losing short must be negative P&L");
+  // Crypto sizes on notional × return, also direction-aware.
+  assert.equal(sizedTradePnl(winShort, { amount: 500, market: "Crypto" }), 500 * 0.02);
+});
 
 test("riskAdjustedReturnPct: return on required capital = P&L / (stake + 1.5·maxDD)", () => {
   // User's example: three +1/+2/+3 trades on a 100 stake, no drawdown → 6/100 = 6%.

@@ -304,11 +304,16 @@ function BacktestResult({ cfg, defaultSym, blocked = false, onConnect, defaultTf
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {/* Return on REQUIRED capital = P&L ÷ (stake + 1.5 × max drawdown); falls back to raw if absent. */}
-        {tile("Return", (() => { const r = st.retCap != null ? st.retCap : st.totalRet; return (r >= 0 ? "+" : "") + r.toFixed(1) + "%"; })(), (st.retCap != null ? st.retCap : st.totalRet) >= 0 ? "var(--up)" : "var(--down)")}
+        {tile(st.retCap != null ? "Return on capital" : "Return", (() => { const r = st.retCap != null ? st.retCap : st.totalRet; return (r >= 0 ? "+" : "") + r.toFixed(1) + "%"; })(), (st.retCap != null ? st.retCap : st.totalRet) >= 0 ? "var(--up)" : "var(--down)")}
         {tile("Win rate", st.winRate.toFixed(0) + "%")}
         {tile("Trades", st.n)}
         {tile("Max DD", "-" + st.maxDD.toFixed(1) + "%", "var(--down)")}
       </div>
+      {st.retCap != null && (
+        <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>
+          <b>Return on capital</b> = total P&amp;L ÷ (deployed stake + 1.5 × max drawdown) — the return measured against the capital you'd reserve, not raw notional. Fixed stake per trade; gains are not reinvested.
+        </div>
+      )}
       <div style={{ height: 130, marginTop: 12, background: "var(--bg)", borderRadius: 12, padding: "8px 6px 2px" }}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={res.eq} margin={{ top: 4, right: 6, bottom: 0, left: 6 }}>
@@ -991,22 +996,35 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
   // waiting. Matching the Virtual "Live" (open>0), we require a real fill, since the server's
   // `inPosition` flag alone was surfacing every armed strategy here.
   const holdsPosition = (s) => s.inPosition && (s.lastOrderStatus === "filled" || s.lastOrderStatus === "partial");
-  const live = (data.strategies || []).filter((s) => (s.status === "active" || s.status === "paused") && (s.market || "Crypto") === market && holdsPosition(s));
+  // A strategy PAUSED for unknown-order review has no linked position, so `holdsPosition` is false — but
+  // it MUST still appear here (this is the only place with Pause/Start controls), or the resume workflow
+  // becomes invisible exactly when the user needs it. Surface it alongside live positions.
+  const needsReview = (s) => !!s.needsReview || (s.lastOrderStatus === "unknown" && !!s.pendingSince);
+  const live = (data.strategies || []).filter((s) => (s.status === "active" || s.status === "paused") && (s.market || "Crypto") === market && (holdsPosition(s) || needsReview(s)));
   if (!userId || !live.length) return null;
   const doPause = async (s) => {
     const nowActive = s.status === "active";
     // Optimistic: flip the row immediately so Pause/Start responds instantly, then confirm with the server.
     setData((d) => ({ ...d, strategies: (d.strategies || []).map((x) => x.id === s.id ? { ...x, status: nowActive ? "paused" : "active" } : x) }));
     const r = await pauseAutoBuy(userId, s.id, nowActive);
-    /* RESUMING A STRATEGY UNDER UNKNOWN-ORDER REVIEW can be BLOCKED by the server until the broker
-       outcome is confirmed — resuming on faith could DUPLICATE a real fill. Surface the reason and let
-       the user force it ONLY after they've checked their broker (or flatten with Stop & sell instead). */
+    /* RESUMING A STRATEGY UNDER UNKNOWN-ORDER REVIEW is BLOCKED by the server until the user declares the
+       outcome — resuming on faith could DUPLICATE a real fill. Offer the two SAFE, explicit choices:
+       "Order filled" → server ADOPTS the real broker position (no new entry); "Didn't fill" → clear. */
     if (r && r.needsReview && !nowActive) {
-      const go = await confirmDialog(
-        (r.reason || "The earlier order's outcome is unconfirmed.") + "\n\nOnly resume if you've checked your broker and there is NO open position for this strategy.",
-        { title: "Confirm before resuming", confirmLabel: "I've checked — resume", cancelLabel: "Keep paused" }
+      const filled = await confirmDialog(
+        (r.reason || "The earlier order's outcome is unconfirmed.") + "\n\nDid this order FILL at your broker?",
+        { title: "Resolve unknown order", confirmLabel: "Yes — it filled (adopt position)", cancelLabel: "No / not sure" }
       );
-      if (go) await pauseAutoBuy(userId, s.id, false, true);   // forced resume — user took responsibility
+      if (filled) {
+        const a = await pauseAutoBuy(userId, s.id, false, "filled");   // adopt the real broker position
+        if (a && a.needsReview) await confirmDialog(a.reason || "Couldn't adopt a position. If it already closed, resolve as no-fill; otherwise use Stop & sell.", { title: "Couldn't adopt", confirmLabel: "OK", cancelLabel: "OK" });
+      } else {
+        const noFill = await confirmDialog(
+          "Confirm the order did NOT fill and there is NO open position for this strategy at your broker. Only then is it safe to resume.",
+          { title: "Confirm no fill", confirmLabel: "Confirmed — no position", cancelLabel: "Keep paused" }
+        );
+        if (noFill) await pauseAutoBuy(userId, s.id, false, "nofill");
+      }
     }
     refresh();
   };

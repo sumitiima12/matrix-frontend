@@ -99,6 +99,12 @@ export function backtest(cfg, c, startIdx = 1, baseTf = null, opts = {}) {
   const intraday = !!baseTf && /(m|h)$/i.test(String(baseTf));
   const squareOff = !!opts.squareOffEod && intraday;
   const sf = squareOff ? sessionStarts(c) : null;
+  /* ONE candle-validity predicate, used for iteration, forced-exit last-valid selection AND buy-and-hold
+     endpoints (R4-P2-01). A tradable candle needs finite, positive prices and a coherent OHLC shape:
+     high ≥ max(open, close), low ≤ min(open, close), high ≥ low. Anything else is garbage OHLC and must
+     not fabricate stop/target hits, a forced-exit price, or a benchmark endpoint. */
+  const isValidCandle = (b) => !!b && Number.isFinite(b.o) && Number.isFinite(b.h) && Number.isFinite(b.l) && Number.isFinite(b.c)
+    && b.c > 0 && b.o > 0 && b.h >= b.l && b.h >= Math.max(b.o, b.c) && b.l <= Math.min(b.o, b.c);
   // Realize a closed trade: record it (net of round-trip cost) AND ADD its return to `realizedSum`, so
   // the equity curve and maxDD reflect the exit. (The previous version cleared `pos` before the mark-to-
   // market ran, so realized exits — including losses — never hit the curve, R2-P0-01. Fixed-stake: we
@@ -114,16 +120,18 @@ export function backtest(cfg, c, startIdx = 1, baseTf = null, opts = {}) {
   });
   for (let i = 1; i < c.length; i++) {
     const bar = c[i];
-    // P2-15 — skip malformed candles (NaN/negative prices, high<low). Acting on garbage OHLC would
-    // fabricate stop/target hits and corrupt the equity curve; a bad bar is simply passed over.
-    if (!bar || !Number.isFinite(bar.o) || !Number.isFinite(bar.h) || !Number.isFinite(bar.l) || !Number.isFinite(bar.c) || bar.c <= 0 || bar.h < bar.l) continue;
+    // Skip malformed candles — acting on garbage OHLC would fabricate stop/target hits (R4-P2-01).
+    if (!isValidCandle(bar)) continue;
     let exitedThisBar = false;
     // OPT-IN square-off: a position carried into a NEW session is flattened at the PRIOR session's last
     // close (intraday strategies don't hold overnight). Runs before intrabar SL/TP so the new session's
     // bar can't manage a position that should already be closed. Re-entry on this bar is allowed.
     if (squareOff && pos && sf[i] && i > pos.i) {
-      const px = closes[i - 1];
-      if (Number.isFinite(px) && px > 0) { closeTrade(pos.i, pos.entry, i - 1, px, "EOD"); pos = null; }
+      // R4-#5: flatten at the prior session's last VALID close — the immediately-prior bar can be a
+      // malformed candle the loop skipped, so walk back to the last good one rather than trust closes[i-1].
+      let j = i - 1;
+      while (j > pos.i && !isValidCandle(c[j])) j--;
+      if (isValidCandle(c[j])) { closeTrade(pos.i, pos.entry, j, c[j].c, "EOD"); pos = null; }
     }
     // ── 1. Manage a position opened on a PRIOR bar: intrabar SL/TP, else exit-signal at this open ──
     if (pos) {
@@ -152,12 +160,11 @@ export function backtest(cfg, c, startIdx = 1, baseTf = null, opts = {}) {
     eq.push({ i, eq: +(curveEq * 100).toFixed(2) });
     peak = Math.max(peak, curveEq); maxDD = Math.max(maxDD, (peak - curveEq) / peak);
   }
-  // R3-#4: the LAST candle can itself be malformed (skipped in the loop). Forcing an exit or a buy&hold
-  // return off a zero/negative/NaN close would corrupt results, so resolve the last VALID close first.
-  const isNum = (x) => Number.isFinite(x) && x > 0;
+  // R4-P2-01: the LAST candle can be malformed (skipped in the loop). Forcing an exit or a buy&hold return
+  // off a bad candle corrupts results, so resolve the last fully-VALID candle (not just a positive close).
   let lastIdx = c.length - 1;
-  while (lastIdx > 0 && !isNum(closes[lastIdx])) lastIdx--;
-  const lastClose = isNum(closes[lastIdx]) ? closes[lastIdx] : null;
+  while (lastIdx > 0 && !isValidCandle(c[lastIdx])) lastIdx--;
+  const lastClose = isValidCandle(c[lastIdx]) ? closes[lastIdx] : null;
   // Force-close anything still open at the END OF THE DATASET (note: end of data, not necessarily EOD session).
   if (pos && lastClose != null) {
     closeTrade(pos.i, pos.entry, lastIdx, lastClose, "EOD");
@@ -171,10 +178,11 @@ export function backtest(cfg, c, startIdx = 1, baseTf = null, opts = {}) {
   }
   const totalRet = realizedSum * 100;   // fixed-stake: SUM of per-trade returns (gains not reinvested)
   const wins = trades.filter((t) => t.ret > 0).length;
-  // Buy & hold over the SAME test window (from the warm-up boundary), using valid closes at both ends.
-  let startIdxV = Math.min(from, closes.length - 1);
-  while (startIdxV < closes.length && !isNum(closes[startIdxV])) startIdxV++;
-  const bhStart = isNum(closes[startIdxV]) ? closes[startIdxV] : (closes.find(isNum) || null);
+  // Buy & hold over the SAME test window (from the warm-up boundary), using VALID candles at both ends.
+  let startIdxV = Math.min(from, c.length - 1);
+  while (startIdxV < c.length && !isValidCandle(c[startIdxV])) startIdxV++;
+  const firstValid = c.findIndex(isValidCandle);
+  const bhStart = isValidCandle(c[startIdxV]) ? closes[startIdxV] : (firstValid >= 0 ? closes[firstValid] : null);
   const bh = (lastClose != null && bhStart != null) ? (lastClose / bhStart - 1) * 100 - costFrac * 100 : 0;
   // RETURN ON REQUIRED CAPITAL — the headline return. Capital is reused (fixed stake every trade), but
   // the return is measured against the capital you'd actually have to RESERVE: the stake plus a buffer
@@ -190,6 +198,17 @@ export function backtest(cfg, c, startIdx = 1, baseTf = null, opts = {}) {
 export function riskAdjustedReturnPct(pnl, base, maxDD) {
   const denom = (Number(base) || 0) + 1.5 * Math.max(0, Number(maxDD) || 0);
   return denom > 0 ? (pnl / denom) * 100 : null;
+}
+
+/* ONE direction-aware sized-P&L function (R5-P1-02), so total P&L, the per-trade ledger AND the drawdown
+   path all agree for LONG and SHORT. `t.ret` is the net return and is already +ve when a short profits,
+   so entry×ret (stocks) / amount×ret (crypto notional) sizes shorts correctly. A raw (exit−entry) reads a
+   winning short as a loss and corrupts drawdown + return-on-capital. */
+export function sizedTradePnl(t, { qty = null, amount = null, market = null } = {}) {
+  const ret = (t && t.ret) || 0;
+  if (amount != null || market === "Crypto") return (Number(amount) || 0) * ret;   // crypto notional × return
+  if (qty != null) return (Number(qty) || 0) * ((t && t.entry) || 0) * ret;         // shares × entry × return
+  return 0;
 }
 
 /* Delegates to the shared interpreter (strategyLang.interpretText), which now also understands

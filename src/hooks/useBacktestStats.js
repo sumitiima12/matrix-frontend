@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchHistory } from "../domain/api";
-import { backtest, riskAdjustedReturnPct } from "../domain/backtest";
+import { backtest, riskAdjustedReturnPct, sizedTradePnl } from "../domain/backtest";
 
 /**
  * useBacktestStats — six-month performance for a strategy, from REAL candles.
@@ -174,12 +174,9 @@ export function useBacktestStats(strat, opts = {}) {
            track the deepest fall from a running high — that peak-to-trough drop is the worst losing
            streak a holder would have sat through. Sized the SAME way as `pnl` above so the drawdown is
            in the same units the P&L is shown in. */
-        const perTradePnl = trades.map((t) => {
-          if (hasSize) {
-            return sizeMarket === "Crypto" ? (Number(amount) || 0) * (t.ret || 0) : (Number(qty) || 0) * ((t.exit || 0) - (t.entry || 0));
-          }
-          return perSym * (t.ret || 0);   // fixed-stake P&L (gains not reinvested)
-        });
+        const perTradePnl = trades.map((t) => hasSize
+          ? sizedTradePnl(t, { qty, amount, market: sizeMarket })   // direction-aware (correct for shorts)
+          : perSym * (t.ret || 0));                                 // fixed-stake P&L (gains not reinvested)
         let eq = 0, peak = 0, maxDD = 0;
         for (const p of perTradePnl) { eq += p; if (eq > peak) peak = eq; const dd = peak - eq; if (dd > maxDD) maxDD = dd; }
 
