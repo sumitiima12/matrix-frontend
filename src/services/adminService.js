@@ -6,9 +6,15 @@
  * in memory for the session — never stored.
  */
 import { BACKEND_URL } from "../config";
+import { getAuthToken } from "./tradeService";
 
+/* The backend's isAdmin() takes identity from the VERIFIED JWT (never the spoofable X-User-Id), so every
+   admin call MUST carry the Authorization Bearer token — without it the admin check silently fails and the
+   console won't open. X-User-Id/X-Admin-Key are still sent for the key factor and diagnostics. */
 function headers(userId, key) {
-  return { "Content-Type": "application/json", "X-User-Id": userId || "", "X-Admin-Key": key || "" };
+  const h = { "Content-Type": "application/json", "X-User-Id": userId || "", "X-Admin-Key": key || "" };
+  try { const t = getAuthToken(); if (t) h.Authorization = `Bearer ${t}`; } catch { /* no token */ }
+  return h;
 }
 
 /** Am I an admin with this key? Used to decide whether to show the panel. */

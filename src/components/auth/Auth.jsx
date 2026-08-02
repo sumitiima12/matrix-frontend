@@ -560,11 +560,13 @@ function RiskLimitsSection({ riskLimits, onSave }) {
   );
 }
 
-export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, onAdmin, isAdminUser = false, adminMode = false, onToggleAdminMode, portfolio = [], trades = [], deposits = [], market = "IN", onBroker, brokerName, onUsernameChanged, onEmailChanged, marketBrokers = {}, houseFeeds = {}, onDisconnectBroker, appSettings = null, onSaveAppSettings, riskLimits = null, onSaveRiskLimits, onDeleteAccount, onClearVirtual }) {
+export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, onAdmin, isAdminUser = false, adminMode = false, onToggleAdminMode, portfolio = [], trades = [], deposits = [], market = "IN", onBroker, brokerName, onUsernameChanged, onEmailChanged, marketBrokers = {}, houseFeeds = {}, onDisconnectBroker, appSettings = null, onSaveAppSettings, riskLimits = null, onSaveRiskLimits, onDeleteAccount, onClearVirtual, onReconcileDelta }) {
   const [confirmDel, setConfirmDel] = useState(false);
   const [delBusy, setDelBusy] = useState(false);
   const [clearBusy, setClearBusy] = useState(false);
   const [clearMsg, setClearMsg] = useState("");
+  const [recBusy, setRecBusy] = useState(false);
+  const [recMsg, setRecMsg] = useState("");
   const [uidEdit, setUidEdit] = useState(false);
   const [uidVal, setUidVal] = useState("");
   const [uidBusy, setUidBusy] = useState(false);
@@ -890,6 +892,24 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
           </button>
         )}
         {clearMsg && <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 6 }}>{clearMsg}</div>}
+
+        {/* Reconcile with Delta — drop phantom REAL crypto records Delta doesn't actually hold (display
+            cleanup; never touches broker holdings). Only shown when a reconcile handler is wired. */}
+        {auth && onReconcileDelta && (
+          <button
+            onClick={async () => {
+              setRecBusy(true); setRecMsg("");
+              try { const r = await onReconcileDelta(); setRecMsg(r && r.removed != null ? (r.removed ? `Dropped ${r.removed} phantom record${r.removed === 1 ? "" : "s"} Delta doesn't hold.` : "Your records already match Delta.") : "Reconciled with Delta."); }
+              catch (e) { setRecMsg(String((e && e.message) || "Couldn't reconcile — try again.")); }
+              finally { setRecBusy(false); }
+            }}
+            disabled={recBusy}
+            className="tap card"
+            style={{ width: "100%", textAlign: "left", padding: "13px 15px", marginTop: 4, marginBottom: 4, border: "1px solid var(--line)", background: "transparent", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "var(--ink)", opacity: recBusy ? 0.6 : 1 }}>
+            {recBusy ? "Reconciling with Delta…" : "↻ Reconcile real trades with Delta"}
+          </button>
+        )}
+        {recMsg && <div style={{ fontSize: 11.5, color: "var(--muted)", marginBottom: 6 }}>{recMsg}</div>}
 
         {/* Delete account — a plain text option under Log out; the destructive confirm is a drawer. */}
         {auth && (
