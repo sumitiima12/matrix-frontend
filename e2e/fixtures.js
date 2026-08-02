@@ -86,7 +86,8 @@ export async function enterApp(page) {
 
 export const test = base.extend({
   page: async ({ page }, use) => {
-    // 1. Pre-seed a guest session so the app is inclined to skip gates where it can.
+    // 1. Pre-seed a logged-in virtual session so the app boots straight to the dashboard (guest mode
+    //    was removed, so `enterApp` also logs in with the stubbed /api/login as a fallback).
     await page.addInitScript(() => {
       try { sessionStorage.setItem("mx_splash_seen", "1"); } catch {}
       try { localStorage.setItem("mx_auth", "1"); localStorage.setItem("mx_mode", "virtual"); localStorage.setItem("mx_theme", "light"); } catch {}

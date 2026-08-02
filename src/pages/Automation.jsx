@@ -217,6 +217,10 @@ function BacktestResult({ cfg, defaultSym, blocked = false, onConnect, defaultTf
   const _mkt = market || (cfg && cfg.market);
   const [costs, setCosts] = useState(() => getBtCosts(_mkt));
   useEffect(() => { setBtCosts(_mkt, costs); }, [_mkt, costs]);
+  // Opt-in intraday square-off: flatten any position held across a session boundary (matches the live
+  // auto-square-off). Only meaningful on intraday timeframes; "EOD" otherwise means end-of-dataset.
+  const [squareOff, setSquareOff] = useState(false);
+  const isIntraday = /(m|h)$/i.test(String(tf));
   const [from, setFrom] = useState(iso(Date.now() - (TF_LOOKBACK[defaultTf] || 180) * 864e5));
   const [to, setTo] = useState(iso(Date.now()));
   const [preset, setPreset] = useState("auto");
@@ -260,8 +264,8 @@ function BacktestResult({ cfg, defaultSym, blocked = false, onConnect, defaultTf
   }, [realData, fromMs, toMs]);
 
   const res = useMemo(
-    () => (!cfg || cfg.mode === "plain" || !data ? null : backtest(cfg, data, startIdx, tf, { costs })),
-    [cfg, data, startIdx, tf, costs]
+    () => (!cfg || cfg.mode === "plain" || !data ? null : backtest(cfg, data, startIdx, tf, { costs, squareOffEod: squareOff && isIntraday })),
+    [cfg, data, startIdx, tf, costs, squareOff, isIntraday]
   );
 
   const bars = covered ? covered.inWindow : 0;
@@ -376,6 +380,14 @@ function BacktestResult({ cfg, defaultSym, blocked = false, onConnect, defaultTf
               </div>
             )}
           </div>
+          {/* Opt-in intraday square-off — flatten across session boundaries (matches live auto-square-off).
+              Shown only on intraday timeframes; on daily bars every bar is a new "session". */}
+          {isIntraday && (
+            <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 11, color: "var(--ink)", cursor: "pointer" }}>
+              <input type="checkbox" checked={squareOff} onChange={(e) => setSquareOff(e.target.checked)} />
+              <span>Square off intraday (no overnight positions) <span style={{ color: "var(--muted)", fontWeight: 500 }}>· closes at each session's end, like the live engine</span></span>
+            </label>
+          )}
         </div>
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

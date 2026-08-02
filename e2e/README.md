@@ -7,22 +7,27 @@ There's even an explicit test asserting no real broker/data host is ever contact
 ## One-time setup
 ```bash
 cd matrix-frontend
-npm install
-npx playwright install chromium
+npm run e2e:setup      # npm ci + installs the Chromium browser (with OS deps)
 ```
 
 ## Run
 ```bash
+npm run test:e2e:ci    # SELF-CONTAINED: builds, then runs headless (one command, CI-safe)
+
+# or, step by step:
 npm run build          # tests run against the built app (vite preview serves dist on :4173)
 npm run test:e2e       # headless
 npm run test:e2e:ui    # interactive UI mode — best for tuning selectors
 ```
+Everything is offline: `e2e/fixtures.js` stubs every `/api/**` call and a guard test asserts no real
+broker/data host is contacted, so `npm run test:e2e:ci` needs no keys, network, or running backend.
 
 ## What's covered
 - **smoke.spec.js** — app boots past the splash/login gate into the dashboard; bottom nav renders; market tabs (Indian/US/Crypto) switch without errors.
 - **flows.spec.js** — open a stock detail; Neo interprets a plain-English strategy prompt; the Delete-account confirmation shows its data-loss warning (and is cancelled, never confirmed); and a guard test proving no real broker/market host is called.
 - **features.spec.js** — the home desk + stock detail: live prices render, market tabs switch, **Top Picks**, **News**, **Trending**, the **Screener** surface and **Smart Auto-Buy** panel are present; opening a stock shows its detail; **Analysis / Fundamental analysis / Technical analysis** tabs and the **candlestick chart** render; Ideas and Portfolio pages open; and a no-real-host guard.
 - **workbench.spec.js** — the strategy workbench under **Auto**: the Neo builder opens; **Build / Strategies / P&L / Backtesting** tabs exist; the **Strategy Builder** surface and **Neo plain-English interpreter** work; the premium/sample **strategies** library with Activate-All and Long/Short controls; the **Backtesting** runner with *Backtest Now*; the **Optimizers** (Optimize SL&TP / Optimize Indicators) with Win-rate / P&L objective selectors; and a no-real-host guard.
+- **a11y.spec.js** — accessibility landmarks: the bottom navigation is a labelled `navigation` landmark and every tab exposes an accessible name; icon-only header controls (theme toggle, wallet) carry `aria-label`s. Dependency-free (no external axe engine) so it stays self-contained.
 
 Run `npx playwright test --list` to see every case. Two device profiles (Desktop Chrome + Pixel 7) run each spec.
 
