@@ -492,18 +492,31 @@ function AppInner() {
         strategy: opts.strategy || undefined,
         riskLimits,   // user's opt-in caps (off by default) — the server check enforces them
       }, true);
-      const fillQty = Number(r.filledQty) > 0 ? Number(r.filledQty) : q;
+      const status = r.status || "filled";                          // filled | partial | PENDING | REJECTED | FILLED
+      const statusLc = String(status).toLowerCase();
+      const confirmedFilled = statusLc === "filled" || statusLc === "partial";
+      // SELF-REVIEW fix: only treat a CONFIRMED fill as a position. A PENDING/rejected-after-accept order
+      // must NOT be journaled with a live entry price (that was a phantom position with fake P&L).
+      const fillQty = Number(r.filledQty) > 0 ? Number(r.filledQty) : (confirmedFilled ? q : 0);
       const fillPx = Number(r.avgPrice) > 0 ? Number(r.avgPrice) : (s.price ?? undefined);
-      const status = r.status || "filled";                 // filled | partial
-      let t = `Real ${side.toLowerCase()} ${status === "partial" ? `PARTIALLY filled (${fillQty}/${q})` : "filled"} on ${route.meta.name}`;
-      if (opts.sl > 0 || opts.tp > 0) { if (isDelta && r.bracket && r.bracket.placed) t += " · SL/TP set"; else if (r.autoExitId) t += " · auto-exit armed"; }
-      // Journal the real order (long OR short) with its FILL STATUS so the user sees Filled/Partial in
-      // history and positions. recordTrade only appends to the journal — it never touches the paper book.
+      let t;
+      if (statusLc === "pending") t = `Real ${side.toLowerCase()} order PLACED on ${route.meta.name} — awaiting fill; verify in your broker`;
+      else if (statusLc === "rejected") t = `Real ${side.toLowerCase()} order REJECTED on ${route.meta.name}`;
+      else t = `Real ${side.toLowerCase()} ${statusLc === "partial" ? `PARTIALLY filled (${fillQty}/${q})` : "filled"} on ${route.meta.name}`;
+      // SL/TP feedback — and, crucially, WARN when the user asked for a stop but it was NOT armed
+      // (e.g. FYERS entry still pending, or a short we can't manage), so they don't assume protection.
+      if (opts.sl > 0 || opts.tp > 0) {
+        if (isDelta && r.bracket && r.bracket.placed) t += " · SL/TP set";
+        else if (r.autoExitId) t += " · auto-exit armed";
+        else if (r.autoExitNote || !confirmedFilled) t += " · ⚠ SL/TP NOT armed — set it in your broker";
+      }
+      // Journal the real order with its FILL STATUS. For an unconfirmed order we record it WITHOUT an entry
+      // price (mirrors the reject path) so no phantom open position or P&L is created.
       try {
         recordTrade({
-          id: `real-${r.orderId || Date.now()}`, sym: s.sym, market: mkt, qty: fillQty, side,
+          id: `real-${r.orderId || Date.now()}`, sym: s.sym, market: mkt, qty: confirmedFilled ? fillQty : q, side,
           short: side === "SELL" || undefined,
-          entry: fillPx, entryAt: Date.now(), tradeType: opts.tradeType || "Manual",
+          ...(confirmedFilled ? { entry: fillPx } : {}), entryAt: Date.now(), tradeType: opts.tradeType || "Manual",
           real: true, status, orderId: r.orderId || null, tp: opts.tp || undefined, sl: opts.sl || undefined,
         });
       } catch {}
@@ -730,10 +743,10 @@ function AppInner() {
         const wantsProtection = side === "BUY" && (opts.sl > 0 || opts.tp > 0);
         if (wantsProtection && isDelta) {
           if (bk && bk.placed) t += " · SL/TP set on exchange";
-          else if (bk && !bk.placed) { setBuyToast({ t: `Order filled, but SL/TP was NOT set — add it in ${liveBroker.name} (${bk.message})`, e: true }); refreshPortfolio(); return; }
+          else if (bk && !bk.placed) { setBuyToast({ t: `Order placed, but SL/TP was NOT set — add it in ${liveBroker.name} (${bk.message})`, e: true }); refreshPortfolio(); return; }
         }
         if (r.autoExitId) t += " · auto-exit armed on server";
-        else if (wantsProtection && !isDelta) { setBuyToast({ t: `Order filled — auto-exit couldn't be armed. Add SL/TP manually in ${liveBroker.name}.`, e: true }); refreshPortfolio(); return; }
+        else if (wantsProtection && !isDelta) { setBuyToast({ t: `Order placed — SL/TP was NOT armed. Verify the fill and add SL/TP in ${liveBroker.name}.`, e: true }); refreshPortfolio(); return; }
         setBuyToast({ t });
         refreshPortfolio();
       } catch (e) {
