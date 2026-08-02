@@ -22,7 +22,7 @@ jobs:
       - name: Production dependency audit
         run: npm audit --omit=dev --audit-level=high
       - name: Playwright (desktop + mobile)
-        continue-on-error: true
+        continue-on-error: false
         run: |
           npx playwright install --with-deps chromium
           npm run test:e2e --if-present
