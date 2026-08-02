@@ -9,7 +9,7 @@
  * missing it says so instead of guessing.
  */
 
-export const ACTIONS = ["Add", "Hold", "Reduce", "Exit"];
+export const ACTIONS = ["Add", "Hold", "Reduce", "Exit", "Take profit"];   // M-07: "Take profit" is a real emitted action
 
 const pct = (a, b) => (b ? ((a - b) / b) * 100 : 0);
 
@@ -65,8 +65,11 @@ export function analyzeHolding(h, s, signal) {
   let action = "Hold";
   let confidence = 50;
 
-  const brokeStop = suggestedStop != null && price <= suggestedStop;
-  const hitTarget = suggestedTarget != null && price >= suggestedTarget;
+  /* C-02: stop/target comparisons MUST branch by direction. For a LONG a broken stop is price ≤ stop and a
+     hit target is price ≥ target; for a SHORT it's the mirror — stop ABOVE (price ≥ stop) and target BELOW
+     (price ≤ target). The long-only comparison recommended taking profit on a losing short and vice-versa. */
+  const brokeStop = suggestedStop != null && (dir === 1 ? price <= suggestedStop : price >= suggestedStop);
+  const hitTarget = suggestedTarget != null && (dir === 1 ? price >= suggestedTarget : price <= suggestedTarget);
   const score = signal?.score ?? 0;
 
   if (brokeStop) {

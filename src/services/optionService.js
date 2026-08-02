@@ -1,5 +1,6 @@
 import { BACKEND_URL } from "../config";
-import { loadSession } from "./brokerService";
+import { loadIndianSession } from "./brokerService";
+import { getAuthToken } from "./tradeService";
 
 /**
  * The option chain, from the broker. There is no fallback.
@@ -10,12 +11,18 @@ import { loadSession } from "./brokerService";
  */
 export async function fetchOptionChain(underlying, userId) {
   if (!BACKEND_URL) throw new Error("Backend not configured");
-  const s = loadSession();
-  if (!s || !s.sessionId) throw new Error("Connect a broker to trade options");
+  // M-10: options need an Indian (NSE/F&O) broker specifically — not just any connected broker.
+  const s = loadIndianSession();
+  if (!s || !s.sessionId) throw new Error("Connect an Indian options broker (e.g. Zerodha, FYERS) to trade options.");
 
+  /* C-01: the route is protected by requireAuth, so it MUST carry the verified bearer token — the opaque
+     broker session + X-User-Id alone return 401 for a normally signed-in user (the whole options chain
+     appeared broken). Send Authorization alongside the broker-session headers. */
+  const headers = { "X-Broker-Session": s.sessionId, "X-User-Id": String(userId || "") };
+  try { const t = getAuthToken(); if (t) headers.Authorization = `Bearer ${t}`; } catch { /* no token */ }
   const r = await fetch(
     `${BACKEND_URL}/api/broker/optionchain?underlying=${encodeURIComponent(underlying)}`,
-    { headers: { "X-Broker-Session": s.sessionId, "X-User-Id": String(userId || "") } }
+    { headers }
   );
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(d.error || `Could not load the option chain (${r.status})`);

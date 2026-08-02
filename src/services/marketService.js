@@ -38,20 +38,27 @@ export async function getQuotes(ySyms) {
  * Anything else — e.g. relabelling a 90m bar as "4h" — misstates the period every
  * indicator is then computed on.
  */
+/* C-03: fold base candles into a higher timeframe, SESSION-ALIGNED. Buckets are formed WITHIN a calendar
+   day and never span a session boundary — so a "3m from 1m" or "4h from 60m" bucket is a real fixed-duration
+   bar, not an arbitrary group that merges the tail of one session with the head of the next. */
 function aggregate(candles, n) {
+  if (!Array.isArray(candles) || n <= 1) return candles;
+  const dayKey = (t) => { const ms = t < 1e12 ? t * 1000 : t; const d = new Date(ms); return `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`; };
+  const days = new Map();
+  for (const c of candles) { const k = dayKey(c.t); if (!days.has(k)) days.set(k, []); days.get(k).push(c); }
   const out = [];
-  for (let i = 0; i < candles.length; i += n) {
-    const g = candles.slice(i, i + n);
-    if (!g.length) continue;
-    out.push({
-      t: g[0].t,
-      o: g[0].o,
-      c: g[g.length - 1].c,
-      h: Math.max(...g.map((x) => x.h)),
-      l: Math.min(...g.map((x) => x.l)),
-      v: g.reduce((a, x) => a + (x.v || 0), 0),
-    });
+  for (const grp of days.values()) {
+    for (let i = 0; i < grp.length; i += n) {
+      const g = grp.slice(i, i + n);
+      if (!g.length) continue;
+      out.push({
+        t: g[0].t, o: g[0].o, c: g[g.length - 1].c,
+        h: Math.max(...g.map((x) => x.h)), l: Math.min(...g.map((x) => x.l)),
+        v: g.reduce((a, x) => a + (x.v || 0), 0),
+      });
+    }
   }
+  out.sort((a, b) => a.t - b.t);
   return out.map((c, i) => ({ ...c, i }));
 }
 

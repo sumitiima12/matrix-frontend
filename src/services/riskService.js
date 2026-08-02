@@ -35,7 +35,7 @@ export function isMarketOpen(market, now = new Date()) {
   const day = now.getUTCDay();
   if (day === 0 || day === 6) return false;
   const mins = now.getUTCHours() * 60 + now.getUTCMinutes();
-  if (market === "IN") return mins >= 225 && mins <= 600;      // 09:15–16:00 IST
+  if (market === "IN") return mins >= 225 && mins <= 600;      // L-04: 09:15–15:30 IST (03:45–10:00 UTC)
   // US observes DST, so a hardcoded UTC window is wrong half the year. Compute wall-clock
   // time in the exchange timezone (Intl handles EST/EDT), then check 09:30-16:00 ET.
   if (market === "US") {
@@ -57,13 +57,31 @@ export function isMarketOpen(market, now = new Date()) {
   return true;
 }
 
-/* Closing bell, in UTC minutes-since-midnight. Same numbers isMarketOpen uses, named
-   once so the square-off engine and the open/closed check can never drift apart. */
-export function marketCloseMins(market) {
-  if (market === "IN") return 600;    // 15:30 IST
-  if (market === "US") return 1260;                       // 16:00 ET (approx)
-  if (market === "Commodity") return 1080;               // 23:30 IST (MCX close)
+/* H-02/H-04: the closing bell must be reasoned about in the EXCHANGE's LOCAL time, not a fixed UTC minute —
+   US markets shift an hour under daylight-saving, so a hardcoded UTC close is an hour wrong for ~8 months.
+   `closeLocalMins` is minutes-since-local-midnight of the bell; `localMins` is the current wall-clock minute
+   in that exchange's timezone (DST-correct via Intl). The square-off engine compares these two. */
+export function marketTz(market) { return market === "US" ? "America/New_York" : "Asia/Kolkata"; }
+export function closeLocalMins(market) {
+  if (market === "IN") return 15 * 60 + 30;               // 15:30 IST
+  if (market === "US") return 16 * 60;                    // 16:00 ET
+  if (market === "Commodity") return 23 * 60 + 30;        // 23:30 IST (MCX)
   return null;                                            // Crypto never closes
+}
+export function localMins(market, now = new Date()) {
+  try {
+    const p = new Intl.DateTimeFormat("en-GB", { timeZone: marketTz(market), hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(now);
+    const h = +p.find((x) => x.type === "hour").value, m = +p.find((x) => x.type === "minute").value;
+    return (h === 24 ? 0 : h) * 60 + m;
+  } catch { return now.getUTCHours() * 60 + now.getUTCMinutes(); }
+}
+/* Back-compat (deprecated): fixed-UTC close. Kept only so nothing that imported it breaks; the square-off
+   engine now uses the DST-correct localMins/closeLocalMins pair above. */
+export function marketCloseMins(market) {
+  if (market === "IN") return 600;
+  if (market === "US") return 1260;
+  if (market === "Commodity") return 1080;
+  return null;
 }
 
 const startOfDay = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };

@@ -84,6 +84,15 @@ export function loadSession() {
   return all[indian || keys[0]];
 }
 
+/* M-10: options are NSE-only, so they need an IN/F&O-capable broker specifically. Returns that session or
+   null — the caller shows a targeted "connect an Indian options broker" message instead of firing the NSE
+   option-chain route with, say, a Delta or Schwab session (which just errors confusingly). */
+export function loadIndianSession() {
+  const all = loadAll();
+  const indian = Object.keys(all).find((k) => (BROKER_MARKETS[k] || []).includes("IN"));
+  return indian ? all[indian] : null;
+}
+
 export function saveSession(s) {
   if (!s || !s.broker || !s.sessionId) return;
   const all = loadAll();

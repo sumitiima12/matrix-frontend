@@ -1,4 +1,4 @@
-import { marketCloseMins, isMarketOpen } from "./riskService";
+import { closeLocalMins, localMins, isMarketOpen } from "./riskService";
 import { marketOf } from "../domain/universe";
 
 /**
@@ -41,11 +41,12 @@ export function dueForSquareOff(h, now = new Date()) {
       : null;
   }
 
-  const close = marketCloseMins(market);
+  const close = closeLocalMins(market);
   if (close == null) return null;
   if (!isMarketOpen(market, now)) return null;            // don't fire into a shut market
 
-  const mins = now.getUTCHours() * 60 + now.getUTCMinutes();
+  // H-02: compare the exchange's LOCAL wall-clock minute to the LOCAL close — DST-correct year-round.
+  const mins = localMins(market, now);
   return mins >= close - SQUARE_OFF_LEAD_MINS
     ? { reason: `Intraday position — squared off ${SQUARE_OFF_LEAD_MINS} min before close` }
     : null;

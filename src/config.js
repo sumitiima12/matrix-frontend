@@ -41,7 +41,7 @@ export const MATRIX_PERSONA =
  */
 export const TF_YF = {
   "1m":  { i: "1m",  r: "1d" },
-  "3m":  { i: "2m",  r: "1d" },
+  "3m":  { i: "1m",  r: "1d", agg: 3 },   // C-03: REAL 3m = three 1m candles folded (session-aligned), not a mislabelled 2m
   "5m":  { i: "5m",  r: "5d" },
   "15m": { i: "15m", r: "1mo" },
   "30m": { i: "30m", r: "1mo" },
@@ -60,7 +60,7 @@ export const TF_YF = {
    years of daily; Yahoo caps intraday near 60 days but still dwarfs the old 1–5 day windows. */
 export const BT_YF = {
   "1m":  { i: "1m",  r: "5d"  },
-  "3m":  { i: "2m",  r: "1y"  },
+  "3m":  { i: "1m",  r: "5d", agg: 3 },   // C-03: REAL 3m from 1m (Yahoo caps 1m history ~7d; use FYERS native for longer)
   "5m":  { i: "5m",  r: "1y"  },
   "15m": { i: "15m", r: "1y"  },
   "30m": { i: "30m", r: "1y"  },

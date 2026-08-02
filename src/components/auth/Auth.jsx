@@ -929,7 +929,7 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
             </div>
             <div className="disp" style={{ fontWeight: 800, fontSize: 18 }}>Delete your account?</div>
             <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 8, lineHeight: 1.55 }}>
-              This is permanent and cannot be undone. <b style={{ color: "var(--ink)" }}>All your trades, strategies, ideas, saved data and connected brokers will be erased.</b> You'll be signed out immediately.
+              Your <b style={{ color: "var(--ink)" }}>personal details, strategies, ideas, saved data and connected brokers will be permanently deleted</b> and you'll be signed out immediately. <b style={{ color: "var(--ink)" }}>Past trades will not be deleted, as they're retained for records maintenance.</b> This can't be undone.
             </div>
             <button
               onClick={async () => { setDelBusy(true); try { await (onDeleteAccount && onDeleteAccount()); } finally { setDelBusy(false); setConfirmDel(false); } }}

@@ -22,6 +22,11 @@ npm-debug.log*
 .vite/
 coverage/
 
-# NOTE: dist/ (the Vite build output) is intentionally NOT ignored here — this repo currently commits it.
-# If your host builds from source instead of serving the committed dist/, add `dist/` below and run
-# `git rm -r --cached dist` on your Mac.
+# L-02: build output is produced in CI/deploy, not committed (avoids source/build drift + huge diffs).
+# After pulling this change, run once on your Mac:  git rm -r --cached dist
+dist/
+
+# L-03: Playwright artifacts are transient — keep them in CI with expiry, not in the repo.
+# After pulling this change, run once on your Mac:  git rm -r --cached test-results playwright-report
+test-results/
+playwright-report/
