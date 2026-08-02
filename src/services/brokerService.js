@@ -183,6 +183,9 @@ export async function brokerLoginUrl(broker, redirect, userId) {
     `/api/broker/login-url?broker=${broker}&redirect=${encodeURIComponent(redirect || "")}${userId ? `&userId=${encodeURIComponent(userId)}` : ""}`,
     { ...tokenHdr(), ...(userId ? { "X-User-Id": String(userId) } : {}) }
   );
+  // R6-P1-02: remember the EXACT redirect used, keyed by the state nonce, so we echo the identical value
+  // back at session completion for the server's redirect-binding check.
+  try { if (d.state && redirect) sessionStorage.setItem("mx_oauth_rd_" + d.state, redirect); } catch { /* ignore */ }
   return d.url;
 }
 
@@ -208,12 +211,13 @@ export async function brokerConnectInfo() {
 
 /** Step 2: the SERVER exchanges the request token and keeps the access token.
     `extra` carries bring-your-own credentials (Dhan/IND Money token, Angel One login). */
-export async function brokerSession(broker, requestToken, userId, extra, state) {
+export async function brokerSession(broker, requestToken, userId, extra, state, redirect) {
   if (!BACKEND_URL) throw new Error("no-backend");
   const r = await fetch(`${BACKEND_URL}/api/broker/session`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...tokenHdr() },
-    body: JSON.stringify({ broker, requestToken, userId, extra: extra || undefined, state: state || undefined }),
+    // R6-P1-02: echo the redirect used at login-url so the server can verify the OAuth state is bound to it.
+    body: JSON.stringify({ broker, requestToken, userId, extra: extra || undefined, state: state || undefined, redirect: redirect || undefined }),
   });
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);

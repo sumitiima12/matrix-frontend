@@ -83,7 +83,11 @@ export function useBroker({ onTick, userId, intervalMs = 2000 } = {}) {
       // The SERVER exchanges the token and keeps it; we get an opaque session id.
       // `extra` carries bring-your-own credentials (Dhan/IND Money token, Angel One login).
       // `state` is the OAuth CSRF nonce echoed back on the redirect (fyers/schwab).
-      const s = await brokerSession(brokerId, requestToken, userId, extra, state);
+      // R6-P1-02: echo the EXACT redirect we used at login-url (stored keyed by state) so the server can
+      // verify the OAuth transaction is bound to it.
+      let rd; try { rd = state ? sessionStorage.getItem("mx_oauth_rd_" + state) : null; } catch { rd = null; }
+      const s = await brokerSession(brokerId, requestToken, userId, extra, state, rd || undefined);
+      try { if (state) sessionStorage.removeItem("mx_oauth_rd_" + state); } catch { /* ignore */ }
       saveSession(s);                               // ADDS to the map; does not evict others
       recordConnect(s.broker);                      // remember for the daily-reconnect nudge
       // Connected FOR a specific market -> make it the preferred driver for that market.
