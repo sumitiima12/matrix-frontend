@@ -43,13 +43,20 @@ export async function getQuotes(ySyms) {
    minute % 3 == 0, even if the feed starts late or has gaps — not "every n rows since the first present".
    The trailing bucket is dropped while it's still forming (fewer than n base candles) so a half-formed bar
    never appears as closed. `baseMin` is the base interval in minutes (1 for 1m→3m, 60 for 60m→4h). */
-function aggregate(candles, n, baseMin = 1) {
+function aggregate(candles, n, baseMin = 1, anchorMin = 0) {
   if (!Array.isArray(candles) || n <= 1) return candles;
   const stepMs = n * baseMin * 60 * 1000;
+  /* R21-P2-07: SESSION-ANCHOR the window. Pure UTC-epoch buckets put a 4h boundary at 00:00/04:00 UTC, which
+     splits an exchange session (e.g. NSE 09:15 IST) into a short leading bar. `anchorMin` is the session open
+     as minutes-from-UTC-midnight (IN 03:45 UTC = 225; crypto 24/7 = 0), so a bucket boundary lands exactly on
+     the open and bars read 09:15–13:15, 13:15–15:30(session end), etc. (We intentionally do NOT drop non-tail
+     bars that are short only because the SESSION ended — a 2h15 closing bar is legitimate — and we don't
+     require every base minute to be present, since illiquid minutes are legitimately absent from real feeds.) */
+  const anchorMs = ((anchorMin % (n * baseMin)) + (n * baseMin)) % (n * baseMin) * 60 * 1000;
   const buckets = new Map();
   for (const c of candles) {
     const ms = c.t < 1e12 ? c.t * 1000 : c.t;
-    const key = Math.floor(ms / stepMs) * stepMs;
+    const key = Math.floor((ms - anchorMs) / stepMs) * stepMs + anchorMs;
     if (!buckets.has(key)) buckets.set(key, []);
     buckets.get(key).push(c);
   }
@@ -70,6 +77,23 @@ function aggregate(candles, n, baseMin = 1) {
 // Base-interval minutes for a Yahoo interval string (e.g. "1m"→1, "60m"→60), so clock-bucketing knows how
 // many base candles make one aggregated bar.
 function baseMinutesOf(iv) { const m = String(iv || "").match(/^(\d+)m$/); if (m) return +m[1]; if (iv === "60m" || iv === "1h") return 60; return 1; }
+/* R21-P2-07: exchange session open as minutes-from-UTC-midnight, used to anchor multi-hour aggregation to the
+   real session. IN (NSE/BSE, .NS/.BO): 09:15 IST = 03:45 UTC = 225. US: 09:30 ET, DST-dependent (13:30 UTC EDT
+   / 14:30 UTC EST) — resolved via Intl for the sample's own date. Crypto/others: 24/7, no anchor. */
+function sessionAnchorMin(ySym, sampleMs) {
+  const s = String(ySym || "").toUpperCase();
+  if (/\.(NS|BO)$/.test(s)) return 225;                       // NSE/BSE 09:15 IST
+  if (/-USD$|USDT$|USDC$/.test(s) || /^(BTC|ETH|SOL|DOGE|XRP)/.test(s)) return 0;  // crypto = epoch
+  // US equities: derive the current UTC offset of America/New_York for this date (handles DST).
+  try {
+    const d = new Date(sampleMs || Date.now());
+    const p = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", hour12: false }).formatToParts(d);
+    const etHour = +(p.find((x) => x.type === "hour")?.value ?? 0);
+    const utcHour = d.getUTCHours();
+    let offset = utcHour - etHour; if (offset < 0) offset += 24;   // 5 (EST) or 4 (EDT)
+    return ((9 * 60 + 30) + offset * 60) % 1440;                    // 09:30 ET → UTC minutes
+  } catch { return 0; }
+}
 
 export async function getHistory(ySym, tf, useBt = false) {
   const table = useBt ? BT_YF : TF_YF;
@@ -83,7 +107,11 @@ export async function getHistory(ySym, tf, useBt = false) {
     .filter((c) => c.o != null && c.c != null && c.h != null && c.l != null)
     .map((c, i) => ({ i, t: c.t, o: r(c.o), h: r(c.h), l: r(c.l), c: r(c.c), v: c.v }));
 
-  return m.agg ? aggregate(rows, m.agg, baseMinutesOf(m.i)) : rows;
+  if (!m.agg) return rows;
+  // Anchor multi-hour aggregation to the exchange session (only matters when a bar spans ≥1h; sub-hour bars
+  // clock-align fine on epoch). Use the last sample's date so US DST is resolved correctly for the window.
+  const anchorMin = (m.agg * baseMinutesOf(m.i) >= 60) ? sessionAnchorMin(ySym, rows.length ? (rows[rows.length - 1].t < 1e12 ? rows[rows.length - 1].t * 1000 : rows[rows.length - 1].t) : Date.now()) : 0;
+  return aggregate(rows, m.agg, baseMinutesOf(m.i), anchorMin);
 }
 
 /** Real fundamentals from Yahoo quoteSummary (via backend crumb flow). Returns the object,
