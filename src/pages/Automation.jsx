@@ -1084,6 +1084,11 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
           : <span className="pill" style={{ marginLeft: "auto", fontSize: 9, fontWeight: 800, padding: "3px 8px", background: data.engineLive ? "var(--down-soft)" : "var(--elev)", color: data.engineLive ? "var(--down)" : "var(--muted)" }}>{data.engineLive ? "TRADING LIVE" : "DRY-RUN"}</span>}
       </div>
       {!data.engineLive && <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 8, lineHeight: 1.5 }}>{isAdmin ? "Dry-run — logs entries but places no real orders. Tap the badge above to go live." : "Engine is in dry-run — logs entries but places no real orders yet."}</div>}
+      {/* One-tap self-heal: drop phantom real records Delta doesn't actually hold (Crypto/Delta only). */}
+      {onReconcileDelta && market === "Crypto" && (
+        <button onClick={async () => { if (await confirmDialog("Reconcile this list against your Delta account? Any recorded position Delta doesn't actually hold will be dropped from the app (display only — your Delta holdings are not touched).", { title: "Reconcile with Delta", confirmLabel: "Reconcile" })) onReconcileDelta(); }}
+          className="tap disp" style={{ marginBottom: 8, fontSize: 10, fontWeight: 800, padding: "5px 11px", borderRadius: 999, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--muted)" }}>↻ Reconcile with Delta</button>
+      )}
       <CollapsibleList items={liveSorted} initial={5} reverse={false} render={(s) => {
         /* A position is only REALLY open when the broker actually FILLED the order. An order can
            be accepted then rejected (e.g. insufficient balance) — in that case there is no position
@@ -2163,7 +2168,7 @@ function StrategyPnLView({ strats, trades, market, onDelete }) {
     </div>
   );
 }
-export default function Automation({ market = "IN", appMode = "virtual", onRecord, trades = [], strats = [], setStrats, onExitAll, onCloseStrategy = null, me = null, isAdmin = false, userId = null, brokerFor = null, adminKey = "", onConnectBroker = null }) {
+export default function Automation({ market = "IN", appMode = "virtual", onRecord, trades = [], strats = [], setStrats, onExitAll, onCloseStrategy = null, onReconcileDelta = null, me = null, isAdmin = false, userId = null, brokerFor = null, adminKey = "", onConnectBroker = null }) {
   /* Backtesting Indian stocks needs real history, which — for compliance — can only come from the
      user's OWN connected broker (or the owner's house feed). Crypto (Delta) and US (Yahoo) have
      usable public/delayed feeds, so those don't require a broker. */

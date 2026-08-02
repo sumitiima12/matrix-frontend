@@ -1,6 +1,7 @@
 import { closedCandles } from "../lib/series";
 import { resolveOptionOrder } from "../domain/options";
 import { chainEval, resolveOperand } from "../domain/strategyLang";
+import { marketOf } from "../domain/universe";
 
 /**
  * services/automationEngine.js — the thing that makes "automated strategy" TRUE.
@@ -220,14 +221,22 @@ export function runOnce({ strats, getCandles, getStock, getChain, positions, cap
           return;
         }
 
-        /* EXPLICIT quantity. The strategy now carries a share/lot count (default 1) rather
-           than a rupee capital that we divide by price — the user asked for exactly N,
-           they get exactly N. Falls back to the old capital-sizing only if an older
-           strategy has no qty saved. */
-        const qty = strat.qty != null
-          ? Math.max(1, strat.qty)
-          : Math.max(1, Math.floor((capitalOf(strat) / syms.length) / stock.price));
-        if (!Number.isFinite(qty) || qty < 1) return;
+        /* SIZING. For CRYPTO, `strat.qty` is a DOLLAR AMOUNT (e.g. $200), NOT a coin count — so the
+           quantity is amount ÷ price. Using it directly as a unit count was the "$200 strategy orders
+           200 BTC (~millions)" bug. For EQUITY/options, `strat.qty` IS a share/lot count (exact N). The
+           legacy capital÷price fallback is capped to a sane amount so a missing cap can't size a monster. */
+        const isCryptoSym = marketOf(sym) === "Crypto";
+        let qty;
+        if (isCryptoSym) {
+          const amountUsd = Number(strat.qty) > 0 ? Number(strat.qty) : 200;   // $ per trade (default $200)
+          qty = +(amountUsd / stock.price).toFixed(6);
+        } else if (strat.qty != null) {
+          qty = Math.max(1, strat.qty);
+        } else {
+          const cap = Math.min(Number(capitalOf(strat)) || 0, 100000);   // never size off an absurd default
+          qty = Math.max(1, Math.floor((cap / syms.length) / stock.price));
+        }
+        if (!Number.isFinite(qty) || qty <= 0) return;
 
         /* LIMIT price is computed HERE, at fire time, from the live signal price — not
            stored at config time, when the price was something else entirely. For a buy the

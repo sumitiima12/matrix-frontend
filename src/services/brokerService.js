@@ -397,6 +397,15 @@ export async function closeAutoBuy(userId, id) {
   if (!r.ok || d.error) throw new Error(d.error || "Couldn't close the position");
   return d;
 }
+/** Reconcile the real journal against Delta — drops phantom OPEN real crypto records Delta doesn't hold.
+    Returns { removed, heldSymbols, droppedSymbols }. Display-only; never touches real holdings. */
+export async function reconcileRealTrades(userId) {
+  if (!BACKEND_URL) throw new Error("no-backend");
+  const r = await fetch(`${BACKEND_URL}/api/trades/reconcile-real`, { method: "POST", headers: { "Content-Type": "application/json", ...tokenHdr(), "X-User-Id": String(userId || "") }, body: JSON.stringify({}) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || d.error) throw new Error(d.error || "Couldn't reconcile with Delta");
+  return d;
+}
 /** Update a live strategy's SL/TP — persisted to the strategy and its open managed position. */
 export async function updateAutoBuy(userId, id, { sl, tp } = {}) {
   if (!BACKEND_URL) throw new Error("no-backend");
