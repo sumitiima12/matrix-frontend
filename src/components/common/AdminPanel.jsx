@@ -19,6 +19,7 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [busy, setBusy] = useState(false);
   const [section, setSection] = useState("users");  // users | ideas
+  const [clearScope, setClearScope] = useState("virtual");   // virtual | real — which book the Clear buttons target
 
   const refresh = async () => {
     try { setUsers(await adminListUsers(userId, adminKey)); setErr(null); }
@@ -49,11 +50,17 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
     catch (e) { setErr(String(e.message || e)); }
     finally { setBusy(false); }
   };
-  // Clear ONE trade type's virtual history (Manual / Auto Buy / Screener / Automate). Real trades untouched.
-  const clearType = async (phone, tradeType, label) => {
-    if (!(await confirmDialog(`Delete ${label} virtual trade data for ${phone}? Real broker trades are not affected. This cannot be undone.`, { title: "Clear trades", confirmLabel: "Delete" }))) return;
+  // Clear ONE trade type's history (Manual / Auto Buy / Screener / Automate). `scope` = virtual | real | all.
+  // This only wipes the JOURNAL rows behind the dashboard/history — it does NOT place any broker order or
+  // touch real holdings. Used to drop phantom/duplicate records so the shown P&L reflects reality.
+  const clearType = async (phone, tradeType, label, scope = "virtual") => {
+    const scopeWord = scope === "real" ? "REAL" : scope === "all" ? "ALL (virtual + real)" : "virtual";
+    const warn = scope === "virtual"
+      ? "Real broker trades are not affected."
+      : "This removes JOURNAL records only — it does NOT sell or touch your actual broker positions. Use it to clear phantom/duplicate entries.";
+    if (!(await confirmDialog(`Delete ${label} ${scopeWord} trade data for ${phone}? ${warn} This cannot be undone.`, { title: "Clear trades", confirmLabel: "Delete", danger: scope !== "virtual" }))) return;
     setBusy(true);
-    try { const r = await adminClearTradesByType(userId, adminKey, phone, tradeType); setErr(null); await alertDialog(`Cleared ${r.removed != null ? r.removed : ""} ${label} trade${r.removed === 1 ? "" : "s"}.`, { title: "Done" }); if (selected && selected.phone === phone) await openUser(phone); }
+    try { const r = await adminClearTradesByType(userId, adminKey, phone, tradeType, scope); setErr(null); await alertDialog(`Cleared ${r.removed != null ? r.removed : ""} ${label} ${scopeWord} record${r.removed === 1 ? "" : "s"}.`, { title: "Done" }); if (selected && selected.phone === phone) await openUser(phone); }
     catch (e) { setErr(String(e.message || e)); }
     finally { setBusy(false); }
   };
@@ -181,18 +188,37 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
               broker trades are never touched. Lets the admin reset one bucket's dashboard at a time. */}
           <div style={card}>
             <div className="disp" style={{ fontWeight: 800, fontSize: 13, marginBottom: 4 }}>Clear trade data</div>
-            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10, lineHeight: 1.5 }}>Wipes VIRTUAL (paper) trades for the chosen type. Real broker trades are never affected.</div>
+            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8, lineHeight: 1.5 }}>
+              Wipes the chosen book's JOURNAL rows for a trade type. This only cleans the dashboard/history — it
+              never places an order or touches real broker holdings. Use REAL to drop phantom/duplicate real records.
+            </div>
+            {/* Which book the Clear buttons target. Virtual is the safe default; Real removes real journal rows. */}
+            <div style={{ display: "inline-flex", gap: 0, border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden", marginBottom: 10 }}>
+              {[["virtual", "Virtual"], ["real", "Real"]].map(([sc, lbl]) => (
+                <button key={sc} onClick={() => setClearScope(sc)} className="tap disp"
+                  style={{ border: "none", padding: "6px 14px", fontWeight: 800, fontSize: 11, cursor: "pointer",
+                    background: clearScope === sc ? (sc === "real" ? "var(--down)" : "var(--ink)") : "transparent",
+                    color: clearScope === sc ? "#fff" : "var(--muted)" }}>{lbl}</button>
+              ))}
+            </div>
+            {clearScope === "real" && (
+              <div style={{ fontSize: 10.5, color: "var(--down)", fontWeight: 700, marginBottom: 8, lineHeight: 1.5 }}>
+                ⚠ Clearing REAL records removes them from the app's history/P&L only. It does NOT close positions at your broker — verify holdings in your broker app.
+              </div>
+            )}
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {[["Manual", "Manual"], ["Auto Buy", "Auto Buy"], ["Screener Auto Buy", "Screener"], ["Automate", "Automate"]].map(([tt, label]) => (
-                <button key={tt} onClick={() => clearType(selected.phone, tt, label)} disabled={busy} className="tap disp"
-                  style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: 11.5, cursor: "pointer", background: "var(--elev)", color: "var(--ink)", opacity: busy ? 0.6 : 1 }}>
+                <button key={tt} onClick={() => clearType(selected.phone, tt, label, clearScope)} disabled={busy} className="tap disp"
+                  style={{ border: "1px solid " + (clearScope === "real" ? "var(--down)" : "var(--line)"), borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: 11.5, cursor: "pointer", background: "var(--elev)", color: clearScope === "real" ? "var(--down)" : "var(--ink)", opacity: busy ? 0.6 : 1 }}>
                   Clear {label}
                 </button>
               ))}
-              <button onClick={() => clearVirtual(selected.phone)} disabled={busy} className="tap disp"
-                style={{ border: "1px solid var(--down)", borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: 11.5, cursor: "pointer", background: "transparent", color: "var(--down)", opacity: busy ? 0.6 : 1 }}>
-                Clear ALL virtual
-              </button>
+              {clearScope === "virtual" && (
+                <button onClick={() => clearVirtual(selected.phone)} disabled={busy} className="tap disp"
+                  style={{ border: "1px solid var(--down)", borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: 11.5, cursor: "pointer", background: "transparent", color: "var(--down)", opacity: busy ? 0.6 : 1 }}>
+                  Clear ALL virtual
+                </button>
+              )}
             </div>
           </div>
 

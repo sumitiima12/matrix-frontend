@@ -119,11 +119,11 @@ export async function adminClearVirtual(userId, key, phone) {
 
 /** ADMIN: wipe ONE trade type's VIRTUAL history for a user — Manual / Auto Buy / Screener Auto Buy /
     Automate. Real broker trades are never touched. */
-export async function adminClearTradesByType(userId, key, phone, tradeType) {
+export async function adminClearTradesByType(userId, key, phone, tradeType, scope = "virtual") {
   const r = await fetch(`${BACKEND_URL}/api/admin/clear-trades`, {
     method: "POST",
     headers: headers(userId, key),
-    body: JSON.stringify({ phone, tradeType }),
+    body: JSON.stringify({ phone, tradeType, scope }),
   });
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(d.error || `admin ${r.status}`);
