@@ -72,6 +72,13 @@ export async function clearVirtualTrades() {
   try { return await post("/api/trades/clear-virtual", {}); } catch { return null; }
 }
 
+/** Persist the user's risk-limit policy server-side (R15-P1-02) so it's enforced on every real order,
+    independent of the client. */
+export async function saveRiskPolicy(policy) {
+  if (!BACKEND_URL) return null;
+  try { return await post("/api/risk-policy", { policy: policy || {} }); } catch { return null; }
+}
+
 export async function register(phone, pin, name, secQuestion, secAnswer, username, referralCode, email) {
   const d = await post("/api/register", { phone, pin, name, secQuestion, secAnswer, username, referralCode, email }, false);
   if (d && d.token) setAuthToken(d.token);
