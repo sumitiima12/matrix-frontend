@@ -1190,7 +1190,17 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
     const nowActive = s.status === "active";
     // Optimistic: flip the row immediately so Pause/Start responds instantly, then confirm with the server.
     setData((d) => ({ ...d, strategies: (d.strategies || []).map((x) => x.id === s.id ? { ...x, status: nowActive ? "paused" : "active" } : x) }));
-    await pauseAutoBuy(userId, s.id, nowActive);
+    const r = await pauseAutoBuy(userId, s.id, nowActive);
+    /* RESUMING A STRATEGY UNDER UNKNOWN-ORDER REVIEW can be BLOCKED by the server until the broker
+       outcome is confirmed — resuming on faith could DUPLICATE a real fill. Surface the reason and let
+       the user force it ONLY after they've checked their broker (or flatten with Stop & sell instead). */
+    if (r && r.needsReview && !nowActive) {
+      const go = await confirmDialog(
+        (r.reason || "The earlier order's outcome is unconfirmed.") + "\n\nOnly resume if you've checked your broker and there is NO open position for this strategy.",
+        { title: "Confirm before resuming", confirmLabel: "I've checked — resume", cancelLabel: "Keep paused" }
+      );
+      if (go) await pauseAutoBuy(userId, s.id, false, true);   // forced resume — user took responsibility
+    }
     refresh();
   };
   const doCancel = async (s) => {

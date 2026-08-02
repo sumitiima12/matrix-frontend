@@ -73,6 +73,28 @@ test("a stop that gaps through fills at the worse open, not the stop (R3-#5)", (
   assert.ok(r.trades[0].ret < -0.04, "a ~5% gap loss, not a ~1% stop loss");
 });
 
+// Opt-in intraday square-off: a position carried across a session boundary is flattened at the prior
+// session's last close when squareOffEod is set; without it, it holds to end-of-dataset (unchanged).
+test("opt-in EOD square-off closes at the session boundary (intraday)", () => {
+  const b = (o, h, l, c, t) => ({ o, h, l, c, v: 1000, t });
+  const D0 = Date.UTC(2024, 0, 1, 9, 15), D1 = Date.UTC(2024, 0, 2, 9, 15), M = 300000;
+  const c = [
+    b(100, 100, 99, 99, D0),            // red
+    b(99, 101, 98.5, 100.5, D0 + M),    // green → entry signal
+    b(100, 101, 99.5, 100.2, D0 + 2 * M), // ENTRY at open 100 (session 1)
+    b(100.2, 101, 99.8, 100.8, D0 + 3 * M), // held (session 1 last bar)
+    b(100.8, 102, 100, 101, D1),        // NEW SESSION (next UTC day)
+  ];
+  const p = parseRules("buy when close crosses above open");
+  const cfg = { entry: p.conds, exit: [], defs: p.defs, sl: 5, tp: 50 };   // SL/TP won't hit
+  const on = backtest(cfg, c, 1, "5m", { squareOffEod: true });
+  assert.equal(on.trades.length, 1);
+  assert.equal(on.trades[0].reason, "EOD");
+  assert.equal(on.trades[0].exit, 100.8);   // prior session's last close, not the next-session bar
+  const off = backtest(cfg, c, 1, "5m", {});   // default: holds to end-of-dataset
+  assert.equal(off.trades[0].exit, 101);       // last valid close of the whole dataset
+});
+
 // R3-#4: a malformed FINAL candle (NaN/zero close) must not corrupt the forced-exit / buy&hold. The
 // engine should force-close on the last VALID close and still produce finite stats.
 test("a malformed final candle does not corrupt results (R3-#4)", () => {

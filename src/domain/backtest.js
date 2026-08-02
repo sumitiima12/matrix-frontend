@@ -1,4 +1,4 @@
-import { resolveOperand, chainEval, parseClause, mapToken, detectOp, interpretText } from "./strategyLang";
+import { resolveOperand, chainEval, parseClause, mapToken, detectOp, interpretText, sessionStarts } from "./strategyLang";
 
 /**
  * Backtest engine — runs a strategy over REAL candles and reports win rate, P&L and drawdown.
@@ -86,6 +86,14 @@ export function backtest(cfg, c, startIdx = 1, baseTf = null, opts = {}) {
   const get = (op) => resolveOperand(op, cfg.defs, c, closes, vols, cache, baseTf);
   const trades = []; let pos = null, realized = 1, peak = 1, maxDD = 0; const eq = [{ i: 0, eq: 100 }];
   const from = Math.max(1, startIdx | 0);
+  /* OPT-IN intraday square-off (default OFF — existing results are unchanged). A live intraday strategy
+     flattens at the session close and never carries overnight; "EOD" in the loop below is really
+     end-of-DATASET. When squareOffEod is set AND the timeframe is intraday (minute/hour bars), we close
+     any position held across a session boundary at the PRIOR session's last close — matching the live
+     auto-square-off (task #149). Daily/weekly bars are excluded (every bar would be a "new session"). */
+  const intraday = !!baseTf && /(m|h)$/i.test(String(baseTf));
+  const squareOff = !!opts.squareOffEod && intraday;
+  const sf = squareOff ? sessionStarts(c) : null;
   // Realize a closed trade: record it (net of round-trip cost) AND compound its return into `realized`,
   // so the equity curve and maxDD actually reflect the exit. The previous version cleared `pos` before
   // the mark-to-market ran, so realized exits — including losses — never hit the curve (R2-P0-01).
@@ -104,6 +112,13 @@ export function backtest(cfg, c, startIdx = 1, baseTf = null, opts = {}) {
     // fabricate stop/target hits and corrupt the equity curve; a bad bar is simply passed over.
     if (!bar || !Number.isFinite(bar.o) || !Number.isFinite(bar.h) || !Number.isFinite(bar.l) || !Number.isFinite(bar.c) || bar.c <= 0 || bar.h < bar.l) continue;
     let exitedThisBar = false;
+    // OPT-IN square-off: a position carried into a NEW session is flattened at the PRIOR session's last
+    // close (intraday strategies don't hold overnight). Runs before intrabar SL/TP so the new session's
+    // bar can't manage a position that should already be closed. Re-entry on this bar is allowed.
+    if (squareOff && pos && sf[i] && i > pos.i) {
+      const px = closes[i - 1];
+      if (Number.isFinite(px) && px > 0) { closeTrade(pos.i, pos.entry, i - 1, px, "EOD"); pos = null; }
+    }
     // ── 1. Manage a position opened on a PRIOR bar: intrabar SL/TP, else exit-signal at this open ──
     if (pos) {
       const { stop, tgt } = levels(pos.entry);

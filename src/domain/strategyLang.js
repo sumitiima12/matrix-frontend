@@ -197,7 +197,7 @@ function rollExt(c, len, field, max) { const o = Array(c.length).fill(NaN); for 
    a distinct UTC date, so this segments them, and crypto resets at 00:00 UTC); OR a time gap far larger
    than the normal bar spacing (a feed starting mid-session or an intraday halt still opens a fresh
    session rather than fusing two days). Mirrors backend strategyEngine.sessionStarts. */
-function sessionStarts(c) {
+export function sessionStarts(c) {
   const n = c.length, out = new Array(n).fill(false);
   if (!n) return out;
   out[0] = true;
