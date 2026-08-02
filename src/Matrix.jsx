@@ -51,7 +51,6 @@ import ConfirmOrder from "./components/common/ConfirmOrder";
 import BrokerSheet from "./components/common/BrokerSheet";
 import { brokerSymbol } from "./domain/brokerSymbols";
 import { brokerPlaceOrder, registerAutoExit, reconcileRealTrades, BROKER_MARKETS } from "./services/brokerService";
-import { saveRiskPolicy as saveRiskPolicyApi } from "./services/tradeService";
 import MatrixRain from "./components/common/MatrixRain";
 import MLogo from "./components/common/MLogo";
 import NeoIcon from "./components/common/NeoIcon";
@@ -397,7 +396,7 @@ function AppInner() {
   const [strats, setStrats] = useState(SEED_STRATS);
 
   const wallet = walletMap[market] ?? 1000000;
-  const { trades, setTrades, recordTrade, recordBatch, placeOrder, riskLimits, setRiskLimits } =
+  const { trades, setTrades, recordTrade, recordBatch, placeOrder, riskLimits, setRiskLimits, riskSaveStatus } =
     useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, userId, broker, notify });
   const [histOpen, setHistOpen] = useState(false);
   // Persistent ACTIVITY LOG — toasts vanish; this keeps the last 50 actions/results (orders,
@@ -817,9 +816,9 @@ function AppInner() {
       setRemoteHydrated(true);
     }
     if (BACKEND_URL) fetchTrades(userId, 0, Date.now()).then((t) => { if (t && t.length) setTrades(t); }).catch(() => {});
-    // R15-P1-02: seed the SERVER-OWNED risk policy from any locally-configured caps, so existing users'
-    // limits become server-enforced without them having to re-save. Fire-and-forget.
-    if (BACKEND_URL && auth && getAuthToken() && riskLimits && Object.keys(riskLimits).length) saveRiskPolicyApi(riskLimits);
+    /* R16-P2-02/03: the risk policy is now HYDRATED FROM the server (authoritative) inside useOrders, keyed
+       per user. We must NOT push local/default caps up on login — doing so overwrote the server policy and
+       leaked one user's caps to the next on a shared browser. Saving happens only on an explicit edit. */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
   // Persist per-user: localStorage always; the server too (debounced) once the remote copy
@@ -1437,7 +1436,7 @@ function AppInner() {
           <SearchOverlay onClose={() => setSearch(false)} onOpen={openStock} />
         </ErrorBoundary>
       )}
-      {showProfile && <ProfileSheet onAdmin={effAdmin ? openAdmin : undefined} isAdminUser={isAdminUser} adminMode={adminMode} onToggleAdminMode={() => setAdminMode((v) => !v)} onBroker={openBrokers} brokerName={liveBroker ? liveBroker.name : null} profile={profile} walletMap={walletMap} portfolio={portfolio} trades={trades} deposits={deposits} market={market} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={() => { doLogout(); setProfile(null); setOnboardSkipped(false); setAuthed(false); setLoginOpen(false); }} onPersonalise={() => setRepersonalise(true)} onUsernameChanged={(u) => onAuthed({ ...auth, username: u })} onEmailChanged={(em) => onAuthed({ ...auth, email: em })} marketBrokers={brokerMarketMap} houseFeeds={houseFeeds} onDisconnectBroker={(bid) => { disconnectBroker(bid); setBuyToast({ t: "Broker disconnected" }); }} appSettings={appSettings} onSaveAppSettings={saveAppSettings} riskLimits={riskLimits} onSaveRiskLimits={(rl) => { setRiskLimits(rl); saveRiskPolicyApi(rl); }} onDeleteAccount={async () => { try { await apiDeleteAccount(); } catch { /* proceed to sign out regardless */ } setShowProfile(false); doLogout(); setProfile(null); setOnboardSkipped(false); setAuthed(false); setBuyToast({ t: "Your account and all data have been deleted." }); }} onReconcileDelta={reconcileWithDelta} onClearVirtual={async () => { const r = await clearVirtualTrades(); setTrades((prev) => { const kept = (prev || []).filter((t) => t.real === true); try { lsSet("mx_trades_" + userId, kept); } catch (e) { /* cache best-effort */ } return kept; }); setBuyToast({ t: "Virtual trades cleared." }); return r; }} />}
+      {showProfile && <ProfileSheet onAdmin={effAdmin ? openAdmin : undefined} isAdminUser={isAdminUser} adminMode={adminMode} onToggleAdminMode={() => setAdminMode((v) => !v)} onBroker={openBrokers} brokerName={liveBroker ? liveBroker.name : null} profile={profile} walletMap={walletMap} portfolio={portfolio} trades={trades} deposits={deposits} market={market} onClose={() => setShowProfile(false)} onTradeHistory={() => setHistOpen(true)} auth={auth} onLogin={() => setLoginOpen(true)} onLogout={() => { doLogout(); setProfile(null); setOnboardSkipped(false); setAuthed(false); setLoginOpen(false); }} onPersonalise={() => setRepersonalise(true)} onUsernameChanged={(u) => onAuthed({ ...auth, username: u })} onEmailChanged={(em) => onAuthed({ ...auth, email: em })} marketBrokers={brokerMarketMap} houseFeeds={houseFeeds} onDisconnectBroker={(bid) => { disconnectBroker(bid); setBuyToast({ t: "Broker disconnected" }); }} appSettings={appSettings} onSaveAppSettings={saveAppSettings} riskLimits={riskLimits} riskSaveStatus={riskSaveStatus} onSaveRiskLimits={(rl) => setRiskLimits(rl)} onDeleteAccount={async () => { try { await apiDeleteAccount(); } catch { /* proceed to sign out regardless */ } setShowProfile(false); doLogout(); setProfile(null); setOnboardSkipped(false); setAuthed(false); setBuyToast({ t: "Your account and all data have been deleted." }); }} onReconcileDelta={reconcileWithDelta} onClearVirtual={async () => { const r = await clearVirtualTrades(); setTrades((prev) => { const kept = (prev || []).filter((t) => t.real === true); try { lsSet("mx_trades_" + userId, kept); } catch (e) { /* cache best-effort */ } return kept; }); setBuyToast({ t: "Virtual trades cleared." }); return r; }} />}
       {adminOpen && <AdminPanel userId={userId} adminKey={adminKey} onClose={() => setAdminOpen(false) /* keep key in memory so admin actions (idea approval) work this session */} />}
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} onAuthed={onAuthed} />}
       {histOpen && (

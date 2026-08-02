@@ -73,10 +73,28 @@ export async function clearVirtualTrades() {
 }
 
 /** Persist the user's risk-limit policy server-side (R15-P1-02) so it's enforced on every real order,
-    independent of the client. */
+    independent of the client. Returns { ok, policy } so the UI can show a real Saving/Enforced/Failed
+    state (R16-P2-04) instead of silently swallowing a failure. */
 export async function saveRiskPolicy(policy) {
+  if (!BACKEND_URL) return { ok: false, offline: true };
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/risk-policy`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ policy: policy || {} }) });
+    handle401(r.status);
+    const d = await r.json().catch(() => ({}));
+    return { ok: r.ok, policy: d.policy || null };
+  } catch { return { ok: false }; }
+}
+
+/** Fetch the SERVER-OWNED risk policy (R16-P2-02). The server is authoritative; the client hydrates from
+    this after auth so a returning user on a new device sees the caps actually being enforced. */
+export async function getRiskPolicy() {
   if (!BACKEND_URL) return null;
-  try { return await post("/api/risk-policy", { policy: policy || {} }); } catch { return null; }
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/risk-policy`, { headers: authHeaders() });
+    handle401(r.status);
+    if (!r.ok) return null;
+    return (await r.json()).policy || {};
+  } catch { return null; }
 }
 
 export async function register(phone, pin, name, secQuestion, secAnswer, username, referralCode, email) {

@@ -4,6 +4,7 @@ import { ALL, marketOf } from "../domain/universe";
 import { postTrade, resolveExitFromCandles } from "../domain/api";
 import { validateOrder, DEFAULT_LIMITS } from "../services/riskService";
 import { fmt, lsGet, lsSet } from "../lib/format";
+import { saveRiskPolicy as saveRiskPolicyApi, getRiskPolicy as getRiskPolicyApi } from "../services/tradeService";
 
 /**
  * useOrders — THE ORDER EXECUTION PIPELINE.
@@ -22,10 +23,39 @@ import { fmt, lsGet, lsSet } from "../lib/format";
  */
 export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, userId, broker, notify }) {
   const [trades, setTrades] = useState([]);
-  // Risk caps are OFF by default; the user opts in from Profile. Persisted so the choice survives reloads
-  // and is applied to every order (paper here; the real-order path also sends them to the server check).
-  const [riskLimits, setRiskLimitsRaw] = useState(() => ({ ...DEFAULT_LIMITS, ...(lsGet("mx_risklimits", {}) || {}) }));
-  const setRiskLimits = useCallback((v) => { const next = { ...DEFAULT_LIMITS, ...(v || {}) }; lsSet("mx_risklimits", next); setRiskLimitsRaw(next); }, []);
+  /* Risk caps are OFF by default; the user opts in from Profile. R16-P2-03: the cache is keyed PER USER so
+     A's caps never leak to B on a shared browser. R16-P2-02: the SERVER policy is authoritative — we hydrate
+     from it after auth so a returning user sees the caps actually being enforced. R16-P2-04: saving exposes a
+     real status so a failed persist can't masquerade as an active safety cap. */
+  const riskKey = userId ? `mx_risklimits_${userId}` : "mx_risklimits";
+  const [riskLimits, setRiskLimitsRaw] = useState(() => ({ ...DEFAULT_LIMITS, ...(lsGet(userId ? `mx_risklimits_${userId}` : "mx_risklimits", {}) || {}) }));
+  const [riskSaveStatus, setRiskSaveStatus] = useState("idle");   // idle | saving | saved | failed
+  const setRiskLimits = useCallback(async (v) => {
+    const next = { ...DEFAULT_LIMITS, ...(v || {}) };
+    lsSet(riskKey, next); setRiskLimitsRaw(next);
+    setRiskSaveStatus("saving");
+    // Only the positive numeric caps are the server policy; strip zero/blank "off" fields.
+    const policy = {}; for (const k of ["maxPositionPct", "maxOpenPositions", "maxTradesPerDay", "maxDailyLossPct", "cooldownMs"]) { const n = Number(next[k]); if (Number.isFinite(n) && n > 0) policy[k] = n; }
+    try { const r = await saveRiskPolicyApi(policy); setRiskSaveStatus(r && r.ok ? "saved" : "failed"); }
+    catch { setRiskSaveStatus("failed"); }
+    return next;
+  }, [riskKey]);
+  // Hydrate from the authoritative server policy whenever the signed-in user changes.
+  useEffect(() => {
+    let alive = true;
+    if (!userId) return;
+    // Re-seed local from this user's own cache first (prevents a flash of the previous user's caps).
+    setRiskLimitsRaw({ ...DEFAULT_LIMITS, ...(lsGet(riskKey, {}) || {}) });
+    (async () => {
+      const server = await getRiskPolicyApi();
+      if (!alive || !server) return;
+      if (Object.keys(server).length) {
+        const merged = { ...DEFAULT_LIMITS, ...server };
+        lsSet(riskKey, merged); setRiskLimitsRaw(merged);
+      }
+    })();
+    return () => { alive = false; };
+  }, [userId, riskKey]);
   const resolving = useRef(false);
 
   /* ------------------------------ journal ------------------------------ */
@@ -229,5 +259,5 @@ export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, us
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trades, portfolio, userId]);
 
-  return { trades, setTrades, recordTrade, recordBatch, placeOrder, riskLimits, setRiskLimits };
+  return { trades, setTrades, recordTrade, recordBatch, placeOrder, riskLimits, setRiskLimits, riskSaveStatus };
 }

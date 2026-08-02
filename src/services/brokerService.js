@@ -295,14 +295,19 @@ export async function setEntryHalt(halt) {
 export async function brokerPlaceOrder(session, userId, order, confirmLive) {
   if (!confirmLive) throw new Error("Live order not confirmed.");
   if (!BACKEND_URL) throw new Error("no-backend");
+  /* R16-P2-09: a stable idempotency key per order ACTION. If the caller didn't supply one, mint one here so
+     a double-tap / reload / network retry replays the original outcome instead of placing a second order. */
+  const idemKey = order.clientRequestId ||
+    (globalThis.crypto && globalThis.crypto.randomUUID ? globalThis.crypto.randomUUID() : `mx_${Date.now()}_${Math.random().toString(36).slice(2)}`);
   const r = await fetch(`${BACKEND_URL}/api/broker/order`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...authHeaders(session, userId),
       "X-Confirm-Live": "yes",
+      "X-Idempotency-Key": idemKey,
     },
-    body: JSON.stringify(order),
+    body: JSON.stringify({ ...order, clientRequestId: idemKey }),
   });
   const d = await r.json().catch(() => ({}));
   // A rejected order comes back 400 with a human reason (e.g. insufficient balance). Surface
