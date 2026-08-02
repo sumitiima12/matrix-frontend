@@ -667,6 +667,52 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
   );
 }
 
+/* SCREENER DASHBOARD — the Automate-style performance header for the Screener tab. Aggregates every
+   "Screener Auto Buy" trade in the current market (excluding rejects): realised P&L on closed trades plus
+   unrealised P&L on still-open ones (against the live price), with Win/Loss and return-on-deployed. Mirrors
+   the Automate dashboard so the two feel consistent. */
+function ScreenerDashboard({ trades = [], market }) {
+  const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a && a.price != null ? a.price : null; };
+  const pnlOf = (t, px) => {
+    const dir = (t.side === "SELL" || t.short) ? -1 : 1;
+    return ((Number(px) - Number(t.entry)) * Number(t.qty || 0)) * dir;
+  };
+  const mine = (trades || []).filter((t) =>
+    t && (t.tradeType === "Screener Auto Buy") && (t.market || "") === market && t.status !== "rejected" && Number(t.entry) > 0);
+  const closed = mine.filter((t) => t.exitAt != null && t.exit != null);
+  const open = mine.filter((t) => t.exitAt == null || t.exit == null);
+  const realised = closed.reduce((a, t) => a + pnlOf(t, t.exit), 0);
+  const unreal = open.reduce((a, t) => { const px = priceOf(t.sym); return a + (px != null ? pnlOf(t, px) : 0); }, 0);
+  const pnl = realised + unreal;
+  const wins = closed.filter((t) => pnlOf(t, t.exit) > 0).length;
+  const losses = Math.max(0, closed.length - wins);
+  const invested = mine.reduce((a, t) => a + Number(t.entry) * Number(t.qty || 0), 0);
+  const ret = invested > 0 ? (pnl / invested) * 100 : null;
+  if (!mine.length) return null;   // nothing traded yet — no empty dashboard
+  const up = pnl >= 0;
+  const Tile = ({ k, v, c }) => (
+    <div style={{ flex: "1 1 0", minWidth: 0, background: "rgba(0,0,0,.05)", borderRadius: 12, padding: "9px 8px" }}>
+      <div style={{ fontSize: 9, opacity: .85, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".02em", whiteSpace: "nowrap" }}>{k}</div>
+      <div className="mono" style={{ fontWeight: 800, fontSize: 14, marginTop: 3, color: c || "var(--ink)" }}>{v}</div>
+    </div>
+  );
+  return (
+    <div className="card" style={{ padding: 12, marginBottom: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+        <div className="disp" style={{ fontWeight: 800, fontSize: 12.5 }}>Screener performance</div>
+        <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: up ? "var(--up)" : "var(--down)" }}>{up ? "+" : ""}{fmt(pnl, market)}</div>
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <Tile k="Trades" v={mine.length} />
+        <Tile k="Win / Loss" v={`${wins} : ${losses}`} />
+        <Tile k="Open" v={open.length} />
+        <Tile k="Return" v={ret == null ? "—" : (ret >= 0 ? "+" : "") + ret.toFixed(1) + "%"} c={ret == null ? undefined : (ret >= 0 ? "var(--up)" : "var(--down)")} />
+      </div>
+      <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 7, lineHeight: 1.4 }}>Realised + unrealised P&L across your Screener Auto-Buy trades in {market}. Rejected orders are excluded.</div>
+    </div>
+  );
+}
+
 export default function PopularScreeners({ market, mode = "virtual", list = [], isAdmin = false, onOpen, onBuy, onAutoBuy, onScreenerBuy, liveTick = 0, trades = [], variant = "full", onOpenScreener }) {
   const [tab, setTab] = useState(variant === "active" ? "popular" : "custom");   // full page defaults to Build-a-screener
   const [dir, setDir] = useState("buy");   // Buy (long) | Sell (short) for Popular Screeners
@@ -696,6 +742,8 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
   }
   return (
     <Section title="Screener" icon={<SlidersHorizontal size={17} color="var(--primary)" />}>
+      {/* Automate-style performance dashboard for Screener Auto-Buy trades in this market. */}
+      <ScreenerDashboard trades={trades} market={market} />
       {/* Build a screener | Popular Screeners | My Screeners */}
       <div className="hide-scroll" style={{ display: "flex", marginBottom: 4, overflowX: "auto" }}>
         <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3 }}>
