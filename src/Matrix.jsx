@@ -455,9 +455,9 @@ function AppInner() {
     if (!requireLogin()) return false;
     const mkt = marketOf(stock.sym) || market;
     if (virtualBlocked(mkt)) { setBuyToast({ t: (mkt === "IN" || mkt === "Commodity") ? "Paper trading isn't available for Indian markets. Connect your broker to trade for real." : "Virtual trading isn't enabled for this market.", e: true }); return false; }
-    setConfirmOrder({ s: stock, qty, side: "BUY",  opts, market: mkt, lot: opts.lot || 1 }); return true;
+    setConfirmOrder({ s: stock, qty, side: "BUY",  opts, market: mkt, lot: opts.lot || 1, actionId: newActionId() }); return true;
   };
-  const sellStock = (stock, qty = 1, opts = {}) => { setConfirmOrder({ s: stock, qty, side: "SELL", opts, market: opts.market || marketOf(stock.sym) || market, lot: opts.lot || 1 }); return true; };
+  const sellStock = (stock, qty = 1, opts = {}) => { setConfirmOrder({ s: stock, qty, side: "SELL", opts, market: opts.market || marketOf(stock.sym) || market, lot: opts.lot || 1, actionId: newActionId() }); return true; };
 
   /* AUTO-BUY places orders WITHOUT the per-trade confirm drawer. In Real mode the first
      time it's about to fire we show a single heads-up (see Dashboard), then never again.
@@ -749,6 +749,8 @@ function AppInner() {
             tslPct: (side === "BUY" && opts.tsl > 0) ? opts.tsl : undefined,
             autoExit: useEngine || undefined,
             strategy: opts.strategy || undefined,   // { defs, exit } for indicator-based exits
+            // R19-P1-02: one stable action id per confirmed order intent — reused on any retry of THIS order.
+            clientRequestId: confirmOrder.actionId || undefined,
           },
           true,                                 // explicit live confirmation
         );
@@ -1467,6 +1469,12 @@ function AppInner() {
  *
  * main.jsx imports this default export, so it keeps working untouched.
  */
+/* R19-P1-02: one cryptographically-random id per order INTENT, minted when the confirm sheet opens and reused
+   for every retry of that action until a terminal broker outcome — the server's idempotency key. */
+function newActionId() {
+  try { if (globalThis.crypto && globalThis.crypto.randomUUID) return `mx_${globalThis.crypto.randomUUID()}`; } catch { /* fall through */ }
+  return `mx_${Date.now()}_${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+}
 export default function App() {
   return (
     <ErrorBoundary name="Matrix">
