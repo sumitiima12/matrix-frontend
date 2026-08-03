@@ -96,6 +96,33 @@ test("4. confirm drawer cannot create a second order after ambiguity", async () 
   assert.equal(executed.size, 1, "at most one distinct order ever reaches the exchange");
 });
 
+test("4b. R24-P1-01: reopening the drawer with a NEW actionId cannot replace an unknown intent", async () => {
+  const store = new OrderLifecycleStore("u1", makeStorage());
+  const key = KEY();
+  const executed = new Set();
+  const place = (throwFirst) => async (reqId) => {
+    if (throwFirst) throw timeout();
+    if (executed.has(reqId)) return { status: "filled", orderId: "REPLAY", replay: true };
+    executed.add(reqId); return { status: "filled", orderId: "O4b" };
+  };
+  const first = await submit(store, key, place(true));                          // ambiguous → unknown, reqId R
+  assert.equal(first.state, ORDER_STATES.UNKNOWN);
+  // The confirm drawer is closed and REOPENED — it mints a brand-new actionId and passes it as clientRequestId.
+  let usedReqId = null;
+  await submit(store, key, async (reqId) => { usedReqId = reqId; return place(false)(reqId); }, { clientRequestId: "freshActionId_from_reopen" });
+  assert.equal(usedReqId, first.reqId, "the reopened drawer's new id is IGNORED — the unknown reqId still governs");
+  assert.notEqual(usedReqId, "freshActionId_from_reopen");
+  assert.equal(executed.size, 1, "no duplicate order despite the new action id");
+});
+
+test("R24-P1-02/P2-06: 'none' from intent-status stays blocked (not treated as retryable)", () => {
+  assert.equal(reconcileAction({ status: "none" }), "retain-blocked");
+  assert.equal(reconcileAction({ status: "in_flight" }), "retain-blocked");
+  assert.equal(reconcileAction({ status: "unknown" }), "retain-blocked");
+  assert.equal(reconcileAction({ status: "rejected" }), "clear-retryable");
+  assert.equal(reconcileAction({ status: "succeeded" }), "clear-success");
+});
+
 test("5. option order waits for the real backend result (no premature 'filled')", async () => {
   const store = new OrderLifecycleStore("u1", makeStorage());
   const key = deriveIntentKey({ brokerId: "fyers", brokerSym: "NSE:NIFTY24000CE", side: "BUY", qty: 50, product: "NRML" });

@@ -43,9 +43,10 @@ export async function getQuotes(ySyms) {
    minute % 3 == 0, even if the feed starts late or has gaps — not "every n rows since the first present".
    The trailing bucket is dropped while it's still forming (fewer than n base candles) so a half-formed bar
    never appears as closed. `baseMin` is the base interval in minutes (1 for 1m→3m, 60 for 60m→4h). */
-function aggregate(candles, n, baseMin = 1, anchorMin = 0) {
+export function aggregate(candles, n, baseMin = 1, anchorMin = 0, nowMs = Date.now()) {
   if (!Array.isArray(candles) || n <= 1) return candles;
   const stepMs = n * baseMin * 60 * 1000;
+  const baseMs = baseMin * 60 * 1000;
   /* R21-P2-07: SESSION-ANCHOR the window. Pure UTC-epoch buckets put a 4h boundary at 00:00/04:00 UTC, which
      splits an exchange session (e.g. NSE 09:15 IST) into a short leading bar. `anchorMin` is the session open
      as minutes-from-UTC-midnight (IN 03:45 UTC = 225; crypto 24/7 = 0), so a bucket boundary lands exactly on
@@ -65,7 +66,17 @@ function aggregate(candles, n, baseMin = 1, anchorMin = 0) {
   const out = [];
   for (const key of keys) {
     const g = buckets.get(key).sort((a, b) => a.t - b.t);
-    if (key === lastKey && g.length < n) continue;        // drop the still-forming tail bar only
+    /* R24-P2-07: the tail bar is dropped ONLY when it is genuinely STILL FORMING — not merely because it holds
+       fewer than n base candles. A short trailing bar whose clock window has fully elapsed, or whose session has
+       ended (the last sample is older than ~1.5 base intervals, so no fresh candle is coming), is a LEGITIMATE
+       closing bar (e.g. NSE 13:15–15:30, or the US closing partial) and must be KEPT for indicators/picks/backtests.
+       Only a bar in the CURRENT clock window that is still receiving live candles is discarded. */
+    if (key === lastKey && g.length < n) {
+      const lastT = g[g.length - 1].t;
+      const lastMs = lastT < 1e12 ? lastT * 1000 : lastT;
+      const stillForming = nowMs < (key + stepMs) && (nowMs - lastMs) < baseMs * 1.5;
+      if (stillForming) continue;                          // current, live, incomplete window → drop
+    }
     out.push({
       t: g[0].t, o: g[0].o, c: g[g.length - 1].c,
       h: Math.max(...g.map((x) => x.h)), l: Math.min(...g.map((x) => x.l)),

@@ -79,7 +79,9 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
 
   return (
     <>
-      <div onClick={onCancel} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 140 }} />
+      {/* R24-P1-01: the backdrop must NOT dismiss the drawer while an order is being placed/reconciled — a
+          cancel here would let the user reopen and (with a fresh action id) risk a duplicate of the in-flight order. */}
+      <div onClick={busy ? undefined : onCancel} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 140, cursor: busy ? "not-allowed" : "pointer" }} />
       <div
         style={{
           position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto",
@@ -91,8 +93,8 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
           <div className="disp" style={{ fontSize: 18, fontWeight: 800 }}>
             Confirm {side === "BUY" ? "buy" : "sell"}
           </div>
-          <button onClick={onCancel} aria-label="Cancel order" className="tap"
-            style={{ border: "none", background: "var(--elev)", borderRadius: 10, width: 32, height: 32, display: "grid", placeItems: "center", cursor: "pointer" }}>
+          <button onClick={busy ? undefined : onCancel} disabled={busy} aria-label="Cancel order" className="tap"
+            style={{ border: "none", background: "var(--elev)", borderRadius: 10, width: 32, height: 32, display: "grid", placeItems: "center", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1 }}>
             <X size={16} />
           </button>
         </div>

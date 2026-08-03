@@ -76,12 +76,17 @@ export function classifyError(e) {
   return { conclusive: false, state: ORDER_STATES.UNKNOWN, reason };
 }
 
-/* Map the server's GET /api/order/intent-status result to a reconcile action. */
+/* Map the server's GET /api/order/intent-status result to a reconcile action.
+   R24-P1-02 / P2-06: `none` means the server has NO record for this key — which, for a locally-persisted UNKNOWN
+   intent, is NOT proof the broker never accepted the order (the durable row may have been archived/expired, or the
+   original request died before the server recorded it). So `none` must NOT free the key. Only a CONCLUSIVE broker
+   `rejected` proves nothing executed and is safe to retry; `succeeded` replays the stored response; everything else
+   (in_flight / unknown / none / unrecognised) keeps the intent blocked and reconcilable. */
 export function reconcileAction(res) {
   const s = res && res.status;
-  if (s === "succeeded") return "clear-success";              // show stored response, clear intent
-  if (s === "rejected" || s === "none") return "clear-retryable"; // nothing stands — a deliberate retry is allowed
-  return "retain-blocked";                                    // in_flight / unknown → block dup, keep reconciling
+  if (s === "succeeded") return "clear-success";              // terminal success — show stored response, clear intent
+  if (s === "rejected") return "clear-retryable";             // broker-proven reject — a deliberate retry is allowed
+  return "retain-blocked";                                    // in_flight / unknown / none → block dup, keep reconciling
 }
 
 /* Per-user localStorage key. NEVER a single global blob — intents are namespaced by authenticated user so
@@ -144,8 +149,14 @@ export class OrderLifecycleStore {
   beginSubmit(intentKey, { clientRequestId = null, mint }) {
     const existing = this.map.get(intentKey);
     if (existing && existing.state === ORDER_STATES.SUBMITTING) return { reqId: existing.reqId, blocked: true };
-    const reqId = clientRequestId
-      || (existing && existing.state === ORDER_STATES.UNKNOWN ? existing.reqId : mint());
+    /* R24-P1-01: an existing UNKNOWN intent's reqId ALWAYS wins — a caller-supplied clientRequestId (e.g. a
+       confirmation drawer that was closed and REOPENED, minting a fresh actionId) must NEVER replace the identity
+       of an order whose broker outcome is still unresolved. Reusing the stored reqId means the server dedupes/
+       replays the single potentially-executed order instead of the reopened drawer placing a duplicate. A fresh
+       id is minted only when there is no unresolved intent for this normalized order. */
+    const reqId = (existing && existing.state === ORDER_STATES.UNKNOWN)
+      ? existing.reqId
+      : (clientRequestId || mint());
     this.map.set(intentKey, { ...existing, reqId, state: ORDER_STATES.SUBMITTING, brokerId: (existing && existing.brokerId) });
     return { reqId, blocked: false };
   }

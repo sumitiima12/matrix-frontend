@@ -592,21 +592,34 @@ function AppInner() {
   useEffect(() => {
     if (!auth) return;
     let cancelled = false;
+    /* R24-P2-06: each unresolved intent is polled with BOUNDED backoff until it reaches a terminal state, instead
+       of a single one-shot check. A read failure or an in_flight/unknown/none result keeps the intent BLOCKED
+       (never cleared) so a duplicate submit stays impossible; only a broker-proven succeeded/rejected clears it.
+       Read-only — an order is never resubmitted here. */
+    const DELAYS = [0, 4000, 8000, 16000];   // 4 attempts over ~28s
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     (async () => {
       const store = orderStoreRef.current;
+      let warnedUnknown = false;
       for (const { intentKey, reqId } of store.persisted()) {
-        const res = await brokerIntentStatus(userId, reqId).catch(() => null);
-        if (cancelled || !res) continue;
-        const action = reconcileAction(res);
-        if (action === "clear-success") {
-          store.settleTerminal(intentKey);
-          setBuyToast({ t: "A pending order was confirmed at your broker — your history is up to date." });
-          refreshPortfolio();
-        } else if (action === "clear-retryable") {
-          // Broker has no record (or a definite reject) → nothing stands. Clear so a deliberate retry is allowed.
-          store.settleTerminal(intentKey);
-        } else {
-          // in_flight / unknown → keep the intent so a duplicate submit stays blocked and we reconcile later.
+        let resolved = false;
+        for (const delay of DELAYS) {
+          if (cancelled) return;
+          if (delay) await wait(delay);
+          if (cancelled) return;
+          const res = await brokerIntentStatus(userId, reqId).catch(() => null);
+          if (!res) continue;                                  // read failed → NOT proof of absence; keep blocked, retry
+          const action = reconcileAction(res);
+          if (action === "clear-success") {
+            store.settleTerminal(intentKey);
+            setBuyToast({ t: "A pending order was confirmed at your broker — your history is up to date." });
+            refreshPortfolio(); resolved = true; break;
+          }
+          if (action === "clear-retryable") { store.settleTerminal(intentKey); resolved = true; break; }
+          // retain-blocked (in_flight / unknown / none) → keep polling with backoff
+        }
+        if (!resolved && !warnedUnknown) {
+          warnedUnknown = true;
           setBuyToast({ t: "An earlier order's outcome is still unknown — we're checking your broker. It won't be resubmitted automatically." });
         }
       }
