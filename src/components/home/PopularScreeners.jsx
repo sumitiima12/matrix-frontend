@@ -715,7 +715,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
         </select>
         <div style={{ flex: "1 1 0" }} />
         <button type="button" onClick={() => setShowTrades((v) => !v)} className="tap" title="Tap to see the list of trades" style={{ flex: "0 0 auto", textAlign: "right", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>
-          <div style={{ fontSize: 8.5, color: "var(--primary)", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3 }}>P&amp;L{autoOn ? "" : " · Auto-Buy off"} <span style={{ display: "inline-block", transform: showTrades ? "rotate(180deg)" : "none", transition: "transform .15s", fontSize: 8 }}>▾</span></div>
+          <div style={{ fontSize: 8.5, color: "var(--primary)", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3 }}>P&amp;L <span style={{ display: "inline-block", transform: showTrades ? "rotate(180deg)" : "none", transition: "transform .15s", fontSize: 8 }}>▾</span></div>
           <div className="mono" style={{ fontWeight: 800, fontSize: 16, color: chgColor(periodPnl), textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 3 }}>{(periodPnl >= 0 ? "+" : "") + fmt(periodPnl, market)}</div>
         </button>
       </div>
@@ -749,12 +749,27 @@ export function DashTradeTable({ rows = [], market, priceOf, onlyOpen = false, c
   }, [rows, priceOf, onlyOpen, cap]);
   const th = { fontSize: 8.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", padding: "6px 7px", textAlign: "left", whiteSpace: "nowrap" };
   const td = { fontSize: 10.5, fontWeight: 700, padding: "6px 7px", borderTop: "1px solid var(--line)", whiteSpace: "nowrap" };
+  // #3: freeze the Symbol column so it stays put while the wide table scrolls horizontally.
+  const thSticky = { ...th, position: "sticky", left: 0, background: "var(--surface)", zIndex: 2 };
+  const tdSticky = { ...td, fontWeight: 800, position: "sticky", left: 0, background: "var(--surface)", zIndex: 1 };
+  const exportCsv = () => {
+    const head = ["Symbol", "Capital Deployed", "Entry Date", "Entry Time", "Entry Price", "Exit Price", "Exit Date", "Exit Time", "Exit Type", "P&L", "Return %"];
+    const rowsCsv = list.map((r) => { const e = dt(r.entryAt), x = dt(r.exitAt); return [r.sym, r.amount.toFixed(2), e.d, e.t, r.entry, r.exit == null ? "" : r.exit, r.open ? "" : x.d, r.open ? "" : x.t, r.exitType, r.pnl.toFixed(2), r.retPct.toFixed(2)]; });
+    const csv = [head, ...rowsCsv].map((cols) => cols.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+    try { const blob = new Blob([csv], { type: "text/csv;charset=utf-8" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `trades_${new Date().toISOString().slice(0, 10)}.csv`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); } catch { /* download best-effort */ }
+  };
   if (!list.length) return <div style={{ fontSize: 11, color: "var(--muted)", padding: "10px 4px" }}>{onlyOpen ? "No open positions." : "No trades in the selected period."}</div>;
   return (
-    <div style={{ overflowX: "auto", maxHeight: 320, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 10, marginTop: 8 }}>
+    <div style={{ marginTop: 8 }}>
+      {!onlyOpen && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
+          <button type="button" onClick={exportCsv} className="tap disp" style={{ border: "1px solid var(--line)", background: "transparent", color: "var(--muted)", borderRadius: 8, padding: "4px 10px", fontWeight: 800, fontSize: 10.5, cursor: "pointer" }}>Export CSV</button>
+        </div>
+      )}
+    <div style={{ overflowX: "auto", maxHeight: 320, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 10 }}>
       <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 640 }}>
         <thead><tr>
-          <th style={th}>Symbol</th><th style={{ ...th, textAlign: "right" }}>Amount</th><th style={th}>Entry</th>
+          <th style={thSticky}>Symbol</th><th style={{ ...th, textAlign: "right" }}>Capital Deployed</th><th style={th}>Entry</th>
           <th style={{ ...th, textAlign: "right" }}>Entry px</th><th style={{ ...th, textAlign: "right" }}>Exit px</th>
           <th style={th}>Exit</th><th style={th}>Exit type</th>
           <th style={{ ...th, textAlign: "right" }}>P&amp;L</th><th style={{ ...th, textAlign: "right" }}>Return</th>
@@ -762,7 +777,7 @@ export function DashTradeTable({ rows = [], market, priceOf, onlyOpen = false, c
         <tbody>
           {list.map((r, i) => { const e = dt(r.entryAt), x = dt(r.exitAt); return (
             <tr key={i}>
-              <td style={{ ...td, fontWeight: 800 }}>{r.sym}</td>
+              <td style={tdSticky}>{r.sym}</td>
               <td style={{ ...td, textAlign: "right" }}>{fmt(r.amount, market)}</td>
               <td style={td}><span style={{ fontWeight: 800 }}>{e.d}</span> <span style={{ color: "var(--muted)" }}>{e.t}</span></td>
               <td style={{ ...td, textAlign: "right" }}>{fmt(r.entry, market)}</td>
@@ -775,6 +790,7 @@ export function DashTradeTable({ rows = [], market, priceOf, onlyOpen = false, c
           ); })}
         </tbody>
       </table>
+    </div>
     </div>
   );
 }
