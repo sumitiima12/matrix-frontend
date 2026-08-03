@@ -53,6 +53,17 @@ test("R25-M02: a STALE incomplete current-session bar is dropped (not shown as c
   assert.strictEqual(out.length, 0, "stale incomplete mid-session bar dropped (not presented as closed)");
 });
 
+test("M01 (R27): the completed NSE closing 4h bar is KEPT at 15:31 IST (wall-clock past close), last candle intra-session", () => {
+  // The bug: at 15:31 IST the finished closing bar was dropped until its 17:15 clock window, because the code
+  // compared the LAST CANDLE's time-of-day (15:00 IST < 15:30) to close instead of NOW vs the dated close.
+  const closeFn = () => 10 * 60;                   // NSE close 15:30 IST = 10:00 UTC = 600 min
+  const c1 = Date.UTC(2026, 6, 1, 8, 15) / 1000;   // 13:45 IST — inside the closing 4h bucket (13:15-anchored)
+  const c2 = Date.UTC(2026, 6, 1, 9, 30) / 1000;   // 15:00 IST — a legitimate intra-session candle (start < close)
+  const NOW_1531 = Date.UTC(2026, 6, 1, 10, 1);    // 15:31 IST — one minute AFTER the 15:30 close
+  const out = aggregate([{ t: c1, o: 1, h: 1, l: 1, c: 1, v: 1 }, { t: c2, o: 1, h: 1, l: 1, c: 1, v: 1 }], 4, 60, 225, NOW_1531, closeFn);
+  assert.ok(out.length >= 1, `closing bar kept at 15:31 IST (got ${out.length} bars)`);
+});
+
 test("R25-M02: the same NSE session bar IS kept once the session has closed", () => {
   const closeFn = () => 10 * 60;                 // NSE 10:00 UTC close
   const c1 = Date.UTC(2026, 6, 1, 4, 0) / 1000;

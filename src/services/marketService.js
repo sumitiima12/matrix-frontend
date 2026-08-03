@@ -80,7 +80,15 @@ export function aggregate(candles, n, baseMin = 1, anchor = 0, nowMs = Date.now(
       let sessionEnded = false;
       if (sessionCloseFn) {
         const closeMin = sessionCloseFn(lastMs);                 // minutes-from-UTC-midnight of the session close, or null
-        if (closeMin != null) sessionEnded = ((lastMs % 86400000) / 60000) >= closeMin;
+        /* M01 fix: the closing partial bar is COMPLETE once the WALL CLOCK passes the exchange close for THAT
+           bar's date — compare nowMs to the dated close instant, NOT the last candle's start-of-day. The old
+           form asked "is the last candle's time-of-day past close?", which is false for the 15:25 candle of the
+           15:30 NSE close, so the finished 4-hour closing bar was wrongly dropped at 15:31 until its 17:15 clock
+           window elapsed. */
+        if (closeMin != null) {
+          const dayStartMs = Math.floor(lastMs / 86400000) * 86400000;   // UTC midnight of the bar's date
+          sessionEnded = nowMs >= (dayStartMs + closeMin * 60000);
+        }
       }
       if (!windowElapsed && !sessionEnded) continue;             // still forming OR outage-truncated → drop
     }

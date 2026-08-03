@@ -446,8 +446,9 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
               {livePositions.length > 0 && <span style={{ display: "inline-block", transform: showLivePos ? "rotate(180deg)" : "none", transition: "transform .15s", fontSize: 8 }}>▾</span>}
             </button>
             <span style={{ color: "var(--line)" }}>·</span>
-            {/* Y Symbols — non-clickable count of the symbols this screener is live on. */}
-            <span style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)" }}><span className="mono" style={{ color: "var(--ink)" }}>{liveSymbolCount}</span> Symbols</span>
+            {/* Symbols count — the screener's scan universe (its selected basket, or the whole market when none
+                is selected). M04: labelled so it's not mistaken for matching/open-position count. */}
+            <span title="Symbols this screener scans — its selected basket, or the whole market universe when none is selected. Not the number currently matching or held." style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)" }}><span className="mono" style={{ color: "var(--ink)" }}>{liveSymbolCount}</span> Symbols{eSel.length ? "" : " (universe)"}</span>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
@@ -824,7 +825,7 @@ function ScreenerDashboard({ trades = [], market }) {
       {/* Clicking Trades → full list scoped to Screener trades in this market. */}
       {drill === "trades" && <DashTradeTable rows={mine} market={market} priceOf={priceOf} />}
 
-      <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 10, lineHeight: 1.4 }}>Realised + unrealised P&L (estimated) across your Screener Auto-Buy trades in {market}. Tap Trades to drill in. Rejected orders are excluded.</div>
+      <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 10, lineHeight: 1.4 }}>Realised + unrealised P&L (estimated, from latest cached quotes) across your Screener Auto-Buy trades in {market}. <b>Returns %</b> is gross P&L ÷ total entry notional across all trades (a gross-turnover return — reused capital counts each time; not portfolio or period return). Tap Trades to drill in. Rejected orders are excluded.</div>
     </div>
   );
 }

@@ -27,7 +27,7 @@ import { analyzeHolding, portfolioHealth, sectorExposure } from "./services/port
 import { analyzeJournal } from "./services/journalService";
 import BuyButton, { BuyGateContext } from "./components/common/BuyButton";
 import { PATTERNS, TF_N } from "./lib/patterns";
-import { promptDialog } from "./lib/confirmDialog";   // in-app prompt (reliable in webviews/PWA)
+import { promptDialog, confirmDialog } from "./lib/confirmDialog";   // in-app prompt/confirm (reliable in webviews/PWA)
 import { ALL, UNIVERSE, IN_STOCKS, US_STOCKS, CRYPTO, COMMODITY, marketOf, yahooSymbol, istParts, marketHoursLabel } from "./domain/universe";
 import { SEED_STRATS } from "./domain/strategies";
 import { techSignal, dailyPicks } from "./domain/signals";
@@ -517,6 +517,12 @@ function AppInner() {
         tslPct: opts.tsl > 0 ? opts.tsl : undefined,
         autoExit: useEngine || undefined,
         strategy: opts.strategy || undefined,
+        // R27-P2-02: unambiguous strategy NAME (distinct from the exit-config `strategy` field) so the server
+        // can stamp durable attribution on the authoritative fill — the Screener/Automate card matches on it.
+        strategyName: opts.strategy || undefined,
+        // R27-P1-02: a reduce-only CLOSE must be flagged so the server treats it as an exit (exempt from
+        // new-entry gates) and sets the broker-native reduce-only flag — never opening/reversing exposure.
+        reduceOnly: opts.reduceOnly || undefined,
         // ONE stable idempotency key for this intent — reused verbatim on any retry/reload so the server
         // dedupes/replays the single order rather than placing a second.
         clientRequestId: reqId,
@@ -549,13 +555,17 @@ function AppInner() {
           id: `real-${r.orderId || Date.now()}`, sym: s.sym, market: mkt, qty: confirmedFilled ? fillQty : q, side,
           short: side === "SELL" || undefined, broker: route.id,   // stamp broker so reconcile can attribute precisely
           ...(confirmedFilled ? { entry: fillPx } : {}), entryAt: Date.now(), tradeType: opts.tradeType || "Manual",
+          // R27-P2-02: carry the strategy attribution so a real Screener/Automate fill stays tied to its card
+          // (card P&L + Live Positions match on t.strategy). strategyId is preferred (immutable) when present.
+          ...(opts.strategy ? { strategy: opts.strategy } : {}), ...(opts.strategyId ? { strategyId: opts.strategyId } : {}),
           real: true, status, orderId: r.orderId || null, tp: opts.tp || undefined, sl: opts.sl || undefined,
         });
       } catch {}
       // A broker RESPONSE is conclusive for the client intent → release the key (memory + persisted).
       orderStoreRef.current.settleTerminal(intentKey);
       setBuyToast({ t, e: state === ORDER_STATES.REJECTED }); refreshPortfolio();
-      return { ok: state !== ORDER_STATES.REJECTED, state, orderId: r.orderId || null, brokerName, statusLc };
+      // R27-P1-01: return the broker-verified fill facts so a CLOSE caller only books an exit on a real fill.
+      return { ok: state !== ORDER_STATES.REJECTED, state, orderId: r.orderId || null, brokerName, statusLc, confirmedFilled: !!confirmedFilled, filledQty: fillQty, avgPrice: fillPx };
     } catch (e) {
       const { conclusive, state, reason } = classifyError(e);
       /* Only a CONCLUSIVE broker rejection means nothing executed — release the key so a fresh order (new id) is
@@ -589,28 +599,62 @@ function AppInner() {
      reduce-only broker flatten through the ONE durable lifecycle (same as Automate's "Stop & sell"); in paper
      mode it just books the exit. Either way the originating journal row is marked exited so it leaves the live
      list. `flatten` is the opposite side of the position (SELL closes a long, BUY covers a short). */
-  const closePositionRow = (trade) => {
+  const closePositionRow = async (trade) => {
     if (!trade || trade.exitAt != null) return;
     const stock = ALL.find((a) => a.sym === trade.sym) || { sym: trade.sym, price: trade.entry, market: trade.market || market };
-    const px = stock && stock.price != null ? stock.price : trade.entry;
     const qty = Number(trade.qty) || 0;
-    if (mode === "real" && qty > 0) {
+    const mkt = marketOf(trade.sym) || trade.market || market;
+    if (mode === "real") {
+      /* R27-P1-01: a REAL close is a broker action, not a local write. Confirm, AWAIT the reduce-only order,
+         and only book the exit on a BROKER-CONFIRMED fill (at the real fill price/qty). On reject / pending /
+         partial / unknown we KEEP the position visible and tell the user to verify — never a false "Closed". */
+      if (qty <= 0) { setBuyToast({ t: "Nothing to close for this position.", e: true }); return; }
+      const ok = await confirmDialog(`Close ${trade.sym} now? This places a reduce-only market order on your broker.`, { title: "Close position", confirmLabel: "Close" });
+      if (!ok) return;
       const flatten = (trade.side === "SELL" || trade.short) ? "BUY" : "SELL";
-      placeRealMarketOrder(stock, flatten, qty, trade.product || "CNC", { tradeType: trade.tradeType || "Screener Auto Buy", reduceOnly: true, market: trade.market || market }).catch(() => {});
+      let res;
+      try {
+        res = await placeRealMarketOrder(stock, flatten, qty, trade.product || "CNC", { tradeType: trade.tradeType || "Screener Auto Buy", reduceOnly: true, market: mkt, strategy: trade.strategy || undefined, strategyId: trade.strategyId || undefined });
+      } catch { res = null; }
+      if (res && res.confirmedFilled) {
+        const exitPx = Number(res.avgPrice) > 0 ? Number(res.avgPrice) : (stock.price != null ? stock.price : trade.entry);
+        closeTrade(trade, exitPx, "Manual");
+        setBuyToast({ t: `Closed ${trade.sym} — broker-confirmed at ${fmt(exitPx, mkt)}` });
+      } else {
+        // placeRealMarketOrder already surfaced the reject/pending/unknown reason; the position stays visible.
+        setBuyToast({ t: `Close not confirmed for ${trade.sym} — it stays open until your broker confirms the exit. Verify in your broker.`, e: true });
+      }
+      return;
     }
+    // Paper: book the exit at the live price (display-only journal).
+    const px = stock && stock.price != null ? stock.price : trade.entry;
     closeTrade(trade, px, "Manual");
     setBuyToast({ t: `Closed ${trade.sym} position` });
   };
-  /* Edit a live position's SL / TP from a Live Positions list. Persists the new levels on the journal row;
-     in real mode it also best-effort updates the broker bracket when the row carries a managed id. */
-  const updatePositionRisk = (trade, patch) => {
+  /* Edit a live position's SL / TP from a Live Positions list. R27-P2-01: in REAL mode this must be an
+     AUTHORITATIVE broker action — it only claims success after the server confirms, and a real row with no
+     server-managed id is refused (protection lives at the broker) rather than faking a UI-only success. */
+  const updatePositionRisk = async (trade, patch) => {
     if (!trade || !trade.id) return;
+    // Validate levels: a blank clears; anything else must be a positive number.
+    const clean = (v) => (v === "" || v == null) ? null : (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : undefined);
     const next = {};
-    if (patch.sl !== undefined) next.sl = patch.sl === "" || patch.sl == null ? null : Number(patch.sl);
-    if (patch.tp !== undefined) next.tp = patch.tp === "" || patch.tp == null ? null : Number(patch.tp);
-    updateTradeRow(trade.id, next);
+    if (patch.sl !== undefined) { const v = clean(patch.sl); if (v === undefined) { setBuyToast({ t: "Stop-loss % must be a positive number.", e: true }); return; } next.sl = v; }
+    if (patch.tp !== undefined) { const v = clean(patch.tp); if (v === undefined) { setBuyToast({ t: "Target % must be a positive number.", e: true }); return; } next.tp = v; }
     const managedId = trade.managedId || trade.autoBuyId || null;
-    if (mode === "real" && managedId) { updateAutoBuy(userId, managedId, next).catch(() => {}); }
+    if (mode === "real") {
+      if (!managedId) { setBuyToast({ t: `${trade.sym} isn't a server-managed position — set SL/TP in your broker app. Not changed here.`, e: true }); return; }
+      try {
+        await updateAutoBuy(userId, managedId, next);   // throws on non-ok / error envelope
+        updateTradeRow(trade.id, next);
+        setBuyToast({ t: `SL/TP updated at your broker for ${trade.sym}` });
+      } catch (e) {
+        setBuyToast({ t: `Couldn't update SL/TP at your broker for ${trade.sym} — unchanged. ${String(e.message || "")}`.trim(), e: true });
+      }
+      return;
+    }
+    // Paper: journal-only edit (paper exit monitor reads these levels).
+    updateTradeRow(trade.id, next);
     setBuyToast({ t: `Updated SL/TP for ${trade.sym}` });
   };
   /* INC-3 / ARCH-4: on load (and when auth changes) reconcile any AMBIGUOUS order intents left in localStorage
