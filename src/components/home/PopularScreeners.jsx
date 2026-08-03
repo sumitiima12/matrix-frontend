@@ -557,10 +557,12 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
         )}
       </div>
 
-      {/* Backtest STATS + List of Trades — like the Automate strategy cards. Lazy: backtests only when opened. */}
+      {/* #6: BACKTEST lives behind its own explicit button — tapping it runs the historical backtest. The card's real
+          stats/trades (the P&L pill + its expandable List of Trades below) come from ACTUAL screener trades, never a
+          backtest, so viewing them never triggers a backtest. Lazy: backtests only when this is opened. */}
       <div style={{ marginTop: 8 }}>
-        <button onClick={() => setStatsOpen((v) => !v)} className="tap disp" style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--line)", background: statsOpen ? "var(--primary-soft)" : "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: "8px 12px", fontSize: 11.5, fontWeight: 800 }}>
-          <Activity size={13} color="var(--primary)" /> Stats & Trades {statsOpen ? "▲" : "▼"}
+        <button onClick={() => setStatsOpen((v) => !v)} className="tap disp" title="Run a historical backtest of this screener" style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--line)", background: statsOpen ? "var(--primary-soft)" : "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: "8px 12px", fontSize: 11.5, fontWeight: 800 }}>
+          <Activity size={13} color="var(--primary)" /> Backtest {statsOpen ? "▲" : "▼"}
         </button>
         {statsOpen && (
           <div style={{ marginTop: 8, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: 10 }}>
