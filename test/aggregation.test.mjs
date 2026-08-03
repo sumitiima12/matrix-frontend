@@ -39,3 +39,25 @@ test("R24-P2-07: a genuinely still-forming current bar IS dropped", () => {
   const lastStart = curBucketStart;
   assert.ok(!out.some((b) => (b.t < 1e12 ? b.t * 1000 : b.t) === lastStart), "still-forming current bar dropped");
 });
+
+test("R25-M02: a STALE incomplete current-session bar is dropped (not shown as complete)", () => {
+  // NSE, current session, a data outage: the last sample is OLD but the session hasn't closed and the window
+  // hasn't elapsed → the bar is incomplete and must be DROPPED (the old staleness heuristic would have KEPT it).
+  const closeFn = (ms) => { // NSE close 15:30 IST = 10:00 UTC
+    const s = ".NS"; return /\.NS$/.test(s) ? 10 * 60 : null;
+  };
+  const c1 = Date.UTC(2026, 6, 1, 4, 0) / 1000;   // 09:30 IST
+  const c2 = Date.UTC(2026, 6, 1, 5, 0) / 1000;   // 10:30 IST (last sample — feed then went stale)
+  const NOW_MID = Date.UTC(2026, 6, 1, 7, 0);     // 12:30 IST — still mid-session, window (03:45–07:45) not elapsed
+  const out = aggregate([{ t: c1, o: 1, h: 1, l: 1, c: 1, v: 1 }, { t: c2, o: 1, h: 1, l: 1, c: 1, v: 1 }], 4, 60, 225, NOW_MID, closeFn);
+  assert.strictEqual(out.length, 0, "stale incomplete mid-session bar dropped (not presented as closed)");
+});
+
+test("R25-M02: the same NSE session bar IS kept once the session has closed", () => {
+  const closeFn = () => 10 * 60;                 // NSE 10:00 UTC close
+  const c1 = Date.UTC(2026, 6, 1, 4, 0) / 1000;
+  const c2 = Date.UTC(2026, 6, 1, 10, 30) / 1000; // 16:00 IST — after the 15:30 close
+  const NOW_MID = Date.UTC(2026, 6, 1, 11, 0);    // window 03:45–07:45 elapsed anyway, but session-ended also true
+  const out = aggregate([{ t: c1, o: 1, h: 1, l: 1, c: 1, v: 1 }, { t: c2, o: 1, h: 1, l: 1, c: 1, v: 1 }], 4, 60, 225, NOW_MID, closeFn);
+  assert.ok(out.length >= 1, "a completed session bar is kept");
+});

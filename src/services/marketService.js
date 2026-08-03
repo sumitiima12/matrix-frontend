@@ -43,20 +43,21 @@ export async function getQuotes(ySyms) {
    minute % 3 == 0, even if the feed starts late or has gaps — not "every n rows since the first present".
    The trailing bucket is dropped while it's still forming (fewer than n base candles) so a half-formed bar
    never appears as closed. `baseMin` is the base interval in minutes (1 for 1m→3m, 60 for 60m→4h). */
-export function aggregate(candles, n, baseMin = 1, anchorMin = 0, nowMs = Date.now()) {
+export function aggregate(candles, n, baseMin = 1, anchor = 0, nowMs = Date.now(), sessionCloseFn = null) {
   if (!Array.isArray(candles) || n <= 1) return candles;
   const stepMs = n * baseMin * 60 * 1000;
-  const baseMs = baseMin * 60 * 1000;
-  /* R21-P2-07: SESSION-ANCHOR the window. Pure UTC-epoch buckets put a 4h boundary at 00:00/04:00 UTC, which
-     splits an exchange session (e.g. NSE 09:15 IST) into a short leading bar. `anchorMin` is the session open
-     as minutes-from-UTC-midnight (IN 03:45 UTC = 225; crypto 24/7 = 0), so a bucket boundary lands exactly on
-     the open and bars read 09:15–13:15, 13:15–15:30(session end), etc. (We intentionally do NOT drop non-tail
-     bars that are short only because the SESSION ended — a 2h15 closing bar is legitimate — and we don't
-     require every base minute to be present, since illiquid minutes are legitimately absent from real feeds.) */
-  const anchorMs = ((anchorMin % (n * baseMin)) + (n * baseMin)) % (n * baseMin) * 60 * 1000;
+  const period = n * baseMin;   // minutes per aggregated bar
+  /* R21-P2-07 / R25-M01: SESSION-ANCHOR the window, PER EXCHANGE DATE. Pure UTC-epoch buckets split an exchange
+     session (e.g. NSE 09:15 IST) into a short leading bar. `anchor` is the session open as minutes-from-UTC-
+     midnight (IN 03:45 UTC = 225; crypto 24/7 = 0) — either a constant or a FUNCTION of the candle's own epoch,
+     so a range that crosses a US DST transition anchors each date to that date's real New-York offset (a single
+     range-wide offset shifted the older side by an hour). */
+  const anchorFor = typeof anchor === "function" ? anchor : () => anchor;
   const buckets = new Map();
   for (const c of candles) {
     const ms = c.t < 1e12 ? c.t * 1000 : c.t;
+    const aMin = anchorFor(ms) || 0;
+    const anchorMs = (((aMin % period) + period) % period) * 60 * 1000;
     const key = Math.floor((ms - anchorMs) / stepMs) * stepMs + anchorMs;
     if (!buckets.has(key)) buckets.set(key, []);
     buckets.get(key).push(c);
@@ -66,16 +67,22 @@ export function aggregate(candles, n, baseMin = 1, anchorMin = 0, nowMs = Date.n
   const out = [];
   for (const key of keys) {
     const g = buckets.get(key).sort((a, b) => a.t - b.t);
-    /* R24-P2-07: the tail bar is dropped ONLY when it is genuinely STILL FORMING — not merely because it holds
-       fewer than n base candles. A short trailing bar whose clock window has fully elapsed, or whose session has
-       ended (the last sample is older than ~1.5 base intervals, so no fresh candle is coming), is a LEGITIMATE
-       closing bar (e.g. NSE 13:15–15:30, or the US closing partial) and must be KEPT for indicators/picks/backtests.
-       Only a bar in the CURRENT clock window that is still receiving live candles is discarded. */
+    /* R24-P2-07 / R25-M02: a short TAIL bar is kept only when it is genuinely COMPLETE — its clock window has
+       fully elapsed, OR its exchange session has ended (the last sample is at/after that date's session close).
+       We NO LONGER treat mere sample staleness as "complete": during a current-session data outage the last
+       sample is old but the bar is NOT done, so keeping it would present an incomplete bar as closed. Such a bar
+       is dropped. A legitimate past closing bar (NSE 13:15–15:30, US closing partial) is kept via window-elapsed
+       or session-ended; only a still-forming or outage-truncated CURRENT bar is discarded. */
     if (key === lastKey && g.length < n) {
       const lastT = g[g.length - 1].t;
       const lastMs = lastT < 1e12 ? lastT * 1000 : lastT;
-      const stillForming = nowMs < (key + stepMs) && (nowMs - lastMs) < baseMs * 1.5;
-      if (stillForming) continue;                          // current, live, incomplete window → drop
+      const windowElapsed = nowMs >= (key + stepMs);
+      let sessionEnded = false;
+      if (sessionCloseFn) {
+        const closeMin = sessionCloseFn(lastMs);                 // minutes-from-UTC-midnight of the session close, or null
+        if (closeMin != null) sessionEnded = ((lastMs % 86400000) / 60000) >= closeMin;
+      }
+      if (!windowElapsed && !sessionEnded) continue;             // still forming OR outage-truncated → drop
     }
     out.push({
       t: g[0].t, o: g[0].o, c: g[g.length - 1].c,
@@ -105,6 +112,22 @@ function sessionAnchorMin(ySym, sampleMs) {
     return ((9 * 60 + 30) + offset * 60) % 1440;                    // 09:30 ET → UTC minutes
   } catch { return 0; }
 }
+/* R25-M02: exchange session CLOSE as minutes-from-UTC-midnight, resolved per date (DST-aware for US). Used to
+   decide whether a short trailing bar is a genuine closing bar (session ended) vs an incomplete/outage bar.
+   Crypto/24-7 has no close → null. */
+function sessionCloseMin(ySym, sampleMs) {
+  const s = String(ySym || "").toUpperCase();
+  if (/\.(NS|BO)$/.test(s)) return 10 * 60;                        // NSE/BSE 15:30 IST = 10:00 UTC
+  if (/-USD$|USDT$|USDC$/.test(s) || /^(BTC|ETH|SOL|DOGE|XRP)/.test(s)) return null;   // crypto = no session close
+  try {
+    const d = new Date(sampleMs || Date.now());
+    const p = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", hour12: false }).formatToParts(d);
+    const etHour = +(p.find((x) => x.type === "hour")?.value ?? 0);
+    const utcHour = d.getUTCHours();
+    let offset = utcHour - etHour; if (offset < 0) offset += 24;
+    return ((16 * 60) + offset * 60) % 1440;                       // 16:00 ET close → UTC minutes
+  } catch { return null; }
+}
 
 export async function getHistory(ySym, tf, useBt = false) {
   const table = useBt ? BT_YF : TF_YF;
@@ -120,9 +143,12 @@ export async function getHistory(ySym, tf, useBt = false) {
 
   if (!m.agg) return rows;
   // Anchor multi-hour aggregation to the exchange session (only matters when a bar spans ≥1h; sub-hour bars
-  // clock-align fine on epoch). Use the last sample's date so US DST is resolved correctly for the window.
-  const anchorMin = (m.agg * baseMinutesOf(m.i) >= 60) ? sessionAnchorMin(ySym, rows.length ? (rows[rows.length - 1].t < 1e12 ? rows[rows.length - 1].t * 1000 : rows[rows.length - 1].t) : Date.now()) : 0;
-  return aggregate(rows, m.agg, baseMinutesOf(m.i), anchorMin);
+  // clock-align fine on epoch). R25-M01: pass a PER-DATE anchor function so each date uses its own DST offset;
+  // R25-M02: pass the session-close function so a short trailing bar is kept only when its session has ended.
+  const multiHour = m.agg * baseMinutesOf(m.i) >= 60;
+  const anchor = multiHour ? (ms) => sessionAnchorMin(ySym, ms) : 0;
+  const closeFn = multiHour ? (ms) => sessionCloseMin(ySym, ms) : null;
+  return aggregate(rows, m.agg, baseMinutesOf(m.i), anchor, Date.now(), closeFn);
 }
 
 /** Real fundamentals from Yahoo quoteSummary (via backend crumb flow). Returns the object,
