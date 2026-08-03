@@ -618,8 +618,17 @@ function AppInner() {
       } catch { res = null; }
       if (res && res.confirmedFilled) {
         const exitPx = Number(res.avgPrice) > 0 ? Number(res.avgPrice) : (stock.price != null ? stock.price : trade.entry);
-        closeTrade(trade, exitPx, "Manual");
-        setBuyToast({ t: `Closed ${trade.sym} — broker-confirmed at ${fmt(exitPx, mkt)}` });
+        const closedQty = Number(res.filledQty) > 0 ? Number(res.filledQty) : qty;
+        if (closedQty >= qty - 1e-9) {
+          // Full close — the broker flattened the whole position.
+          closeTrade(trade, exitPx, "Manual");
+          setBuyToast({ t: `Closed ${trade.sym} — broker-confirmed at ${fmt(exitPx, mkt)}` });
+        } else {
+          // R28: a PARTIAL close must NOT mark the whole position closed. Reduce the tracked qty by the amount
+          // actually filled and keep the residual OPEN so the exposure isn't hidden; the user can close the rest.
+          updateTradeRow(trade.id, { qty: qty - closedQty });
+          setBuyToast({ t: `Partially closed ${trade.sym} (${closedQty}/${qty} at ${fmt(exitPx, mkt)}) — ${(qty - closedQty)} still open. Close again to flatten.` });
+        }
       } else {
         // placeRealMarketOrder already surfaced the reject/pending/unknown reason; the position stays visible.
         setBuyToast({ t: `Close not confirmed for ${trade.sym} — it stays open until your broker confirms the exit. Verify in your broker.`, e: true });
