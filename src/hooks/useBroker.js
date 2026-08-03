@@ -41,6 +41,13 @@ export function useBroker({ onTick, userId, intervalMs = 2000 } = {}) {
   const [realErr, setRealErr] = useState(null);
   const [realLoading, setRealLoading] = useState(false);
 
+  /* Broker ids the SERVER holds encrypted creds for (from /api/broker/status), independent of whether THIS device
+     has resumed a live session yet. This is what makes Real mode consistent across devices: creds live on the server,
+     but the session HANDLE is per-device, so a laptop that hasn't finished resuming still knows a broker is connected.
+     Real-mode availability keys off this; actual order placement still requires a live routed session (enforced at
+     the order call), so surfacing availability early never lets an order fire without a real session behind it. */
+  const [serverBrokers, setServerBrokers] = useState([]);
+
   const tickRef = useRef(onTick);
   tickRef.current = onTick;
 
@@ -133,6 +140,8 @@ export function useBroker({ onTick, userId, intervalMs = 2000 } = {}) {
 
     const resumeHeld = (d) => {
       if (!d || !d.brokers) return false;
+      // Record every broker the SERVER holds creds for — this is the cross-device "is a broker connected" signal.
+      if (alive) setServerBrokers(Object.entries(d.brokers).filter(([, info]) => info && info.hasCreds).map(([id]) => id));
       Object.entries(d.brokers).forEach(([id, info]) => {
         if (info && info.hasCreds && !sessions[id]) {
           resumeBroker(id, userId)
@@ -284,6 +293,14 @@ export function useBroker({ onTick, userId, intervalMs = 2000 } = {}) {
   const reconnectHints = brokersNeedingReconnect(connectedBrokers)
     .map((id) => ({ id, name: (brokerById(id) || {}).name || id }));
 
+  /* Which broker the SERVER holds creds for covers a given market — the cross-device Real-mode availability signal.
+     Null when no server-held broker covers it. Distinct from brokerFor() (which needs a live per-device session). */
+  const serverBrokerFor = useCallback((market) => {
+    const id = serverBrokers.find((b) => (BROKER_MARKETS[b] || []).includes(market)) || null;
+    return id ? { id, meta: brokerById(id) } : null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverBrokers]);
+
   return {
     session, connected, broker, error, lastTick,
     connect, disconnect,
@@ -291,5 +308,7 @@ export function useBroker({ onTick, userId, intervalMs = 2000 } = {}) {
     /* multi-broker */
     sessions, connectedBrokers, brokerFor, marketMap,
     reconnectHints,
+    /* cross-device: server-held creds (independent of this device's resumed session) */
+    serverBrokers, serverBrokerFor,
   };
 }

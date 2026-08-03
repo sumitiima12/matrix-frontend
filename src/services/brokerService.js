@@ -406,6 +406,22 @@ export async function registerAutoBuy(session, userId, payload) {
   if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
   return d;
 }
+/* R31-C03: the SERVER owns the broker capability matrix (which real operations are certified per broker). The UI must
+   READ it — never hard-code broker ids — so it can't offer Auto Buy on a broker the server will refuse. Fail closed:
+   on any error return an empty matrix so brokerCap() is false everywhere (block, don't guess). */
+export async function loadBrokerCapabilities() {
+  if (!BACKEND_URL) return { version: null, capabilities: {}, keys: [] };
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/broker/capabilities`);
+    const d = await r.json().catch(() => ({}));
+    return { version: d.version || null, capabilities: d.capabilities || {}, keys: Array.isArray(d.keys) ? d.keys : [] };
+  } catch { return { version: null, capabilities: {}, keys: [] }; }
+}
+/* Does the loaded matrix certify `capability` for `broker`? Unknown ⇒ false (fail closed). */
+export function brokerCapOf(caps, broker, capability) {
+  const b = caps && caps.capabilities && caps.capabilities[String(broker || "").toLowerCase()];
+  return !!(b && b[capability] === true);
+}
 export async function loadAutoBuys(userId) {
   if (!BACKEND_URL) return { strategies: [], engineLive: false };
   try {

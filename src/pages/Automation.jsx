@@ -23,7 +23,7 @@ import { selStyle } from "../components/common/styles";
 import { TradeLog, TFS, OPSET, IndicatorDefs, CondBuilder2 } from "../components/builder/BuilderKit";
 import { downloadCSV } from "../lib/csv";
 import { brokerSymbol } from "../domain/brokerSymbols";
-import { registerAutoBuy, loadAutoBuys, pauseAutoBuy, cancelAutoBuy, closeAutoBuy, updateAutoBuy, setAutoBuyLive } from "../services/brokerService";
+import { registerAutoBuy, loadAutoBuys, pauseAutoBuy, cancelAutoBuy, closeAutoBuy, updateAutoBuy, setAutoBuyLive, loadBrokerCapabilities, brokerCapOf } from "../services/brokerService";
 
 /**
  * Automation — visual strategy builder, plain-English rules, and backtesting on REAL candles.
@@ -2234,7 +2234,11 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const [liveProduct, setLiveProduct] = useState("Intraday");
   const [liveBusy, setLiveBusy] = useState(false);
   const [liveMsg, setLiveMsg] = useState(null);
-  const AUTOBUY_BROKERS = ["delta", "coindcx", "zerodha", "fyers"];
+  /* R31-C03: read the certified-capability matrix from the server instead of a hard-coded broker list, so the UI only
+     offers Auto Buy where the server would actually accept it (unattendedAutomation). Fail closed on fetch error. */
+  const [brokerCaps, setBrokerCaps] = useState({ capabilities: {} });
+  useEffect(() => { loadBrokerCapabilities().then(setBrokerCaps).catch(() => {}); }, []);
+  const canAutoBuyBroker = (id) => brokerCapOf(brokerCaps, id, "unattendedAutomation");
   /* Which of the user's own strategies are ALREADY armed for real money — so the card shows a
      non-clickable "Real Live" instead of "Go Live" and can't be armed a second time. */
   const [armedReal, setArmedReal] = useState([]);
@@ -2248,7 +2252,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     const mkt = marketOf(sym) || market;
     const route = brokerFor ? brokerFor(mkt) : null;
     if (!route || !route.session) { setLiveMsg({ e: true, t: `Connect a broker for ${mkt} first.` }); return; }
-    if (!AUTOBUY_BROKERS.includes(route.id)) { setLiveMsg({ e: true, t: `Auto-buy isn't supported on ${route.meta ? route.meta.name : route.id} yet.` }); return; }
+    if (!canAutoBuyBroker(route.id)) { setLiveMsg({ e: true, t: `Auto-buy (unattended real automation) isn't certified for ${route.meta ? route.meta.name : route.id} yet — it stays available for connection, portfolio and manual real trading.` }); return; }
     const bsym = brokerSymbol(sym, route.id);
     if (!bsym) { setLiveMsg({ e: true, t: `${route.id} can't trade ${sym} (no symbol mapping).` }); return; }
     const amt = Number(liveAmt);

@@ -386,6 +386,7 @@ function AppInner() {
     connected: brokerLive, broker: liveBroker, connect: connectBroker, disconnect: disconnectBroker,
     lastTick: brokerTick, real: realPortfolio, realErr, realLoading, refreshPortfolio, session: brokerSession,
     brokerFor, marketMap: brokerMarketMap, connectedBrokers, reconnectHints,
+    serverBrokerFor,
   } = useBroker({ onTick: () => setBrokerTicks((t) => t + 1), userId });
 
   /* DAILY RECONNECT NUDGE. Broker tokens expire every morning (SEBI). Rather than silently sliding a
@@ -404,11 +405,16 @@ function AppInner() {
      expired — they expire daily), fall straight back to Virtual rather than leaving
      the user in a "Real" mode that has no account behind it. */
   useEffect(() => {
-    if (mode === "real" && !brokerLive) {
+    // Only fall back to Virtual if there is NO broker behind this account at all — neither a live per-device session
+    // NOR server-held creds. On a fresh device the session handle resumes a moment after login; bouncing on the raw
+    // `!brokerLive` alone is exactly what made Real work on mobile but not the laptop. Server creds keep Real available
+    // across devices while the session resumes; order placement still requires a live routed session.
+    const hasAnyBroker = brokerLive || (serverBrokerFor && (serverBrokerFor("IN") || serverBrokerFor("US") || serverBrokerFor("Crypto") || serverBrokerFor("Commodity")));
+    if (mode === "real" && !hasAnyBroker) {
       setMode("virtual");
       setBuyToast({ t: "Broker disconnected — back to Virtual mode", e: true });
     }
-  }, [mode, brokerLive]);
+  }, [mode, brokerLive, serverBrokerFor]);
 
   useEffect(() => {
     // Re-pull whenever the market changes too, so the Real portfolio matches the tab
@@ -1331,8 +1337,11 @@ function AppInner() {
                   // cover. So: if the current market is covered, go straight to the confirm; otherwise jump to
                   // a market this broker DOES cover and confirm there. Only a user with NO live broker at all
                   // is asked to connect one.
-                  if (brokerFor(market)) { setConfirmReal(true); return; }
-                  const covered = ["IN", "US", "Crypto", "Commodity"].find((m) => brokerFor(m));
+                  // A live session OR server-held creds for this market is enough to ENTER Real (the session resumes
+                  // across devices a moment after login). Order placement still requires a live routed session.
+                  const hasHere = (m) => brokerFor(m) || (serverBrokerFor && serverBrokerFor(m));
+                  if (hasHere(market)) { setConfirmReal(true); return; }
+                  const covered = ["IN", "US", "Crypto", "Commodity"].find((m) => hasHere(m));
                   if (covered) {
                     setMarket(covered);
                     setBuyToast({ t: `Switched to ${MKT_LABEL[covered] || covered} — the market your connected broker covers.` });
