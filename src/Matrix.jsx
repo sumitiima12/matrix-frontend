@@ -1042,7 +1042,18 @@ function AppInner() {
   }, [adminKey, userId]);
   // What THIS user may do, given the gates (admins are never restricted). Real mode is now
   // per-market, like broker-connect: the admin can allow Real on Crypto but not on Indian.
-  const canRealMode = useCallback((mkt = market) => effAdmin || Boolean(appSettings && appSettings.allowRealMode && appSettings.allowRealMode[marketOf(mkt) || mkt]), [effAdmin, appSettings, market]);
+  /* Real mode is allowed when: you're an admin; the admin has enabled Real for this market group; OR you have a
+     broker connected for this market (a live session on THIS device OR server-held creds resumable on any device).
+     The last clause is the important one: if you've linked your own broker for a market, you can trade Real on it —
+     it also means the toggle shows and STAYS on across devices instead of bouncing back to Virtual. Order placement
+     still requires a live routed session, so surfacing the option early never fires an order without a real session. */
+  const canRealMode = useCallback((mkt = market) => {
+    const m = marketOf(mkt) || mkt;
+    if (effAdmin) return true;
+    if (appSettings && appSettings.allowRealMode && appSettings.allowRealMode[m]) return true;
+    if ((brokerFor && brokerFor(m)) || (serverBrokerFor && serverBrokerFor(m))) return true;
+    return false;
+  }, [effAdmin, appSettings, market, brokerFor, serverBrokerFor]);
   const canConnectMarket = useCallback((mkt) => effAdmin || Boolean(appSettings && appSettings.allowBrokerConnect && appSettings.allowBrokerConnect[mkt]), [effAdmin, appSettings]);
   /* The Indian market is shown to a non-admin only if they've connected an Indian broker (their
      own live NSE feed) OR the admin has enabled "show Indian without broker" (delayed BSE feed). */
