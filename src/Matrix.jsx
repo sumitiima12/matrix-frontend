@@ -1049,13 +1049,12 @@ function AppInner() {
      still requires a live routed session, so surfacing the option early never fires an order without a real session. */
   const canRealMode = useCallback((mkt = market) => {
     const m = marketOf(mkt) || mkt;
-    // Real mode is PER MARKET and requires a broker for THAT market — a live session OR server-held creds. This holds
-    // for admins too: a Delta (crypto) connection does NOT surface Real on US. There is no blanket admin bypass; the
-    // admin `allowRealMode[market]` setting is the only broker-less path, and it's an explicit per-market override.
-    if ((brokerFor && brokerFor(m)) || (serverBrokerFor && serverBrokerFor(m))) return true;
-    if (appSettings && appSettings.allowRealMode && appSettings.allowRealMode[m]) return true;
-    return false;
-  }, [appSettings, market, brokerFor, serverBrokerFor]);
+    // Real mode appears ONLY where a broker actually covers this market — a live session on this device OR server-held
+    // creds (so it works across devices). Broker presence is the SOLE gate: no admin bypass, no settings override. A
+    // Delta (crypto) connection surfaces Real on Crypto only; US/Indian/Commodity stay Virtual until a broker for that
+    // market is connected. Order placement still needs a live routed session, so nothing fires without one.
+    return Boolean((brokerFor && brokerFor(m)) || (serverBrokerFor && serverBrokerFor(m)));
+  }, [market, brokerFor, serverBrokerFor]);
   const canConnectMarket = useCallback((mkt) => effAdmin || Boolean(appSettings && appSettings.allowBrokerConnect && appSettings.allowBrokerConnect[mkt]), [effAdmin, appSettings]);
   /* The Indian market is shown to a non-admin only if they've connected an Indian broker (their
      own live NSE feed) OR the admin has enabled "show Indian without broker" (delayed BSE feed). */
