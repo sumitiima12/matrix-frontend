@@ -2913,15 +2913,17 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       <div className="mono" style={{ fontWeight: 800, fontSize: 13, color: c || "var(--ink)" }}>{v}</div>
     </div>
   );
-  const StrategyCard = ({ s, p }) => {
+  const StrategyCard = ({ s, p, deployed = false }) => {
     /* PERMISSIONS. Non-admins can only Edit/Clone/Publish their OWN strategies. Admins can also
-       manage premium/sample and other people's public strategies (publish/unpublish/delete/clone). */
+       manage premium/sample and other people's public strategies (publish/unpublish/delete/clone).
+       #4: on the DEPLOYED tab a card is view-only — no Edit / Clone / Test / Publish. To change a
+       strategy the user edits the source under Mine / Copies; Deployed just monitors + activates. */
     const own = s.by === creator;
     const sampleOrPremium = s.premium || s.by === "Matrix";
-    const canEdit = own || isAdmin;
-    const canClone = own || isAdmin;
-    const showPublishToggle = own || (isAdmin && sampleOrPremium);   // publish/unpublish
-    const showUnpublishOnly = isAdmin && !own && !sampleOrPremium && !!s.publicId;  // admin: unpublish others' public
+    const canEdit = !deployed && (own || isAdmin);
+    const canClone = !deployed && (own || isAdmin);
+    const showPublishToggle = !deployed && (own || (isAdmin && sampleOrPremium));   // publish/unpublish
+    const showUnpublishOnly = !deployed && isAdmin && !own && !sampleOrPremium && !!s.publicId;  // admin: unpublish others' public
     // Owners can delete their OWN strategy; admins can delete anyone's (premium/sample + others' public).
     const canDelete = own || isAdmin;
     /* Open positions this strategy opened but hasn't exited yet -> "Entry triggered" + live P&L. */
@@ -3018,7 +3020,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         {canEdit && <button onClick={() => setEditStrat(editStrat === s.id ? null : s.id)} className="tap" title="Edit symbols & timeframe" style={{ border: "1px solid " + (editStrat === s.id ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: editStrat === s.id ? "var(--primary-soft)" : "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: editStrat === s.id ? "var(--primary)" : "var(--ink)" }}><SlidersHorizontal size={14} /></button>}
         {canEdit && <button onClick={() => loadForEdit(s)} className="tap" title="Edit this strategy's rules in the builder" style={{ border: "1px solid var(--line)", borderRadius: 11, background: "var(--surface)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 700, color: "var(--ink)" }}><Pencil size={13} /> Edit</button>}
         <button onClick={() => toggleAlerts(s)} className="tap" title="Alert on entry/exit signal" style={{ border: "1px solid " + (s.alerts ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: s.alerts ? "var(--primary)" : "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: s.alerts ? "var(--on-primary)" : "var(--ink)" }}><Bell size={14} /></button>
-        <button onClick={() => setBtOpen(btOpen === s.id ? null : s.id)} className="tap" style={{ border: "1px solid " + (btOpen === s.id ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: btOpen === s.id ? "var(--primary-soft)" : "var(--surface)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 700, color: btOpen === s.id ? "var(--primary)" : "var(--ink)" }}><Activity size={13} /> Test</button>
+        {!deployed && <button onClick={() => setBtOpen(btOpen === s.id ? null : s.id)} className="tap" style={{ border: "1px solid " + (btOpen === s.id ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: btOpen === s.id ? "var(--primary-soft)" : "var(--surface)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 700, color: btOpen === s.id ? "var(--primary)" : "var(--ink)" }}><Activity size={13} /> Test</button>}
         <button onClick={() => setLedgerOpen(ledgerOpen === s.id ? null : s.id)} className="tap" title="Every trade this strategy has taken" style={{ border: "1px solid " + (ledgerOpen === s.id ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: ledgerOpen === s.id ? "var(--primary-soft)" : "var(--surface)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 700, color: ledgerOpen === s.id ? "var(--primary)" : "var(--ink)" }}><ListChecks size={13} /> Trades</button>
         {canClone && <button onClick={() => cloneStrategy(s)} className="tap" title="Clone into a new editable strategy" style={{ border: "1px solid var(--line)", borderRadius: 11, background: "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: "var(--ink)" }}><Copy size={14} /></button>}
         {showPublishToggle
@@ -3727,7 +3729,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                           <div style={{ fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".04em", color: subCol, padding: "4px 2px 6px" }}>{subLabel} · {subArr.length}</div>
                           {subArr.length === 0
                             ? <div style={{ fontSize: 11, color: "var(--muted)", padding: "0 2px 4px", fontWeight: 600 }}>None.</div>
-                            : <CollapsibleList items={subArr} render={({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>} />}
+                            : <CollapsibleList items={subArr} render={({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p, deployed: true })}</React.Fragment>} />}
                         </div>
                       ))
                     )}
