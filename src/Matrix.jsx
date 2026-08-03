@@ -1,4 +1,16 @@
 import React, { useCallback, useState, useMemo, useRef, useEffect, Suspense } from "react";
+import { createPortal } from "react-dom";
+
+/* Renders `position: fixed` UI (the bottom nav + bottom-sheet modals) as a DIRECT CHILD OF <body>, so it can
+   NEVER be re-anchored by an ancestor that creates a containing block. A transform / filter / backdrop-filter /
+   will-change / contain / perspective on ANY ancestor turns `position: fixed` into "fixed relative to that
+   ancestor" — which silently makes the bottom bar scroll away and drops a bottom sheet below the fold (so a
+   confirm dialog shows only its dark overlay). Portaling to <body>, inside a themed wrapper so the CSS variables
+   still resolve, removes that entire class of bug. */
+function Portal({ children, theme }) {
+  if (typeof document === "undefined") return null;
+  return createPortal(<div className={"mx theme-" + (theme || "light")}>{children}</div>, document.body);
+}
 import { fetchIndicators, fetchTrades, marketOpen, postTrade, resolveExitFromCandles, fetchLiveQuotes, apiGetAppSettings, apiSaveAppSettings, apiDeleteAccount, clearVirtualTrades } from "./domain/api";
 import {
   Search, User, Wallet, Home, Repeat, Lightbulb, Bot, Bolt, Briefcase,
@@ -1412,17 +1424,19 @@ function AppInner() {
           is both visually wrong and a real hazard: the tap targets overlap the sheet's own
           controls, so a thumb reaching for "Buy" can land on "Watch". */}
       {!detail && !onboarding && !drawer && !confirmOrder && !walletOpen && !brokerOpen && !search && !showProfile && (
-        <nav aria-label="Main navigation" className="glass" style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--header-bg)", borderTop: "1px solid var(--line)", borderRadius: "22px 22px 0 0", boxShadow: "0 -10px 34px rgba(40,10,80,.3)", display: "flex", padding: "8px 2px 13px", zIndex: 100 }}>
-          {nav.map(([k, Icon, label]) => {
-            const current = k === "orders" ? histOpen : (tab === k && !histOpen);
-            return (
-              <button key={k} aria-current={current ? "page" : undefined} onClick={() => { if (k === "orders") { setHistOpen(true); return; } setHistOpen(false); setTab(k); setTradePreset(null); }} className="tap" style={{ flex: 1, minWidth: 0, border: "none", background: "transparent", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "5px 1px", minHeight: 46, color: current ? "var(--primary)" : "var(--muted)" }}>
-                <Icon size={17} fill={k === "watchlist" && tab === k ? "var(--primary)" : "none"} />
-                <span style={{ fontSize: 8.5, fontWeight: 700, maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
-              </button>
-            );
-          })}
-        </nav>
+        <Portal theme={theme}>
+          <nav aria-label="Main navigation" className="glass" style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--header-bg)", borderTop: "1px solid var(--line)", borderRadius: "22px 22px 0 0", boxShadow: "0 -10px 34px rgba(40,10,80,.3)", display: "flex", padding: "8px 2px 13px", zIndex: 100 }}>
+            {nav.map(([k, Icon, label]) => {
+              const current = k === "orders" ? histOpen : (tab === k && !histOpen);
+              return (
+                <button key={k} aria-current={current ? "page" : undefined} onClick={() => { if (k === "orders") { setHistOpen(true); return; } setHistOpen(false); setTab(k); setTradePreset(null); }} className="tap" style={{ flex: 1, minWidth: 0, border: "none", background: "transparent", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "5px 1px", minHeight: 46, color: current ? "var(--primary)" : "var(--muted)" }}>
+                  <Icon size={17} fill={k === "watchlist" && tab === k ? "var(--primary)" : "none"} />
+                  <span style={{ fontSize: 8.5, fontWeight: 700, maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
+                </button>
+              );
+            })}
+          </nav>
+        </Portal>
       )}
 
       {/* NEO — floating chatbot button, bottom-right, just above the bottom bar. Replaces the old Neo
@@ -1450,7 +1464,7 @@ function AppInner() {
           tap on Buy spends actual money — that deserves a sentence and a decision,
           not a silently flipped switch. */}
       {confirmReal && (
-        <>
+        <Portal theme={theme}>
           <div onClick={() => setConfirmReal(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 190 }} />
           <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--surface)", borderRadius: "22px 22px 0 0", zIndex: 191, padding: "20px 20px 26px", boxShadow: "0 -16px 44px rgba(0,0,0,.35)" }}>
             <div className="disp" style={{ fontSize: 19, fontWeight: 800, color: "var(--down)" }}>Switch to Real money?</div>
@@ -1472,11 +1486,11 @@ function AppInner() {
               </button>
             </div>
           </div>
-        </>
+        </Portal>
       )}
 
       {activityOpen && (
-        <>
+        <Portal theme={theme}>
           <div onClick={() => setActivityOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 150 }} />
           <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--surface)", borderRadius: "22px 22px 0 0", zIndex: 151, padding: "18px 18px 24px", maxHeight: "70vh", display: "flex", flexDirection: "column", boxShadow: "0 -16px 44px rgba(0,0,0,.3)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -1500,13 +1514,13 @@ function AppInner() {
               ))}
             </div>
           </div>
-        </>
+        </Portal>
       )}
 
       {splash && <MatrixRain onDone={endSplash} />}
 
       {brokerPrompt && !brokerOpen && (
-        <>
+        <Portal theme={theme}>
           <div onClick={() => setBrokerPrompt(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 148 }} />
           <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--surface)", borderRadius: "22px 22px 0 0", zIndex: 149, padding: "20px 20px 26px", boxShadow: "0 -16px 44px rgba(0,0,0,.3)" }}>
             <div className="disp" style={{ fontSize: 19, fontWeight: 800 }}>Connect your broker</div>
@@ -1527,7 +1541,7 @@ function AppInner() {
               </button>
             </div>
           </div>
-        </>
+        </Portal>
       )}
 
       {brokerOpen && (
