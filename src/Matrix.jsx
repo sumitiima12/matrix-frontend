@@ -523,6 +523,9 @@ function AppInner() {
         // R27-P1-02: a reduce-only CLOSE must be flagged so the server treats it as an exit (exempt from
         // new-entry gates) and sets the broker-native reduce-only flag — never opening/reversing exposure.
         reduceOnly: opts.reduceOnly || undefined,
+        // C01: the ENTRY order id of the position being closed, so the server books the exit against the right
+        // open position (immutable exit leg + realized P&L) instead of creating a phantom opposite entry.
+        entryOrderId: opts.entryOrderId || undefined,
         // ONE stable idempotency key for this intent — reused verbatim on any retry/reload so the server
         // dedupes/replays the single order rather than placing a second.
         clientRequestId: reqId,
@@ -548,19 +551,25 @@ function AppInner() {
         else if (r.autoExitId) t += " · auto-exit armed";
         else if (r.autoExitNote || !confirmedFilled) t += " · ⚠ SL/TP NOT armed — set it in your broker";
       }
-      // Journal the real order with its FILL STATUS. For an unconfirmed order we record it WITHOUT an entry
-      // price (mirrors the reject path) so no phantom open position or P&L is created.
-      try {
-        recordTrade({
-          id: `real-${r.orderId || Date.now()}`, sym: s.sym, market: mkt, qty: confirmedFilled ? fillQty : q, side,
-          short: side === "SELL" || undefined, broker: route.id,   // stamp broker so reconcile can attribute precisely
-          ...(confirmedFilled ? { entry: fillPx } : {}), entryAt: Date.now(), tradeType: opts.tradeType || "Manual",
-          // R27-P2-02: carry the strategy attribution so a real Screener/Automate fill stays tied to its card
-          // (card P&L + Live Positions match on t.strategy). strategyId is preferred (immutable) when present.
-          ...(opts.strategy ? { strategy: opts.strategy } : {}), ...(opts.strategyId ? { strategyId: opts.strategyId } : {}),
-          real: true, status, orderId: r.orderId || null, tp: opts.tp || undefined, sl: opts.sl || undefined,
-        });
-      } catch {}
+      // C01: a REDUCE-ONLY close is an EXIT, never a new position — do NOT journal an entry-semantics row for it
+      // (that was the phantom opposite-side position). The server authoritatively closes/reduces the referenced
+      // open row and books realized P&L (the browser can't write onto a server-authored row anyway); the caller
+      // (closePositionRow) updates the local view for immediate feedback and reconciles on the next fetch.
+      if (!opts.reduceOnly) {
+        // Journal the real order with its FILL STATUS. For an unconfirmed order we record it WITHOUT an entry
+        // price (mirrors the reject path) so no phantom open position or P&L is created.
+        try {
+          recordTrade({
+            id: `real-${r.orderId || Date.now()}`, sym: s.sym, market: mkt, qty: confirmedFilled ? fillQty : q, side,
+            short: side === "SELL" || undefined, broker: route.id,   // stamp broker so reconcile can attribute precisely
+            ...(confirmedFilled ? { entry: fillPx } : {}), entryAt: Date.now(), tradeType: opts.tradeType || "Manual",
+            // R27-P2-02: carry the strategy attribution so a real Screener/Automate fill stays tied to its card
+            // (card P&L + Live Positions match on t.strategy). strategyId is preferred (immutable) when present.
+            ...(opts.strategy ? { strategy: opts.strategy } : {}), ...(opts.strategyId ? { strategyId: opts.strategyId } : {}),
+            real: true, status, orderId: r.orderId || null, tp: opts.tp || undefined, sl: opts.sl || undefined,
+          });
+        } catch {}
+      }
       // A broker RESPONSE is conclusive for the client intent → release the key (memory + persisted).
       orderStoreRef.current.settleTerminal(intentKey);
       setBuyToast({ t, e: state === ORDER_STATES.REJECTED }); refreshPortfolio();
@@ -614,7 +623,7 @@ function AppInner() {
       const flatten = (trade.side === "SELL" || trade.short) ? "BUY" : "SELL";
       let res;
       try {
-        res = await placeRealMarketOrder(stock, flatten, qty, trade.product || "CNC", { tradeType: trade.tradeType || "Screener Auto Buy", reduceOnly: true, market: mkt, strategy: trade.strategy || undefined, strategyId: trade.strategyId || undefined });
+        res = await placeRealMarketOrder(stock, flatten, qty, trade.product || "CNC", { tradeType: trade.tradeType || "Screener Auto Buy", reduceOnly: true, market: mkt, strategy: trade.strategy || undefined, strategyId: trade.strategyId || undefined, entryOrderId: trade.orderId || undefined });
       } catch { res = null; }
       if (res && res.confirmedFilled) {
         const exitPx = Number(res.avgPrice) > 0 ? Number(res.avgPrice) : (stock.price != null ? stock.price : trade.entry);
