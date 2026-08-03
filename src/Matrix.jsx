@@ -51,6 +51,7 @@ import ConfirmOrder from "./components/common/ConfirmOrder";
 import BrokerSheet from "./components/common/BrokerSheet";
 import { brokerSymbol } from "./domain/brokerSymbols";
 import { brokerPlaceOrder, brokerIntentStatus, registerAutoExit, reconcileRealTrades, BROKER_MARKETS } from "./services/brokerService";
+import { OrderLifecycleStore, deriveIntentKey, interpretResult, classifyError, reconcileAction, ORDER_STATES } from "./services/orderLifecycle";
 import MatrixRain from "./components/common/MatrixRain";
 import MLogo from "./components/common/MLogo";
 import NeoIcon from "./components/common/NeoIcon";
@@ -319,13 +320,12 @@ function AppInner() {
   /* R22-C04: order-intent identity must survive a RELOAD, not just a promise. Ambiguous intents (broker outcome
      unknown) are mirrored to localStorage; on mount we rehydrate them so a retry after a refresh reuses the SAME
      idempotency key (the server dedupes/replays) instead of minting a new one that could double the order. */
-  const inFlightOrdersRef = useRef((() => {
-    const m = new Map();
-    try { const s = JSON.parse(localStorage.getItem("mx_pending_intents") || "{}"); for (const k in s) m.set(k, { reqId: s[k], state: "ambiguous" }); } catch { /* ignore */ }
-    return m;
-  })());
-  const persistAmbiguousIntent = (key, reqId) => { try { const s = JSON.parse(localStorage.getItem("mx_pending_intents") || "{}"); s[key] = reqId; localStorage.setItem("mx_pending_intents", JSON.stringify(s)); } catch { /* ignore */ } };
-  const clearPersistedIntent = (key) => { try { const s = JSON.parse(localStorage.getItem("mx_pending_intents") || "{}"); if (key in s) { delete s[key]; localStorage.setItem("mx_pending_intents", JSON.stringify(s)); } } catch { /* ignore */ } };
+  /* P3-05: the ONE durable order-lifecycle store, shared by EVERY real-order surface (confirm drawer, options,
+     instant, screener). Intents are namespaced by the authenticated user (no shared global blob), persisted so a
+     retry after reload reuses the SAME idempotency key, and only cleared on a conclusive outcome. */
+  const orderStoreRef = useRef(null);
+  if (!orderStoreRef.current) orderStoreRef.current = new OrderLifecycleStore(userId);
+  useEffect(() => { orderStoreRef.current.setUser(userId); }, [userId]);
   const onAuthed = (a, opts) => { doLogin(a); setAuthed(true); if (opts && opts.fresh) freshSignupRef.current = true; };
   const { portfolio, setPortfolio, walletMap, setWalletMap, adjustWallet, updateHolding, intel, health, sectors } = usePortfolio();
 
@@ -431,6 +431,10 @@ function AppInner() {
      confirm dialog you cannot answer (because you are asleep) would simply stop it
      from ever firing. So automation calls placeOrder directly, via *Now below. */
   const [confirmOrder, setConfirmOrder] = useState(null);
+  // P3-05: the confirm drawer stays MOUNTED until the broker outcome is known. `confirmBusy` disables a repeat
+  // submit while placing/reconciling; `confirmNote` surfaces an ambiguous ("outcome unknown") state in the drawer.
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [confirmNote, setConfirmNote] = useState(null);
 
   /* Buying — even a VIRTUAL/paper buy — requires a signed-in account. A guest who taps
      Buy is sent to the login screen instead of placing an order, so paper trades always
@@ -488,23 +492,17 @@ function AppInner() {
   const placeRealMarketOrder = async (s, side, q, prod, opts = {}) => {
     const mkt = marketOf(s.sym) || s.market || market;
     const route = brokerFor(mkt);
-    if (!route) { setBuyToast({ t: `No broker connected for ${MKT_LABEL[mkt] || mkt} — cannot place a real order`, e: true }); return false; }
+    if (!route) { setBuyToast({ t: `No broker connected for ${MKT_LABEL[mkt] || mkt} — cannot place a real order`, e: true }); return { ok: false, state: ORDER_STATES.REJECTED, reason: "no broker" }; }
     const bsym = brokerSymbol(s.sym, route.id);
-    if (!bsym) { setBuyToast({ t: `${route.meta.name} can't trade ${s.sym} — no symbol mapping`, e: true }); return false; }
-    /* R20-P1-01: block a duplicate submission of the SAME intent while one is in flight, and reuse ONE stable
-       clientRequestId for it (so a legitimate retry reconciles rather than double-submits). A caller with its
-       own durable identity (e.g. a candle-keyed auto/screener buy) can pass opts.intentKey/opts.clientRequestId. */
-    // R21-P2-03: the intent key includes PRODUCT + protection so two deliberately-different orders (e.g. a plain
-    // buy vs the same buy with a stop) aren't treated as one duplicate. Same-config rapid taps still collapse.
-    const intentKey = opts.intentKey || `${route.id}|${bsym}|${side}|${q}|${prod || "CNC"}|${opts.sl || 0}|${opts.tp || 0}|${opts.tsl || 0}|${opts.strategy ? "S" : ""}`;
-    /* R21-P1-01: the lock entry carries { reqId, state }. `inflight` blocks a concurrent duplicate. `ambiguous`
-       (a prior attempt whose broker outcome is UNKNOWN — timeout/5xx/idempotency-block) does NOT block; instead a
-       retry REUSES the same reqId so the server replays/blocks the one order rather than placing a second, and the
-       user is told to reconcile. The id is only released on a CONCLUSIVE outcome (success or a definite reject). */
-    const existing = inFlightOrdersRef.current.get(intentKey);
-    if (existing && existing.state === "inflight") { setBuyToast({ t: "That order is already being placed — please wait.", e: true }); return false; }
-    const reqId = (existing && existing.state === "ambiguous" && !opts.clientRequestId) ? existing.reqId : (opts.clientRequestId || newActionId());
-    inFlightOrdersRef.current.set(intentKey, { reqId, state: "inflight" });
+    if (!bsym) { setBuyToast({ t: `${route.meta.name} can't trade ${s.sym} — no symbol mapping`, e: true }); return { ok: false, state: ORDER_STATES.REJECTED, reason: "no symbol mapping" }; }
+    const brokerName = route.meta.name;   // the ACTUALLY-ROUTED broker for this market — never liveBroker.name
+    /* P3-05: the ONE durable intent state machine. deriveIntentKey folds in product + every protection leg so
+       two deliberately-different orders aren't collapsed, while rapid identical taps DO collapse. A caller with
+       its own durable identity (candle-keyed auto/screener buy) passes opts.intentKey/opts.clientRequestId. */
+    const intentKey = opts.intentKey || deriveIntentKey({ brokerId: route.id, brokerSym: bsym, side, qty: q, product: prod, sl: opts.sl, tp: opts.tp, tsl: opts.tsl, strategy: opts.strategy });
+    const begun = orderStoreRef.current.beginSubmit(intentKey, { clientRequestId: opts.clientRequestId || null, mint: newActionId });
+    if (begun.blocked) { setBuyToast({ t: "That order is already being placed — please wait.", e: true }); return { ok: false, state: ORDER_STATES.SUBMITTING, blocked: true, brokerName }; }
+    const reqId = begun.reqId;
     opts = { ...opts, clientRequestId: reqId };
     try {
       const isDelta = route.id === "delta";
@@ -519,23 +517,24 @@ function AppInner() {
         tslPct: opts.tsl > 0 ? opts.tsl : undefined,
         autoExit: useEngine || undefined,
         strategy: opts.strategy || undefined,
-        // Order identity for this path too (not just the confirm sheet): mint a stable id per gesture so a
-        // transport retry replays instead of double-submitting. Callers that already own a stable id
-        // (e.g. a candle-keyed screener buy) can pass opts.clientRequestId to reuse it.
-        clientRequestId: opts.clientRequestId || newActionId(),
+        // ONE stable idempotency key for this intent — reused verbatim on any retry/reload so the server
+        // dedupes/replays the single order rather than placing a second.
+        clientRequestId: reqId,
         riskLimits,   // user's opt-in caps (off by default) — the server check enforces them
       }, true);
       const status = r.status || "filled";                          // filled | partial | PENDING | REJECTED | FILLED
+      const { state, confirmedFilled } = interpretResult(r);
       const statusLc = String(status).toLowerCase();
-      const confirmedFilled = statusLc === "filled" || statusLc === "partial";
       // SELF-REVIEW fix: only treat a CONFIRMED fill as a position. A PENDING/rejected-after-accept order
       // must NOT be journaled with a live entry price (that was a phantom position with fake P&L).
       const fillQty = Number(r.filledQty) > 0 ? Number(r.filledQty) : (confirmedFilled ? q : 0);
       const fillPx = Number(r.avgPrice) > 0 ? Number(r.avgPrice) : (s.price ?? undefined);
       let t;
-      if (statusLc === "pending") t = `Real ${side.toLowerCase()} order PLACED on ${route.meta.name} — awaiting fill; verify in your broker`;
-      else if (statusLc === "rejected") t = `Real ${side.toLowerCase()} order REJECTED on ${route.meta.name}`;
-      else t = `Real ${side.toLowerCase()} ${statusLc === "partial" ? `PARTIALLY filled (${fillQty}/${q})` : "filled"} on ${route.meta.name}`;
+      if (state === ORDER_STATES.PENDING || state === ORDER_STATES.ACCEPTED) t = `Real ${side.toLowerCase()} order PLACED on ${brokerName} — awaiting fill; verify in your broker`;
+      else if (state === ORDER_STATES.REJECTED) t = `Real ${side.toLowerCase()} order REJECTED on ${brokerName}`;
+      else if (state === ORDER_STATES.CANCELLED) t = `Real ${side.toLowerCase()} order CANCELLED on ${brokerName}`;
+      else if (state === ORDER_STATES.UNKNOWN) t = `Real ${side.toLowerCase()} order sent to ${brokerName} — outcome unknown; verify in your broker`;
+      else t = `Real ${side.toLowerCase()} ${state === ORDER_STATES.PARTIAL ? `PARTIALLY filled (${fillQty}/${q})` : "filled"} on ${brokerName}`;
       // SL/TP feedback — and, crucially, WARN when the user asked for a stop but it was NOT armed
       // (e.g. FYERS entry still pending, or a short we can't manage), so they don't assume protection.
       if (opts.sl > 0 || opts.tp > 0) {
@@ -553,32 +552,35 @@ function AppInner() {
           real: true, status, orderId: r.orderId || null, tp: opts.tp || undefined, sl: opts.sl || undefined,
         });
       } catch {}
-      // Conclusive success → release the intent lock (memory + persisted).
-      inFlightOrdersRef.current.delete(intentKey); clearPersistedIntent(intentKey);
-      setBuyToast({ t }); refreshPortfolio(); return true;
+      // A broker RESPONSE is conclusive for the client intent → release the key (memory + persisted).
+      orderStoreRef.current.settleTerminal(intentKey);
+      setBuyToast({ t, e: state === ORDER_STATES.REJECTED }); refreshPortfolio();
+      return { ok: state !== ORDER_STATES.REJECTED, state, orderId: r.orderId || null, brokerName, statusLc };
     } catch (e) {
-      const reason = e && e.reason ? e.reason : String(e.message || e);
-      /* R21-P1-01: only a CONCLUSIVE broker rejection means nothing executed — release the lock so a fresh order
-         (new id) is allowed. An AMBIGUOUS failure (timeout / 5xx / idempotency in-flight / risk-lock) leaves the
-         SAME reqId parked as `ambiguous`: a retry reuses it (server dedupes/replays) and we prompt to reconcile
-         rather than mint a new action that could double the order. */
-      if (e && e.conclusiveReject) {
-        inFlightOrdersRef.current.delete(intentKey); clearPersistedIntent(intentKey);
+      const { conclusive, state, reason } = classifyError(e);
+      /* Only a CONCLUSIVE broker rejection means nothing executed — release the key so a fresh order (new id) is
+         allowed. An AMBIGUOUS failure (timeout / 5xx / idempotency in-flight / risk-lock) is NOT a rejection: the
+         SAME reqId is retained as `unknown`, a retry reuses it (server dedupes/replays), and we prompt to
+         reconcile rather than mint a new action that could double the order. Never labelled "Broker rejected". */
+      if (conclusive) {
+        orderStoreRef.current.settleTerminal(intentKey);
         try { recordTrade({ id: `rej-${Date.now()}-${s.sym}`, sym: s.sym, market: mkt, qty: q, side, short: side === "SELL" || undefined, broker: route.id, entryAt: Date.now(), tradeType: opts.tradeType || "Manual", real: true, status: "rejected", rejectReason: reason }); } catch {}
         setBuyToast({ t: `Order rejected: ${reason}`, e: true });
-      } else {
-        inFlightOrdersRef.current.set(intentKey, { reqId, state: "ambiguous" }); persistAmbiguousIntent(intentKey, reqId);
-        setBuyToast({ t: `Couldn't confirm your ${side.toLowerCase()} order — check your broker before retrying. A retry will reuse the same order (no duplicate).`, e: true });
+        return { ok: false, state, reason, brokerName };
       }
-      return false;
+      orderStoreRef.current.markUnknown(intentKey, reqId, route.id);
+      setBuyToast({ t: `Couldn't confirm your ${side.toLowerCase()} order on ${brokerName} — outcome unknown; check your broker before retrying. A retry reuses the same order (no duplicate).`, e: true });
+      return { ok: false, state: ORDER_STATES.UNKNOWN, reason, brokerName };
     }
   };
   const buyStockNow  = (stock, qty = 1, opts = {}) => {
     if (!auth) { setBuyToast({ t: "Log in to trade — buying needs an account." }); setLoginOpen(true); return false; }
     // A Sell/short intent (crypto & Indian options) rides in on opts.side; everything else is a BUY.
     const side = opts.side === "SELL" ? "SELL" : "BUY";
-    // REAL mode -> real broker order (auto-buy included); otherwise the paper book.
-    if (mode === "real") { placeRealMarketOrder(stock, side, qty, opts.product || "CNC", opts); return true; }
+    // REAL mode -> real broker order (auto-buy included) through the ONE durable lifecycle; RETURN its promise so
+    // callers (the confirm drawer / option picker) can AWAIT the true outcome instead of assuming success.
+    // Otherwise the paper book — a plain boolean; paper never touches the real-order lifecycle.
+    if (mode === "real") return placeRealMarketOrder(stock, side, qty, opts.product || "CNC", opts);
     if (virtualBlocked(marketOf(stock.sym) || market)) { setBuyToast({ t: "Paper trading isn't enabled for this market.", e: true }); return false; }
     placeOrder({ stock, side, qty, opts }); return true;
   };
@@ -591,14 +593,21 @@ function AppInner() {
     if (!auth) return;
     let cancelled = false;
     (async () => {
-      let stored = {};
-      try { stored = JSON.parse(localStorage.getItem("mx_pending_intents") || "{}"); } catch { return; }
-      for (const intentKey of Object.keys(stored)) {
-        const res = await brokerIntentStatus(userId, stored[intentKey]).catch(() => null);
+      const store = orderStoreRef.current;
+      for (const { intentKey, reqId } of store.persisted()) {
+        const res = await brokerIntentStatus(userId, reqId).catch(() => null);
         if (cancelled || !res) continue;
-        if (res.status === "succeeded" || res.status === "rejected" || res.status === "none") {
-          inFlightOrdersRef.current.delete(intentKey); clearPersistedIntent(intentKey);
-          if (res.status === "succeeded") { setBuyToast({ t: "A pending order was confirmed at your broker — your history is up to date." }); refreshPortfolio(); }
+        const action = reconcileAction(res);
+        if (action === "clear-success") {
+          store.settleTerminal(intentKey);
+          setBuyToast({ t: "A pending order was confirmed at your broker — your history is up to date." });
+          refreshPortfolio();
+        } else if (action === "clear-retryable") {
+          // Broker has no record (or a definite reject) → nothing stands. Clear so a deliberate retry is allowed.
+          store.settleTerminal(intentKey);
+        } else {
+          // in_flight / unknown → keep the intent so a duplicate submit stays blocked and we reconcile later.
+          setBuyToast({ t: "An earlier order's outcome is still unknown — we're checking your broker. It won't be resubmitted automatically." });
         }
       }
     })();
@@ -770,6 +779,19 @@ function AppInner() {
         optType: o.optType,
         expiry: o.expiry,
       };
+      if (mode === "real") {
+        /* P3-05: an option order rides the SAME durable lifecycle as a stock (buyStockNow → placeRealMarketOrder).
+           AWAIT the true outcome — never flash "Bought" before the broker confirms. The drawer stays mounted until
+           we know; an ambiguous outcome keeps it open with a note and never auto-resubmits. */
+        setConfirmBusy(true);
+        const res = await buyStockNow(optStock, q, { ...opts, product: prod, market: "IN", tradeType: opts.tradeType || "Manual" });
+        setConfirmBusy(false);
+        if (res && res.blocked) return;                                        // a submit is already in flight — no dup
+        if (res && res.state === ORDER_STATES.UNKNOWN) { setConfirmNote("Order outcome unknown — checking your broker. It won't be resubmitted; a retry reuses the same order."); return; }
+        setConfirmOrder(null); setConfirmNote(null);
+        return;
+      }
+      // Virtual paper option — separate book, never the real lifecycle.
       buyStockNow(optStock, q, { ...opts, product: prod, market: "IN", tradeType: opts.tradeType || "Manual" });
       setBuyToast({ t: `Bought ${o.lots} lot${o.lots > 1 ? "s" : ""} · ${o.optionSymbol}` });
       setConfirmOrder(null);
@@ -778,62 +800,17 @@ function AppInner() {
 
 
     if (mode === "real") {
-      /* ROUTE BY MARKET. With FYERS, Schwab and Delta connected at once, "the broker" is
-         ambiguous — an Indian buy must go to the Indian broker even while the US and crypto
-         feeds are also live. Sending a NIFTY order to Schwab would be rejected at best, and
-         filled on some unrelated instrument at worst. */
-      const mkt = marketOf(s.sym) || s.market || market;
-      const route = brokerFor(mkt);
-
-      if (!route) {
-        setBuyToast({ t: `No broker connected for ${MKT_LABEL[mkt] || mkt} — cannot place a real order`, e: true });
-        setConfirmOrder(null);
-        return;
-      }
-
-      const bsym = brokerSymbol(s.sym, route.id);
-      if (!bsym) {
-        setBuyToast({ t: `${route.meta.name} can't trade ${s.sym} — no symbol mapping`, e: true });
-        setConfirmOrder(null);
-        return;
-      }
-      setConfirmOrder(null);
-      try {
-        const isDelta = route.id === "delta";
-        const wantExit = side === "BUY" && (opts.sl > 0 || opts.tp > 0 || opts.tsl > 0 || !!opts.strategy);
-        /* Delta's native exchange bracket already covers plain SL/TP; only lean on the
-           server engine for what the bracket can't do (trailing, or a strategy signal).
-           Every other broker has no native bracket, so the engine handles all exits. */
-        const useEngine = wantExit && (!isDelta || opts.tsl > 0 || !!opts.strategy);
-        const r = await brokerPlaceOrder(
-          route.session, userId,
-          {
-            symbol: bsym, side, qty: q, orderType: "MARKET", product: prod,
-            entryPrice: s.price ?? undefined,
-            slPct: (side === "BUY" && opts.sl > 0) ? opts.sl : undefined,
-            tpPct: (side === "BUY" && opts.tp > 0) ? opts.tp : undefined,
-            tslPct: (side === "BUY" && opts.tsl > 0) ? opts.tsl : undefined,
-            autoExit: useEngine || undefined,
-            strategy: opts.strategy || undefined,   // { defs, exit } for indicator-based exits
-            // R19-P1-02: one stable action id per confirmed order intent — reused on any retry of THIS order.
-            clientRequestId: confirmOrder.actionId || undefined,
-          },
-          true,                                 // explicit live confirmation
-        );
-        let t = `Real ${side.toLowerCase()} sent to ${liveBroker.name} — order ${r.orderId}`;
-        const bk = r.bracket;
-        const wantsProtection = side === "BUY" && (opts.sl > 0 || opts.tp > 0);
-        if (wantsProtection && isDelta) {
-          if (bk && bk.placed) t += " · SL/TP set on exchange";
-          else if (bk && !bk.placed) { setBuyToast({ t: `Order placed, but SL/TP was NOT set — add it in ${liveBroker.name} (${bk.message})`, e: true }); refreshPortfolio(); return; }
-        }
-        if (r.autoExitId) t += " · auto-exit armed on server";
-        else if (wantsProtection && !isDelta) { setBuyToast({ t: `Order placed — SL/TP was NOT armed. Verify the fill and add SL/TP in ${liveBroker.name}.`, e: true }); refreshPortfolio(); return; }
-        setBuyToast({ t });
-        refreshPortfolio();
-      } catch (e) {
-        setBuyToast({ t: `Broker rejected the order: ${String(e.message || e)}`, e: true });
-      }
+      /* P3-05: EVERY real stock order goes through the ONE durable lifecycle (placeRealMarketOrder). It routes by
+         market, mints/reuses ONE idempotency key (here: the drawer's stable actionId), interprets the outcome,
+         journals it, and toasts with the ACTUALLY-ROUTED broker name. We keep the drawer MOUNTED until the outcome
+         is known and DISABLE a repeat submit while placing — no context is destroyed before the broker replies, a
+         timeout is never mislabelled "Broker rejected", and an ambiguous outcome stays reconcilable. */
+      setConfirmBusy(true);
+      const res = await placeRealMarketOrder(s, side, q, prod, { ...opts, clientRequestId: confirmOrder.actionId || undefined });
+      setConfirmBusy(false);
+      if (res && res.blocked) return;                                          // already submitting — keep drawer, no dup
+      if (res && res.state === ORDER_STATES.UNKNOWN) { setConfirmNote("Order outcome unknown — checking your broker. It won't be resubmitted; a retry reuses the same order."); return; }
+      setConfirmOrder(null); setConfirmNote(null);
       return;
     }
 
@@ -1479,7 +1456,9 @@ function AppInner() {
             mode={mode}
             brokerName={(brokerFor(confirmOrder.market) && brokerFor(confirmOrder.market).meta ? brokerFor(confirmOrder.market).meta.name : (liveBroker ? liveBroker.name : null))}
             onConfirm={runConfirmedOrder}
-            onCancel={() => setConfirmOrder(null)}
+            busy={confirmBusy}
+            note={confirmNote}
+            onCancel={() => { if (!confirmBusy) { setConfirmOrder(null); setConfirmNote(null); } }}
           />
         </ErrorBoundary>
       )}

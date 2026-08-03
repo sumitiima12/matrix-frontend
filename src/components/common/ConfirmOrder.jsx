@@ -19,7 +19,7 @@ const CRYPTO_LEV = 25;
  * total value, and what it does to your wallet. If the total exceeds the wallet,
  * it says so here rather than letting the risk engine reject it after the tap.
  */
-export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userId, mode = "virtual", brokerName }) {
+export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userId, mode = "virtual", brokerName, busy = false, note = null }) {
   const { s, qty: initialQty, side, market, lot = 1 } = order || {};
   const isReal = mode === "real";
 
@@ -128,8 +128,10 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
             underlying={s.sym}
             spot={s.price}
             userId={userId}
+            busy={busy}
+            note={note}
             onPick={({ contract, qty, lots, lotSize }) =>
-              onConfirm({
+              busy ? null : onConfirm({
                 instrument: "option",
                 optionSymbol: contract.symbol,     // the BROKER's symbol, verbatim
                 strike: contract.strike,
@@ -314,24 +316,33 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
           </div>
         )}
 
+        {/* P3-05: an ambiguous ("outcome unknown") result keeps the drawer open with this note; the order is
+            never auto-resubmitted and a retry reuses the same idempotency key. */}
+        {note && (
+          <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 12, padding: 11, borderRadius: 11, background: "var(--elev)", border: "1px solid var(--line)" }}>
+            <AlertTriangle size={15} color="var(--muted)" style={{ flex: "0 0 auto", marginTop: 1 }} />
+            <span style={{ fontSize: 11.5, color: "var(--ink)", lineHeight: 1.45 }}>{note}</span>
+          </div>
+        )}
+
         <div style={{ display: "flex", gap: 9, marginTop: 16 }}>
-          <button onClick={onCancel} className="tap disp"
-            style={{ flex: 1, border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 12, padding: 13, fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>
-            Cancel
+          <button onClick={onCancel} disabled={busy} className="tap disp"
+            style={{ flex: 1, border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 12, padding: 13, fontWeight: 800, fontSize: 13.5, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1 }}>
+            {note ? "Close" : "Cancel"}
           </button>
           <button
-            onClick={() => onConfirm(effQty, product, { sl: sl !== "" ? +sl : undefined, tp: tp !== "" ? +tp : undefined, amount: amountMode ? Number(amount) : undefined })}
-            disabled={price == null || short}
+            onClick={() => busy ? null : onConfirm(effQty, product, { sl: sl !== "" ? +sl : undefined, tp: tp !== "" ? +tp : undefined, amount: amountMode ? Number(amount) : undefined })}
+            disabled={price == null || short || busy}
             className="tap disp"
             style={{
               flex: 1.4, border: "none", borderRadius: 12, padding: 13, fontWeight: 800, fontSize: 13.5,
-              cursor: price == null || short ? "not-allowed" : "pointer",
-              opacity: price == null || short ? 0.45 : 1,
+              cursor: price == null || short || busy ? "not-allowed" : "pointer",
+              opacity: price == null || short || busy ? 0.55 : 1,
               background: side === "BUY" ? "var(--up)" : "var(--down)",
               color: "#fff",
             }}
           >
-            {side === "BUY" ? "Buy" : "Sell"} {units} {units === 1 ? "unit" : "units"}
+            {busy ? "Placing…" : `${side === "BUY" ? "Buy" : "Sell"} ${units} ${units === 1 ? "unit" : "units"}`}
           </button>
         </div>
         </>
