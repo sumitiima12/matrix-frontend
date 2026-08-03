@@ -3167,7 +3167,12 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       ) : (
       <div className="card flat" style={{ marginTop: 14, padding: 18, border: "1px solid var(--line)", outline: "none", boxShadow: "inset 0 1px 0 rgba(255,255,255,.10), inset 0 0 0 1px rgba(255,255,255,.02), 0 10px 30px rgba(0,0,0,.28)", background: "var(--card-grad)", color: "var(--ink)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div className="disp" style={{ fontWeight: 700, fontSize: 15 }}>Automation Dashboard</div>
+          <div className="disp" style={{ fontWeight: 700, fontSize: 15, display: "flex", alignItems: "center", gap: 7 }}>
+            Automation Dashboard
+            {/* Make it unambiguous WHICH book this P&L is — mirrors the homepage Total's mode. Real shows real
+                automate trades; Virtual shows the paper simulation. */}
+            <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".02em", padding: "2px 7px", borderRadius: 999, color: appMode === "real" ? "var(--down)" : "var(--muted)", background: appMode === "real" ? "rgba(232,72,85,.12)" : "var(--elev)", border: "1px solid " + (appMode === "real" ? "rgba(232,72,85,.3)" : "var(--line)") }}>{appMode === "real" ? "REAL" : "VIRTUAL"}</span>
+          </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 10.5, opacity: .85 }}>{(DASH_PRESETS.find(([v]) => v === dashPreset) || [null, "Today"])[1]}</span>
             <button onClick={() => setDashOpen(false)} className="tap" title="Collapse" style={{ flex: "0 0 auto", display: "grid", placeItems: "center", border: "1px solid rgba(0,0,0,.12)", background: "rgba(0,0,0,.06)", color: "#141416", borderRadius: 10, padding: "5px" }}><ChevronUp size={15} /></button>

@@ -1195,6 +1195,16 @@ function AppInner() {
   // Neo is no longer a bottom-bar tab — it's a floating chatbot button (see below), so the bar has room.
   const nav = [["home", Home, "Home"], ["ideas", Lightbulb, "Ideas"], ["portfolio", Briefcase, "Portfolio"], ["automation", Bolt, "Auto"], ["screener", SlidersHorizontal, "Screen"], ["orders", Clock, "Orders"]];
 
+  /* The Automate page must show the P&L for the CURRENT mode, exactly like the homepage Total does: in Real mode
+     only real automate trades count; in Virtual mode only the paper ones. Passing an unfiltered mix made the
+     dashboard show virtual paper P&L (e.g. +$571) even while in Real mode, disagreeing with the homepage's
+     Automate = $0. The virtual paper engine (Automation.jsx) only runs in Virtual mode and only reads paper
+     trades for its open-position dedupe, so this filtering is safe for it. */
+  const automateTrades = useMemo(
+    () => (trades || []).filter((t) => (mode === "real" ? t.real === true : t.real !== true)),
+    [trades, mode],
+  );
+
   return (
     <BuyGateContext.Provider value={canBuy}>
     <div className={"mx theme-" + theme} style={{ background: "var(--app-bg, var(--bg))", minHeight: "100vh" }}>
@@ -1384,7 +1394,7 @@ function AppInner() {
               {tab === "home" && <HomeView market={market} setMarket={setMarket} segment={segment} onAutoBuy={autoBuyNow} onScreenerBuy={screenerBuyNow} isAdmin={effAdmin} mode={mode} setSegment={setSegment} list={list} onOpen={openStock} onBuy={buyStock} canBuy={canBuy} hideDash={(market === "IN" || market === "Commodity") && virtualBlocked(market)} watch={watch} toggleWatch={toggleWatch} profile={profile} portfolio={portfolio} realPortfolio={realPortfolio} onRefreshReal={() => refreshPortfolio(market)} wallet={wallet} onGoPortfolio={() => { setDetail(null); setTab("portfolio"); }} onRecord={recordTrade} watchlists={watchlists} addToWatch={addToWatch} createWatchlist={createWatchlist} trades={trades} liveTick={liveTick} onWhy={openWhy} autoOnMap={autoOnMap} setAutoOnMap={setAutoOnMap} deployCapMap={deployCapMap} setDeployCapMap={setDeployCapMap} onOpenScreener={() => { setDetail(null); setTab("screener"); }} />}
               {tab === "trade" && <TradeView walletMap={walletMap} adjustWallet={adjustWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} recordTrade={recordTrade} />}
               {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} canBuy={canBuy} market={market} onWhy={openWhy} me={auth ? (auth.username || null) : null} isAdmin={effAdmin} adminKey={adminKey} signupAt={auth ? (auth.createdAt || null) : null} />}
-              {tab === "automation" && <Automation market={market} appMode={mode} onRecord={recordTrade} trades={trades} strats={strats} setStrats={setStrats} onExitAll={exitAllStrategies} onCloseStrategy={exitStrategyPositions} onReconcileDelta={reconcileWithDelta} me={auth ? (auth.username || null) : null} isAdmin={effAdmin} userId={userId} brokerFor={brokerFor} adminKey={adminKey} onConnectBroker={() => openBrokers(market)} />}
+              {tab === "automation" && <Automation market={market} appMode={mode} onRecord={recordTrade} trades={automateTrades} strats={strats} setStrats={setStrats} onExitAll={exitAllStrategies} onCloseStrategy={exitStrategyPositions} onReconcileDelta={reconcileWithDelta} me={auth ? (auth.username || null) : null} isAdmin={effAdmin} userId={userId} brokerFor={brokerFor} adminKey={adminKey} onConnectBroker={() => openBrokers(market)} />}
               {tab === "screener" && <div style={{ padding: "10px 14px 96px" }}><PopularScreeners variant="full" market={market} mode={mode} list={list} isAdmin={effAdmin} onOpen={openStock} onBuy={buyStock} onAutoBuy={autoBuyNow} onScreenerBuy={screenerBuyNow} onClosePosition={closePositionRow} onUpdatePosition={updatePositionRisk} liveTick={liveTick} trades={trades} /></div>}
               {tab === "portfolio" && <Portfolio mode={mode} realPortfolio={realPortfolio} realErr={realErr} realLoading={realLoading} onRefreshReal={() => refreshPortfolio(market)} realAvailable={!!brokerFor(market)} userId={userId} brokerName={(brokerFor(market) && brokerFor(market).meta ? brokerFor(market).meta.name : (liveBroker ? liveBroker.name : null))} portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} onBuy={buyStock} canBuy={canBuy} onSell={sellStock} onUpdate={updateHolding} onArmRealExit={armRealExit} priceSnap={priceSnap} onWhy={openWhy} onOpen={openStock} onRemove={(sym) => { setPortfolio((prev) => prev.filter((h) => h.sym !== sym)); setBuyToast({ t: `${sym} removed` }); }} />}
               {tab === "watchlist" && <WatchlistView watchlists={watchlists} activeWl={activeWl} setActiveWl={setActiveWl} createWatchlist={createWatchlist} deleteWatchlist={deleteWatchlist} toggleWatch={toggleWatch} onOpen={openStock} />}
