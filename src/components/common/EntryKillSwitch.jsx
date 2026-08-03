@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { getEntryHalt, setEntryHalt } from "../../services/brokerService";
 import { confirmDialog } from "../../lib/confirmDialog";
 

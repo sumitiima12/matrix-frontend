@@ -12,12 +12,38 @@
  */
 import { build } from "esbuild";
 import { createRequire } from "module";
+import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const P = (p) => JSON.stringify(path.join(root, p));
+
+/* ---- 0. Static guard: every .jsx MUST import React ----
+   The build uses the CLASSIC JSX runtime (esbuild → React.createElement), so a .jsx file that renders
+   JSX without `import React` throws "React is not defined" the moment that component mounts. SSR only
+   exercises the pages it reaches, so a component hidden behind a tab/expander can ship broken (this is
+   exactly how the Automation "React is not defined" crash slipped out). Fail the gate on any missing import. */
+(function assertReactImports() {
+  const offenders = [];
+  const walk = (dir) => {
+    for (const name of fs.readdirSync(dir)) {
+      const full = path.join(dir, name);
+      const st = fs.statSync(full);
+      if (st.isDirectory()) { if (name !== "node_modules") walk(full); continue; }
+      if (!name.endsWith(".jsx")) continue;
+      const head = fs.readFileSync(full, "utf8").split("\n").slice(0, 25).join("\n");
+      if (!/import\s+React(\s*,|\s+from)/.test(head)) offenders.push(path.relative(root, full));
+    }
+  };
+  walk(path.join(root, "src"));
+  if (offenders.length) {
+    console.error("SMOKE: these .jsx files use the classic JSX runtime but do NOT import React (add `import React …`):\n  " + offenders.join("\n  "));
+    process.exit(1);
+  }
+  console.log(`React-import guard: OK (all .jsx import React).`);
+})();
 
 // ---- 1. Minimal browser shims (set BEFORE the app modules execute) ----
 const store = () => { const m = {}; return { getItem: (k) => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: (k) => { delete m[k]; }, clear: () => { for (const k in m) delete m[k]; }, key: () => null, length: 0 }; };

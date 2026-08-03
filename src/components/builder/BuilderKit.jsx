@@ -1,7 +1,7 @@
 // BuilderKit — shared strategy-builder pieces extracted from Automation.jsx so PopularScreeners (and
 // any eager consumer) can import them WITHOUT pulling the whole Automation page into the main bundle,
 // letting Automation.jsx lazy-split cleanly. Pure presentational components; no Automation-local deps.
-import { useState } from "react";
+import React, { useState } from "react";
 import { ListChecks, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 import { selStyle } from "../common/styles";
 import { IND_CATALOG } from "../../domain/strategyLang";

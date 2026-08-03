@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import React, { useMemo } from "react";
 import { fmt, chgColor } from "../../lib/format";
 
 /* SCREENER TRADE LIST — the expandable "List of Trades" for a screener card, mirroring the Automate
