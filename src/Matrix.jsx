@@ -1325,10 +1325,21 @@ function AppInner() {
                 label="Virtual or Real trading"
                 onChange={(next) => {
                   if (!next) { setMode("virtual"); return; }        // leaving Real is always free
-                  // Real is PER MARKET: you can only go Real on a market you've connected a broker
-                  // for. Having a Delta (crypto) session doesn't unlock Real on US.
-                  if (!brokerFor(market)) { setBuyToast({ t: `Connect a broker for ${MKT_LABEL[market] || market} to trade Real here.`, e: true }); return; }
-                  setConfirmReal(true);                              // entering Real needs a yes
+                  // Real needs a LIVE broker. It's per-market for ORDER ROUTING (a real order only goes to
+                  // the broker that covers that market — enforced at placement), but entering Real must not
+                  // dead-end a user who IS connected just because they're viewing a tab their broker doesn't
+                  // cover. So: if the current market is covered, go straight to the confirm; otherwise jump to
+                  // a market this broker DOES cover and confirm there. Only a user with NO live broker at all
+                  // is asked to connect one.
+                  if (brokerFor(market)) { setConfirmReal(true); return; }
+                  const covered = ["IN", "US", "Crypto", "Commodity"].find((m) => brokerFor(m));
+                  if (covered) {
+                    setMarket(covered);
+                    setBuyToast({ t: `Switched to ${MKT_LABEL[covered] || covered} — the market your connected broker covers.` });
+                    setConfirmReal(true);
+                    return;
+                  }
+                  setBuyToast({ t: `Connect a broker to trade Real.`, e: true });
                 }}
               />
             )}
