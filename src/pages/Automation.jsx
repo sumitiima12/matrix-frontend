@@ -1105,6 +1105,23 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
             <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{s.name || s.symbol} {s.status === "paused" && <span style={{ color: "var(--muted)", fontWeight: 700 }}>· paused</span>}</div>
             <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600, marginTop: 1 }}>{s.symbol} · {s.broker}</div>
             <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>{ccy}{s.notional} / trade</div>
+            {/* Open-position detail (filled only): entry date/time, entry price, current price, amount invested. */}
+            {filled && (() => {
+              const entryPx = s.entry != null ? Number(s.entry) : (s.avgPrice != null ? Number(s.avgPrice) : (s.entryPrice != null ? Number(s.entryPrice) : null));
+              const qty = Number(s.qty != null ? s.qty : (s.filledQty != null ? s.filledQty : 0));
+              const invested = s.notional != null ? Number(s.notional) : (entryPx != null && qty ? entryPx * qty : null);
+              const dir = (s.side === "SELL" || s.short) ? -1 : 1;
+              const curPx = s.ltp != null ? Number(s.ltp) : (entryPx != null && qty ? entryPx + (pnl / qty) * dir : null);
+              const et = s.entryAt || s.filledAt || null; const ed = et ? new Date(et) : null;
+              return (
+                <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700, marginTop: 2, display: "flex", flexWrap: "wrap", gap: "2px 10px" }}>
+                  {entryPx != null && <span>Entry <span className="mono" style={{ color: "var(--ink)" }}>{ccy}{entryPx.toFixed(2)}</span></span>}
+                  {curPx != null && <span>Now <span className="mono" style={{ color: "var(--ink)" }}>{ccy}{curPx.toFixed(2)}</span></span>}
+                  {invested != null && <span>Invested <span className="mono" style={{ color: "var(--ink)" }}>{ccy}{invested.toFixed(2)}</span></span>}
+                  {ed && <span className="mono">{ed.toLocaleDateString("en-GB")} {ed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
+                </div>
+              );
+            })()}
             {/* Editable SL/TP — persisted to the strategy + its open position (exit engine acts on it). */}
             <SlTpEditor sl={s.sl} tp={s.tp} onSave={(v) => doUpdate(s, v)} />
             {/* Order status of the last attempt — a rejected order shows WHY (e.g. insufficient
@@ -2168,6 +2185,43 @@ function StrategyPnLView({ strats, trades, market, onDelete }) {
     </div>
   );
 }
+/* Per-strategy P&L with a Today / 7d / 30d / 6m date-range selector — mirrors the Screener card. Sums this
+   strategy's realised P&L on trades closed inside the window plus unrealised P&L on anything still open.
+   A real mounted component (not called as a bare function) so its period state is legal. */
+function StrategyPnl({ s, trades = [], market }) {
+  const [period, setPeriod] = useState("today");
+  const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a && a.price != null ? a.price : null; };
+  const from = useMemo(() => {
+    const now = Date.now(), D = 864e5;
+    if (period === "today") return new Date(new Date().setHours(0, 0, 0, 0)).getTime();
+    if (period === "7d") return now - 7 * D;
+    if (period === "30d") return now - 30 * D;
+    if (period === "6m") return now - 182 * D;
+    return 0;
+  }, [period]);
+  const pnl = useMemo(() => (trades || []).reduce((a, t) => {
+    if (!(t.strategyId === s.id || t.strategy === s.name)) return a;
+    if (t.status === "rejected" || t.entry == null) return a;
+    const closed = t.exitAt != null && t.exit != null;
+    if (closed && (t.exitAt || t.entryAt || 0) < from) return a;   // closed before the window → skip
+    const cur = closed ? t.exit : (priceOf(t.sym) != null ? priceOf(t.sym) : t.entry);
+    const dir = (t.side === "SELL" || t.short) ? -1 : 1;
+    return a + (Number(cur) - Number(t.entry)) * (t.qty || 0) * dir;
+  }, 0), [trades, s.id, s.name, from]);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+      <select aria-label="P&L date range" value={period} onChange={(e) => setPeriod(e.target.value)} style={{ fontSize: 10.5, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 9, padding: "6px 8px", background: "var(--surface)", color: "var(--ink)" }}>
+        <option value="today">Today</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option><option value="6m">Last 6 months</option>
+      </select>
+      <div style={{ flex: 1 }} />
+      <div style={{ textAlign: "right" }}>
+        <div style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 800 }}>P&amp;L (estimated)</div>
+        <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: chgColor(pnl) }}>{(pnl >= 0 ? "+" : "") + fmt(pnl, market)}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function Automation({ market = "IN", appMode = "virtual", onRecord, trades = [], strats = [], setStrats, onExitAll, onCloseStrategy = null, onReconcileDelta = null, me = null, isAdmin = false, userId = null, brokerFor = null, adminKey = "", onConnectBroker = null }) {
   /* Backtesting Indian stocks needs real history, which — for compliance — can only come from the
      user's OWN connected broker (or the owner's house feed). Crypto (Delta) and US (Yahoo) have
@@ -2912,6 +2966,8 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         <MetricMini k="Stop-loss" v={(s.cfg && s.cfg.sl != null && s.cfg.sl !== "") ? s.cfg.sl + "%" : "—"} c="var(--down)" />
         <MetricMini k="Target" v={(s.cfg && s.cfg.tp != null && s.cfg.tp !== "") ? s.cfg.tp + "%" : "—"} c="var(--up)" />
       </div>
+      {/* Per-strategy P&L with a date-range selector (like the Screener card). */}
+      <StrategyPnl s={s} trades={trades} market={market} />
       {/* Deploy size — AMOUNT (USD) for crypto, QUANTITY for other markets. Default $10 / 1 qty. */}
       {(() => {
         const isC = market === "Crypto";
@@ -2930,12 +2986,29 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           </div>
         );
       })()}
-      {entryTriggered && (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10, padding: "9px 12px", borderRadius: 12, background: "var(--elev)", border: "1px solid var(--line)" }}>
-          <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>Live P&amp;L · {openTrades.length} open</div>
-          <div className="mono" style={{ fontWeight: 800, fontSize: 14, color: chgColor(livePnl) }}>{livePnl >= 0 ? "+" : ""}{fmt(livePnl, liveMkt)}</div>
-        </div>
-      )}
+      {/* LIVE POSITION (singular — a strategy holds at most one open position). Shows the open trade's
+          symbol, entry, current price and live P&L. */}
+      {entryTriggered && (() => {
+        const t = openTrades[0];
+        const st = ALL.find((x) => x.sym === t.sym);
+        const cur = st && st.price != null ? st.price : t.entry;
+        const entryDt = t.entryAt ? new Date(t.entryAt) : null;
+        return (
+          <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 12, background: "var(--elev)", border: "1px solid var(--line)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".02em" }}>Live Position</div>
+              <div className="mono" style={{ fontWeight: 800, fontSize: 14, color: chgColor(livePnl) }}>{livePnl >= 0 ? "+" : ""}{fmt(livePnl, liveMkt)}</div>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginTop: 6, fontSize: 10.5, color: "var(--muted)", fontWeight: 700 }}>
+              <span style={{ color: "var(--ink)", fontWeight: 800 }}>{t.sym}{(t.side === "SELL" || t.short) ? <span style={{ color: "var(--down)", fontSize: 8, marginLeft: 4 }}>SHORT</span> : null}</span>
+              <span>Entry <span className="mono" style={{ color: "var(--ink)" }}>{fmt(t.entry, liveMkt)}</span></span>
+              <span>Now <span className="mono" style={{ color: "var(--ink)" }}>{fmt(cur, liveMkt)}</span></span>
+              <span>Invested <span className="mono" style={{ color: "var(--ink)" }}>{fmt(Number(t.entry) * (t.qty || 0), liveMkt)}</span></span>
+              {entryDt && <span>{entryDt.toLocaleDateString("en-GB")} {entryDt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
+            </div>
+          </div>
+        );
+      })()}
       <div style={{ display: "flex", gap: 7, marginTop: 12, flexWrap: "wrap" }}>
         {canEdit && <button onClick={() => setEditStrat(editStrat === s.id ? null : s.id)} className="tap" title="Edit symbols & timeframe" style={{ border: "1px solid " + (editStrat === s.id ? "var(--primary)" : "var(--line)"), borderRadius: 11, background: editStrat === s.id ? "var(--primary-soft)" : "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: editStrat === s.id ? "var(--primary)" : "var(--ink)" }}><SlidersHorizontal size={14} /></button>}
         {canEdit && <button onClick={() => loadForEdit(s)} className="tap" title="Edit this strategy's rules in the builder" style={{ border: "1px solid var(--line)", borderRadius: 11, background: "var(--surface)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 700, color: "var(--ink)" }}><Pencil size={13} /> Edit</button>}
@@ -3170,6 +3243,21 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                   <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{s.name || (s.symbols && s.symbols[0]) || "Strategy"}{s.paused && <span style={{ color: "var(--muted)", fontWeight: 700 }}> · paused</span>}</div>
                   <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600, marginTop: 1 }}>{(s.symbols || []).join(", ") || "—"} · Created by {creatorOf(s)}</div>
                   <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>{p.positions} position{p.positions === 1 ? "" : "s"}{p.open ? ` · ${p.open} open` : ""}{p.winRate != null ? ` · ${p.winRate.toFixed(0)}% win` : ""}</div>
+                  {/* Open-position detail: entry date/time, entry price, current price, amount invested. */}
+                  {(() => {
+                    const ot = (trades || []).find((t) => (t.strategyId === s.id || t.strategy === s.name) && t.entryAt != null && t.exitAt == null);
+                    if (!ot) return null;
+                    const st = ALL.find((x) => x.sym === ot.sym); const cur = st && st.price != null ? st.price : ot.entry;
+                    const mk = marketOf(ot.sym) || market; const ed = ot.entryAt ? new Date(ot.entryAt) : null;
+                    return (
+                      <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700, marginTop: 2, display: "flex", flexWrap: "wrap", gap: "2px 10px" }}>
+                        <span>Entry <span className="mono" style={{ color: "var(--ink)" }}>{fmt(ot.entry, mk)}</span></span>
+                        <span>Now <span className="mono" style={{ color: "var(--ink)" }}>{fmt(cur, mk)}</span></span>
+                        <span>Invested <span className="mono" style={{ color: "var(--ink)" }}>{fmt(Number(ot.entry) * (ot.qty || 0), mk)}</span></span>
+                        {ed && <span className="mono">{ed.toLocaleDateString("en-GB")} {ed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
+                      </div>
+                    );
+                  })()}
                   <SlTpEditor sl={s.cfg && s.cfg.sl != null ? s.cfg.sl : null} tp={s.cfg && s.cfg.tp != null ? s.cfg.tp : null} onSave={(v) => vUpdate(s, v)} />
                 </div>
                 <div style={{ marginLeft: "auto", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>

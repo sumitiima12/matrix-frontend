@@ -73,6 +73,31 @@ export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, us
 
   const recordBatch = useCallback((list) => (list || []).forEach(recordTrade), [recordTrade]);
 
+  /* Close an OPEN journal row at a given exit price — powers the Screener / Automate "Live Positions"
+     close button. It marks the originating row exited (booking realised P&L) and persists it so the
+     position leaves the live list durably. It does NOT itself place a broker order; the caller decides
+     whether a real reduce-only order is also required (real mode). */
+  const closeTrade = useCallback((trade, exitPx, exitType = "Manual") => {
+    if (!trade || !trade.id || trade.exitAt != null) return null;
+    const px = Number(exitPx != null ? exitPx : trade.entry);
+    const dir = (trade.side === "SELL" || trade.short) ? -1 : 1;   // shorts profit when price falls
+    const pnl = +(((px - Number(trade.entry)) * Number(trade.qty || 0)) * dir).toFixed(2);
+    const updated = { ...trade, exit: px, exitAt: Date.now(), pnl, closed: true, exitType };
+    setTrades((p) => p.map((t) => (t.id === trade.id ? updated : t)));
+    try { postTrade(userId, updated); } catch { /* best-effort persist */ }
+    return updated;
+  }, [userId]);
+
+  /* Patch fields on a journal row (e.g. edit a live position's SL / TP) and persist. Used by the
+     Screener Live Positions editable SL/TP columns. */
+  const updateTradeRow = useCallback((id, patch) => {
+    if (!id || !patch) return null;
+    let out = null;
+    setTrades((p) => p.map((t) => { if (t.id !== id) return t; out = { ...t, ...patch }; return out; }));
+    if (out) { try { postTrade(userId, out); } catch { /* best-effort persist */ } }
+    return out;
+  }, [userId]);
+
   /* --------------------------- the pipeline --------------------------- */
   /**
    * Place an order. Returns { ok, reasons, warnings, order }.
@@ -259,5 +284,5 @@ export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, us
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trades, portfolio, userId]);
 
-  return { trades, setTrades, recordTrade, recordBatch, placeOrder, riskLimits, setRiskLimits, riskSaveStatus };
+  return { trades, setTrades, recordTrade, recordBatch, closeTrade, updateTradeRow, placeOrder, riskLimits, setRiskLimits, riskSaveStatus };
 }

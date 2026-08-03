@@ -50,7 +50,7 @@ import WalletSheet from "./components/common/WalletSheet";
 import ConfirmOrder from "./components/common/ConfirmOrder";
 import BrokerSheet from "./components/common/BrokerSheet";
 import { brokerSymbol } from "./domain/brokerSymbols";
-import { brokerPlaceOrder, brokerIntentStatus, registerAutoExit, reconcileRealTrades, BROKER_MARKETS } from "./services/brokerService";
+import { brokerPlaceOrder, brokerIntentStatus, registerAutoExit, reconcileRealTrades, updateAutoBuy, BROKER_MARKETS } from "./services/brokerService";
 import { OrderLifecycleStore, deriveIntentKey, interpretResult, classifyError, reconcileAction, ORDER_STATES } from "./services/orderLifecycle";
 import MatrixRain from "./components/common/MatrixRain";
 import MLogo from "./components/common/MLogo";
@@ -410,7 +410,7 @@ function AppInner() {
   const [strats, setStrats] = useState(SEED_STRATS);
 
   const wallet = walletMap[market] ?? 1000000;
-  const { trades, setTrades, recordTrade, recordBatch, placeOrder, riskLimits, setRiskLimits, riskSaveStatus } =
+  const { trades, setTrades, recordTrade, recordBatch, closeTrade, updateTradeRow, placeOrder, riskLimits, setRiskLimits, riskSaveStatus } =
     useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, userId, broker, notify });
   const [histOpen, setHistOpen] = useState(false);
   // Persistent ACTIVITY LOG — toasts vanish; this keeps the last 50 actions/results (orders,
@@ -585,6 +585,34 @@ function AppInner() {
     placeOrder({ stock, side, qty, opts }); return true;
   };
   const sellStockNow = (stock, qty = 1, opts = {}) => { placeOrder({ stock, side: "SELL", qty, opts }); return true; };
+  /* Close ONE open position from a Live Positions list (Screener / Automate cards). In real mode it fires a
+     reduce-only broker flatten through the ONE durable lifecycle (same as Automate's "Stop & sell"); in paper
+     mode it just books the exit. Either way the originating journal row is marked exited so it leaves the live
+     list. `flatten` is the opposite side of the position (SELL closes a long, BUY covers a short). */
+  const closePositionRow = (trade) => {
+    if (!trade || trade.exitAt != null) return;
+    const stock = ALL.find((a) => a.sym === trade.sym) || { sym: trade.sym, price: trade.entry, market: trade.market || market };
+    const px = stock && stock.price != null ? stock.price : trade.entry;
+    const qty = Number(trade.qty) || 0;
+    if (mode === "real" && qty > 0) {
+      const flatten = (trade.side === "SELL" || trade.short) ? "BUY" : "SELL";
+      placeRealMarketOrder(stock, flatten, qty, trade.product || "CNC", { tradeType: trade.tradeType || "Screener Auto Buy", reduceOnly: true, market: trade.market || market }).catch(() => {});
+    }
+    closeTrade(trade, px, "Manual");
+    setBuyToast({ t: `Closed ${trade.sym} position` });
+  };
+  /* Edit a live position's SL / TP from a Live Positions list. Persists the new levels on the journal row;
+     in real mode it also best-effort updates the broker bracket when the row carries a managed id. */
+  const updatePositionRisk = (trade, patch) => {
+    if (!trade || !trade.id) return;
+    const next = {};
+    if (patch.sl !== undefined) next.sl = patch.sl === "" || patch.sl == null ? null : Number(patch.sl);
+    if (patch.tp !== undefined) next.tp = patch.tp === "" || patch.tp == null ? null : Number(patch.tp);
+    updateTradeRow(trade.id, next);
+    const managedId = trade.managedId || trade.autoBuyId || null;
+    if (mode === "real" && managedId) { updateAutoBuy(userId, managedId, next).catch(() => {}); }
+    setBuyToast({ t: `Updated SL/TP for ${trade.sym}` });
+  };
   /* INC-3 / ARCH-4: on load (and when auth changes) reconcile any AMBIGUOUS order intents left in localStorage
      after a timeout/reload. Ask the server what became of each idempotency key: a terminal outcome clears the
      pending state (and a confirmed fill refreshes the portfolio); an unresolved one is left so it stays
@@ -1283,7 +1311,7 @@ function AppInner() {
               {tab === "trade" && <TradeView walletMap={walletMap} adjustWallet={adjustWallet} portfolio={portfolio} setPortfolio={setPortfolio} preset={tradePreset} market={market} recordTrade={recordTrade} />}
               {tab === "ideas" && <Ideas onOpen={openStock} onBuy={buyStock} canBuy={canBuy} market={market} onWhy={openWhy} me={auth ? (auth.username || null) : null} isAdmin={effAdmin} adminKey={adminKey} signupAt={auth ? (auth.createdAt || null) : null} />}
               {tab === "automation" && <Automation market={market} appMode={mode} onRecord={recordTrade} trades={trades} strats={strats} setStrats={setStrats} onExitAll={exitAllStrategies} onCloseStrategy={exitStrategyPositions} onReconcileDelta={reconcileWithDelta} me={auth ? (auth.username || null) : null} isAdmin={effAdmin} userId={userId} brokerFor={brokerFor} adminKey={adminKey} onConnectBroker={() => openBrokers(market)} />}
-              {tab === "screener" && <div style={{ padding: "10px 14px 96px" }}><PopularScreeners variant="full" market={market} mode={mode} list={list} isAdmin={effAdmin} onOpen={openStock} onBuy={buyStock} onAutoBuy={autoBuyNow} onScreenerBuy={screenerBuyNow} liveTick={liveTick} trades={trades} /></div>}
+              {tab === "screener" && <div style={{ padding: "10px 14px 96px" }}><PopularScreeners variant="full" market={market} mode={mode} list={list} isAdmin={effAdmin} onOpen={openStock} onBuy={buyStock} onAutoBuy={autoBuyNow} onScreenerBuy={screenerBuyNow} onClosePosition={closePositionRow} onUpdatePosition={updatePositionRisk} liveTick={liveTick} trades={trades} /></div>}
               {tab === "portfolio" && <Portfolio mode={mode} realPortfolio={realPortfolio} realErr={realErr} realLoading={realLoading} onRefreshReal={() => refreshPortfolio(market)} realAvailable={!!brokerFor(market)} userId={userId} brokerName={(brokerFor(market) && brokerFor(market).meta ? brokerFor(market).meta.name : (liveBroker ? liveBroker.name : null))} portfolio={portfolio} wallet={wallet} market={market} onGoHome={() => { setDetail(null); setTab("home"); }} onBuy={buyStock} canBuy={canBuy} onSell={sellStock} onUpdate={updateHolding} onArmRealExit={armRealExit} priceSnap={priceSnap} onWhy={openWhy} onOpen={openStock} onRemove={(sym) => { setPortfolio((prev) => prev.filter((h) => h.sym !== sym)); setBuyToast({ t: `${sym} removed` }); }} />}
               {tab === "watchlist" && <WatchlistView watchlists={watchlists} activeWl={activeWl} setActiveWl={setActiveWl} createWatchlist={createWatchlist} deleteWatchlist={deleteWatchlist} toggleWatch={toggleWatch} onOpen={openStock} />}
               {tab === "ask" && (
