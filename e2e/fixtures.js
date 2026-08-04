@@ -7,13 +7,21 @@
 // point is that NOTHING hits the network.
 import { test as base, expect } from "@playwright/test";
 
-// A tiny universe of fake quotes so the dashboard has something to render.
+// A tiny universe of fake quotes so the dashboard has something to render. The CRYPTO symbols
+// must match the app's crypto universe (BTC, ETH, … — NOT BTC-USD), otherwise the quote never
+// attaches a price to the pick and the Top Picks carousel (and its Buy control) stays empty. The
+// app boots to the Crypto market, so these carry positive momentum to qualify as bullish picks.
 const QUOTES = [
+  { sym: "BTC", name: "Bitcoin", price: 68000, chg: 2.1, currency: "USD" },
+  { sym: "ETH", name: "Ethereum", price: 3500, chg: 1.6, currency: "USD" },
+  { sym: "SOL", name: "Solana", price: 170, chg: 3.2, currency: "USD" },
+  { sym: "BNB", name: "BNB", price: 600, chg: 0.9, currency: "USD" },
+  { sym: "XRP", name: "XRP", price: 0.62, chg: 1.1, currency: "USD" },
+  { sym: "DOGE", name: "Dogecoin", price: 0.16, chg: 2.7, currency: "USD" },
   { sym: "RELIANCE.NS", name: "Reliance", price: 2900, chg: 1.2, currency: "INR" },
   { sym: "TCS.NS", name: "TCS", price: 3800, chg: -0.4, currency: "INR" },
   { sym: "INFY.NS", name: "Infosys", price: 1600, chg: 0.8, currency: "INR" },
   { sym: "AAPL", name: "Apple", price: 230, chg: 0.5, currency: "USD" },
-  { sym: "BTC-USD", name: "Bitcoin", price: 68000, chg: 2.1, currency: "USD" },
 ];
 
 const candles = () => {
@@ -47,7 +55,7 @@ function mockFor(pathname, url) {
   if (pathname.endsWith("/api/ideas")) return { ideas: [] };
   if (pathname.endsWith("/api/trades")) return { trades: [] };
   if (pathname.endsWith("/api/autoexit") || pathname.endsWith("/api/autobuy")) return { positions: [], strategies: [], engineLive: false };
-  if (pathname.endsWith("/api/state")) return { state: null };
+  if (pathname.endsWith("/api/state")) return { state: { onboardSkipped: true, profile: { proficiency: "Pro", risk: "Balanced", sectors: [], goals: ["Growth"], horizon: "Medium" } } };
   // Predefined, already-approved test account — login/register always succeed with a token so
   // the suite lands on the dashboard past the (real) admin-approval gate.
   if (pathname.endsWith("/api/login") || pathname.endsWith("/api/register")) {
@@ -90,7 +98,22 @@ export const test = base.extend({
     //    was removed, so `enterApp` also logs in with the stubbed /api/login as a fallback).
     await page.addInitScript(() => {
       try { sessionStorage.setItem("mx_splash_seen", "1"); } catch {}
-      try { localStorage.setItem("mx_auth", "1"); localStorage.setItem("mx_mode", "virtual"); localStorage.setItem("mx_theme", "light"); } catch {}
+      try {
+        // A returning, signed-in virtual user. Object-shaped auth (so userId becomes ph_9990000000),
+        // a token so the server-state hydration path actually runs, a saved username so the
+        // set-username modal stays shut, and a per-user saved state that marks onboarding complete
+        // so the app boots to the dashboard. The personalisation wizard is gated on
+        // (!profile && !onboardSkipped) AFTER hydration, so without this seed every test that
+        // navigates past the homepage is blocked by the 5-step wizard.
+        localStorage.setItem("mx_auth", JSON.stringify({ phone: "9990000000", name: "E2E Tester", username: "e2e" }));
+        localStorage.setItem("mx_token", "e2e.test.token");
+        localStorage.setItem("mx_mode", "virtual");
+        localStorage.setItem("mx_theme", "light");
+        localStorage.setItem("mx_state_ph_9990000000", JSON.stringify({ onboardSkipped: true, profile: { proficiency: "Pro", risk: "Balanced", sectors: [], goals: ["Growth"], horizon: "Medium" } }));
+        // Suppress the one-time "connect a broker" nag sheet (fires 900ms after onboarding) so it can't
+        // overlay and intercept taps during feature navigation.
+        localStorage.setItem("mx_broker_prompted_ph_9990000000", "true");
+      } catch {}
     });
     // 2. Stub EVERY /api/** call — no real network, ever.
     await page.route("**/api/**", async (route) => {

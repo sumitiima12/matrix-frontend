@@ -29,6 +29,10 @@ test("Top Picks section is present on the desk", async ({ page }) => {
 
 test("News / 'In the news' section renders a headline", async ({ page }) => {
   await enterApp(page);
+  // News lives on the Indian desk (it is deliberately hidden on the 24/7 Crypto market, which is now
+  // the default landing market), so switch to Indian before asserting the headline surface.
+  const inTab = page.getByRole("button", { name: /Indian/i }).first();
+  if (await inTab.count().catch(() => 0)) { await inTab.click(); await page.waitForTimeout(400); }
   const news = page.getByText(/In the news|Market updates|news/i).first();
   await expect(news).toBeVisible({ timeout: 8000 });
 });

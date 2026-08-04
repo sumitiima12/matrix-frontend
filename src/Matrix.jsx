@@ -308,7 +308,7 @@ function AppInner() {
   }, []);
   const [repersonalise, setRepersonalise] = useState(false);
   const [tab, setTab] = useState("home");
-  const [market, setMarket] = useState("IN");
+  const [market, setMarket] = useState("Crypto");
   const [segment, setSegment] = useState("Stocks");
   /* Land at the TOP of every page. Switching tabs used to inherit the previous page's
      scroll position — so tapping Auto could drop you into the middle of the builder.
@@ -1072,7 +1072,10 @@ function AppInner() {
   const commodityVisible = indianVisible;
   const marketVisible = useCallback((m) => ({ IN: indianVisible, US: usVisible, Crypto: true, Commodity: commodityVisible }[m] ?? true), [indianVisible, usVisible, commodityVisible]);
   // If the user is sitting on a market they can no longer see, snap them to a visible one.
-  useEffect(() => { if (!marketVisible(market)) setMarket(indianVisible ? "IN" : "Crypto"); }, [marketVisible, market, indianVisible]);
+  // Wait for app-settings before bouncing off a market: on first paint appSettings is null, so indianVisible is
+  // briefly false and a returning Indian user would be flipped to Crypto (which is always visible, so it never
+  // flips back). Only re-home the market once settings are known.
+  useEffect(() => { if (appSettings && !marketVisible(market)) setMarket(indianVisible ? "IN" : "Crypto"); }, [appSettings, marketVisible, market, indianVisible]);
   /* If a member is (or was) in Real mode but the admin has turned Real off for the market they're
      on, snap them back to Virtual — a stored "real" preference must not override a live admin lock. */
   useEffect(() => { if (appSettings && !canRealMode(market) && mode === "real") setMode("virtual"); }, [appSettings, canRealMode, market, mode, setMode]);
@@ -1210,7 +1213,7 @@ function AppInner() {
     if (profile) {
       arr.sort((a, b) => {
         /* No cap tier: market cap came from fundamentals, which has no feed. */
-        const score = (s) => (profile.sectors.includes(s.sector) ? 3 : 0) + (profile.risk === "Aggressive" ? s.chg : profile.risk === "Conservative" ? -Math.abs(s.chg) : (s.rsi != null ? (s.rsi - 50) / 10 : 0));
+        const score = (s) => ((profile.sectors || []).includes(s.sector) ? 3 : 0) + (profile.risk === "Aggressive" ? s.chg : profile.risk === "Conservative" ? -Math.abs(s.chg) : (s.rsi != null ? (s.rsi - 50) / 10 : 0));
         return score(b) - score(a);
       });
     }
