@@ -244,3 +244,26 @@ test("M07 close: exitPx falls back to live mark, then entry, when the broker omi
   assert.equal(planClose({ qty: 1, price: 100, entry: 90 }, { confirmedFilled: true, filledQty: 1 }).exitPx, 100);
   assert.equal(planClose({ qty: 1, entry: 90 }, { confirmedFilled: true, filledQty: 1 }).exitPx, 90);
 });
+
+// L04 — property-based invariants for planClose over hundreds of randomized inputs (seeded PRNG; no dependency).
+function _rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+test("L04 property — planClose never over-closes and never hides exposure (filled+residual == open)", () => {
+  const r = _rng(31337);
+  for (let i = 0; i < 400; i++) {
+    const openQty = 1 + Math.floor(r() * 500);
+    const confirmed = r() < 0.75;
+    const filledQty = r() < 0.2 ? 0 : Math.floor(r() * (openQty + 5));   // sometimes over/under/zero
+    const res = { confirmedFilled: confirmed, filledQty, avgPrice: r() < 0.5 ? 0 : r() * 1000 };
+    const p = planClose({ qty: openQty, price: 100, entry: 90 }, res);
+    if (!confirmed) { assert.equal(p.action, "unconfirmed", "an unconfirmed broker result never books a close"); continue; }
+    if (p.action === "full") {
+      assert.equal(p.closedQty, openQty, "a full close reports the whole open qty");
+    } else {
+      assert.equal(p.action, "partial");
+      assert.ok(p.closedQty > 0 && p.closedQty < openQty, "a partial closes strictly between 0 and open");
+      assert.ok(Math.abs(p.closedQty + p.residualQty - openQty) < 1e-9, "closed + residual must equal the open qty (no exposure hidden or invented)");
+    }
+    // Never claim to have closed MORE than was open.
+    assert.ok((p.closedQty || 0) <= openQty + 1e-9, "never over-closes beyond the tracked position");
+  }
+});

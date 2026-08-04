@@ -10,10 +10,36 @@
  *
  * Falls back to `true` only in non-browser contexts (SSR/tests), never silently on a real client.
  */
+/* L03 / spec §15 — modal a11y wiring shared by every in-app dialog: give the dialog an ACCESSIBLE NAME
+   (aria-labelledby → the title), TRAP FOCUS inside the card (Tab/Shift+Tab cycle, never escape to the page
+   behind), and make the BACKGROUND INERT (aria-hidden on the rest of the body) while the modal is open. Returns
+   a cleanup that removes the trap and restores the background. role=dialog / aria-modal / Escape / focus
+   restoration are set by each caller. */
+let _modalTitleSeq = 0;
+function wireModalA11y({ overlay, card, titleEl }) {
+  if (titleEl) { const id = `mx-dlg-title-${++_modalTitleSeq}`; titleEl.id = id; overlay.setAttribute("aria-labelledby", id); }
+  const hidden = [];
+  for (const el of Array.from(document.body.children)) {
+    if (el !== overlay && el.getAttribute && el.getAttribute("aria-hidden") !== "true") { el.setAttribute("aria-hidden", "true"); hidden.push(el); }
+  }
+  const sel = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+  const onTrap = (e) => {
+    if (e.key !== "Tab") return;
+    const nodes = Array.from(card.querySelectorAll(sel)).filter((n) => !n.disabled && n.offsetParent !== null);
+    if (!nodes.length) return;
+    const first = nodes[0], last = nodes[nodes.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  };
+  document.addEventListener("keydown", onTrap, true);
+  return () => { document.removeEventListener("keydown", onTrap, true); hidden.forEach((el) => el.removeAttribute("aria-hidden")); };
+}
+
 export function confirmDialog(message, { title = "Please confirm", confirmLabel = "Confirm", cancelLabel = "Cancel", danger = true } = {}) {
   if (typeof document === "undefined") return Promise.resolve(true);
   return new Promise((resolve) => {
     const prevFocus = document.activeElement;
+    let untrap = () => {};
     const overlay = document.createElement("div");
     overlay.setAttribute("role", "dialog");
     overlay.setAttribute("aria-modal", "true");
@@ -43,6 +69,7 @@ export function confirmDialog(message, { title = "Please confirm", confirmLabel 
 
     const done = (val) => {
       document.removeEventListener("keydown", onKey, true);
+      untrap();
       overlay.remove();
       try { prevFocus && prevFocus.focus && prevFocus.focus(); } catch { /* noop */ }
       resolve(val);
@@ -61,6 +88,7 @@ export function confirmDialog(message, { title = "Please confirm", confirmLabel 
     card.append(h, msg, row);
     overlay.append(card);
     document.body.appendChild(overlay);
+    untrap = wireModalA11y({ overlay, card, titleEl: h });
     setTimeout(() => { try { btnOk.focus(); } catch { /* noop */ } }, 0);
   });
 }
@@ -77,7 +105,7 @@ function makeShell(title, message) {
   const msg = document.createElement("div"); msg.textContent = message; msg.style.cssText = "color:var(--ink-soft,#444);white-space:pre-line;margin-bottom:18px";
   const row = document.createElement("div"); row.style.cssText = "display:flex;gap:10px;justify-content:flex-end";
   card.append(h, msg);
-  return { prevFocus, overlay, card, row };
+  return { prevFocus, overlay, card, row, titleEl: h };
 }
 const okBtn = (label, primary = true) => { const b = document.createElement("button"); b.textContent = label; b.style.cssText = `border:none;border-radius:11px;padding:10px 16px;font-weight:800;font-size:13px;cursor:pointer;color:#fff;background:${primary ? "var(--primary,#6d4aff)" : "var(--down,#e5484d)"}`; return b; };
 const cancelBtn = (label) => { const b = document.createElement("button"); b.textContent = label; b.style.cssText = "border:1px solid var(--line,#ccc);background:transparent;color:var(--ink,#111);border-radius:11px;padding:10px 16px;font-weight:700;font-size:13px;cursor:pointer"; return b; };
@@ -89,18 +117,20 @@ const cancelBtn = (label) => { const b = document.createElement("button"); b.tex
 export function promptDialog(message, { title = "Enter a value", confirmLabel = "OK", cancelLabel = "Cancel", initial = "", password = false, placeholder = "" } = {}) {
   if (typeof document === "undefined") return Promise.resolve(null);
   return new Promise((resolve) => {
-    const { prevFocus, overlay, card, row } = makeShell(title, message);
+    const { prevFocus, overlay, card, row, titleEl } = makeShell(title, message);
+    let untrap = () => {};
     const input = document.createElement("input");
     input.type = password ? "password" : "text"; input.value = initial; input.placeholder = placeholder;
     input.style.cssText = "width:100%;box-sizing:border-box;border:1px solid var(--line,#ccc);border-radius:11px;padding:10px 12px;font:inherit;font-size:14px;margin-bottom:18px;background:var(--surface,#fff);color:var(--ink,#111)";
     const btnCancel = cancelBtn(cancelLabel), btnOk = okBtn(confirmLabel, true);
-    const done = (val) => { document.removeEventListener("keydown", onKey, true); overlay.remove(); try { prevFocus && prevFocus.focus && prevFocus.focus(); } catch { /* noop */ } resolve(val); };
+    const done = (val) => { document.removeEventListener("keydown", onKey, true); untrap(); overlay.remove(); try { prevFocus && prevFocus.focus && prevFocus.focus(); } catch { /* noop */ } resolve(val); };
     const onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(null); } else if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); done(input.value); } };
     btnCancel.onclick = () => done(null); btnOk.onclick = () => done(input.value);
     overlay.onclick = (e) => { if (e.target === overlay) done(null); };
     document.addEventListener("keydown", onKey, true);
     row.append(btnCancel, btnOk); card.insertBefore(input, card.childNodes[2] || null); card.append(row); overlay.append(card);
     document.body.appendChild(overlay);
+    untrap = wireModalA11y({ overlay, card, titleEl });
     setTimeout(() => { try { input.focus(); input.select(); } catch { /* noop */ } }, 0);
   });
 }
@@ -111,14 +141,16 @@ export function promptDialog(message, { title = "Enter a value", confirmLabel = 
 export function alertDialog(message, { title = "Notice", confirmLabel = "OK", danger = false } = {}) {
   if (typeof document === "undefined") return Promise.resolve();
   return new Promise((resolve) => {
-    const { prevFocus, overlay, card, row } = makeShell(title, message);
+    const { prevFocus, overlay, card, row, titleEl } = makeShell(title, message);
+    let untrap = () => {};
     const btnOk = okBtn(confirmLabel, !danger);
-    const done = () => { document.removeEventListener("keydown", onKey, true); overlay.remove(); try { prevFocus && prevFocus.focus && prevFocus.focus(); } catch { /* noop */ } resolve(); };
+    const done = () => { document.removeEventListener("keydown", onKey, true); untrap(); overlay.remove(); try { prevFocus && prevFocus.focus && prevFocus.focus(); } catch { /* noop */ } resolve(); };
     const onKey = (e) => { if (e.key === "Escape" || e.key === "Enter") { e.preventDefault(); e.stopPropagation(); done(); } };
     btnOk.onclick = done; overlay.onclick = (e) => { if (e.target === overlay) done(); };
     document.addEventListener("keydown", onKey, true);
     row.append(btnOk); card.append(row); overlay.append(card);
     document.body.appendChild(overlay);
+    untrap = wireModalA11y({ overlay, card, titleEl });
     setTimeout(() => { try { btnOk.focus(); } catch { /* noop */ } }, 0);
   });
 }
