@@ -735,8 +735,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   // but ADAPTIVE precision under $1 so tiny crypto P&L like $0.0062 stays legible instead of $0.0.
   const money1 = (v) => {
     const n = Number(v || 0), a = Math.abs(n), sym = (market === "Crypto" || market === "US") ? "$" : "₹";
-    const dp = a >= 1 ? 1 : a >= 0.01 ? 4 : a > 0 ? 6 : 1;
-    return sym + n.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
+    // MAX 2 decimals everywhere. A genuinely non-zero amount smaller than a cent shows "<$0.01" (with sign) instead
+    // of a misleading rounded "0.00", so we never overstate precision nor hide a tiny real P&L.
+    if (a > 0 && a < 0.005) return (n < 0 ? "-" : "") + "<" + sym + "0.01";
+    return sym + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
   const inMarket = (sym, m) => (m || marketOf(sym) || "IN") === market;
   // Real broker holdings arrive as an OBJECT { holdings:[...], cash } — not an array — with

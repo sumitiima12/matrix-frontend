@@ -2926,8 +2926,27 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     const showUnpublishOnly = !deployed && isAdmin && !own && !sampleOrPremium && !!s.publicId;  // admin: unpublish others' public
     // Owners can delete their OWN strategy; admins can delete anyone's (premium/sample + others' public).
     const canDelete = own || isAdmin;
-    /* Open positions this strategy opened but hasn't exited yet -> "Entry triggered" + live P&L. */
-    const openTrades = (trades || []).filter((t) => (t.strategyId === s.id || t.strategy === s.name) && t.entryAt != null && t.exitAt == null);
+    /* Open positions this strategy opened but hasn't exited yet -> "Entry triggered" + live P&L.
+       BUGFIX: strategy NAMES are not unique (Neo names collide), so matching by name alone leaked another
+       strategy's open trade onto this card (e.g. a BTC strategy showing a BAJAJFINSV position). We now:
+       (a) prefer the immutable strategyId match; (b) accept a name match ONLY when the trade also belongs to this
+       card's MARKET; and (c) require the trade's symbol to match one of the strategy's own symbols. A BTC strategy
+       can never show an Indian-equity position again. */
+    const stratSyms = new Set(
+      [s.symbol, s.sym, ...(Array.isArray(s.symbols) ? s.symbols : [])]
+        .filter(Boolean).map((x) => String(x).toUpperCase().replace(/^NSE:/, "").replace(/-EQ$/, "")),
+    );
+    const openTrades = (trades || []).filter((t) => {
+      if (t.entryAt == null || t.exitAt != null) return false;
+      const idMatch = t.strategyId != null && String(t.strategyId) === String(s.id);
+      const nameMatch = !idMatch && t.strategy != null && t.strategy === s.name;
+      if (!idMatch && !nameMatch) return false;
+      // Never show a cross-market position (the card is rendered inside the `market` tab).
+      if ((marketOf(t.sym) || "IN") !== market) return false;
+      // For a NAME-only (non-id) match, also require the symbol to be one this strategy actually trades.
+      if (nameMatch && stratSyms.size && !stratSyms.has(String(t.sym || "").toUpperCase().replace(/^NSE:/, "").replace(/-EQ$/, ""))) return false;
+      return true;
+    });
     const entryTriggered = openTrades.length > 0;
     const livePnl = openTrades.reduce((a, t) => {
       const st = ALL.find((x) => x.sym === t.sym);
@@ -2943,7 +2962,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           <span style={{ width: 9, height: 9, borderRadius: 9, flex: "0 0 auto", background: s.active ? "var(--up)" : "var(--muted)", boxShadow: s.active ? "0 0 0 4px var(--up-soft)" : "none" }} />
           <div style={{ minWidth: 0 }}>
             <div className="disp" style={{ fontWeight: 700, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</div>
-            <div style={{ fontSize: 10.5, color: "var(--muted)" }}>Created by {creatorOf(s)} · started {fmtDate(s.created)} · {fmt(s.cap || 100000, "IN")}</div>
+            <div style={{ fontSize: 10.5, color: "var(--muted)" }}>Created by {creatorOf(s)}</div>
             {s.symbols && s.symbols.length > 0 && (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
                 {s.symbols.slice(0, 4).map((sy) => <span key={sy} className="pill" style={{ fontSize: 9.5, fontWeight: 700, background: "var(--primary-soft)", color: "var(--primary)", padding: "2px 8px" }}>{sy}</span>)}
@@ -2952,15 +2971,18 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             )}
           </div>
         </div>
-        <div style={{ display: "flex", gap: 6, flex: "0 0 auto", alignItems: "center" }}>
+        {/* Right column stacks vertically: status + type on top, ENTRY TRIGGERED on the extreme right BELOW the
+            type pill. The redundant "Alerts" tag is removed (the bell toggle in the action row already shows it). */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: "0 0 auto", alignItems: "flex-end" }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <span className="pill" style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".03em", padding: "3px 8px", background: s.active ? "var(--up-soft)" : "var(--elev)", color: s.active ? "var(--up)" : "var(--muted)", border: "1px solid var(--line)" }}>{s.active ? "ACTIVE" : "INACTIVE"}</span>
+            {(() => {
+              const t = s.premium ? "Premium" : s.by === "Matrix" ? "Sample" : s.publicId ? "Public" : "Mine";
+              const c = { Premium: "var(--gold)", Sample: "var(--primary)", Public: "var(--up)", Mine: "var(--primary)" }[t];
+              return <span className="pill" style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".03em", padding: "3px 8px", background: "var(--elev)", color: c, border: "1px solid var(--line)" }}>{t.toUpperCase()}</span>;
+            })()}
+          </div>
           {entryTriggered && <span className="pill" style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".03em", padding: "3px 8px", background: "var(--amber-soft, rgba(245,158,11,.15))", color: "var(--amber, #F59E0B)", border: "1px solid var(--amber, #F59E0B)", display: "inline-flex", alignItems: "center", gap: 3 }}>● ENTRY TRIGGERED</span>}
-          <span className="pill" style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".03em", padding: "3px 8px", background: s.active ? "var(--up-soft)" : "var(--elev)", color: s.active ? "var(--up)" : "var(--muted)", border: "1px solid var(--line)" }}>{s.active ? "ACTIVE" : "INACTIVE"}</span>
-          {(() => {
-            const t = s.premium ? "Premium" : s.by === "Matrix" ? "Sample" : s.publicId ? "Public" : "Mine";
-            const c = { Premium: "var(--gold)", Sample: "var(--primary)", Public: "var(--up)", Mine: "var(--primary)" }[t];
-            return <span className="pill" style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".03em", padding: "3px 8px", background: "var(--elev)", color: c, border: "1px solid var(--line)" }}>{t.toUpperCase()}</span>;
-          })()}
-          {s.alerts && <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, background: "var(--primary-soft)", color: "var(--primary)", padding: "3px 8px", display: "flex", alignItems: "center", gap: 3 }}><Bell size={10} /> Alerts</span>}
         </div>
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
@@ -3688,7 +3710,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
               <button
                 onClick={async () => { if (onExitAll && await confirmDialog("Exit all open positions and stop every active strategy?", { title: "Exit everything", confirmLabel: "Exit all" })) onExitAll(); }}
                 className="tap disp"
-                style={{ flex: "0 0 auto", padding: "9px 12px", borderRadius: 10, border: "1px solid var(--down)", background: "transparent", color: "var(--down)", fontWeight: 800, fontSize: 11.5, cursor: "pointer", whiteSpace: "nowrap" }}
+                style={{ flex: 1, minWidth: 0, padding: "9px 12px", borderRadius: 10, border: "1px solid var(--down)", background: "transparent", color: "var(--down)", fontWeight: 800, fontSize: 11.5, cursor: "pointer", whiteSpace: "nowrap", textAlign: "center" }}
               >
                 Exit all
               </button>

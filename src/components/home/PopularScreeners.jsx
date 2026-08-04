@@ -393,6 +393,28 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
     return (trades || []).some((t) => t && t.strategy === dispName && (isReal ? !!t.real : !t.real) && t.status !== "rejected" && t.entry != null);
   }, [trades, dispName, mode]);
 
+  /* TRADE STATS for THIS screener — mirrors the strategy-card stats (Trades, Wins, Loss, Win rate). Scoped
+     to this screener's trades in the active mode, within the selected period window. Wins/Loss are counted on
+     CLOSED trades only (an open trade has no realised result yet); win rate = wins / closed. Shorts are
+     P&L-inverted, same as periodPnl. */
+  const screenerStats = useMemo(() => {
+    const isReal = mode === "real";
+    const mine = (trades || []).filter((t) =>
+      t && t.strategy === dispName && (isReal ? !!t.real : !t.real)
+      && t.status !== "rejected" && t.entry != null
+      && (t.exitAt == null || t.exit == null || (t.exitAt || t.entryAt || 0) >= periodFrom));
+    const closed = mine.filter((t) => t.exitAt != null && t.exit != null);
+    let wins = 0, losses = 0;
+    for (const t of closed) {
+      const dir = (t.side === "SELL" || t.short) ? -1 : 1;
+      const p = (t.exit - t.entry) * (t.qty || 0) * dir;
+      if (p > 0) wins++; else if (p < 0) losses++;
+    }
+    const decided = wins + losses;
+    return { trades: mine.length, wins, losses, winRate: decided ? Math.round((wins / decided) * 100) : null };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trades, dispName, mode, periodFrom, liveTick]);
+
   /* LIVE POSITIONS for THIS screener — its own OPEN trades (entry booked, no exit yet) in the active mode.
      The card subtitle shows the count ("Live Positions X") and tapping it expands this list. */
   const livePositions = useMemo(() => {
@@ -725,6 +747,20 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
           <div className="mono" style={{ fontWeight: 800, fontSize: 16, color: chgColor(periodPnl), textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 3 }}>{(periodPnl >= 0 ? "+" : "") + fmt(periodPnl, market)}</div>
         </button>
       </div>
+      {/* Trade stats — mirrors the strategy cards: Trades, Wins, Loss, Win rate (P&L shown above). */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginTop: 8 }}>
+        {[
+          { k: "Trades", v: String(screenerStats.trades), c: "var(--ink)" },
+          { k: "Wins", v: String(screenerStats.wins), c: "var(--pos, #16a34a)" },
+          { k: "Loss", v: String(screenerStats.losses), c: "var(--neg, #dc2626)" },
+          { k: "Win rate", v: screenerStats.winRate == null ? "—" : screenerStats.winRate + "%", c: "var(--ink)" },
+        ].map((s) => (
+          <div key={s.k} style={{ border: "1px solid var(--line)", borderRadius: 9, padding: "5px 6px", textAlign: "center", minWidth: 0 }}>
+            <div className="mono" style={{ fontSize: 13, fontWeight: 800, color: s.c }}>{s.v}</div>
+            <div style={{ fontSize: 8, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.3 }}>{s.k}</div>
+          </div>
+        ))}
+      </div>
       <ScreenerTradeList trades={trades} strategyName={dispName} mode={mode} market={market} periodFrom={periodFrom} priceOf={priceOf} open={showTrades} />
       </>
       )}
@@ -803,14 +839,19 @@ export function DashTradeTable({ rows = [], market, priceOf, onlyOpen = false, c
 
 function ScreenerDashboard({ trades = [], market }) {
   const [drill, setDrill] = useState(null);      // null | 'trades' | 'open'
+  const [rangeDays, setRangeDays] = useState(() => lsGet("mx_scr_dash_range", 0));   // 0 = Today; else last N days
+  const setRange = (d) => { setRangeDays(d); lsSet("mx_scr_dash_range", d); };
+  const since = rangeDays === 0 ? new Date().setHours(0, 0, 0, 0) : Date.now() - rangeDays * 864e5;
   const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a && a.price != null ? a.price : null; };
   const pnlOf = (t, px) => {
     const dir = (t.side === "SELL" || t.short) ? -1 : 1;
     return ((Number(px) - Number(t.entry)) * Number(t.qty || 0)) * dir;
   };
-  // Market selection FIRST: everything here is scoped to the selected market + the Screener order type.
+  // Market + Screener order type + DATE RANGE. An OPEN position is always shown (it's live now); a closed trade is
+  // included only if its exit (or entry) falls inside the selected window.
   const mine = (trades || []).filter((t) =>
-    t && (t.tradeType === "Screener Auto Buy") && (t.market || "") === market && t.status !== "rejected" && Number(t.entry) > 0);
+    t && (t.tradeType === "Screener Auto Buy") && (t.market || "") === market && t.status !== "rejected" && Number(t.entry) > 0
+    && ((t.exitAt == null || t.exit == null) || (Number(t.exitAt || t.entryAt || 0) >= since)));
   const closed = mine.filter((t) => t.exitAt != null && t.exit != null);
   const open = mine.filter((t) => t.exitAt == null || t.exit == null);
   const realised = closed.reduce((a, t) => a + pnlOf(t, t.exit), 0);
@@ -855,7 +896,17 @@ function ScreenerDashboard({ trades = [], market }) {
   );
   return (
     <div className="card flat" style={{ padding: 16, marginBottom: 10, border: "1px solid var(--line)", background: "var(--card-grad, var(--elev))", color: "var(--ink)" }}>
-      <div className="disp" style={{ fontWeight: 700, fontSize: 15 }}>Screener Dashboard</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <div className="disp" style={{ fontWeight: 700, fontSize: 15 }}>Screener Dashboard</div>
+        <select value={rangeDays} onChange={(e) => setRange(Number(e.target.value))} className="no-ring"
+          style={{ fontSize: 11.5, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 9, padding: "5px 8px", background: "var(--surface)", color: "var(--ink)" }}>
+          <option value={0}>Today</option>
+          <option value={7}>7 days</option>
+          <option value={30}>30 days</option>
+          <option value={182}>6 months</option>
+          <option value={3650}>All time</option>
+        </select>
+      </div>
       {/* Headline P&L + subline — mirrors the Automation Dashboard. */}
       <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 6, color: up ? "var(--up)" : "var(--down)" }}>{up ? "+" : ""}{fmt(pnl, market)}</div>
       <div style={{ fontSize: 11, opacity: .85, marginTop: -2 }}>{open.length} live position{open.length === 1 ? "" : "s"} · {mine.length} trade{mine.length === 1 ? "" : "s"} in {market}</div>
@@ -868,8 +919,6 @@ function ScreenerDashboard({ trades = [], market }) {
 
       {/* Clicking Trades → full list scoped to Screener trades in this market. */}
       {drill === "trades" && <DashTradeTable rows={mine} market={market} priceOf={priceOf} />}
-
-      <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 10, lineHeight: 1.4 }}>Realised + unrealised P&L (estimated, from latest cached quotes) across your Screener Auto-Buy trades in {market}. <b>Returns %</b> is gross P&L ÷ total entry notional across all trades (a gross-turnover return — reused capital counts each time; not portfolio or period return). Tap Trades to drill in. Rejected orders are excluded.</div>
     </div>
   );
 }
@@ -893,7 +942,7 @@ function LivePosRow({ t, market, td, onClosePosition, onUpdatePosition }) {
   const commit = (field, v) => { if (onUpdatePosition) onUpdatePosition(t, { [field]: v === "" ? null : Number(v) }); };
   return (
     <tr>
-      <td style={{ ...td, fontWeight: 800 }}>{t.sym}{(t.side === "SELL" || t.short) ? <span style={{ color: "var(--down)", fontSize: 8, marginLeft: 4 }}>SHORT</span> : null}</td>
+      <td style={{ ...td, fontWeight: 800, position: "sticky", left: 0, zIndex: 1, background: "var(--surface)" }}>{t.sym}{(t.side === "SELL" || t.short) ? <span style={{ color: "var(--down)", fontSize: 8, marginLeft: 4 }}>SHORT</span> : null}</td>
       <td style={{ ...td, color: "var(--muted)", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis" }}>{t.strategy || "—"}</td>
       <td style={{ ...td, textAlign: "right" }}>{fmt(Number(t.entry) * qty, market)}</td>
       <td style={td}><span style={{ fontWeight: 800 }}>{e.d}</span> <span style={{ color: "var(--muted)" }}>{e.t}</span></td>
@@ -936,7 +985,7 @@ function ScreenerLivePositions({ trades = [], market, onClosePosition, onUpdateP
       <div style={{ overflowX: "auto", border: "1px solid var(--line)", borderRadius: 10 }}>
         <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 680 }}>
           <thead><tr>
-            <th style={th}>Symbol</th><th style={th}>Screener</th><th style={{ ...th, textAlign: "right" }}>Amount</th>
+            <th style={{ ...th, position: "sticky", left: 0, zIndex: 3, background: "var(--surface)" }}>Symbol</th><th style={th}>Screener</th><th style={{ ...th, textAlign: "right" }}>Amount</th>
             <th style={th}>Entry</th><th style={{ ...th, textAlign: "right" }}>Entry px</th><th style={{ ...th, textAlign: "right" }}>Current px</th>
             <th style={{ ...th, textAlign: "right" }}>P&amp;L</th><th style={{ ...th, textAlign: "right" }}>Return</th>
             <th style={{ ...th, textAlign: "center" }}>SL %</th><th style={{ ...th, textAlign: "center" }}>TP %</th><th style={{ ...th, textAlign: "center" }}>Close</th>
