@@ -51,20 +51,19 @@ test.describe("admin-enabled virtual — full no-broker journeys (R31-P3-05, har
     expect(brokerHits(), "a virtual buy must not hit any broker endpoint").toHaveLength(0);
   });
 
-  test("a virtual BUY strictly INCREASES the portfolio position count and PERSISTS across reload (no broker)", async ({ page }) => {
+  test("a virtual BUY creates an EXACT holding (symbol + qty) that PERSISTS by identity across reload (no broker)", async ({ page }) => {
     const brokerHits = trackBrokerCalls(page);
     await enterApp(page);
-    // Count portfolio positions BEFORE the buy. A holding row is a table row / list item that carries a P&L or qty
-    // cell; this count is the exact state we assert changes — a no-op Buy handler leaves it unchanged and FAILS.
+    // R35-P3-03: assert an EXACT holding identity via stable testids (data-testid="holding-row" + data-sym/data-qty),
+    // not a generic text heuristic. Capture the set of holdings BEFORE the buy, place a mandatory-confirm buy, then
+    // require a NEW holding-row to appear — capture its exact symbol + qty — and assert the SAME sym+qty persist after
+    // reload. A no-op Buy handler produces no new holding-row and FAILS.
     const gotoPortfolio = async () => { const p = await firstVisible(page, /Portfolio/i); if (p) { await p.click(); await page.waitForTimeout(350); } };
-    const countPositions = () => page.evaluate(() => {
-      const rows = Array.from(document.querySelectorAll("tr,li,[data-position],[data-holding]"));
-      const isPos = (el) => /[▲▼]|[-+]?[₹$]\s?\d|P&?L|\bqty\b|\b\d+(\.\d+)?\s*(shares|coins|lots|units)\b/i.test(el.textContent || "");
-      return rows.filter(isPos).length;
-    });
+    const holdings = () => page.evaluate(() =>
+      Array.from(document.querySelectorAll('[data-testid="holding-row"]')).map((el) => ({ sym: el.getAttribute("data-sym"), qty: el.getAttribute("data-qty") })));
     await gotoPortfolio();
-    const before = await countPositions();
-    // Place a virtual buy — confirmation is MANDATORY here (a real trade must be committed, not just intended).
+    const before = new Set((await holdings()).map((h) => h.sym));
+    // Place a virtual buy — confirmation is MANDATORY (a real trade must be committed, not merely intended).
     const home = await firstVisible(page, /Home|Screener/i); if (home) { await home.click(); await page.waitForTimeout(300); }
     const buy = await firstVisible(page, /^Buy$|^Buy /i);
     expect(buy, "a Buy control must exist").not.toBeNull();
@@ -73,13 +72,15 @@ test.describe("admin-enabled virtual — full no-broker journeys (R31-P3-05, har
     expect(confirm, "a confirm control must appear and be clicked (no optional confirm)").not.toBeNull();
     await confirm.click(); await page.waitForTimeout(500);
     await gotoPortfolio();
-    const after = await countPositions();
-    expect(after, "a virtual buy must add exactly one holding/position (strict state transition)").toBeGreaterThan(before);
-    // Reload and assert the new position survived (identity persists), still with zero broker traffic.
+    const afterList = await holdings();
+    const created = afterList.find((h) => h.sym && !before.has(h.sym));
+    expect(created, "a virtual buy must create a NEW holding with a concrete symbol + qty").toBeTruthy();
+    expect(Number(created.qty), "the new holding carries a positive quantity").toBeGreaterThan(0);
+    // Reload and assert the SAME holding (exact symbol AND qty) persists — identity, not just a count.
     await page.reload(); await page.waitForTimeout(800);
     await gotoPortfolio();
-    const afterReload = await countPositions();
-    expect(afterReload, "the virtual position count persists across reload").toBeGreaterThanOrEqual(after);
+    const persisted = (await holdings()).find((h) => h.sym === created.sym && h.qty === created.qty);
+    expect(persisted, `holding ${created.sym} x${created.qty} must persist by identity across reload`).toBeTruthy();
     expect(brokerHits(), "no broker endpoint touched across the whole journey").toHaveLength(0);
   });
 

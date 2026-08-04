@@ -16,13 +16,39 @@ jobs:
       - name: Lint
         run: npm run lint
       - name: Unit + domain + parity tests
-        run: node --import ./test/register.mjs --test test/*.test.mjs
+        run: |
+          set -o pipefail
+          mkdir -p artifacts
+          node --import ./test/register.mjs --test test/*.test.mjs 2>&1 | tee artifacts/frontend-unit.tap
       - name: Production build
         run: npm run build
       - name: Production dependency audit
         run: npm audit --omit=dev --audit-level=high
-      - name: Playwright (desktop + mobile)
+      # R34-P3-06: Playwright runs on a real browser and its report is published per-SHA. `continue-on-error: false`
+      # means a failing (or empty) journey fails CI — the virtual-execution + portal specs must actually pass.
+      - name: Playwright (desktop + mobile, real browser)
         continue-on-error: false
         run: |
+          set -o pipefail
           npx playwright install --with-deps chromium
-          npm run test:e2e --if-present
+          npm run test:e2e 2>&1 | tee artifacts/frontend-e2e.txt
+      - name: Evidence summary (per-SHA)
+        if: always()
+        run: |
+          {
+            echo "commit=${GITHUB_SHA}"
+            echo "ref=${GITHUB_REF}"
+            echo "unit_pass=$(grep -c '^ok ' artifacts/frontend-unit.tap || true)"
+            echo "unit_fail=$(grep -c '^not ok ' artifacts/frontend-unit.tap || true)"
+            echo "unit_skipped=$(grep -Ec '# (SKIP|skip)' artifacts/frontend-unit.tap || true)"
+          } | tee artifacts/frontend-evidence.txt
+      - name: Upload frontend evidence (unit TAP + e2e + report, per-SHA)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-evidence-${{ github.sha }}
+          path: |
+            artifacts/
+            playwright-report/
+            test-results/
+          retention-days: 90

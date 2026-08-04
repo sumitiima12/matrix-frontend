@@ -2143,7 +2143,7 @@ function StrategyPnLView({ strats, trades, market, onDelete }) {
   const RANGES = [[1, "Today"], [7, "Last 7 days"], [30, "Last 30 days"], [180, "Last 6 months"]];
   const rows = strats.filter(inMkt).map((s) => ({ s, p: stratPerf(s, trades, range, priceOf) })).sort((a, b) => (b.p.pnl || 0) - (a.p.pnl || 0));
   const dt = (t) => (t ? new Date(t).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
-  const tradesFor = (s) => (trades || []).filter((t) => (t.strategyId === s.id || t.strategy === s.name) && t.status !== "rejected" && (t.exitAt || t.entryAt || 0) >= Date.now() - range * 864e5).sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
+  const tradesFor = (s) => (trades || []).filter((t) => (t.strategyId != null ? String(t.strategyId) === String(s.id) : t.strategy === s.name) && t.status !== "rejected" && (t.exitAt || t.entryAt || 0) >= Date.now() - range * 864e5).sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
   const tPnl = (t) => { const px = t.exit != null ? t.exit : priceOf(t.sym); if (t.entry == null || px == null) return null; const dir = (t.side === "SELL" || t.short) ? -1 : 1; return (px - t.entry) * (Number(t.qty) || (marketOf(t.sym) === "Crypto" ? 0 : 1)) * dir; };
   return (
     <div className="fade">
@@ -2200,7 +2200,7 @@ function StrategyPnl({ s, trades = [], market }) {
     return 0;
   }, [period]);
   const pnl = useMemo(() => (trades || []).reduce((a, t) => {
-    if (!(t.strategyId === s.id || t.strategy === s.name)) return a;
+    if (!(t.strategyId != null ? String(t.strategyId) === String(s.id) : t.strategy === s.name)) return a;
     if (t.status === "rejected" || t.entry == null) return a;
     const closed = t.exitAt != null && t.exit != null;
     if (closed && (t.exitAt || t.entryAt || 0) < from) return a;   // closed before the window → skip
@@ -2938,8 +2938,13 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     );
     const openTrades = (trades || []).filter((t) => {
       if (t.entryAt == null || t.exitAt != null) return false;
-      const idMatch = t.strategyId != null && String(t.strategyId) === String(s.id);
-      const nameMatch = !idMatch && t.strategy != null && t.strategy === s.name;
+      // R35-P2-04 note→R35-P3-02: strategyId is AUTHORITATIVE. If a trade carries a strategyId it must EXACTLY equal
+      // this strategy's id — a trade tagged to a DIFFERENT strategy that merely shares this display name is NOT ours,
+      // and we never fall back to a name match for it. Name+market+symbol matching is used ONLY for legacy rows that
+      // predate id stamping (strategyId == null).
+      const hasSid = t.strategyId != null;
+      const idMatch = hasSid && String(t.strategyId) === String(s.id);
+      const nameMatch = !hasSid && t.strategy != null && t.strategy === s.name;
       if (!idMatch && !nameMatch) return false;
       // Never show a cross-market position (the card is rendered inside the `market` tab).
       if ((marketOf(t.sym) || "IN") !== market) return false;
@@ -3125,7 +3130,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       {ledgerOpen === s.id && (() => {
         // Every trade this strategy took (matched by id or name), newest first. Realized P&L only
         // for closed trades — no "missed P&L" estimate, per the product decision.
-        const rows = (trades || []).filter((t) => (t.strategyId === s.id || t.strategy === s.name)).sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
+        const rows = (trades || []).filter((t) => (t.strategyId != null ? String(t.strategyId) === String(s.id) : t.strategy === s.name)).sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
         const mkt = (t) => marketOf(t.sym) || "IN";
         return (
           <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
@@ -3247,7 +3252,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           paper strategy for this market, with its simulated P&L. VIRTUAL mode only. */}
       {appMode !== "real" && (() => {
         /* Latest ENTRY first: a strategy that just opened a paper trade sits at the top. */
-        const lastEntry = (s) => (trades || []).reduce((mx, t) => ((t.strategyId === s.id || t.strategy === s.name) && (t.entryAt || 0) > mx ? t.entryAt : mx), 0);
+        const lastEntry = (s) => (trades || []).reduce((mx, t) => ((t.strategyId != null ? String(t.strategyId) === String(s.id) : t.strategy === s.name) && (t.entryAt || 0) > mx ? t.entryAt : mx), 0);
         const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a ? a.price : null; };
         const vd = strats.filter((s) => s.active && inMkt(s))
           .map((s) => ({ s, p: stratPerf(s, trades, dashRange, priceOf), e: lastEntry(s) }))
@@ -3283,7 +3288,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                   <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>{p.positions} position{p.positions === 1 ? "" : "s"}{p.open ? ` · ${p.open} open` : ""}{p.winRate != null ? ` · ${p.winRate.toFixed(0)}% win` : ""}</div>
                   {/* Open-position detail: entry date/time, entry price, current price, amount invested. */}
                   {(() => {
-                    const ot = (trades || []).find((t) => (t.strategyId === s.id || t.strategy === s.name) && t.entryAt != null && t.exitAt == null);
+                    const ot = (trades || []).find((t) => (t.strategyId != null ? String(t.strategyId) === String(s.id) : t.strategy === s.name) && t.entryAt != null && t.exitAt == null);
                     if (!ot) return null;
                     const st = ALL.find((x) => x.sym === ot.sym); const cur = st && st.price != null ? st.price : ot.entry;
                     const mk = marketOf(ot.sym) || market; const ed = ot.entryAt ? new Date(ot.entryAt) : null;

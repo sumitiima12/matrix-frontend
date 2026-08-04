@@ -137,6 +137,13 @@ const SCREENERS = [
   },
 ];
 
+/* R35-P4-01: display names that appear on MORE THAN ONE screener in the catalog. A legacy trade row with no stable
+   screenerKey can't be safely attributed to either same-named screener, so per-screener totals quarantine it. */
+const AMBIGUOUS_SCREENER_NAMES = new Set(
+  Object.entries(SCREENERS.reduce((m, s) => { m[s.name] = (m[s.name] || 0) + 1; return m; }, {}))
+    .filter(([, n]) => n > 1).map(([name]) => name),
+);
+
 /* Screeners that ship ACTIVE (Auto-Buy on) for a new user — they show under "Active Screeners" on the
    home page out of the box. The auto-buy toggle's stored value overrides this once the user flips it,
    so turning one off (or on) is remembered; the default only applies while the key is untouched. */
@@ -372,10 +379,16 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
   const ownsTrade = useCallback((t) => {
     if (!t) return false;
     if ((marketOf(t.sym) || t.market || "IN") !== market) return false;   // market is a hard guard, never name-only
+    // Stable-key match is authoritative for every trade placed since keys were stamped.
     if (t.screenerKey != null && screener.key != null) return String(t.screenerKey) === String(screener.key);
+    // R35-P4-01: LEGACY row (no screenerKey). Attribute by display name ONLY when that name is UNAMBIGUOUS across the
+    // screener catalog. If two screeners share this display name, an unkeyed legacy row can't be assigned to either, so
+    // it is QUARANTINED (excluded from per-screener totals) rather than double-counted — it still appears in
+    // account-wide history elsewhere.
+    if (AMBIGUOUS_SCREENER_NAMES.has(screener.name)) return false;
     return t.strategy === dispName;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screener.key, dispName, market]);
+  }, [screener.key, screener.name, dispName, market]);
 
   const periodPnl = useMemo(() => {
     const isReal = mode === "real";

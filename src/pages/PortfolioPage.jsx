@@ -436,7 +436,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
           const ana = uni && sig ? analyzeHolding({ sym: h.sym, buy: h.avg != null ? h.avg : h.ltp, qty: Math.abs(Number(h.qty) || 0), sl: null, tp: null, short: anaShort }, uni, sig) : null;
           const vColor = ana && /Exit|Reduce/.test(ana.action) ? "var(--down)" : ana && /Add|Take profit/.test(ana.action) ? "var(--up)" : "var(--muted)";
           return (
-            <div key={h.sym} className="card" style={{ marginTop: 9, padding: 13 }}>
+            <div key={h.sym} className="card" data-testid="holding-row" data-sym={h.sym} data-qty={Math.abs(Number(h.qty) || 0)} style={{ marginTop: 9, padding: 13 }}>
               <div
                 onClick={() => uni && onOpen && onOpen(uni)}
                 className={uni && onOpen ? "tap" : undefined}
