@@ -61,7 +61,7 @@ function mockFor(pathname, url) {
   if (pathname.endsWith("/api/fundamentals")) return FUNDAMENTALS;
   if (pathname.endsWith("/api/earnings")) return { upcoming: [{ sym: "AAPL", date: new Date(Date.now() + 3 * 864e5).toISOString().slice(0, 10), epsEst: 1.5 }], recent: [{ sym: "TCS", date: new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10) }] };
   // Permissive so the full UI renders in tests (Indian tab shown, nothing gated).
-  if (pathname.endsWith("/api/app-settings")) return { settings: { allowRealMode: { IN: true, US: true, Crypto: true, Commodity: true }, allowBrokerConnect: { IN: true, US: true, Crypto: true, Commodity: true }, allowVirtual: { IN: true, Global: true }, showIndianWithoutBroker: true } };
+  if (pathname.endsWith("/api/app-settings")) return { settings: { allowRealMode: { IN: true, US: true, Crypto: true, Commodity: true }, allowBrokerConnect: { IN: true, US: true, Crypto: true, Commodity: true }, allowVirtual: { IN: true, Global: true }, showIndianWithoutBroker: true, showUSMarket: true } };
   if (pathname.endsWith("/api/broker/status")) return { brokers: {}, tradingEnabled: false, staticIp: "203.0.113.10" };
   if (pathname.endsWith("/api/broker/connect-info")) return { staticIp: "203.0.113.10" };
   if (pathname.endsWith("/api/public-strategies")) return { strategies: [] };
@@ -122,7 +122,7 @@ export const test = base.extend({
         localStorage.setItem("mx_token", "e2e.test.token");
         localStorage.setItem("mx_mode", "virtual");
         localStorage.setItem("mx_theme", "light");
-        localStorage.setItem("mx_state_ph_9990000000", JSON.stringify({ onboardSkipped: true, profile: { proficiency: "Pro", risk: "Balanced", sectors: [], goals: ["Growth"], horizon: "Medium" } }));
+        if (!localStorage.getItem("mx_state_ph_9990000000")) localStorage.setItem("mx_state_ph_9990000000", JSON.stringify({ onboardSkipped: true, profile: { proficiency: "Pro", risk: "Balanced", sectors: [], goals: ["Growth"], horizon: "Medium" } }));
         // Suppress the one-time "connect a broker" nag sheet (fires 900ms after onboarding) so it can't
         // overlay and intercept taps during feature navigation.
         localStorage.setItem("mx_broker_prompted_ph_9990000000", "true");

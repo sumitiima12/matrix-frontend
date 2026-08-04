@@ -90,7 +90,12 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
         style={{
           position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto",
           background: "var(--surface)", borderRadius: "22px 22px 0 0", zIndex: 141,
-          padding: "16px 18px 26px", boxShadow: "0 -16px 44px rgba(0,0,0,.3)",
+          // Cap the sheet to the viewport and scroll internally so on a short screen it stays FULLY
+          // contained and its action buttons remain reachable (R33-P3-03). Safe-area padding keeps the
+          // primary action clear of the home indicator on notch devices.
+          padding: "16px 18px calc(26px + env(safe-area-inset-bottom, 0px))",
+          maxHeight: "calc(100vh - 12px)", overflowY: "auto",
+          boxShadow: "0 -16px 44px rgba(0,0,0,.3)",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>

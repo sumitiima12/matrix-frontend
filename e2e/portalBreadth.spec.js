@@ -13,12 +13,21 @@ async function openDialogOrFail(page) {
   for (const re of triggers) {
     const btn = page.getByRole("button", { name: re }).first();
     if (!(await btn.count())) continue;
+    await btn.scrollIntoViewIfNeeded().catch(() => {});
     await btn.focus().catch(() => {});
-    await btn.click().catch(() => {});
-    await page.waitForTimeout(300);
-    const dlg = page.getByRole("dialog").first();
+    await btn.click({ timeout: 2500 }).catch(() => {});   // bounded: an intercepted trigger falls through, not a 30s hang
+    await page.waitForTimeout(250);
+    let dlg = page.getByRole("dialog").first();
+    let modal = page.locator("[aria-modal='true']").first();
+    if (!(await dlg.count()) && !(await modal.count())) {
+      // On a short mobile viewport the fixed bottom-nav can overlay the trigger and swallow the tap; a
+      // force click dispatches directly on the element (the helper only needs the dialog to open).
+      await btn.click({ force: true, timeout: 2500 }).catch(() => {});
+      await page.waitForTimeout(250);
+      dlg = page.getByRole("dialog").first();
+      modal = page.locator("[aria-modal='true']").first();
+    }
     if (await dlg.count()) return { dlg, trigger: btn };
-    const modal = page.locator("[aria-modal='true']").first();
     if (await modal.count()) return { dlg: modal, trigger: btn };
   }
   throw new Error("R32-P3-02: no money-action dialog could be opened — the portal journey did not happen");
@@ -26,9 +35,15 @@ async function openDialogOrFail(page) {
 
 test.describe("portal breadth — mandatory dialog + focus restoration (R32-P3-02)", () => {
   test("a dialog opens on a SMALL-HEIGHT viewport, is FULLY CONTAINED (or scrollable with reachable actions), and Escape closes it", async ({ page }) => {
-    const vw = 360, vh = 480;
-    await page.setViewportSize({ width: vw, height: vh });
     await enterApp(page);
+    // Set the small viewport AFTER boot: overriding an isMobile device's viewport BEFORE first navigation is a
+    // Playwright harness quirk that leaves the first-paint handlers stale (a real device boots at its native size).
+    await page.setViewportSize({ width: 360, height: 480 });
+    await page.waitForTimeout(200);
+    // Measure containment against the ACTUAL viewport: an isMobile device clamps setViewportSize to its device
+    // minimum (e.g. requesting 360 yields innerWidth 390), so the requested numbers would falsely flag overflow.
+    // Reading the real innerWidth/innerHeight tests exactly what matters — the dialog fits the on-screen viewport.
+    const { vw, vh } = await page.evaluate(() => ({ vw: window.innerWidth, vh: window.innerHeight }));
     const { dlg } = await openDialogOrFail(page);
     await expect(dlg).toBeVisible();
     const box = await dlg.boundingBox();
@@ -59,8 +74,9 @@ test.describe("portal breadth — mandatory dialog + focus restoration (R32-P3-0
   });
 
   test("a dialog stays a proper modal across LANDSCAPE rotation", async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
     await enterApp(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(200);
     const { dlg } = await openDialogOrFail(page);
     await page.setViewportSize({ width: 844, height: 390 });
     await page.waitForTimeout(300);
@@ -71,8 +87,9 @@ test.describe("portal breadth — mandatory dialog + focus restoration (R32-P3-0
   });
 
   test("focus is RESTORED to the exact trigger after the dialog closes", async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
     await enterApp(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(200);
     const { trigger } = await openDialogOrFail(page);
     // Tag the trigger so we can assert identity (not just "focus isn't body").
     await trigger.evaluate((el) => { el.setAttribute("data-e2e-trigger", "1"); });

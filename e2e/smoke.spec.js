@@ -2,7 +2,7 @@ import { test, expect, enterApp } from "./fixtures";
 
 // Market-tab labels carry a flag/emoji prefix ("🇮🇳 Indian"), so match by substring via the
 // button's accessible name rather than exact text.
-const tab = (page, name) => page.getByRole("button", { name: new RegExp(name, "i") }).first();
+const tab = (page, name) => page.getByRole("button", { name: new RegExp(name + "$", "i") }).first();   // anchor to the market pill (ends with the name) so /US/ does not also match "Terms of Use"
 
 test.describe("Smoke", () => {
   test("app boots into the dashboard without crashing", async ({ page }) => {

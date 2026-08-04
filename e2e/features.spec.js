@@ -16,7 +16,7 @@ test("app boots to the dashboard and renders live prices", async ({ page }) => {
 test("market tabs switch between Indian / US / Crypto", async ({ page }) => {
   await enterApp(page);
   for (const m of ["US", "Crypto", "Indian"]) {
-    const t = page.getByRole("button", { name: new RegExp(m, "i") }).first();
+    const t = page.getByRole("button", { name: new RegExp(m + "$", "i") }).first();   // anchor to the market pill (ends with the market name) — a bare /US/ also matched "Terms of Use"
     if (await t.count().catch(() => 0)) { await t.click(); await page.waitForTimeout(300); }
   }
   await expect(page.locator("body")).toBeVisible();

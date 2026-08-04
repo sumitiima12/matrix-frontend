@@ -677,7 +677,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
       ) : rows.map((r) => {
         const st = ALL.find((a) => a.sym === r.sym) || { sym: r.sym, name: r.name, price: r.cur };
         return (
-          <div key={r.sym} className="card" style={{ marginTop: 12, padding: 14 }}>
+          <div key={r.sym} className="card" data-testid="holding-row" data-sym={r.sym} data-qty={Math.abs(Number(r.qty) || 0)} style={{ marginTop: 12, padding: 14 }}>
             {/* Tapping the holding opens the symbol drawer, exactly like a card on the
                 home page. The controls below stopPropagation so they still work. */}
             <div
