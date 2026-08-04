@@ -816,7 +816,29 @@ function ScreenerDashboard({ trades = [], market }) {
   const losses = Math.max(0, closed.length - wins);
   const winRate = closed.length ? (wins / closed.length) * 100 : null;
   const invested = mine.reduce((a, t) => a + Number(t.entry) * Number(t.qty || 0), 0);
-  const ret = invested > 0 ? (pnl / invested) * 100 : null;
+  /* R31-P3-04: the return-% DENOMINATOR is the PEAK CONCURRENT reserved capital — the most this screener ever had at
+     risk at one time — NOT the sum of every entry's notional. Summing all entries double-counts capital that was
+     RE-USED after a position closed (e.g. ten sequential ₹1k trades on a ₹1k sleeve is 1× capital deployed, not
+     ₹10k), which inflates the denominator and understates the true return on capital. We sweep entry/exit events in
+     time order, track simultaneously-reserved notional, and take its peak; an open position reserves capital through
+     now. Releases are processed before reservations at the same instant so a close→reopen handoff doesn't count
+     twice. Falls back to summed notional only in the degenerate no-timeline case. */
+  const peakReservedCapital = (() => {
+    const evts = [];
+    for (const t of mine) {
+      const n = Number(t.entry) * Number(t.qty || 0);
+      if (!(n > 0)) continue;
+      const start = Number(t.entryAt) || 0;
+      const end = t.exitAt != null ? Number(t.exitAt) : Number.MAX_SAFE_INTEGER;   // still open ⇒ reserved through now
+      evts.push({ ts: start, d: n }, { ts: end, d: -n });
+    }
+    evts.sort((a, b) => (a.ts - b.ts) || (a.d - b.d));   // at equal ts, releases (−) before reservations (+)
+    let cur = 0, peak = 0;
+    for (const e of evts) { cur += e.d; if (cur > peak) peak = cur; }
+    return peak;
+  })();
+  const retDenom = peakReservedCapital > 0 ? peakReservedCapital : invested;
+  const ret = retDenom > 0 ? (pnl / retDenom) * 100 : null;
   if (!mine.length) return null;   // nothing traded yet — no empty dashboard
   const up = pnl >= 0;
   // Automate-style DStat tile.

@@ -585,6 +585,10 @@ function AppInner() {
             // (card P&L + Live Positions match on t.strategy). strategyId is preferred (immutable) when present.
             ...(opts.strategy ? { strategy: opts.strategy } : {}), ...(opts.strategyId ? { strategyId: opts.strategyId } : {}),
             real: true, status, orderId: r.orderId || null, tp: opts.tp || undefined, sl: opts.sl || undefined,
+            // R31-P3-03: mark this as a CLIENT-authored display projection, not authoritative truth. The server
+            // writes the authoritative real row (canonicalised by orderId); this local row exists only for instant
+            // feedback and is SUPERSEDED by the server row on the next reconcile (dedupe prefers serverAuthored).
+            clientAuthored: true,
           });
         } catch {}
       }
