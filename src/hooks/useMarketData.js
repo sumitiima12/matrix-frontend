@@ -22,35 +22,40 @@ export function useMarketData(market, intervalMs = 20000) {
   const [src, setSrc] = useState(null);   // "fyers" | "delta" | null(Yahoo) — the feed serving THIS market
   const [tick, setTick] = useState(0);
 
+  /* WHOLE-UNIVERSE hydration lives in its OWN effect (keyed only on intervalMs), so it runs ONCE on mount and on
+     a slow 5-min cadence — NOT again every time the user switches market tabs. Previously it sat inside the
+     per-market effect, so every Crypto→Indian→US switch re-fetched all ~135 symbols in SERIAL 40-symbol chunks,
+     which is the "markets load one after another / Top Picks slow" lag. Now the chunks fire in PARALLEL and the
+     whole thing is decoupled from the active market, so switching tabs is instant (the target market is already
+     priced) and cross-market holdings/search stay live. */
+  useEffect(() => {
+    if (!BACKEND_URL) return;
+    let stop = false;
+    const bump = () => setTick((t) => t + 1);
+    const pullAllQuotes = async () => {
+      try {
+        const every = ALL.map((a) => a.sym);
+        const chunks = [];
+        for (let i = 0; i < every.length; i += 40) chunks.push(every.slice(i, i + 40));
+        // PARALLEL: all chunks in flight at once (was serial for…await ⇒ 4× round-trips). Yahoo-safe (≤40 each).
+        const results = await Promise.all(chunks.map((c) => fetchLiveQuotes(c).catch(() => [])));
+        if (stop) return;
+        let n = 0;
+        for (const rows of results) (rows || []).forEach((r) => { const s = ALL.find((a) => a.sym === r.sym); if (s) { s.price = r.price; s.chg = r.chg; n++; } });
+        if (n && !stop) bump();
+      } catch { /* leave nulls -> UI renders "—" */ }
+    };
+    pullAllQuotes();                                    // once at startup
+    const allId = setInterval(pullAllQuotes, 300000);   // whole universe every 5 min
+    return () => { stop = true; clearInterval(allId); };
+  }, [intervalMs]);
+
   useEffect(() => {
     let stop = false;
     const syms = (UNIVERSE[market] || []).map((a) => a.sym);
     if (!syms.length) return;
 
     const bump = () => setTick((t) => t + 1);
-
-    /* Quotes for the WHOLE universe, not just the market on screen.
-       Only the current market was ever fetched, so AAPL/BTC/GOLD sat at null while
-       you were on Indian — which is why search showed "—" for them, and why a US
-       holding in your portfolio had no price. Chunked to keep Yahoo happy, and run
-       on a slower cadence than the active market. */
-    const pullAllQuotes = async () => {
-      try {
-        const every = ALL.map((a) => a.sym);
-        const chunks = [];
-        for (let i = 0; i < every.length; i += 40) chunks.push(every.slice(i, i + 40));
-        let n = 0;
-        for (const chunk of chunks) {
-          if (stop) return;
-          const rows = await fetchLiveQuotes(chunk);
-          (rows || []).forEach((r) => {
-            const s = ALL.find((a) => a.sym === r.sym);
-            if (s) { s.price = r.price; s.chg = r.chg; n++; }
-          });
-        }
-        if (n && !stop) bump();
-      } catch { /* leave nulls -> UI renders "—" */ }
-    };
 
     const pullQuotes = async () => {
       try {
@@ -121,20 +126,14 @@ export function useMarketData(market, intervalMs = 20000) {
 
     refresh();
     pullIntraday();
-    if (BACKEND_URL) pullAllQuotes();                 // once at startup
     const id = setInterval(refresh, intervalMs);
-
-    // The whole universe on a slow cadence (5 min): enough to keep search, the
-    // watchlist and cross-market holdings priced, without hammering Yahoo with
-    // 135 symbols every few seconds.
-    const allId = setInterval(() => { if (BACKEND_URL) pullAllQuotes(); }, 300000);
 
     // Intraday momentum: every 60s, and only while the market is actually open.
     const intraId = setInterval(() => {
       if (BACKEND_URL && marketOpen(market)) pullIntraday();
     }, 60000);
 
-    return () => { stop = true; clearInterval(id); clearInterval(intraId); clearInterval(allId); };
+    return () => { stop = true; clearInterval(id); clearInterval(intraId); };
   }, [market, intervalMs]);
 
   return { live, liveAt, tick, src };
