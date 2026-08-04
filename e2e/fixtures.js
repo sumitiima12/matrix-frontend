@@ -42,7 +42,20 @@ function mockFor(pathname, url) {
   if (pathname.endsWith("/api/health")) return { ok: true, engines: [], db: "flat-file" };
   if (pathname.endsWith("/api/quote")) return { quotes: QUOTES };
   if (pathname.endsWith("/api/history")) return { candles: candles() };
-  if (pathname.endsWith("/api/indicators")) return { indicators: QUOTES.map((q) => ({ sym: q.sym, rsi: 55, sma50: q.price * 0.98, sma200: q.price * 0.95, macd: 1, macdSignal: 0.5, adx: 24, atr: q.price * 0.02, support: q.price * 0.95, resistance: q.price * 1.05, vol: 1e6, avgVol: 8e5, high52: q.price * 1.3, low52: q.price * 0.7 })) };
+  if (pathname.endsWith("/api/indicators")) {
+    // The app merges indicators as an OBJECT keyed by the YAHOO symbol (crypto BTC -> BTC-USD), then
+    // copies every field onto the matching stock. Returning an array (the old shape) left Top Picks
+    // stuck on "Loading…" because Object.keys() saw indices, not symbols — so no pick card (and no Buy
+    // control) ever rendered. Values are bullish (rsi>50, price above the 50-DMA, MACD>signal) so the
+    // crypto names clear the pick "signal bar".
+    const CRY = new Set(["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "LINK", "ADA", "AVAX", "MATIC"]);
+    const ind = {};
+    QUOTES.forEach((q) => {
+      const y = CRY.has(q.sym) ? q.sym + "-USD" : q.sym;
+      ind[y] = { rsi: 62, sma50: q.price * 0.95, sma200: q.price * 0.9, macd: 2, macdSignal: 0.5, adx: 28, atr: q.price * 0.02, support: q.price * 0.92, resistance: q.price * 1.08, vol: 2e6, avgVol: 1e6, high52: q.price * 1.3, low52: q.price * 0.7, hasData: true };
+    });
+    return { indicators: ind };
+  }
   if (pathname.endsWith("/api/intraday")) return { intraday: {} };
   if (pathname.includes("/api/news")) return { news: [{ sym: "RELIANCE.NS", t: "Reliance posts record quarter", d: Date.now(), src: "Test", url: "#" }], count: 1 };
   if (pathname.endsWith("/api/fundamentals")) return FUNDAMENTALS;
