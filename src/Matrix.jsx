@@ -573,7 +573,12 @@ function AppInner() {
       // (that was the phantom opposite-side position). The server authoritatively closes/reduces the referenced
       // open row and books realized P&L (the browser can't write onto a server-authored row anyway); the caller
       // (closePositionRow) updates the local view for immediate feedback and reconciles on the next fetch.
-      if (!opts.reduceOnly) {
+      /* R32-P3-03: real trade HISTORY must be rendered only from SERVER-AUTHORED records. When a backend is present
+         (production), we do NOT write a client-authored real row into the persistent trades model at all — the toast
+         above is the transient order-intent feedback, and the authoritative row arrives via refreshPortfolio +
+         fetchTrades below (server dedupes/canonicalises by orderId). Only in a no-backend/local build do we keep the
+         local row so the demo still shows something. This removes the duplicate/local-truth display interval. */
+      if (!opts.reduceOnly && !BACKEND_URL) {
         // Journal the real order with its FILL STATUS. For an unconfirmed order we record it WITHOUT an entry
         // price (mirrors the reject path) so no phantom open position or P&L is created.
         try {

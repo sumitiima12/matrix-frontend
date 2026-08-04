@@ -1,89 +1,69 @@
-// e2e/adminVirtual.spec.js — R31-P3-05: full NO-BROKER (admin-enabled virtual) journeys.
+// e2e/adminVirtual.spec.js — R31-P3-05 / R32-P3-01: full NO-BROKER (admin-enabled virtual) journeys with MANDATORY
+// assertions (no vacuous count>=0, no try/catch-swallowed clicks that let a test pass without acting).
 //
-// Proves the spec's brokerless-virtual policy end to end: once an admin enables virtual access, every permitted
-// virtual feature works WITHOUT a broker session — manual trade, Screener, Automation, SL/TP edit, partial close,
-// reload persistence and multiple markets — and none of it ever reaches a real broker (the fixtures stub every
-// /api/** so a real order is physically impossible). Runs offline with `npm run test:e2e`.
-//
-// The default fixtures already return app-settings with allowVirtual enabled and tradingEnabled:false (no broker),
-// which IS the "admin enabled virtual, no broker connected" state this spec targets. Selectors are forgiving and
-// every step is presence-guarded (like flows/portal specs) so the suite degrades gracefully rather than failing
-// spuriously when a UI path isn't reachable in the stubbed build.
+// The default fixtures return app-settings with allowVirtual enabled and tradingEnabled:false (no broker) — the exact
+// "admin enabled virtual, no broker connected" state. Every /api/** is stubbed so a real broker order is impossible.
+// These tests HARD-ASSERT: (1) zero requests ever reach a broker-order endpoint or broker host, and (2) the money
+// journey actually happens (a Buy control exists and is clicked, a confirm resolves, and no "real executed" copy
+// appears in virtual mode). A missing control now FAILS the test rather than being skipped.
 import { test, expect, enterApp } from "./fixtures";
 
-// A real broker order can never happen in this suite — but assert it explicitly: fail if any request that would
-// place/So a live order slips past the stub layer to a broker host.
-function guardNoBrokerCalls(page) {
+// Fail if anything that would place/So a real order slips out to a broker order endpoint or broker host.
+function trackBrokerCalls(page) {
   const hits = [];
   page.on("request", (r) => {
     const u = r.url();
-    if (/api-t1\.fyers\.in|api\.kite\.trade|api\.delta\.exchange|coindcx|binance\.com/i.test(u)) hits.push(u);
+    if (/\/api\/broker\/order|\/api\/autobuy\/register|api-t1\.fyers\.in|api\.kite\.trade|api\.delta\.exchange|coindcx|binance\.com/i.test(u)) hits.push(u);
   });
   return () => hits;
 }
-
-async function switchMarket(page, label) {
-  const tab = page.getByRole("button", { name: new RegExp(`^${label}$`, "i") }).first();
-  if (await tab.count().catch(() => 0)) { try { await tab.click({ timeout: 1500 }); await page.waitForTimeout(300); } catch { /* ignore */ } }
-}
-async function gotoTab(page, re) {
-  const t = page.getByRole("button", { name: re }).first();
-  if (await t.count().catch(() => 0)) { try { await t.click({ timeout: 1500 }); await page.waitForTimeout(350); } catch { /* ignore */ } }
-  return t;
+async function firstVisible(page, re) {
+  const btn = page.getByRole("button", { name: re }).first();
+  return (await btn.count()) ? btn : null;
 }
 
-test.describe("admin-enabled virtual — full no-broker journeys (R31-P3-05)", () => {
-  test("virtual is available with NO broker session and never calls a broker", async ({ page }) => {
-    const brokerHits = guardNoBrokerCalls(page);
+test.describe("admin-enabled virtual — full no-broker journeys (R31-P3-05, hardened R32-P3-01)", () => {
+  test("app boots to a usable virtual dashboard with NO broker session", async ({ page }) => {
+    const brokerHits = trackBrokerCalls(page);
     await enterApp(page);
-    // The app booted straight to a usable dashboard with tradingEnabled:false (no broker) — virtual works regardless.
-    await expect(page.locator("body")).toBeVisible();
-    // A Buy control is reachable in virtual with no broker connected (presence-guarded; never throws).
-    const buy = page.getByRole("button", { name: /^Buy$|Buy /i }).first();
-    expect(await buy.count().catch(() => 0)).toBeGreaterThanOrEqual(0);
-    expect(brokerHits().length, "no request ever reached a real broker host").toBe(0);
+    // A concrete anchor of the dashboard must be present (not merely <body>): a bottom-nav tab.
+    const nav = page.getByRole("button", { name: /Home|Screener|Automation|Automate|Portfolio/i }).first();
+    await expect(nav).toBeVisible();
+    expect(brokerHits(), "no broker-order request on load").toHaveLength(0);
   });
 
-  test("a virtual manual buy is accepted without a broker and shows honest (not 'real') status", async ({ page }) => {
-    const brokerHits = guardNoBrokerCalls(page);
+  test("a virtual BUY actually executes (control present + clicked) and never claims a REAL execution", async ({ page }) => {
+    const brokerHits = trackBrokerCalls(page);
     await enterApp(page);
-    const buy = page.getByRole("button", { name: /^Buy$|Buy /i }).first();
-    if (await buy.count().catch(() => 0)) {
-      try { await buy.click({ timeout: 1500 }); await page.waitForTimeout(400); } catch { /* ignore */ }
-      // A confirm sheet (role=dialog or aria-modal) may appear; confirm it if so.
-      const confirm = page.getByRole("button", { name: /Confirm|Buy|Place/i }).first();
-      if (await confirm.count().catch(() => 0)) { try { await confirm.click({ timeout: 1500 }); await page.waitForTimeout(400); } catch { /* ignore */ } }
-    }
-    // Nothing that says a REAL order executed should appear (this is virtual).
-    const realExec = page.getByText(/Real .*(filled|executed) on/i);
-    expect(await realExec.count().catch(() => 0)).toBe(0);
-    expect(brokerHits().length).toBe(0);
+    const buy = await firstVisible(page, /^Buy$|^Buy /i);
+    expect(buy, "a Buy control must exist in virtual mode").not.toBeNull();
+    await buy.click();                              // no try/catch — a failure here fails the test
+    await page.waitForTimeout(300);
+    const confirm = await firstVisible(page, /Confirm|Place|^Buy$/i);
+    if (confirm) { await confirm.click(); await page.waitForTimeout(300); }
+    // Virtual mode must NEVER assert a real broker execution.
+    await expect(page.getByText(/Real .*(filled|executed) on/i)).toHaveCount(0);
+    expect(brokerHits(), "a virtual buy must not hit any broker endpoint").toHaveLength(0);
   });
 
-  test("Screener + Automation tabs render and operate in virtual (no broker)", async ({ page }) => {
-    const brokerHits = guardNoBrokerCalls(page);
+  test("Screener and Automation tabs open and render real content (not just body) in virtual", async ({ page }) => {
+    const brokerHits = trackBrokerCalls(page);
     await enterApp(page);
-    await gotoTab(page, /Screener/i);
-    await expect(page.locator("body")).toBeVisible();
-    await gotoTab(page, /Automation|Automate/i);
-    await expect(page.locator("body")).toBeVisible();
-    expect(brokerHits().length).toBe(0);
+    const screener = await firstVisible(page, /Screener/i);
+    expect(screener, "Screener tab present").not.toBeNull();
+    await screener.click(); await page.waitForTimeout(300);
+    await expect(page.getByText(/Screener|Live Positions|Auto-?Buy|Symbols/i).first()).toBeVisible();
+    const auto = await firstVisible(page, /Automation|Automate/i);
+    expect(auto, "Automation tab present").not.toBeNull();
+    await auto.click(); await page.waitForTimeout(300);
+    await expect(page.getByText(/Deployed|Strateg|Build|Backtest/i).first()).toBeVisible();
+    expect(brokerHits()).toHaveLength(0);
   });
 
-  test("virtual state PERSISTS across reload (no broker session needed to rehydrate)", async ({ page }) => {
+  test("virtual dashboard survives reload with no broker session", async ({ page }) => {
     await enterApp(page);
     await page.reload();
     await page.waitForTimeout(600);
-    // After reload the app still boots to a usable virtual dashboard (fixtures re-seed guest + stub every call).
-    await expect(page.locator("body")).toBeVisible();
-    const anyTab = page.getByRole("button", { name: /Home|Screener|Automation|Automate|Portfolio/i }).first();
-    expect(await anyTab.count().catch(() => 0)).toBeGreaterThanOrEqual(0);
-  });
-
-  test("multiple markets are usable in virtual with no broker (IN / US / Crypto)", async ({ page }) => {
-    const brokerHits = guardNoBrokerCalls(page);
-    await enterApp(page);
-    for (const m of ["Indian", "US", "Crypto", "IN"]) { await switchMarket(page, m); await expect(page.locator("body")).toBeVisible(); }
-    expect(brokerHits().length).toBe(0);
+    await expect(page.getByRole("button", { name: /Home|Screener|Automation|Automate|Portfolio/i }).first()).toBeVisible();
   });
 });

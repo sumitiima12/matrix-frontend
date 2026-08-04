@@ -164,7 +164,11 @@ function ScreenerStats({ screenerKey, market, defs, entry, exit, sl, tp, tf, sym
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginBottom: 8 }}>
         {cell("Trades", stats.trades)}
         {cell("Win %", stats.winRate != null ? stats.winRate.toFixed(0) + "%" : "—", (stats.winRate ?? 0) >= 50 ? "var(--up)" : "var(--down)")}
-        {cell("Return", (stats.retPct >= 0 ? "+" : "") + (stats.retPct || 0).toFixed(1) + "%", stats.retPct >= 0 ? "var(--up)" : "var(--down)")}
+        {/* R32-P3-04: named "Return / Notional" because the denominator is peak concurrent NOTIONAL, not broker
+            margin/capital-at-risk. For leveraged instruments (FNO, options shorts, crypto futures) the reserved
+            capital is smaller than notional, so this understates leveraged return — comparing across asset types
+            should account for that. An honest label beats a misleading "Return". */}
+        {cell("Return / Notional", (stats.retPct >= 0 ? "+" : "") + (stats.retPct || 0).toFixed(1) + "%", stats.retPct >= 0 ? "var(--up)" : "var(--down)")}
         {cell("P&L", stats.pnl == null ? "—" : (stats.pnl >= 0 ? "+" : "") + fmt(stats.pnl, market), (stats.pnl || 0) >= 0 ? "var(--up)" : "var(--down)")}
         {cell("Max DD", stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmt(stats.maxDD, market) : fmt(0, market)) : "—", "var(--down)")}
         {cell("Symbols", stats.symbols || 0)}
