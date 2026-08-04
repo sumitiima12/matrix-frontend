@@ -39,8 +39,9 @@ test.describe("admin-enabled virtual — full no-broker journeys (R31-P3-05, har
     expect(buy, "a Buy control must exist in virtual mode").not.toBeNull();
     await buy.click();                              // no try/catch — a failure here fails the test
     await page.waitForTimeout(300);
-    const confirm = await firstVisible(page, /Confirm|Place|^Buy$/i);
-    if (confirm) { await confirm.click(); await page.waitForTimeout(400); }
+    const confirm = page.getByTestId("confirm-order-submit");
+    await expect(confirm, "the confirm-order sheet must open").toBeVisible({ timeout: 6000 });
+    await confirm.click(); await page.waitForTimeout(500);
     // R33-P3-02: a no-op Buy handler must NOT pass. Require a POSITIVE virtual-execution signal — a confirmation
     // toast/row that the paper trade happened — rather than merely the absence of "Real executed". We accept any of
     // the app's success surfaces (toast copy OR a new portfolio position for the instrument).
@@ -68,8 +69,8 @@ test.describe("admin-enabled virtual — full no-broker journeys (R31-P3-05, har
     const buy = await firstVisible(page, /^Buy$|^Buy /i);
     expect(buy, "a Buy control must exist").not.toBeNull();
     await buy.click(); await page.waitForTimeout(300);
-    const confirm = await firstVisible(page, /Confirm|Place|^Buy$/i);
-    expect(confirm, "a confirm control must appear and be clicked (no optional confirm)").not.toBeNull();
+    const confirm = page.getByTestId("confirm-order-submit");
+    await expect(confirm, "the confirm-order sheet must open and be clicked").toBeVisible({ timeout: 6000 });
     await confirm.click(); await page.waitForTimeout(500);
     await gotoPortfolio();
     const afterList = await holdings();
@@ -91,7 +92,7 @@ test.describe("admin-enabled virtual — full no-broker journeys (R31-P3-05, har
     expect(screener, "Screener tab present").not.toBeNull();
     await screener.click(); await page.waitForTimeout(300);
     await expect(page.getByText(/Screener|Live Positions|Auto-?Buy|Symbols/i).first()).toBeVisible();
-    const auto = await firstVisible(page, /Automation|Automate/i);
+    const auto = await firstVisible(page, /Automation|Automate|^Auto$/i);
     expect(auto, "Automation tab present").not.toBeNull();
     await auto.click(); await page.waitForTimeout(300);
     await expect(page.getByText(/Deployed|Strateg|Build|Backtest/i).first()).toBeVisible();

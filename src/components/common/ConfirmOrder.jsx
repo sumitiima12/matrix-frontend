@@ -83,6 +83,10 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
           cancel here would let the user reopen and (with a fresh action id) risk a duplicate of the in-flight order. */}
       <div onClick={busy ? undefined : onCancel} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 140, cursor: busy ? "not-allowed" : "pointer" }} />
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Confirm ${side === "BUY" ? "buy" : "sell"} order`}
+        data-testid="confirm-order"
         style={{
           position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto",
           background: "var(--surface)", borderRadius: "22px 22px 0 0", zIndex: 141,
@@ -333,6 +337,7 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
             {note ? "Close" : "Cancel"}
           </button>
           <button
+            data-testid="confirm-order-submit"
             onClick={() => busy ? null : onConfirm(effQty, product, { sl: sl !== "" ? +sl : undefined, tp: tp !== "" ? +tp : undefined, amount: amountMode ? Number(amount) : undefined })}
             disabled={price == null || short || busy}
             className="tap disp"
