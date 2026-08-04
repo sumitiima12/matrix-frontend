@@ -3,9 +3,14 @@ on:
   push:
     branches: [main, master]
   pull_request:
+# R38-P1-03: cancel superseded revisions so runs don't pile up.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 25   # R38-P1-03: bound the job (Playwright install + 2 projects) so a hang fails fast.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
