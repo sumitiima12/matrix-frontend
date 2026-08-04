@@ -5,7 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   OrderLifecycleStore, deriveIntentKey, interpretResult, classifyError, reconcileAction,
-  storeKeyFor, ORDER_STATES,
+  storeKeyFor, ORDER_STATES, planClose,
 } from "../src/services/orderLifecycle.js";
 
 function makeStorage() {
@@ -212,4 +212,35 @@ test("migration: a legacy unscoped blob is folded into the current user then rem
   assert.equal(pend.length, 1);
   assert.equal(pend[0].reqId, "legacyReq");
   assert.equal(storage.getItem("mx_pending_intents"), null, "the shared legacy blob is deleted (no cross-user leak)");
+});
+
+/* M07 — REAL CLOSE path. planClose() is the single source of truth the live Close button uses (Matrix.jsx
+   closePositionRow), so these prove the money-critical outcomes without a DOM. */
+test("M07 close: an UNCONFIRMED broker result never books a close (position stays open)", () => {
+  // No result, not-confirmed, pending, and rejected must all be 'unconfirmed'.
+  assert.equal(planClose({ qty: 5, price: 100 }, null).action, "unconfirmed");
+  assert.equal(planClose({ qty: 5, price: 100 }, { confirmedFilled: false }).action, "unconfirmed");
+  assert.equal(planClose({ qty: 5, price: 100 }, { status: "pending", confirmedFilled: false }).action, "unconfirmed");
+  assert.equal(planClose({ qty: 5, price: 100 }, { status: "rejected", confirmedFilled: false }).action, "unconfirmed");
+});
+test("M07 close: a FULL fill flattens at the broker's real average price", () => {
+  const p = planClose({ qty: 5, price: 100, entry: 90 }, { confirmedFilled: true, filledQty: 5, avgPrice: 131 });
+  assert.equal(p.action, "full");
+  assert.equal(p.exitPx, 131, "uses the broker fill price, not the live mark or entry");
+  assert.equal(p.closedQty, 5);
+});
+test("M07 close: a PARTIAL fill must NOT mark the whole position closed — residual stays open", () => {
+  const p = planClose({ qty: 5, price: 100 }, { confirmedFilled: true, filledQty: 2, avgPrice: 130 });
+  assert.equal(p.action, "partial");
+  assert.equal(p.closedQty, 2);
+  assert.equal(p.residualQty, 3, "the 3 unfilled stay OPEN so the exposure is never hidden");
+});
+test("M07 close: a confirmed fill with NO qty is treated as a full fill of the requested size", () => {
+  const p = planClose({ qty: 4, price: 100 }, { confirmedFilled: true, avgPrice: 105 });
+  assert.equal(p.action, "full");
+  assert.equal(p.closedQty, 4);
+});
+test("M07 close: exitPx falls back to live mark, then entry, when the broker omits the fill price", () => {
+  assert.equal(planClose({ qty: 1, price: 100, entry: 90 }, { confirmedFilled: true, filledQty: 1 }).exitPx, 100);
+  assert.equal(planClose({ qty: 1, entry: 90 }, { confirmedFilled: true, filledQty: 1 }).exitPx, 90);
 });

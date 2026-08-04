@@ -89,6 +89,27 @@ export function reconcileAction(res) {
   return "retain-blocked";                                    // in_flight / unknown / none → block dup, keep reconciling
 }
 
+/* M07 — REAL CLOSE decision (pure, money-critical). Given the open position and the BROKER's reduce-only close
+   result, decide what to book. The three outcomes must never be confused:
+     • unconfirmed — the broker did NOT confirm a fill (reject / pending / partial-not-yet / thrown/unknown). The
+       position MUST stay visible; we never show a false "Closed". Returns { action: "unconfirmed" }.
+     • partial     — the broker filled LESS than the open quantity. We must NOT mark the whole position closed;
+       reduce the tracked qty by the filled amount and keep the residual OPEN. Returns residualQty > 0.
+     • full        — the broker flattened the whole position (filled ≥ open qty, tiny epsilon for float noise).
+   exitPx prefers the broker's real average fill price, then the live mark, then the entry as a last resort.
+   closedQty prefers the broker's real filled qty; only if the broker omitted it AND the fill is confirmed do we
+   assume the requested qty (a confirmed fill with no qty is treated as a full fill of what we asked). */
+export function planClose(position, res) {
+  const openQty = Math.abs(Number(position && position.qty) || 0);
+  if (!res || !res.confirmedFilled || openQty <= 0) return { action: "unconfirmed" };
+  const exitPx = Number(res.avgPrice) > 0 ? Number(res.avgPrice)
+    : (position && position.price != null ? Number(position.price)
+      : (position && position.entry != null ? Number(position.entry) : 0));
+  const closedQty = Number(res.filledQty) > 0 ? Number(res.filledQty) : openQty;
+  if (closedQty >= openQty - 1e-9) return { action: "full", exitPx, closedQty: openQty };
+  return { action: "partial", exitPx, closedQty, residualQty: openQty - closedQty };
+}
+
 /* Per-user localStorage key. NEVER a single global blob — intents are namespaced by authenticated user so
    logging out / switching accounts on a shared browser can't inherit another account's pending intent. */
 export function storeKeyFor(userKey) { return `mx_pending_intents::${userKey || "anon"}`; }

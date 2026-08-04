@@ -63,7 +63,7 @@ import ConfirmOrder from "./components/common/ConfirmOrder";
 import BrokerSheet from "./components/common/BrokerSheet";
 import { brokerSymbol } from "./domain/brokerSymbols";
 import { brokerPlaceOrder, brokerIntentStatus, registerAutoExit, reconcileRealTrades, updateAutoBuy, BROKER_MARKETS } from "./services/brokerService";
-import { OrderLifecycleStore, deriveIntentKey, interpretResult, classifyError, reconcileAction, ORDER_STATES } from "./services/orderLifecycle";
+import { OrderLifecycleStore, deriveIntentKey, interpretResult, classifyError, reconcileAction, ORDER_STATES, planClose } from "./services/orderLifecycle";
 import MatrixRain from "./components/common/MatrixRain";
 import MLogo from "./components/common/MLogo";
 import NeoIcon from "./components/common/NeoIcon";
@@ -643,21 +643,19 @@ function AppInner() {
       try {
         res = await placeRealMarketOrder(stock, flatten, qty, trade.product || "CNC", { tradeType: trade.tradeType || "Screener Auto Buy", reduceOnly: true, market: mkt, strategy: trade.strategy || undefined, strategyId: trade.strategyId || undefined, entryOrderId: trade.orderId || undefined });
       } catch { res = null; }
-      if (res && res.confirmedFilled) {
-        const exitPx = Number(res.avgPrice) > 0 ? Number(res.avgPrice) : (stock.price != null ? stock.price : trade.entry);
-        const closedQty = Number(res.filledQty) > 0 ? Number(res.filledQty) : qty;
-        if (closedQty >= qty - 1e-9) {
-          // Full close — the broker flattened the whole position.
-          closeTrade(trade, exitPx, "Manual");
-          setBuyToast({ t: `Closed ${trade.sym} — broker-confirmed at ${fmt(exitPx, mkt)}` });
-        } else {
-          // R28: a PARTIAL close must NOT mark the whole position closed. Reduce the tracked qty by the amount
-          // actually filled and keep the residual OPEN so the exposure isn't hidden; the user can close the rest.
-          updateTradeRow(trade.id, { qty: qty - closedQty });
-          setBuyToast({ t: `Partially closed ${trade.sym} (${closedQty}/${qty} at ${fmt(exitPx, mkt)}) — ${(qty - closedQty)} still open. Close again to flatten.` });
-        }
+      // R28/M07: the full-vs-partial-vs-unconfirmed decision is the pure, unit-tested planClose() — the live path
+      // and the tests share ONE implementation so a partial fill can never be mis-booked as a full close.
+      const plan = planClose({ qty, price: stock.price, entry: trade.entry }, res);
+      if (plan.action === "full") {
+        closeTrade(trade, plan.exitPx, "Manual");
+        setBuyToast({ t: `Closed ${trade.sym} — broker-confirmed at ${fmt(plan.exitPx, mkt)}` });
+      } else if (plan.action === "partial") {
+        // A PARTIAL close must NOT mark the whole position closed. Reduce the tracked qty by the amount actually
+        // filled and keep the residual OPEN so the exposure isn't hidden; the user can close the rest.
+        updateTradeRow(trade.id, { qty: plan.residualQty });
+        setBuyToast({ t: `Partially closed ${trade.sym} (${plan.closedQty}/${qty} at ${fmt(plan.exitPx, mkt)}) — ${plan.residualQty} still open. Close again to flatten.` });
       } else {
-        // placeRealMarketOrder already surfaced the reject/pending/unknown reason; the position stays visible.
+        // Unconfirmed: placeRealMarketOrder already surfaced the reject/pending/unknown reason; the position stays visible.
         setBuyToast({ t: `Close not confirmed for ${trade.sym} — it stays open until your broker confirms the exit. Verify in your broker.`, e: true });
       }
       return;
