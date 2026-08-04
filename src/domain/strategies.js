@@ -346,10 +346,19 @@ export const ACTIVATE_SYMS = [...new Set(ALL.map((x) => x.sym))];
 /* `priceOf(sym)` (optional) supplies the current price so OPEN paper positions contribute their
    live UNREALISED P&L — without it, a strategy that just opened a position showed "—" because only
    closed trades counted. Realised P&L (closed) + unrealised (open) is the number the user expects. */
+/* R36-P3-02 — AUTHORITATIVE strategy ownership. If a trade carries a strategyId it MUST equal this strategy's id
+   exactly; a trade tagged to a DIFFERENT strategy that merely shares this display name is NOT ours, and we never fall
+   back to a name match for it. Name matching applies ONLY to legacy rows that predate id stamping (strategyId == null).
+   Exported so every Automation calculation shares one predicate (no per-call re-implementation drift). */
+export function ownsStrategyTrade(t, strat) {
+  if (!t || !strat) return false;
+  if (t.strategyId != null) return String(t.strategyId) === String(strat.id);
+  return t.strategy === strat.name;
+}
 export function stratPerf(strat, trades = [], rangeDays = 365, priceOf = null) {
   const from = Date.now() - rangeDays * 86_400_000;
   const mine = (trades || []).filter(
-    (t) => (t.strategyId === strat.id || t.strategy === strat.name) && t.status !== "rejected"
+    (t) => ownsStrategyTrade(t, strat) && t.status !== "rejected"
   ).filter((t) => (t.exitAt || t.entryAt || 0) >= from);
 
   const closed = mine.filter((t) => t.exitAt != null && t.exit != null);

@@ -787,7 +787,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
           </div>
         ))}
       </div>
-      <ScreenerTradeList trades={trades} strategyName={dispName} mode={mode} market={market} periodFrom={periodFrom} priceOf={priceOf} open={showTrades} />
+      <ScreenerTradeList trades={trades} strategyName={dispName} screenerKey={screener.key} nameAmbiguous={AMBIGUOUS_SCREENER_NAMES.has(screener.name)} mode={mode} market={market} periodFrom={periodFrom} priceOf={priceOf} open={showTrades} />
       </>
       )}
     </div>

@@ -7,14 +7,17 @@ import { fmt, chgColor } from "../../lib/format";
    mode + selected period, each with entry/exit date-time, exit type, return % and P&L. P&L is price
    move × quantity held (t.qty is coins / shares / lots for all markets), with shorts inverted — the
    same maths the card's P&L total uses, so the list and the total always agree. */
-export default function ScreenerTradeList({ trades, strategyName, screenerKey, mode, market, periodFrom, priceOf, open }) {
+export default function ScreenerTradeList({ trades, strategyName, screenerKey, nameAmbiguous = false, mode, market, periodFrom, priceOf, open }) {
   const rows = useMemo(() => {
     const isReal = mode === "real";
-    // R34-P3-04: own by immutable screener key (+ market guard) when present; fall back to name for legacy rows. Keeps
-    // this drill-down list identical to the card's P&L/stats, and stops same-named screeners from mixing trades.
+    // R34-P3-04 / R36-P3-03: own by immutable screener key (+ market guard) when the trade carries one; the caller now
+    // passes screenerKey={screener.key}. For LEGACY rows (no key), fall back to display name ONLY when that name is
+    // unambiguous (R36/R35-P4-01 quarantine — nameAmbiguous excludes duplicates), so the drill-down list contains the
+    // SAME trade set as the card's P&L/stats and same-named screeners never mix rows.
     const owns = (t) => {
       if ((t.market || market) !== market) return false;
       if (t.screenerKey != null && screenerKey != null) return String(t.screenerKey) === String(screenerKey);
+      if (nameAmbiguous) return false;
       return t.strategy === strategyName;
     };
     return (trades || [])
@@ -38,7 +41,7 @@ export default function ScreenerTradeList({ trades, strategyName, screenerKey, m
         };
       })
       .sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
-  }, [trades, strategyName, screenerKey, mode, market, periodFrom, priceOf]);
+  }, [trades, strategyName, screenerKey, nameAmbiguous, mode, market, periodFrom, priceOf]);
 
   if (!open) return null;
 
