@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ALL, UNIVERSE, marketOf, yahooSymbol } from "../../domain/universe";
 import { CUR, DAY, chgColor, fmt, lsGet, lsSet } from "../../lib/format";
 import { scanScreener, marketOpen } from "../../domain/api";
@@ -364,10 +364,23 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
     if (period === "6m") return now - 182 * D;
     return 0;
   }, [period]);
+  /* R34-P3-04 — OWNERSHIP by immutable identity, not display name. Two screeners can share a display name (or the same
+     name reused across markets), which would let one screener's trades leak into another's P&L / stats / live positions
+     (the same class of bug fixed for the BTC/BAJAJFINSV strategy card). Match on the screener's stable `key` when the
+     trade carries one (`t.screenerKey`), and ALWAYS require the trade's market to equal this card's market. Fall back
+     to the display name ONLY for legacy rows that predate screenerKey stamping, still market-scoped. */
+  const ownsTrade = useCallback((t) => {
+    if (!t) return false;
+    if ((marketOf(t.sym) || t.market || "IN") !== market) return false;   // market is a hard guard, never name-only
+    if (t.screenerKey != null && screener.key != null) return String(t.screenerKey) === String(screener.key);
+    return t.strategy === dispName;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screener.key, dispName, market]);
+
   const periodPnl = useMemo(() => {
     const isReal = mode === "real";
     return (trades || []).reduce((a, t) => {
-      if (t.strategy !== dispName) return a;                 // only THIS screener's trades
+      if (!ownsTrade(t)) return a;                           // only THIS screener's trades (by key + market)
       if (isReal ? !t.real : !!t.real) return a;             // scope to the active mode
       if (t.status === "rejected" || t.entry == null) return a;
       const closed = t.exitAt != null && t.exit != null;
@@ -383,15 +396,15 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
       return a + p;
     }, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trades, dispName, mode, market, periodFrom, liveTick]);
+  }, [trades, ownsTrade, mode, periodFrom, liveTick]);
 
   /* Does THIS screener have any trades in the active mode? Used so its P&L stays visible even after the
      user turns Auto-Buy OFF — turning the toggle off stops NEW entries, but the screener's realised/open
      P&L (and any positions still live from earlier) should still be shown, not hidden. */
   const hasScreenerTrades = useMemo(() => {
     const isReal = mode === "real";
-    return (trades || []).some((t) => t && t.strategy === dispName && (isReal ? !!t.real : !t.real) && t.status !== "rejected" && t.entry != null);
-  }, [trades, dispName, mode]);
+    return (trades || []).some((t) => ownsTrade(t) && (isReal ? !!t.real : !t.real) && t.status !== "rejected" && t.entry != null);
+  }, [trades, ownsTrade, mode]);
 
   /* TRADE STATS for THIS screener — mirrors the strategy-card stats (Trades, Wins, Loss, Win rate). Scoped
      to this screener's trades in the active mode, within the selected period window. Wins/Loss are counted on
@@ -400,7 +413,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
   const screenerStats = useMemo(() => {
     const isReal = mode === "real";
     const mine = (trades || []).filter((t) =>
-      t && t.strategy === dispName && (isReal ? !!t.real : !t.real)
+      ownsTrade(t) && (isReal ? !!t.real : !t.real)
       && t.status !== "rejected" && t.entry != null
       && (t.exitAt == null || t.exit == null || (t.exitAt || t.entryAt || 0) >= periodFrom));
     const closed = mine.filter((t) => t.exitAt != null && t.exit != null);
@@ -413,16 +426,16 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
     const decided = wins + losses;
     return { trades: mine.length, wins, losses, winRate: decided ? Math.round((wins / decided) * 100) : null };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trades, dispName, mode, periodFrom, liveTick]);
+  }, [trades, ownsTrade, mode, periodFrom, liveTick]);
 
   /* LIVE POSITIONS for THIS screener — its own OPEN trades (entry booked, no exit yet) in the active mode.
      The card subtitle shows the count ("Live Positions X") and tapping it expands this list. */
   const livePositions = useMemo(() => {
     const isReal = mode === "real";
-    return (trades || []).filter((t) => t && t.strategy === dispName && (isReal ? !!t.real : !t.real)
+    return (trades || []).filter((t) => ownsTrade(t) && (isReal ? !!t.real : !t.real)
       && t.status !== "rejected" && t.entry != null && (t.exitAt == null || t.exit == null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trades, dispName, mode, liveTick]);
+  }, [trades, ownsTrade, mode, liveTick]);
   // How many symbols this screener is live on: its curated basket, else the whole market (0 when None).
   const liveSymbolCount = eNone ? 0 : (eSel.length ? eSel.length : (UNIVERSE[market] || []).length);
 
@@ -442,7 +455,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
       const notional = useBasketQty ? cardQty(m.sym) : perCap;
       const qty = market === "Crypto" ? +(notional / price).toFixed(6) : Math.max(1, Math.floor(useBasketQty ? cardQty(m.sym) : (perCap / price)));
       // In "Sell" mode the screener SHORTS its matches instead of buying (same setup, opposite side).
-      (onScreenerBuy || onAutoBuy || onBuy)(inst, qty, { tp: cardTP(m.sym), sl: cardSL(m.sym), strategy: dispName, ...(short ? { side: "SELL", short: true } : {}) });
+      (onScreenerBuy || onAutoBuy || onBuy)(inst, qty, { tp: cardTP(m.sym), sl: cardSL(m.sym), strategy: dispName, screenerKey: screener.key, market, ...(short ? { side: "SELL", short: true } : {}) });
     });
     lsSet(key, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps

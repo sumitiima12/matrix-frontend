@@ -51,23 +51,35 @@ test.describe("admin-enabled virtual — full no-broker journeys (R31-P3-05, har
     expect(brokerHits(), "a virtual buy must not hit any broker endpoint").toHaveLength(0);
   });
 
-  test("a virtual position PERSISTS across reload and still never hits a broker", async ({ page }) => {
+  test("a virtual BUY strictly INCREASES the portfolio position count and PERSISTS across reload (no broker)", async ({ page }) => {
     const brokerHits = trackBrokerCalls(page);
     await enterApp(page);
+    // Count portfolio positions BEFORE the buy. A holding row is a table row / list item that carries a P&L or qty
+    // cell; this count is the exact state we assert changes — a no-op Buy handler leaves it unchanged and FAILS.
+    const gotoPortfolio = async () => { const p = await firstVisible(page, /Portfolio/i); if (p) { await p.click(); await page.waitForTimeout(350); } };
+    const countPositions = () => page.evaluate(() => {
+      const rows = Array.from(document.querySelectorAll("tr,li,[data-position],[data-holding]"));
+      const isPos = (el) => /[▲▼]|[-+]?[₹$]\s?\d|P&?L|\bqty\b|\b\d+(\.\d+)?\s*(shares|coins|lots|units)\b/i.test(el.textContent || "");
+      return rows.filter(isPos).length;
+    });
+    await gotoPortfolio();
+    const before = await countPositions();
+    // Place a virtual buy — confirmation is MANDATORY here (a real trade must be committed, not just intended).
+    const home = await firstVisible(page, /Home|Screener/i); if (home) { await home.click(); await page.waitForTimeout(300); }
     const buy = await firstVisible(page, /^Buy$|^Buy /i);
     expect(buy, "a Buy control must exist").not.toBeNull();
     await buy.click(); await page.waitForTimeout(300);
     const confirm = await firstVisible(page, /Confirm|Place|^Buy$/i);
-    if (confirm) { await confirm.click(); await page.waitForTimeout(400); }
-    // Open the Portfolio and capture the position/holdings surface, then reload and assert it survived.
-    const port = await firstVisible(page, /Portfolio/i);
-    if (port) { await port.click(); await page.waitForTimeout(300); }
-    const posBefore = page.getByText(/position|holding|P&?L|invested/i).first();
-    await expect(posBefore, "a virtual holding/position must render after the buy").toBeVisible({ timeout: 4000 });
-    await page.reload(); await page.waitForTimeout(700);
-    const port2 = await firstVisible(page, /Portfolio/i);
-    if (port2) { await port2.click(); await page.waitForTimeout(300); }
-    await expect(page.getByText(/position|holding|P&?L|invested/i).first(), "the virtual position persists across reload").toBeVisible({ timeout: 4000 });
+    expect(confirm, "a confirm control must appear and be clicked (no optional confirm)").not.toBeNull();
+    await confirm.click(); await page.waitForTimeout(500);
+    await gotoPortfolio();
+    const after = await countPositions();
+    expect(after, "a virtual buy must add exactly one holding/position (strict state transition)").toBeGreaterThan(before);
+    // Reload and assert the new position survived (identity persists), still with zero broker traffic.
+    await page.reload(); await page.waitForTimeout(800);
+    await gotoPortfolio();
+    const afterReload = await countPositions();
+    expect(afterReload, "the virtual position count persists across reload").toBeGreaterThanOrEqual(after);
     expect(brokerHits(), "no broker endpoint touched across the whole journey").toHaveLength(0);
   });
 

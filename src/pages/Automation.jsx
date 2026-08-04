@@ -2987,8 +2987,12 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
         {/* A strategy with no closed trades has NO win rate. stratPerf returns null
-            rather than inventing one, so every figure here must handle null. */}
-        <MetricMini k="Trades" v={p.trades} />
+            rather than inventing one, so every figure here must handle null.
+            R34-P3-05: `p.trades` counts CLOSED round-trips only, so a strategy with a single OPEN triggered entry used
+            to read "Trades 0" beside "ENTRY TRIGGERED" — confusing. Label it "Closed", and show "Open" whenever there
+            is at least one live position, so an open entry is never misread as zero activity. */}
+        <MetricMini k="Closed" v={p.trades} />
+        {(p.open || 0) > 0 && <MetricMini k="Open" v={p.open} c="var(--primary)" />}
         <MetricMini k="Win rate" v={p.winRate == null ? "—" : p.winRate.toFixed(0) + "%"} />
         <MetricMini k="P&L" v={p.pnl == null ? "—" : (p.pnl >= 0 ? "+" : "") + fmt(p.pnl, market)} c={chgColor(p.pnl)} />
         <MetricMini k="Returns" v={pct(p.retPct, 1)} c={chgColor(p.retPct)} />
