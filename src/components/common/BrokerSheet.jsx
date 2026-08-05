@@ -70,6 +70,8 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
   const shown = useMemo(() => {
     const t = q.trim().toLowerCase();
     let list = BROKERS;
+    // Temporarily hidden brokers (no creds yet) — never offered as a connect option.
+    list = list.filter((b) => !b.hidden);
     // Server-side house feeds (FYERS, Delta) aren't per-user connects — hide unless admin.
     if (!isAdmin) list = list.filter((b) => !b.adminOnly);
     // A non-admin only sees brokers for markets the admin has ENABLED broker-connect on. If only

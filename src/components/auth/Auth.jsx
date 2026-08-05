@@ -343,6 +343,89 @@ export function LoginModal({ onClose, onAuthed }) {
 const inpStyle = { width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: "12px 14px", fontSize: 15, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" };
 // Human-readable summary of the personalisation answers.
 
+/* In-app "How to connect" guide for the Broker connections card. Mirrors the
+   MatrixOne Broker Connection Guide: per broker, create an API key, whitelist the
+   IP, then connect in MatrixOne. Collapsible per-broker steps to keep it compact. */
+const BROKER_HOWTO = [
+  {
+    name: "FYERS", markets: "Indian · F&O · Commodity", portal: "myapi.fyers.in/dashboard",
+    create: ["Log in at myapi.fyers.in/dashboard and click Create App.", "Set the Redirect URL to the one shown on the MatrixOne Connect screen and pick the permissions (Orders, Positions, Holdings, Data).", "Copy the App ID and Secret ID — the Secret is shown once."],
+    ip: ["Open your app and add your dedicated static IP to the whitelist field.", "FYERS does NOT allow the same IP for multiple people — use your own static IP, never a shared one."],
+    connect: ["Broker connections → Manage → FYERS.", "Paste the App ID + Secret, tap “Log in with FYERS”, and authorise."],
+  },
+  {
+    name: "Dhan", markets: "Indian · F&O · Commodity", portal: "dhan.co → Profile → DhanHQ Trading APIs",
+    create: ["On Dhan Web go to Profile → DhanHQ Trading APIs (first time: Request Access, then refresh).", "Generate the Access Token (valid 24 hours) and note your Client ID."],
+    ip: ["Add your dedicated static IP if your key enforces IP binding.", "Use your own static IP, not a shared one."],
+    connect: ["Broker connections → Manage → Dhan.", "Use “Log in with Dhan”, or paste Client ID + Access Token. Re-generate the token daily when prompted."],
+  },
+  {
+    name: "IND Money", markets: "Indian · F&O", portal: "indstocks.com → API / Algo Trading",
+    create: ["Finish KYC + F&O onboarding on indstocks.com.", "In the Algo Trading Portal open Access Tokens and generate a token."],
+    ip: ["A static IP is MANDATORY for live orders.", "Whitelist your dedicated static IP in the portal, then generate the token for that IP."],
+    connect: ["Broker connections → Manage → IND Money.", "Paste the Access Token. Regenerate and re-paste when it expires."],
+  },
+  {
+    name: "CoinDCX", markets: "Crypto (spot) · 24×7", portal: "coindcx.com → Profile → API Dashboard",
+    create: ["Profile → API Dashboard → Create A New One; enable Trade + Read.", "Verify via email + mobile OTP, then copy the API Key and Secret — the Secret hides forever after refresh."],
+    ip: ["Tick “Bind IP Address” and create the key from your dedicated static IP (recommended).", "An IP-bound key can’t be shared across different IPs."],
+    connect: ["Broker connections → Manage → CoinDCX.", "Paste the API Key + Secret. Crypto runs 24×7."],
+  },
+  {
+    name: "Groww", markets: "Indian · F&O", portal: "groww.in/developer-portal",
+    create: ["Open the Groww Trade API portal → Getting Started and log in.", "Trading APIs → Generate API Keys → Access Token (or API Key + Secret). Copy them."],
+    ip: ["Add your own dedicated static IP if your key enforces IP binding."],
+    connect: ["Broker connections → Manage → Groww.", "Paste the Access Token. Tokens expire daily — regenerate when prompted."],
+  },
+];
+
+function BrokerHowTo({ onClose }) {
+  const [openIdx, setOpenIdx] = React.useState(0);
+  const Steps = ({ title, items }) => (
+    <div style={{ marginTop: 6 }}>
+      <div style={{ fontSize: 10, fontWeight: 800, color: "var(--primary)", textTransform: "uppercase", letterSpacing: 0.3 }}>{title}</div>
+      <ol style={{ margin: "3px 0 0", paddingLeft: 16 }}>
+        {items.map((s, i) => <li key={i} style={{ fontSize: 11, color: "var(--ink)", lineHeight: 1.5, marginTop: 1 }}>{s}</li>)}
+      </ol>
+    </div>
+  );
+  return (
+    <div style={{ marginTop: 10, border: "1px solid var(--line)", borderRadius: 12, background: "var(--surface)", overflow: "hidden" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 11px", background: "var(--primary-soft)" }}>
+        <div style={{ fontSize: 11.5, fontWeight: 800, color: "var(--primary)" }}>How to connect a broker</div>
+        <button onClick={onClose} className="tap disp" style={{ border: "none", background: "transparent", color: "var(--muted)", fontSize: 15, fontWeight: 800, cursor: "pointer", lineHeight: 1 }} aria-label="Close">×</button>
+      </div>
+      <div style={{ fontSize: 10, color: "var(--muted)", padding: "7px 11px 0", lineHeight: 1.45 }}>
+        Three steps per broker: create your API key, whitelist your own dedicated static IP (you arrange this yourself — each user needs their own), then connect it here. Most Indian brokers reject orders from a non-whitelisted or shared IP.
+      </div>
+      <div style={{ padding: "6px 8px 9px" }}>
+        {BROKER_HOWTO.map((b, idx) => {
+          const open = openIdx === idx;
+          return (
+            <div key={b.name} style={{ borderTop: idx === 0 ? "none" : "1px solid var(--line)" }}>
+              <button onClick={() => setOpenIdx(open ? -1 : idx)} className="tap disp" style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, background: "transparent", border: "none", padding: "9px 4px", cursor: "pointer", textAlign: "left" }}>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 800, color: "var(--ink)" }}>{b.name}</span>
+                  <span style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700, marginLeft: 7 }}>{b.markets}</span>
+                </span>
+                <span style={{ fontSize: 12, color: "var(--muted)", flex: "0 0 auto" }}>{open ? "▲" : "▼"}</span>
+              </button>
+              {open && (
+                <div style={{ padding: "0 4px 10px" }}>
+                  <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700, marginBottom: 2 }}>Portal: {b.portal}</div>
+                  <Steps title="1) Create your API key" items={b.create} />
+                  <Steps title="2) Whitelist the IP" items={b.ip} />
+                  <Steps title="3) Connect to MatrixOne" items={b.connect} />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* Set/change your security question (recovery). Logged-in only; the backend derives the
    account from the auth token, so a user can only set their own. */
 function SecurityQuestionCard() {
@@ -627,6 +710,7 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
      ₹ and $ cannot be added together without an exchange rate for every day in the
      series, and we do not have one — a blended "net worth" line would be invented. */
   const [curveMkt, setCurveMkt] = useState(market || "IN");
+  const [showBrokerHelp, setShowBrokerHelp] = useState(false);
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(10,10,20,.4)", zIndex: 60, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
       <div onClick={(e) => e.stopPropagation()} className="sheet card" style={{ width: "100%", maxWidth: 460, borderRadius: "24px 24px 0 0", padding: 20, height: "80vh", maxHeight: "80vh", overflowY: "auto" }}>
@@ -645,15 +729,19 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
           <div className="card" style={{ marginTop: 14, padding: 14 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>Broker connections</div>
-              <button onClick={() => onBroker()} className="tap disp" style={{ border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 10, padding: "6px 11px", fontWeight: 800, fontSize: 11.5 }}>Manage</button>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <button onClick={() => setShowBrokerHelp((v) => !v)} className="tap disp" style={{ border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: "6px 10px", fontWeight: 800, fontSize: 11.5, cursor: "pointer" }} aria-expanded={showBrokerHelp}>How to connect</button>
+                <button onClick={() => onBroker()} className="tap disp" style={{ border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 10, padding: "6px 11px", fontWeight: 800, fontSize: 11.5 }}>Manage</button>
+              </div>
             </div>
             <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 3, lineHeight: 1.45 }}>A different broker per market. Prices are live via the built-in feed where shown.</div>
+            {showBrokerHelp && <BrokerHowTo onClose={() => setShowBrokerHelp(false)} />}
             {[["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["Commodity", "🪙 Commodity"]].map(([m, label]) => {
               const personal = brokerById(marketBrokers && marketBrokers[m]);   // a broker YOU connected
               const feedName = m === "IN" && houseFeeds.fyers ? "FYERS" : m === "Crypto" && houseFeeds.delta ? "Delta" : null;   // built-in price feed
               // Is there any broker THIS user can actually connect for this market? (house feeds are admin-only)
               const profEffAdmin = isAdminUser && adminMode;
-              const canConnect = BROKERS.some((b) => b.status === "ready" && !(b.adminOnly && !profEffAdmin) && (b.markets || []).includes(m));
+              const canConnect = BROKERS.some((b) => b.status === "ready" && !b.hidden && !(b.adminOnly && !profEffAdmin) && (b.markets || []).includes(m));
               return (
                 <div key={m} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "9px 0", borderTop: "1px solid var(--line)" }}>
                   <div style={{ minWidth: 0 }}>

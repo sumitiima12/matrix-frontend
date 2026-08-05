@@ -19,6 +19,7 @@ export const BROKERS = [
     name: "Zerodha",
     markets: ["IN", "FNO", "Commodity"],
     status: "ready",
+    hidden: true,   // temporarily hidden until creds are ready — unhide by removing this line
     realtime: true,
     oi: true,
     depth: true,
@@ -150,6 +151,7 @@ export const BROKERS = [
     name: "Angel One",
     markets: ["IN", "FNO", "Commodity"],
     status: "ready",
+    hidden: true,   // temporarily hidden until creds are ready — unhide by removing this line
     realtime: false,
     oi: false,
     depth: false,
@@ -184,6 +186,7 @@ export const BROKERS = [
     name: "Charles Schwab",
     markets: ["US"],
     status: "ready",
+    hidden: true,   // temporarily hidden until creds are ready — unhide by removing this line
     realtime: true,
     oi: false,
     depth: true,
