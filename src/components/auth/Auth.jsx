@@ -368,7 +368,7 @@ const BROKER_HOWTO = [
   {
     name: "CoinDCX", markets: "Crypto (spot) · 24×7", portal: "coindcx.com → Profile → API Dashboard",
     create: ["Profile → API Dashboard → Create A New One; enable Trade + Read.", "Verify via email + mobile OTP, then copy the API Key and Secret — the Secret hides forever after refresh."],
-    ip: ["Tick “Bind IP Address” and create the key from your dedicated static IP (recommended).", "An IP-bound key can’t be shared across different IPs."],
+    ip: ["Tick “Bind IP Address” and whitelist the MatrixOne server IP: 161.118.165.190.", "This is the same IP for every user — crypto exchanges allow many keys on one IP, so no dedicated per-user IP is needed."],
     connect: ["Broker connections → Manage → CoinDCX.", "Paste the API Key + Secret. Crypto runs 24×7."],
   },
   {
@@ -396,7 +396,7 @@ function BrokerHowTo({ onClose }) {
         <button onClick={onClose} className="tap disp" style={{ border: "none", background: "transparent", color: "var(--muted)", fontSize: 15, fontWeight: 800, cursor: "pointer", lineHeight: 1 }} aria-label="Close">×</button>
       </div>
       <div style={{ fontSize: 10, color: "var(--muted)", padding: "7px 11px 0", lineHeight: 1.45 }}>
-        Three steps per broker: create your API key, whitelist your own dedicated static IP (you arrange this yourself — each user needs their own), then connect it here. Most Indian brokers reject orders from a non-whitelisted or shared IP.
+        Three steps per broker: create your API key, whitelist the IP, then connect it here. Indian brokers (FYERS, Dhan, IND Money) need your OWN dedicated static IP that you arrange yourself. Crypto (CoinDCX) instead whitelists the shared MatrixOne server IP 161.118.165.190.
       </div>
       <div style={{ padding: "6px 8px 9px" }}>
         {BROKER_HOWTO.map((b, idx) => {
