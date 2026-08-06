@@ -918,7 +918,7 @@ function ScreenerDashboard({ trades = [], market }) {
   })();
   const retDenom = peakReservedCapital > 0 ? peakReservedCapital : invested;
   const ret = retDenom > 0 ? (pnl / retDenom) * 100 : null;
-  if (!mine.length) return null;   // nothing traded yet — no empty dashboard
+  // Always render (even with no trades yet) so the Screener dashboard is visible; it just shows zeros.
   const up = pnl >= 0;
   // Automate-style DStat tile.
   const Tile = ({ k, v, c, onClick, active }) => (
@@ -1006,7 +1006,12 @@ function ScreenerLivePositions({ trades = [], market, onClosePosition, onUpdateP
     t && t.tradeType === "Screener Auto Buy" && (t.market || "") === market && t.status !== "rejected"
     && Number(t.entry) > 0 && (t.exitAt == null || t.exit == null))
     .sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0)), [trades, market]);
-  if (!open.length) return null;
+  if (!open.length) return (
+    <div className="card" style={{ padding: 12, marginBottom: 10 }}>
+      <div className="disp" style={{ fontWeight: 800, fontSize: 12.5 }}>Live Positions <span style={{ color: "var(--muted)" }}>· 0</span></div>
+      <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6 }}>No live screener positions right now.</div>
+    </div>
+  );
   const rows = seeAll ? open : open.slice(0, 5);
   const th = { fontSize: 8.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", padding: "6px 7px", textAlign: "left", whiteSpace: "nowrap" };
   const td = { fontSize: 10.5, fontWeight: 700, padding: "6px 7px", borderTop: "1px solid var(--line)", whiteSpace: "nowrap" };
