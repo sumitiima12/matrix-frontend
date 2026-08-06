@@ -33,7 +33,7 @@ export function useSquareOff({ portfolio, onSell, enabled = true, notify }) {
     };
 
     tick();
-    const id = setInterval(tick, 30000);
+    const id = setInterval(tick, 60000);   // 60s — this tick can EXECUTE a square-off sell, so keep it responsive (not slower)
     return () => clearInterval(id);
   }, [portfolio, onSell, enabled, notify]);
 }

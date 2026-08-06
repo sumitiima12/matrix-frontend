@@ -990,7 +990,7 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
   const [data, setData] = useState({ strategies: [], engineLive: false });
   const [busy, setBusy] = useState(false);
   const refresh = () => { if (userId) loadAutoBuys(userId).then(setData); };
-  useEffect(() => { refresh(); const id = setInterval(refresh, 30000); return () => clearInterval(id); /* eslint-disable-next-line */ }, [userId]);
+  useEffect(() => { refresh(); const id = setInterval(refresh, 60000); return () => clearInterval(id); /* eslint-disable-next-line */ }, [userId]);
   // Only strategies for the market you're on (a crypto auto-buy doesn't show under Indian) AND that
   // actually hold a LIVE position right now — "Live" means in a FILLED trade, not merely armed and
   // waiting. Matching the Virtual "Live" (open>0), we require a real fill, since the server's
@@ -2243,7 +2243,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
      non-clickable "Real Live" instead of "Go Live" and can't be armed a second time. */
   const [armedReal, setArmedReal] = useState([]);
   const refreshArmed = () => { if (userId) loadAutoBuys(userId).then((d) => setArmedReal((d && d.strategies) || [])).catch(() => {}); };
-  useEffect(() => { refreshArmed(); const t = setInterval(refreshArmed, 30000); return () => clearInterval(t); /* eslint-disable-next-line */ }, [userId]);
+  useEffect(() => { refreshArmed(); const t = setInterval(refreshArmed, 60000); return () => clearInterval(t); /* eslint-disable-next-line */ }, [userId]);
   const isArmedReal = (s) => armedReal.some((a) => a && a.status !== "cancelled" && (a.name || "") === (s.name || "") && (!s.symbols || !s.symbols.length || a.symbol === s.symbols[0]));
   async function armLive(s) {
     setLiveMsg(null);

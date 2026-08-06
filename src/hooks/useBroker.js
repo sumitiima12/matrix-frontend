@@ -26,7 +26,7 @@ import {
  * If the token dies — both brokers expire theirs daily — the session is cleared and the
  * app falls back to Yahoo, rather than flying a "LIVE" badge over stale numbers.
  */
-export function useBroker({ onTick, userId, intervalMs = 20000 } = {}) {   // 20s broker poll — was 2s; the 2s cadence was hammering /api/broker/quotes+portfolio (thousands of reqs → 502s)
+export function useBroker({ onTick, userId, intervalMs = 60000 } = {}) {   // 60s broker poll — was 2s; the 2s cadence was hammering /api/broker/quotes+portfolio (thousands of reqs → 502s)
   /* Consecutive quote failures per broker. A cold Render backend routinely 502s the first
      poll or two right after connect — that must NOT be treated as a dead token. We only
      drop a broker after several failures in a row, and only ever on a genuine auth status
