@@ -2215,7 +2215,7 @@ function StrategyPnl({ s, trades = [], market }) {
       </select>
       <div style={{ flex: 1 }} />
       <div style={{ textAlign: "right" }}>
-        <div style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 800 }}>P&amp;L (estimated)</div>
+        <div style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 800 }}>P&amp;L</div>
         <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: chgColor(pnl) }}>{(pnl >= 0 ? "+" : "") + fmt(pnl, market)}</div>
       </div>
     </div>
@@ -3637,9 +3637,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       ) : stratTab === "premium" ? (
         <>
           <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 2px 8px" }}>
-            <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.5, flex: 1 }}>
-              Matrix's curated strategies — Long run standard; Short are their mirror setups (profit when the setup breaks down; shorting executes on crypto &amp; Indian options, paper elsewhere). Rules are locked.
-            </div>
+            <div style={{ flex: 1 }} />
             <button onClick={() => setCompareOpen((v) => !v)} className="tap disp" style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 5, border: "1px solid " + (compareOpen ? "var(--primary)" : "var(--line)"), background: compareOpen ? "var(--primary-soft)" : "var(--surface)", color: compareOpen ? "var(--primary)" : "var(--ink)", borderRadius: 10, padding: "7px 11px", fontWeight: 800, fontSize: 11.5 }}>
               <ListChecks size={14} /> {compareOpen ? "Hide table" : "Compare all"}
             </button>
@@ -3728,7 +3726,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           {/* #2: filter tabs across the top — All / Long / Short / Live / Not Live — instead of stacked sections. */}
           {deployedAll.length > 0 && (
             <div style={{ display: "flex", gap: 6, marginBottom: 12, overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-              {[["all", "All"], ["long", "Long"], ["short", "Short"], ["live", "Live"], ["notlive", "Not Live"]].map(([k, lbl]) => (
+              {[["all", "All"], ["long", "Long"], ["short", "Short"]].map(([k, lbl]) => (
                 <button key={k} type="button" onClick={() => setDeployTab(k)} className="tap disp"
                   style={{ flex: "0 0 auto", padding: "7px 14px", borderRadius: 999, fontWeight: 800, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap", border: "1px solid " + (deployTab === k ? "var(--primary)" : "var(--line)"), background: deployTab === k ? "var(--primary)" : "transparent", color: deployTab === k ? "#fff" : "var(--muted)" }}>
                   {lbl}

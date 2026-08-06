@@ -176,7 +176,7 @@ function ScreenerStats({ screenerKey, market, defs, entry, exit, sl, tp, tf, sym
             capital is smaller than notional, so this understates leveraged return — comparing across asset types
             should account for that. An honest label beats a misleading "Return". */}
         {cell("Return / Notional", (stats.retPct >= 0 ? "+" : "") + (stats.retPct || 0).toFixed(1) + "%", stats.retPct >= 0 ? "var(--up)" : "var(--down)")}
-        {cell("P&L", stats.pnl == null ? "—" : (stats.pnl >= 0 ? "+" : "") + fmt(stats.pnl, market), (stats.pnl || 0) >= 0 ? "var(--up)" : "var(--down)")}
+        {cell("P&L", stats.pnl == null ? "—" : (stats.pnl >= 0 ? "+" : "") + fmt(Number(Number(stats.pnl).toFixed(2)), market), (stats.pnl || 0) >= 0 ? "var(--up)" : "var(--down)")}
         {cell("Max DD", stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmt(stats.maxDD, market) : fmt(0, market)) : "—", "var(--down)")}
         {cell("Symbols", stats.symbols || 0)}
       </div>
@@ -332,21 +332,29 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
   };
   const clearAutoSelect = () => { const nb = { selSyms: [], selNone: false }; setBasket(nb); lsSet(basketKey, nb); setAutoSel({ running: false, done: false, n: 0, total: 0, kept: 0, win: 45, ret: 5 }); };
 
-  // Live scan for THIS market's universe.
+  /* Live scan for THIS market's universe. Screeners run on 5-MINUTE candles, so re-scanning on every
+     liveTick (which fires every few seconds from price/broker polling) is pointless AND was hammering
+     the backend — with several active screeners mounted it produced a storm of /api/screener-scan calls
+     that the server rate-limited (429), which in turn starved real order calls. So the scan now runs on
+     mount + config/basket change, then on a 60s interval — never off liveTick. */
   useEffect(() => {
     let stop = false;
-    // None (auto-select found nothing) → scan no symbols. Else curated basket if set, else the market.
-    const syms = eNone ? [] : (eSel.length ? eSel : (UNIVERSE[market] || []).map((s) => s.sym).slice(0, 40));
-    setCapital(lsGet(capKey, capDefault(market)));
-    setAutoOn(lsGet(autoKey, DEFAULT_ACTIVE_KEYS.includes(screener.key)));
-    if (!syms.length) { setMatches([]); return undefined; }
-    let h = 0; for (let i = 0; i < cfgSig.length; i++) h = (h * 31 + cfgSig.charCodeAt(i)) | 0;
-    scanScreener({ key: `${screener.key}:${(h >>> 0).toString(36)}`, defs: eDefs, entry: eEntry, tf: eTf, appSyms: syms })
-      .then((list) => { if (!stop) setMatches(Array.isArray(list) ? list : []); })
-      .catch(() => { if (!stop) setMatches([]); });
-    return () => { stop = true; };
+    const runScan = () => {
+      // None (auto-select found nothing) → scan no symbols. Else curated basket if set, else the market.
+      const syms = eNone ? [] : (eSel.length ? eSel : (UNIVERSE[market] || []).map((s) => s.sym).slice(0, 40));
+      setCapital(lsGet(capKey, capDefault(market)));
+      setAutoOn(lsGet(autoKey, DEFAULT_ACTIVE_KEYS.includes(screener.key)));
+      if (!syms.length) { setMatches([]); return; }
+      let h = 0; for (let i = 0; i < cfgSig.length; i++) h = (h * 31 + cfgSig.charCodeAt(i)) | 0;
+      scanScreener({ key: `${screener.key}:${(h >>> 0).toString(36)}`, defs: eDefs, entry: eEntry, tf: eTf, appSyms: syms })
+        .then((list) => { if (!stop) setMatches(Array.isArray(list) ? list : []); })
+        .catch(() => { if (!stop) setMatches([]); });
+    };
+    runScan();
+    const id = setInterval(runScan, 60000);   // 5-min-candle screeners → 60s polling is ample; kills the 429 storm
+    return () => { stop = true; clearInterval(id); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [market, liveTick, cfgSig]);
+  }, [market, cfgSig, eNone, eSel.join(",")]);
 
   const capNum = Math.max(1, parseInt(capital) || Number(capDefault(market)));
   const perCap = capNum / Math.max(1, matches.length);
@@ -500,7 +508,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
             <span style={{ color: "var(--line)" }}>·</span>
             {/* Symbols count — the screener's scan universe (its selected basket, or the whole market when none
                 is selected). M04: labelled so it's not mistaken for matching/open-position count. */}
-            <span title="Symbols this screener scans — its selected basket, or the whole market universe when none is selected. Not the number currently matching or held." style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)" }}><span className="mono" style={{ color: "var(--ink)" }}>{liveSymbolCount}</span> Symbols{eSel.length ? "" : " (universe)"}</span>
+            <span title="Symbols this screener scans — its selected basket, or the whole market universe when none is selected. Not the number currently matching or held." style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)" }}><span className="mono" style={{ color: "var(--ink)" }}>{liveSymbolCount}</span> Symbols</span>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
@@ -560,7 +568,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
           display: "flex", alignItems: "center", justifyContent: "center", gap: 7, opacity: autoSel.running ? 0.7 : 1,
         }}>
           <Sparkles size={13} color="var(--primary)" />
-          {autoSel.running ? `Backtesting… ${autoSel.n}/${autoSel.total}` : ((eSel.length || eNone) ? "Re-run Auto-Select Symbols" : "Auto-Select Symbols")}
+          {autoSel.running ? `Backtesting… ${autoSel.n}/${autoSel.total}` : "Auto-Select Symbols"}
         </button>
         {(eSel.length > 0 || eNone) && !autoSel.running && (
           <button onClick={clearAutoSelect} className="tap disp" title="Clear the auto-selected basket (scan the whole market again)" style={{ flexShrink: 0, border: "1px solid var(--line)", background: "transparent", color: "var(--muted)", borderRadius: 10, padding: "8px 11px", fontSize: 11, fontWeight: 800 }}>Clear</button>
@@ -770,7 +778,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
         <div style={{ flex: "1 1 0" }} />
         <button type="button" onClick={() => setShowTrades((v) => !v)} className="tap" title="Tap to see the list of trades" style={{ flex: "0 0 auto", textAlign: "right", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>
           <div style={{ fontSize: 8.5, color: "var(--primary)", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3 }}>P&amp;L <span style={{ display: "inline-block", transform: showTrades ? "rotate(180deg)" : "none", transition: "transform .15s", fontSize: 8 }}>▾</span></div>
-          <div className="mono" style={{ fontWeight: 800, fontSize: 16, color: chgColor(periodPnl), textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 3 }}>{(periodPnl >= 0 ? "+" : "") + fmt(periodPnl, market)}</div>
+          <div className="mono" style={{ fontWeight: 800, fontSize: 16, color: chgColor(periodPnl), textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 3 }}>{(periodPnl >= 0 ? "+" : "") + fmt(Number(Number(periodPnl).toFixed(2)), market)}</div>
         </button>
       </div>
       {/* Trade stats — mirrors the strategy cards: Trades, Wins, Loss, Win rate (P&L shown above). */}

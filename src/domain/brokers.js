@@ -127,6 +127,7 @@ export const BROKERS = [
     fields: [
       { key: "accessToken", label: "Access token", type: "password", hint: "From web.dhan.co → DhanHQ Trading APIs → Generate token" },
       { key: "clientId", label: "Client ID", type: "text", hint: "Your Dhan client ID (dhanClientId)" },
+      { key: "proxyUrl", label: "Proxy URL (your dedicated IP)", type: "text", optional: true, hint: "http://user:pass@YOUR_STATIC_IP:PORT — your own VPS/proxy whose IP you whitelisted on your Dhan key. Orders route through it. Leave blank if you whitelisted this app's IP directly." },
     ],
     note: "Paste an access token generated on web.dhan.co (DhanHQ Trading APIs → Generate token). Shows your real Dhan holdings; live prices come from the FYERS feed. Tokens expire — regenerate when it stops working.",
     docs: "https://dhanhq.co/docs/v2/",
@@ -142,6 +143,7 @@ export const BROKERS = [
     userCreds: true,
     fields: [
       { key: "accessToken", label: "Access token", type: "password", hint: "indstocks.com → log in → /app/api-trading → Generate Token. NOTE: it expires every 24h, regenerate daily." },
+      { key: "proxyUrl", label: "Proxy URL (your dedicated IP)", type: "text", optional: true, hint: "http://user:pass@YOUR_STATIC_IP:PORT — your own VPS/proxy whose IP you whitelisted on IND Money (a static IP is REQUIRED for live orders). Orders route through it." },
     ],
     note: "Trade Indian (NSE) stocks via the INDstocks API. Paste your access token from indstocks.com/app/api-trading (expires daily). Flat ₹5/order. (US prices in Matrix already come from IND Money automatically — no connection needed for those.)",
     docs: "https://api-docs.indstocks.com/",

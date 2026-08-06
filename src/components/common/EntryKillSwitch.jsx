@@ -10,7 +10,7 @@ import { confirmDialog } from "../../lib/confirmDialog";
  * re-connect / re-login, unlike disconnecting the broker). Self-contained — loads its own state, so it
  * can be dropped anywhere in real mode with no prop wiring.
  */
-export default function EntryKillSwitch() {
+export default function EntryKillSwitch({ compact = false }) {
   const [halted, setHalted] = useState(null);   // null = loading
   const [busy, setBusy] = useState(false);
 
@@ -34,13 +34,15 @@ export default function EntryKillSwitch() {
       aria-pressed={halted}
       className="tap disp"
       style={{
-        width: "100%", marginBottom: 12, padding: "11px", borderRadius: 11, fontWeight: 800, fontSize: 13, cursor: "pointer",
+        width: "100%", marginBottom: compact ? 0 : 12,
+        padding: compact ? "9px 12px" : "11px", borderRadius: 10, fontWeight: 800,
+        fontSize: compact ? 11.5 : 13, cursor: "pointer", whiteSpace: "nowrap", textAlign: "center",
         border: "1px solid " + (halted ? "var(--up)" : "var(--down)"),
         background: halted ? "var(--up-soft)" : "transparent",
         color: halted ? "var(--up)" : "var(--down)", opacity: busy ? 0.6 : 1,
       }}
     >
-      {busy ? "…" : halted ? "▶ Resume new entries" : "⏸ Pause new entries (kill switch)"}
+      {busy ? "…" : halted ? "▶ Resume New Entries" : "⏸ Pause New Entries"}
     </button>
   );
 }

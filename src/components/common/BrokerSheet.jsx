@@ -85,7 +85,7 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
   }, [q, marketFilter, isAdmin, canConnectMarket]);
 
   const submitCreds = async (b) => {
-    const missing = (b.fields || []).filter((f) => !String(creds[f.key] || "").trim());
+    const missing = (b.fields || []).filter((f) => !f.optional && !String(creds[f.key] || "").trim());
     if (missing.length) { setErr(`Enter: ${missing.map((f) => f.label).join(", ")}.`); return; }
     setErr(null);
     setBusy(b.id);
