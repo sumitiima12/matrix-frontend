@@ -228,6 +228,7 @@ function StockIdeasStrip({ onOpen, onBuy, market, liveTick = 0 }) {
               {s && onBuy && (
                 <div style={{ marginTop: 10 }} onClick={(e) => e.stopPropagation()}>
                   <BuyButton s={s} market={m} onBuy={onBuy} lot={s.lot || 1} fullWidth
+                    only={(idea.direction === "Short" || idea.side === "SELL" || idea.short) ? "sell" : "buy"}
                     opts={{ tp: idea.gain, sl: (idea.entry && idea.stop) ? +(((idea.entry - idea.stop) / idea.entry) * 100).toFixed(2) : undefined, tradeType: "Manual" }} />
                 </div>
               )}

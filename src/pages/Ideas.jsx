@@ -320,6 +320,7 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
             {s && onBuy && (
               <div style={{ marginTop: 12 }}>
                 <BuyButton s={s} market={market} onBuy={onBuy} lot={s.lot || 1} fullWidth
+                  only={(idea.direction === "Short" || idea.side === "SELL" || idea.short) ? "sell" : "buy"}
                   opts={{ tp: idea.gain, sl: (idea.entry && idea.stop) ? +(((idea.entry - idea.stop) / idea.entry) * 100).toFixed(2) : undefined, tradeType: "Manual" }} />
               </div>
             )}
