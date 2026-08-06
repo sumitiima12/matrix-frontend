@@ -255,7 +255,7 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
   // Recomputed from real data as it arrives, rather than frozen at import time.
   const [ideas, setIdeas] = useState(currentIdeas);
   useEffect(() => {
-    const id = setInterval(() => setIdeas(currentIdeas()), 60000);
+    const id = setInterval(() => setIdeas(currentIdeas()), 1800000);   // 30 min — ideas rarely change; frequent refresh is wasteful
     return () => clearInterval(id);
   }, []);
   const [open, setOpen] = useState(false);
