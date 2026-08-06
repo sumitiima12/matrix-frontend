@@ -143,7 +143,7 @@ function ManageHolding({ r, st, onBuy, onSell, onUpdate, onClose, real = false, 
       {/* Sell */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 9 }}>
         {stepper(sellQty, setSellQty, r.qty)}
-        <button onClick={() => { onSell && onSell(st, sellQty, { market: r.market || r.m }); onClose && onClose(); }} className="tap disp" style={{ flex: 1, background: "linear-gradient(120deg,var(--down),#D93A4E)", color: "#fff", border: "none", borderRadius: 10, padding: 11, fontWeight: 800, fontSize: 13 }}>Sell · {sellQty}</button>
+        <button onClick={() => { onSell && onSell(st, sellQty, { market: r.market || r.m, product: r.product || r.productType || undefined }); onClose && onClose(); }} className="tap disp" style={{ flex: 1, background: "linear-gradient(120deg,var(--down),#D93A4E)", color: "#fff", border: "none", borderRadius: 10, padding: 11, fontWeight: 800, fontSize: 13 }}>Sell · {sellQty}</button>
       </div>
       <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 7 }}>You hold {qtyText(r.qty, r.sym)} units · sell up to {qtyText(r.qty, r.sym)}.</div>
       <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600, margin: "12px 0 6px" }}>{real ? "Stop / target (%) — armed with your broker" : "Risk orders (%)"}</div>

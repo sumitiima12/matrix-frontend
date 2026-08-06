@@ -45,9 +45,20 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
   useEffect(() => { setSl(sugSl); setTp(sugTp); }, [order && order.s && order.s.sym, sugSl, sugTp]);
   const prefilled = (sugSl !== "" || sugTp !== "");
 
-  /* Delivery by default. Intraday is the one that can be closed out from under you,
-     so it should be a choice you make, not one you inherit from a default. */
-  const [product, setProduct] = useState("CNC");
+  /* R42-P1-08: a SELL must exit the position IN THE PRODUCT IT WAS OPENED IN — an MIS/NRML holding closed as CNC can be
+     rejected by the broker or booked against a different product bucket, leaving the real exposure open. So for a SELL
+     we INHERIT the position's product (from order.opts.product) and show it read-only; only a BUY chooses a product. */
+  const normProd = (p) => {
+    const u = String(p == null ? "" : p).toUpperCase();
+    if (u === "INTRADAY" || u === "MIS" || u === "INTRA") return "MIS";
+    if (u === "NRML" || u === "MARGIN" || u === "NORMAL") return "NRML";
+    if (u === "CNC" || u === "DELIVERY" || u === "CASH") return "CNC";
+    return null;
+  };
+  const inheritedSellProduct = side === "SELL" ? normProd(order && order.opts && order.opts.product) : null;
+  /* Delivery by default for a BUY. Intraday is the one that can be closed out from under you, so it should be a choice
+     you make, not one you inherit from a default. For a SELL, start from the position's product (never a blind CNC). */
+  const [product, setProduct] = useState(inheritedSellProduct || "CNC");
 
   /* Order type + its conditional price fields + an optional trailing stop. Market by default so the order
      places immediately unless the user deliberately chooses otherwise. */
@@ -64,7 +75,7 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
   const [instrument, setInstrument] = useState("stock");
   const canOption = side === "BUY" && isOptionable(s.sym);
 
-    useEffect(() => { setProduct("CNC"); }, [order && order.s && order.s.sym]);
+    useEffect(() => { setProduct(inheritedSellProduct || "CNC"); }, [order && order.s && order.s.sym, side, inheritedSellProduct]);
 
   if (!order) return null;
 
@@ -78,6 +89,9 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
   const total = amountMode ? (Number(amount) || 0) : (price != null ? price * units : null);
   const short = total != null && side === "BUY" && total > wallet;
   const after = total != null ? (side === "BUY" ? wallet - total : wallet + total) : null;
+  // R42-P1-08: never place a REAL non-crypto SELL whose position product we couldn't resolve (would risk booking the
+  // exit against the wrong product bucket and leaving the position open). Block submit; the user closes from the card.
+  const sellProdBlocked = isReal && side === "SELL" && market !== "Crypto" && !inheritedSellProduct;
 
   const Row = ({ k, v, c }) => (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
@@ -170,6 +184,23 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
         <>
         <div style={{ marginTop: 10 }}>
           <Row k="Action" v={side} c={side === "BUY" ? "var(--up)" : "var(--down)"} />
+          {/* R42-P1-08: a SELL exits in the POSITION's product — shown read-only, never a re-chosen CNC. If we couldn't
+             resolve it (position product not passed through), warn and, in Real mode, block submit rather than guess. */}
+          {side === "SELL" && market !== "Crypto" && (
+            <div style={{ padding: "11px 0", borderBottom: "1px solid var(--line)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>Exit product</span>
+                <span className="disp" style={{ fontSize: 12.5, fontWeight: 800, color: inheritedSellProduct ? "var(--ink)" : "var(--down)" }}>
+                  {inheritedSellProduct ? ({ MIS: "Intraday (MIS)", NRML: "NRML", CNC: "Delivery (CNC)" }[inheritedSellProduct]) : "Unknown — close from the position"}
+                </span>
+              </div>
+              {!inheritedSellProduct && (
+                <div style={{ fontSize: 9.5, color: "var(--down)", marginTop: 4, lineHeight: 1.35 }}>
+                  Couldn't determine this position's product. Closing it here could book against the wrong product bucket — close it from the position/holdings card instead.
+                </div>
+              )}
+            </div>
+          )}
           {/* Crypto trades 24/7 with no Intraday/Delivery (MIS/CNC) distinction — skip the product choice. */}
           {side === "BUY" && market !== "Crypto" && (
             <div style={{ padding: "11px 0", borderBottom: "1px solid var(--line)" }}>
@@ -391,12 +422,12 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
               tsl: tslOn && +tslPctV > 0 ? +tslPctV : undefined,
               autoExit: tslOn ? true : undefined,
             })}
-            disabled={price == null || short || busy}
+            disabled={price == null || short || busy || sellProdBlocked}
             className="tap disp"
             style={{
               flex: 1.4, border: "none", borderRadius: 12, padding: 13, fontWeight: 800, fontSize: 13.5,
-              cursor: price == null || short || busy ? "not-allowed" : "pointer",
-              opacity: price == null || short || busy ? 0.55 : 1,
+              cursor: price == null || short || busy || sellProdBlocked ? "not-allowed" : "pointer",
+              opacity: price == null || short || busy || sellProdBlocked ? 0.55 : 1,
               background: side === "BUY" ? "var(--up)" : "var(--down)",
               color: "#fff",
             }}
