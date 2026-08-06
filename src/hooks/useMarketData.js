@@ -7,7 +7,7 @@ import { fetchLiveQuotes, fetchIndicators, fetchIntraday, marketOpen } from "../
  * useMarketData — keeps the universe hydrated with REAL market data.
  *
  * Three streams, all from the backend:
- *   - quotes       (price, day change)        every 20s
+ *   - quotes       (price, day change)        every 60s
  *   - indicators   (RSI/MACD/ATR/volume/S&R)  computed from real daily candles
  *
  * There is NO synthetic fallback. With no backend, instruments keep their null
@@ -16,7 +16,7 @@ import { fetchLiveQuotes, fetchIndicators, fetchIntraday, marketOpen } from "../
  * @returns { live, liveAt, tick } — `tick` increments whenever data lands, which
  *          is what consumers memoise against (the universe is mutated in place).
  */
-export function useMarketData(market, intervalMs = 20000) {
+export function useMarketData(market, intervalMs = 60000) {   // 60s quote poll — was 20s; cut request volume ~3× to stop overloading the backend (502s)
   const [live, setLive] = useState(false);
   const [liveAt, setLiveAt] = useState(null);
   const [src, setSrc] = useState(null);   // "fyers" | "delta" | null(Yahoo) — the feed serving THIS market

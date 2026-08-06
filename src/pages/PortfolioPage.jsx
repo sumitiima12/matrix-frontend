@@ -23,7 +23,7 @@ function AutoExitsCard({ userId, heldSyms = null }) {
   const [data, setData] = useState({ positions: [], engineLive: false });
   const [open, setOpen] = useState(false);   // collapsed by default
   const refresh = () => { if (userId) loadAutoExits(userId).then(setData); };
-  useEffect(() => { refresh(); const id = setInterval(refresh, 30000); return () => clearInterval(id); /* eslint-disable-next-line */ }, [userId]);
+  useEffect(() => { refresh(); const id = setInterval(refresh, 300000); return () => clearInterval(id); /* eslint-disable-next-line */ }, [userId]);   // 5-min poll — portfolio/auto-exits status doesn't need frequent refresh
   // An auto-exit only makes sense against a real HELD position. Exclude rejected/never-filled orders
   // (no holding) by keeping only positions whose symbol is actually in the holdings book.
   const isHeld = (p) => { if (!heldSyms) return true; const s = String(p.symbol || "").toUpperCase(); return heldSyms.has(p.symbol) || [...heldSyms].some((sy) => sy && s.includes(String(sy).toUpperCase())); };
