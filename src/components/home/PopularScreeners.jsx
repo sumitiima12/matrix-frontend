@@ -1043,6 +1043,7 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
   const [tab, setTab] = useState(variant === "active" ? "popular" : "custom");   // full page defaults to Build-a-screener
   const [dir, setDir] = useState("buy");   // Buy (long) | Sell (short) for Popular Screeners
   const [editing, setEditing] = useState(null);   // a saved screener loaded into the builder for editing
+  const [showAllActive, setShowAllActive] = useState(false);   // homepage: collapse Active Screeners to 2 + "Show all"
   // Not for Commodity (thin universe / no 5m intraday screening there).
   if (market === "Commodity") return null;
   const startEdit = (scr) => { setEditing(scr); setTab("custom"); };
@@ -1055,9 +1056,16 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
       <Section title="Active Screeners" icon={<SlidersHorizontal size={17} color="var(--primary)" />}>
         {activeScreeners.length === 0
           ? <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.5, padding: "4px 2px 10px" }}>No active screeners yet. Open the Screener tab to browse and activate them.</div>
-          : activeScreeners.map((s) => (
-              <ScreenerRow key={s.key} screener={s} market={market} mode={mode} trades={trades} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} onClosePosition={onClosePosition} liveTick={liveTick} side="BUY" />
-            ))}
+          : (<>
+              {(showAllActive ? activeScreeners : activeScreeners.slice(0, 2)).map((s) => (
+                <ScreenerRow key={s.key} screener={s} market={market} mode={mode} trades={trades} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} onClosePosition={onClosePosition} liveTick={liveTick} side="BUY" />
+              ))}
+              {activeScreeners.length > 2 && (
+                <button onClick={() => setShowAllActive((v) => !v)} className="tap disp" style={{ marginTop: 4, width: "100%", border: "none", background: "transparent", color: "var(--primary)", fontWeight: 800, fontSize: 12, padding: "6px", cursor: "pointer" }}>
+                  {showAllActive ? "Show less" : `Show all (${activeScreeners.length})`}
+                </button>
+              )}
+            </>)}
         {onOpenScreener && (
           <button onClick={onOpenScreener} className="tap disp" style={{ marginTop: 10, width: "100%", border: "1px solid var(--line)", background: "var(--surface)", color: "var(--primary)", borderRadius: 11, padding: "10px 12px", fontWeight: 800, fontSize: 12.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
             Open Screener <ChevronRight size={15} />
