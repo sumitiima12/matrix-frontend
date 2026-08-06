@@ -33,7 +33,7 @@ export const BuyGateContext = React.createContext(null);
  *                  the rest. Card sections (Picks, Ideas, Trending) use this so the
  *                  call to action is one consistent full-width bar.
  */
-export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1, variant = "solid", label = "Buy", fullWidth = false, allowSell = true, only = null }) {
+export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1, variant = "solid", label = "Buy", fullWidth = false, allowSell = true, only = null, advanced = false }) {
   /* CRYPTO trades by AMOUNT (USD), not share quantity: you buy "$10 of BTC", and we convert
      amount → units at the live price (a small fill-price variation is expected and fine).
      Everything else trades by quantity/lots as before. */
@@ -44,6 +44,22 @@ export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1,
 
   const light = variant === "light";
   const priced = s?.price > 0;   // must be a real positive price, else qty maths (amount/price) blows up
+
+  /* ADVANCED ORDER OPTIONS (opt-in via `advanced`). Product = INTRADAY|NRML|CNC (position type — hidden for
+     crypto, which has no product). Order type = Market|Limit|SL (stop-loss)|SL-L (stop-limit)|Bracket, with
+     the conditional price fields each needs, plus an optional trailing stop. Defaults keep behaviour identical
+     to before (Market + delivery) so a card that doesn't opt in sends nothing extra. */
+  const [showAdv, setShowAdv] = useState(false);
+  const [product, setProduct] = useState("CNC");           // CNC (delivery) | INTRADAY | NRML
+  const [ordType, setOrdType] = useState("MARKET");          // MARKET|LIMIT|SL|SL-L|BRACKET
+  const [limitPx, setLimitPx] = useState("");
+  const [trigPx, setTrigPx] = useState("");
+  const [brkTarget, setBrkTarget] = useState("");           // bracket take-profit %
+  const [brkStop, setBrkStop] = useState("");               // bracket stop-loss %
+  const [tslOn, setTslOn] = useState(false);
+  const [tslPct, setTslPct] = useState("");                 // trailing stop %
+  const advBox = { fontSize: 11, fontWeight: 700, border: "1px solid var(--line)", background: "var(--elev)", borderRadius: 8, padding: "5px 7px", color: "var(--ink)" };
+  const segBtn = (on) => ({ flex: 1, padding: "5px 0", fontSize: 10.5, fontWeight: 800, borderRadius: 7, border: "none", cursor: "pointer", background: on ? "var(--primary)" : "var(--surface)", color: on ? "#fff" : "var(--muted)" });
   // For crypto the "total" spent is the amount itself; for stocks it's price × qty.
   const total = priced ? (isCrypto ? (Number(val) || 0) : s.price * (Number(val) || 0)) : null;
 
@@ -67,7 +83,19 @@ export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1,
     // Crypto: convert the dollar amount to units at the live price. Fractional is allowed.
     const qty = isCrypto ? +(amount / s.price).toFixed(6) : amount;
     if (!Number.isFinite(qty) || qty <= 0) return;   // never send a NaN/Infinity qty to an order
-    onBuy(s, qty, { ...opts, amount: isCrypto ? amount : undefined, ...(side === "SELL" ? { side: "SELL", short: true } : {}) });
+    /* Advanced order options ride along in opts (the parent forwards them to /api/broker/order). Only sent when
+       the advanced panel is enabled; otherwise the order stays a plain Market order, unchanged. Bracket sends its
+       protective legs as target/stopLoss (percent); a trailing stop rides as tslPct on any order type. */
+    const adv = advanced ? {
+      product: isCrypto ? undefined : product,
+      orderType: ordType,
+      ...((ordType === "LIMIT" || ordType === "SL-L") && Number(limitPx) > 0 ? { limitPrice: Number(limitPx) } : {}),
+      ...((ordType === "SL" || ordType === "SL-L") && Number(trigPx) > 0 ? { triggerPrice: Number(trigPx) } : {}),
+      ...(ordType === "BRACKET" && Number(brkTarget) > 0 ? { target: Number(brkTarget) } : {}),
+      ...(ordType === "BRACKET" && Number(brkStop) > 0 ? { stopLoss: Number(brkStop) } : {}),
+      ...(tslOn && Number(tslPct) > 0 ? { tsl: Number(tslPct), autoExit: true } : {}),
+    } : {};
+    onBuy(s, qty, { ...opts, ...adv, amount: isCrypto ? amount : undefined, ...(side === "SELL" ? { side: "SELL", short: true } : {}) });
     setVal(step);
   };
 
@@ -82,6 +110,53 @@ export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1,
   };
 
   return (
+    <div style={{ display: advanced ? "flex" : "contents", flexDirection: "column", gap: 8, width: fullWidth ? "100%" : undefined }}>
+      {advanced && (
+        <div onClick={(e) => e.stopPropagation()} style={{ width: "100%" }}>
+          <button onClick={() => setShowAdv((v) => !v)} className="tap" style={{ border: "none", background: "transparent", color: "var(--primary)", fontSize: 11, fontWeight: 800, cursor: "pointer", padding: "2px 0" }}>
+            {showAdv ? "Hide order options ▲" : "Order options ▾"}
+          </button>
+          {showAdv && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 6, padding: 9, border: "1px solid var(--line)", borderRadius: 10, background: "var(--elev)" }}>
+              {!isCrypto && (
+                <div>
+                  <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700, marginBottom: 3 }}>PRODUCT</div>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    {[["Intraday", "INTRADAY"], ["NRML", "NRML"], ["Delivery", "CNC"]].map(([lbl, v]) => (
+                      <button key={v} onClick={() => setProduct(v)} style={segBtn(product === v)}>{lbl}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div>
+                <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700, marginBottom: 3 }}>ORDER TYPE</div>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  {[["Market", "MARKET"], ["Limit", "LIMIT"], ["Stop-Loss", "SL"], ["Stop-Limit", "SL-L"], ["Bracket", "BRACKET"]].map(([lbl, v]) => (
+                    <button key={v} onClick={() => setOrdType(v)} style={{ ...segBtn(ordType === v), flex: "0 0 auto", padding: "5px 9px" }}>{lbl}</button>
+                  ))}
+                </div>
+              </div>
+              {(ordType === "SL" || ordType === "SL-L") && (
+                <input type="number" placeholder="Trigger price" value={trigPx} onChange={(e) => setTrigPx(e.target.value)} style={advBox} />
+              )}
+              {(ordType === "LIMIT" || ordType === "SL-L") && (
+                <input type="number" placeholder="Limit price" value={limitPx} onChange={(e) => setLimitPx(e.target.value)} style={advBox} />
+              )}
+              {ordType === "BRACKET" && (
+                <div style={{ display: "flex", gap: 6 }}>
+                  <input type="number" placeholder="Target %" value={brkTarget} onChange={(e) => setBrkTarget(e.target.value)} style={{ ...advBox, flex: 1 }} />
+                  <input type="number" placeholder="Stop-loss %" value={brkStop} onChange={(e) => setBrkStop(e.target.value)} style={{ ...advBox, flex: 1 }} />
+                </div>
+              )}
+              <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11, fontWeight: 700, color: "var(--ink)", cursor: "pointer" }}>
+                <input type="checkbox" checked={tslOn} onChange={(e) => setTslOn(e.target.checked)} />
+                Trailing stop
+                {tslOn && <input type="number" placeholder="%" value={tslPct} onChange={(e) => setTslPct(e.target.value)} style={{ ...advBox, width: 64, marginLeft: "auto" }} />}
+              </label>
+            </div>
+          )}
+        </div>
+      )}
     <div
       onClick={(e) => e.stopPropagation()}
       style={{
@@ -176,6 +251,7 @@ export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1,
           Sell
         </button>
       )}
+    </div>
     </div>
   );
 }

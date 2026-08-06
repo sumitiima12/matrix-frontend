@@ -2265,6 +2265,8 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         name: s.name || null, symbol: sym, brokerSym: bsym, market: mkt, cfg,
         notional: amt, interval: s.tf || "5m", product: liveProduct,
         sl: s.cfg.sl || null, tp: s.cfg.tp || null, tsl: s.cfg.tsl || null,
+        // Entry order type (Market default, or Limit at a price) + trailing rides in cfg — the engine honors both.
+        orderType: s.cfg.orderType || "MARKET", limitPrice: s.cfg.limitPrice || 0,
         short: (s.side === "SELL" || (s.cfg && s.cfg.side === "SELL")),   // arm a SHORT if this is a sell mirror
       });
       setLiveMsg({ t: r.already ? "Already live — this strategy is already armed." : (r.live ? "Armed — the engine will trade this live." : "Armed (engine in dry-run until AUTO_BUY_LIVE is on).") });
@@ -2294,6 +2296,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const defTP = (m) => (m === "Crypto" ? "5" : "3");     // Crypto TP 5% · Indian/US/Commodity TP 3%
   const [sl, setSl] = useState(defSL(market));
   const [tp, setTp] = useState(defTP(market));
+  const [tsl, setTsl] = useState("");   // trailing stop % (server-side, ratchets as price moves your way)
   // When you switch market (fresh builder context), reset SL/TP to that market's default.
   useEffect(() => { setSl(defSL(market)); setTp(defTP(market)); /* eslint-disable-next-line */ }, [market]);
   const [capital, setCapital] = useState(market === "Crypto" ? "10" : "1");   // crypto: $ NOTIONAL amount/trade (default 10 ≈ $0.40 margin at 25×); else quantity (default 1)
@@ -2449,8 +2452,8 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   };
   const plainDefs = useMemo(() => { const d = []; [...eParsed.defs, ...xParsed.defs].forEach((x) => { if (x && !d.find((y) => y.name === x.name)) d.push(x); }); return d; }, [eParsed, xParsed]);
   const cfg = mode === "builder"
-    ? { mode: "builder", tf, defs, entry: entryConds, exit: exitConds, sl, tp }
-    : { mode: "builder", tf, defs: plainDefs.map((d) => ({ ...d, tf: d.tf || tf })), entry: eParsed.conds, exit: xParsed.conds, sl, tp };
+    ? { mode: "builder", tf, defs, entry: entryConds, exit: exitConds, sl, tp, ...(tsl !== "" ? { tsl } : {}) }
+    : { mode: "builder", tf, defs: plainDefs.map((d) => ({ ...d, tf: d.tf || tf })), entry: eParsed.conds, exit: xParsed.conds, sl, tp, ...(tsl !== "" ? { tsl } : {}) };
   const condStr = (c) => `${c.la} ${c.op} ${c.b}`;
   const chain = (conds) => conds.map((c, i) => `${i ? " " + (c.gate || "AND") + " " : ""}${condStr(c)}`).join("");
   /* Render an indicator's ACTUAL settings so the code preview shows what Neo understood:
@@ -2508,6 +2511,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     setExitConds((cfg.exit || []).map((c) => ({ ...c })));
     if (cfg.sl != null) setSl(String(cfg.sl));
     if (cfg.tp != null) setTp(String(cfg.tp));
+    setTsl(cfg.tsl != null ? String(cfg.tsl) : "");
     setStratName(s.name || "");
     setDeploySyms(s.symbols && s.symbols.length ? [s.symbols[0]] : []);
     if (s.qty != null) setCapital(String(s.qty));
@@ -3480,6 +3484,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
               <NumF label="Stop loss %" v={sl} set={setSl} />
               <NumF label="Take profit %" v={tp} set={setTp} />
+              <NumF label="Trailing SL %" v={tsl} set={setTsl} />
             </div>
             {/* SL/TP are PRICE moves; on leveraged crypto show the margin-equivalent (1% price ≈ 25% margin). */}
             {market === "Crypto" && (() => {

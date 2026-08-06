@@ -517,7 +517,7 @@ function AppInner() {
     /* P3-05: the ONE durable intent state machine. deriveIntentKey folds in product + every protection leg so
        two deliberately-different orders aren't collapsed, while rapid identical taps DO collapse. A caller with
        its own durable identity (candle-keyed auto/screener buy) passes opts.intentKey/opts.clientRequestId. */
-    const intentKey = opts.intentKey || deriveIntentKey({ brokerId: route.id, brokerSym: bsym, side, qty: q, product: prod, sl: opts.sl, tp: opts.tp, tsl: opts.tsl, strategy: opts.strategy });
+    const intentKey = opts.intentKey || deriveIntentKey({ brokerId: route.id, brokerSym: bsym, side, qty: q, product: prod, sl: opts.sl, tp: opts.tp, tsl: opts.tsl, strategy: opts.strategy, orderType: opts.orderType, limitPrice: opts.limitPrice, triggerPrice: opts.triggerPrice, target: opts.target, stopLoss: opts.stopLoss });
     const begun = orderStoreRef.current.beginSubmit(intentKey, { clientRequestId: opts.clientRequestId || null, mint: newActionId });
     if (begun.blocked) { setBuyToast({ t: "That order is already being placed — please wait.", e: true }); return { ok: false, state: ORDER_STATES.SUBMITTING, blocked: true, brokerName }; }
     const reqId = begun.reqId;
@@ -528,12 +528,17 @@ function AppInner() {
       const wantExit = (opts.sl > 0 || opts.tp > 0 || opts.tsl > 0 || !!opts.strategy);
       const useEngine = wantExit && (!isDelta || opts.tsl > 0 || !!opts.strategy);
       const r = await brokerPlaceOrder(route.session, userId, {
-        symbol: bsym, side, qty: q, orderType: "MARKET", product: prod || "CNC",
+        symbol: bsym, side, qty: q, orderType: opts.orderType || "MARKET", product: prod || "CNC",
         entryPrice: s.price ?? undefined,
+        // Advanced order-type params (from the manual order-options panel). Undefined ⇒ a plain Market order.
+        limitPrice: opts.limitPrice > 0 ? opts.limitPrice : undefined,
+        triggerPrice: opts.triggerPrice > 0 ? opts.triggerPrice : undefined,
+        target: opts.target > 0 ? opts.target : undefined,
+        stopLoss: opts.stopLoss > 0 ? opts.stopLoss : undefined,
         slPct: opts.sl > 0 ? opts.sl : undefined,
         tpPct: opts.tp > 0 ? opts.tp : undefined,
         tslPct: opts.tsl > 0 ? opts.tsl : undefined,
-        autoExit: useEngine || undefined,
+        autoExit: useEngine || opts.autoExit || undefined,
         strategy: opts.strategy || undefined,
         // R27-P2-02: unambiguous strategy NAME (distinct from the exit-config `strategy` field) so the server
         // can stamp durable attribution on the authoritative fill — the Screener/Automate card matches on it.

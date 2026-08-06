@@ -49,6 +49,15 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
      so it should be a choice you make, not one you inherit from a default. */
   const [product, setProduct] = useState("CNC");
 
+  /* Order type + its conditional price fields + an optional trailing stop. Market by default so the order
+     places immediately unless the user deliberately chooses otherwise. */
+  const [ordType, setOrdType] = useState("MARKET");      // MARKET|LIMIT|SL|SL-L|BRACKET
+  const [limitPx, setLimitPx] = useState("");
+  const [trigPx, setTrigPx] = useState("");
+  const [tslOn, setTslOn] = useState(false);
+  const [tslPctV, setTslPctV] = useState("");
+  useEffect(() => { setOrdType("MARKET"); setLimitPx(""); setTrigPx(""); setTslOn(false); setTslPctV(""); }, [order && order.s && order.s.sym]);
+
   /* STOCK or OPTION. Offered on anything with a REAL NSE lot size — that IS what
      F&O-eligible means. There is no F&O market tab; an option bought here files under
      INDIAN, like the underlying it derives from. */
@@ -169,6 +178,7 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
                 {[
                   ["CNC", "Delivery", "Hold as long as you like"],
                   ["MIS", "Intraday", market === "Crypto" ? "Auto-sells 23h45m after buy" : "Auto-sells 15 min before close"],
+                  ["NRML", "NRML", "Carry-forward (F&O / margin)"],
                 ].map(([id, label, sub]) => (
                   <button
                     key={id}
@@ -327,6 +337,34 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
           </div>
         )}
 
+        {/* ORDER TYPE — Market / Limit / Stop-Loss / Stop-Limit / Bracket, with the price fields each needs and
+            an optional trailing stop that Matrix manages server-side. Bracket reuses the SL/TP fields above as its
+            protective legs. Crypto stop-limit falls back to a managed stop where the exchange can't place it. */}
+        {side === "BUY" && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginBottom: 7 }}>Order type</div>
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+              {[["Market", "MARKET"], ["Limit", "LIMIT"], ["Stop-Loss", "SL"], ["Stop-Limit", "SL-L"], ["Bracket", "BRACKET"]].map(([lbl, v]) => (
+                <button key={v} onClick={() => setOrdType(v)} className="tap" style={{ padding: "6px 11px", borderRadius: 9, fontSize: 11.5, fontWeight: 800, cursor: "pointer", border: ordType === v ? "1.5px solid var(--ink)" : "1px solid var(--line)", background: ordType === v ? "var(--elev)" : "transparent", color: "var(--ink)" }}>{lbl}</button>
+              ))}
+            </div>
+            {(ordType === "SL" || ordType === "SL-L") && (
+              <input value={trigPx} onChange={(e) => setTrigPx(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="Trigger price" className="no-ring mono" style={{ width: "100%", marginTop: 8, border: "1px solid var(--line)", borderRadius: 10, padding: "9px 11px", background: "var(--elev)", color: "var(--ink)", fontWeight: 800, fontSize: 14 }} />
+            )}
+            {(ordType === "LIMIT" || ordType === "SL-L") && (
+              <input value={limitPx} onChange={(e) => setLimitPx(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="Limit price" className="no-ring mono" style={{ width: "100%", marginTop: 8, border: "1px solid var(--line)", borderRadius: 10, padding: "9px 11px", background: "var(--elev)", color: "var(--ink)", fontWeight: 800, fontSize: 14 }} />
+            )}
+            {ordType === "BRACKET" && (
+              <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 6, lineHeight: 1.45 }}>Uses the stop-loss &amp; take-profit above as the bracket's protective legs.</div>
+            )}
+            <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 12, fontWeight: 700, color: "var(--ink)", cursor: "pointer" }}>
+              <input type="checkbox" checked={tslOn} onChange={(e) => setTslOn(e.target.checked)} />
+              Trailing stop
+              {tslOn && <input value={tslPctV} onChange={(e) => setTslPctV(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder="%" className="no-ring mono" style={{ width: 70, marginLeft: "auto", border: "1px solid var(--line)", borderRadius: 8, padding: "6px 9px", background: "var(--elev)", color: "var(--ink)", fontWeight: 800, fontSize: 13 }} />}
+            </label>
+          </div>
+        )}
+
         {/* P3-05: an ambiguous ("outcome unknown") result keeps the drawer open with this note; the order is
             never auto-resubmitted and a retry reuses the same idempotency key. */}
         {note && (
@@ -343,7 +381,16 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
           </button>
           <button
             data-testid="confirm-order-submit"
-            onClick={() => busy ? null : onConfirm(effQty, product, { sl: sl !== "" ? +sl : undefined, tp: tp !== "" ? +tp : undefined, amount: amountMode ? Number(amount) : undefined })}
+            onClick={() => busy ? null : onConfirm(effQty, product, {
+              sl: sl !== "" ? +sl : undefined, tp: tp !== "" ? +tp : undefined, amount: amountMode ? Number(amount) : undefined,
+              orderType: ordType,
+              limitPrice: (ordType === "LIMIT" || ordType === "SL-L") && +limitPx > 0 ? +limitPx : undefined,
+              triggerPrice: (ordType === "SL" || ordType === "SL-L") && +trigPx > 0 ? +trigPx : undefined,
+              target: ordType === "BRACKET" && tp !== "" ? +tp : undefined,
+              stopLoss: ordType === "BRACKET" && sl !== "" ? +sl : undefined,
+              tsl: tslOn && +tslPctV > 0 ? +tslPctV : undefined,
+              autoExit: tslOn ? true : undefined,
+            })}
             disabled={price == null || short || busy}
             className="tap disp"
             style={{
