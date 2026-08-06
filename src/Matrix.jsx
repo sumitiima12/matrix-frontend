@@ -62,7 +62,7 @@ import WalletSheet from "./components/common/WalletSheet";
 import ConfirmOrder from "./components/common/ConfirmOrder";
 import BrokerSheet from "./components/common/BrokerSheet";
 import { brokerSymbol } from "./domain/brokerSymbols";
-import { brokerPlaceOrder, brokerIntentStatus, registerAutoExit, reconcileRealTrades, updateAutoBuy, BROKER_MARKETS } from "./services/brokerService";
+import { brokerPlaceOrder, brokerIntentStatus, registerAutoExit, reconcileRealTrades, updateAutoBuy, BROKER_MARKETS, loadBrokerCapabilities, orderTypesOf } from "./services/brokerService";
 import { OrderLifecycleStore, deriveIntentKey, interpretResult, classifyError, reconcileAction, ORDER_STATES, planClose } from "./services/orderLifecycle";
 import MatrixRain from "./components/common/MatrixRain";
 import MLogo from "./components/common/MLogo";
@@ -453,6 +453,10 @@ function AppInner() {
   // submit while placing/reconciling; `confirmNote` surfaces an ambiguous ("outcome unknown") state in the drawer.
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [confirmNote, setConfirmNote] = useState(null);
+  // R42-P2-04: server-owned broker capability matrix (incl. per-broker supported order types) so the confirm drawer
+  // renders only certified order types for the connected broker. Loaded once; fail-open (backend still enforces).
+  const [brokerCaps, setBrokerCaps] = useState({ capabilities: {}, orderTypes: {} });
+  useEffect(() => { loadBrokerCapabilities().then((c) => c && setBrokerCaps(c)).catch(() => {}); }, []);
 
   /* Buying — even a VIRTUAL/paper buy — requires a signed-in account. A guest who taps
      Buy is sent to the login screen instead of placing an order, so paper trades always
@@ -1629,6 +1633,7 @@ function AppInner() {
             wallet={walletMap[confirmOrder.market] ?? 0}
             mode={mode}
             brokerName={(brokerFor(confirmOrder.market) && brokerFor(confirmOrder.market).meta ? brokerFor(confirmOrder.market).meta.name : (liveBroker ? liveBroker.name : null))}
+            supportedOrderTypes={mode === "real" ? orderTypesOf(brokerCaps, (brokerFor(confirmOrder.market) && brokerFor(confirmOrder.market).id) || (liveBroker && liveBroker.id)) : null}
             onConfirm={runConfirmedOrder}
             busy={confirmBusy}
             note={confirmNote}

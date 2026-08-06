@@ -414,13 +414,19 @@ export async function loadBrokerCapabilities() {
   try {
     const r = await fetch(`${BACKEND_URL}/api/broker/capabilities`);
     const d = await r.json().catch(() => ({}));
-    return { version: d.version || null, capabilities: d.capabilities || {}, keys: Array.isArray(d.keys) ? d.keys : [] };
-  } catch { return { version: null, capabilities: {}, keys: [] }; }
+    return { version: d.version || null, capabilities: d.capabilities || {}, keys: Array.isArray(d.keys) ? d.keys : [], orderTypes: d.orderTypes || {} };
+  } catch { return { version: null, capabilities: {}, keys: [], orderTypes: {} }; }
 }
 /* Does the loaded matrix certify `capability` for `broker`? Unknown ⇒ false (fail closed). */
 export function brokerCapOf(caps, broker, capability) {
   const b = caps && caps.capabilities && caps.capabilities[String(broker || "").toLowerCase()];
   return !!(b && b[capability] === true);
+}
+/* R42-P2-04: the canonical ORDER TYPES the server will accept for `broker`, so the UI renders only certified choices.
+   Unknown/not-loaded ⇒ null (caller shows its default full set; the backend still enforces). */
+export function orderTypesOf(caps, broker) {
+  const ot = caps && caps.orderTypes && caps.orderTypes[String(broker || "").toLowerCase()];
+  return Array.isArray(ot) && ot.length ? ot : null;
 }
 export async function loadAutoBuys(userId) {
   if (!BACKEND_URL) return { strategies: [], engineLive: false };

@@ -19,7 +19,7 @@ const CRYPTO_LEV = 25;
  * total value, and what it does to your wallet. If the total exceeds the wallet,
  * it says so here rather than letting the risk engine reject it after the tap.
  */
-export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userId, mode = "virtual", brokerName, busy = false, note = null }) {
+export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userId, mode = "virtual", brokerName, busy = false, note = null, supportedOrderTypes = null }) {
   const { s, qty: initialQty, side, market, lot = 1 } = order || {};
   const isReal = mode === "real";
 
@@ -375,7 +375,11 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
           <div style={{ marginTop: 14 }}>
             <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginBottom: 7 }}>Order type</div>
             <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-              {[["Market", "MARKET"], ["Limit", "LIMIT"], ["Stop-Loss", "SL"], ["Stop-Limit", "SL-L"], ["Bracket", "BRACKET"]].map(([lbl, v]) => (
+              {/* R42-P2-04: in Real mode, render ONLY the order types the connected broker is certified to accept
+                 (server-owned matrix). Virtual mode / unknown caps ⇒ show all; the backend still enforces regardless. */}
+              {[["Market", "MARKET"], ["Limit", "LIMIT"], ["Stop-Loss", "SL"], ["Stop-Limit", "SL-L"], ["Bracket", "BRACKET"]]
+                .filter(([, v]) => !isReal || !Array.isArray(supportedOrderTypes) || supportedOrderTypes.includes(v))
+                .map(([lbl, v]) => (
                 <button key={v} onClick={() => setOrdType(v)} className="tap" style={{ padding: "6px 11px", borderRadius: 9, fontSize: 11.5, fontWeight: 800, cursor: "pointer", border: ordType === v ? "1.5px solid var(--ink)" : "1px solid var(--line)", background: ordType === v ? "var(--elev)" : "transparent", color: "var(--ink)" }}>{lbl}</button>
               ))}
             </div>

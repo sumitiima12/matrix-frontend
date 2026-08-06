@@ -33,7 +33,7 @@ export const BuyGateContext = React.createContext(null);
  *                  the rest. Card sections (Picks, Ideas, Trending) use this so the
  *                  call to action is one consistent full-width bar.
  */
-export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1, variant = "solid", label = "Buy", fullWidth = false, allowSell = true, only = null, advanced = false }) {
+export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1, variant = "solid", label = "Buy", fullWidth = false, allowSell = true, only = null, advanced = false, supportedOrderTypes = null }) {
   /* CRYPTO trades by AMOUNT (USD), not share quantity: you buy "$10 of BTC", and we convert
      amount → units at the live price (a small fill-price variation is expected and fine).
      Everything else trades by quantity/lots as before. */
@@ -131,7 +131,10 @@ export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1,
               <div>
                 <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700, marginBottom: 3 }}>ORDER TYPE</div>
                 <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                  {[["Market", "MARKET"], ["Limit", "LIMIT"], ["Stop-Loss", "SL"], ["Stop-Limit", "SL-L"], ["Bracket", "BRACKET"]].map(([lbl, v]) => (
+                  {/* R42-P2-04: render only broker-certified order types when the caller passes the server matrix. */}
+                  {[["Market", "MARKET"], ["Limit", "LIMIT"], ["Stop-Loss", "SL"], ["Stop-Limit", "SL-L"], ["Bracket", "BRACKET"]]
+                    .filter(([, v]) => !Array.isArray(supportedOrderTypes) || supportedOrderTypes.includes(v))
+                    .map(([lbl, v]) => (
                     <button key={v} onClick={() => setOrdType(v)} style={{ ...segBtn(ordType === v), flex: "0 0 auto", padding: "5px 9px" }}>{lbl}</button>
                   ))}
                 </div>
