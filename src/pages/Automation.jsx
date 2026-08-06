@@ -86,6 +86,27 @@ function LongShortToggle({ side, setSide, longCount, shortCount }) {
   );
 }
 
+/* Active / Inactive status filter shown next to the Long/Short toggle in every strategy type. "All" shows
+   both; "Active" shows only deployed/running strategies; "Inactive" only the rest. Orthogonal to Long/Short. */
+function StatusToggle({ status, setStatus, activeCount, inactiveCount }) {
+  const opts = [["all", "All", activeCount + inactiveCount], ["active", "Active", activeCount], ["inactive", "Inactive", inactiveCount]];
+  return (
+    <div style={{ display: "flex", gap: 6, background: "var(--elev)", border: "1px solid var(--line)", borderRadius: 12, padding: 4, margin: "0 0 10px" }}>
+      {opts.map(([k, label, count]) => (
+        <button key={k} onClick={() => setStatus(k)} className="tap disp" style={{
+          flex: 1, borderRadius: 9, padding: "7px 4px", fontWeight: 800, fontSize: 11.5, cursor: "pointer", border: "none",
+          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5,
+          background: status === k ? "var(--primary)" : "transparent",
+          color: status === k ? "var(--on-primary)" : "var(--muted)",
+        }}>
+          {label}
+          <span style={{ fontSize: 9.5, fontWeight: 800, borderRadius: 999, padding: "1px 6px", background: status === k ? "rgba(255,255,255,.22)" : "var(--surface)", color: status === k ? "var(--on-primary)" : "var(--muted)" }}>{count}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /* Minimum reward/risk selector for the SL&TP optimiser. The optimiser will only pick a target that is
    at least this multiple of the stop (e.g. 1.5 → TP ≥ 1.5× SL), so it can't recommend a poor RR setup.
    "Off" lets it search the full grid with no floor. */
@@ -482,6 +503,17 @@ function creatorOf(s) { return (s && (s.premium || s.by === "Matrix")) ? "Neo" :
 /* "Optimize SL & TP" for a single strategy card — ONE optimiser, TWO options (Optimize Win rate /
    Optimize P&L). Tapping an option grid-searches the ideal exits on the card's symbol and writes them
    into the SL/TP fields. */
+/* One bordered container that groups the two card optimizers (SL&TP + Indicators) so they read as a single
+   "Optimize" box, with their Win rate / P&L buttons vertically aligned (both titles share OPT_TITLE_W). */
+const OPT_TITLE_W = 122;
+function OptimizerBox({ children }) {
+  return (
+    <div style={{ marginTop: 10, border: "1px solid var(--line)", borderRadius: 12, background: "var(--elev)", padding: "9px 11px 11px" }}>
+      <div className="disp" style={{ fontSize: 10, fontWeight: 800, color: "var(--muted)", letterSpacing: ".05em", marginBottom: 2 }}>OPTIMIZE</div>
+      {children}
+    </div>
+  );
+}
 function CardOptimizeButton({ cfg, sym, tf = "5m", sl, tp, setSl, setTp }) {
   const [st, setSt] = useState({ loading: false, done: false, none: false });
   const [objective, setObjective] = useState(null);
@@ -504,7 +536,7 @@ function CardOptimizeButton({ cfg, sym, tf = "5m", sl, tp, setSl, setTp }) {
     <div style={{ marginTop: 8 }}>
       {/* Title + its two objective buttons on one line. */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <div className="disp" style={{ fontSize: 12, fontWeight: 800, color: "var(--ink)", display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto" }}><Sparkles size={13} color="#7C3AED" /> Optimize SL &amp; TP</div>
+        <div className="disp" style={{ fontSize: 11.5, fontWeight: 800, color: "var(--ink)", display: "flex", alignItems: "center", gap: 5, flex: "0 0 auto", width: OPT_TITLE_W, whiteSpace: "nowrap" }}><Sparkles size={13} color="#7C3AED" /> SL &amp; TP</div>
         {optBtn("winrate", "Win rate")}{optBtn("pnl", "P&L")}
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center" }}><RRMinSelect value={rrMin} onChange={setRrMin} /><MaxSlSelect value={maxSl} onChange={setMaxSl} /></div>
@@ -541,7 +573,7 @@ function CardIndicatorOptimizeButton({ cfg, sym, tf = "5m", sl, tp, onApply }) {
     <div style={{ marginTop: 10 }}>
       {/* Title + its two objective buttons on one line. */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <div className="disp" style={{ fontSize: 12, fontWeight: 800, color: "var(--ink)", display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto" }}><Sparkles size={13} color="#0EA5E9" /> Optimize Indicators</div>
+        <div className="disp" style={{ fontSize: 11.5, fontWeight: 800, color: "var(--ink)", display: "flex", alignItems: "center", gap: 5, flex: "0 0 auto", width: OPT_TITLE_W, whiteSpace: "nowrap" }}><Sparkles size={13} color="#0EA5E9" /> Indicators</div>
         {optBtn("winrate", "Win rate")}{optBtn("pnl", "P&L")}
       </div>
       {/* Lock timeframe — when on, the optimiser only tunes indicator lengths and keeps this tf fixed. */}
@@ -802,8 +834,10 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, onPersist, market 
 
       <DeploySizeField market={market} value={size} onChange={setSize} />
       <StratSLTP sl={sl} tp={tp} setSl={setSl} setTp={setTp} market={market} />
-      <CardOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} setSl={setSl} setTp={setTp} />
-      <CardIndicatorOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} onApply={(defs, newTf) => { onPersist && onPersist(s.id, { defs, tf: newTf }); setTfSel(newTf); }} />
+      <OptimizerBox>
+        <CardOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} setSl={setSl} setTp={setTp} />
+        <CardIndicatorOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} onApply={(defs, newTf) => { onPersist && onPersist(s.id, { defs, tf: newTf }); setTfSel(newTf); }} />
+      </OptimizerBox>
 
       {/* User edit — Symbol + Timeframe. */}
       <button onClick={() => setShowEdit((v) => !v)} className="tap disp" style={{ width: "100%", marginTop: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--line)", background: showEdit ? "var(--elev)" : "transparent", color: "var(--ink)", borderRadius: 11, padding: "8px 12px", fontWeight: 800, fontSize: 12 }}>
@@ -915,8 +949,10 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, onPersist, onClone, 
 
       <DeploySizeField market={market} value={size} onChange={setSize} />
       <StratSLTP sl={sl} tp={tp} setSl={setSl} setTp={setTp} market={market} />
-      <CardOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} setSl={setSl} setTp={setTp} />
-      <CardIndicatorOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} onApply={(defs, newTf) => { onPersist && onPersist(s.id, { defs, tf: newTf }); setTfSel(newTf); }} />
+      <OptimizerBox>
+        <CardOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} setSl={setSl} setTp={setTp} />
+        <CardIndicatorOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} onApply={(defs, newTf) => { onPersist && onPersist(s.id, { defs, tf: newTf }); setTfSel(newTf); }} />
+      </OptimizerBox>
 
       {/* User edit — Symbol + Timeframe (rules stay hidden; admin edits rules via the pencil below). */}
       <button onClick={() => setShowEdit((v) => !v)} className="tap disp" style={{ width: "100%", marginTop: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--line)", background: showEdit ? "var(--elev)" : "transparent", color: "var(--ink)", borderRadius: 11, padding: "8px 12px", fontWeight: 800, fontSize: 12 }}>
@@ -1247,8 +1283,10 @@ function CopyStrategyCard({ s, active, onToggle, onPersist, onDelete, market = "
 
       <DeploySizeField market={market} value={size} onChange={setSize} />
       <StratSLTP sl={sl} tp={tp} setSl={setSl} setTp={setTp} market={market} />
-      <CardOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} setSl={setSl} setTp={setTp} />
-      <CardIndicatorOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} onApply={(defs, newTf) => { onPersist && onPersist(s.id, { defs, tf: newTf }); setTfSel(newTf); }} />
+      <OptimizerBox>
+        <CardOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} setSl={setSl} setTp={setTp} />
+        <CardIndicatorOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} onApply={(defs, newTf) => { onPersist && onPersist(s.id, { defs, tf: newTf }); setTfSel(newTf); }} />
+      </OptimizerBox>
 
       <button onClick={() => setShowEdit((v) => !v)} className="tap disp" style={{ width: "100%", marginTop: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--line)", background: showEdit ? "var(--elev)" : "transparent", color: "var(--ink)", borderRadius: 11, padding: "8px 12px", fontWeight: 800, fontSize: 12 }}>
         <SlidersHorizontal size={13} /> {showEdit ? "Hide" : "Change Symbol/Timeframe"}
@@ -2808,6 +2846,9 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const [stratTab, setStratTab] = useState("deployed");   // sub-tab under "Strategies": deployed | sample | premium | public | mine
   const [deployTab, setDeployTab] = useState("all");      // Deployed filter tabs: all | long | short | live | notlive
   const [lsSide, setLsSide] = useState("long");           // Long / Short filter shown above Activate All in every strategy type
+  const [lsStatus, setLsStatus] = useState("all");        // All / Active / Inactive filter (orthogonal to Long/Short), per strategy type
+  /* Apply the Active/Inactive filter to a side-filtered list. "all" = no filter. */
+  const byStatus = (arr) => (lsStatus === "all" ? arr : arr.filter((s) => (lsStatus === "active" ? !!s.active : !s.active)));
   const [topTab, setTopTab] = useState("build");   // build | sample | premium | public | mine
   const [compareOpen, setCompareOpen] = useState(false);   // premium "Compare all" backtest table
 
@@ -3119,13 +3160,13 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             const eCfg = { ...(s.cfg || {}), tf: eTf };
             const eSym = (s.symbols || [])[0];
             return (
-              <div style={{ marginTop: 12 }}>
+              <OptimizerBox>
                 <CardOptimizeButton cfg={eCfg} sym={eSym} tf={eTf} sl={(s.cfg && s.cfg.sl) || ""} tp={(s.cfg && s.cfg.tp) || ""}
                   setSl={(v) => updateStrat(s.id, { cfg: { ...(s.cfg || {}), sl: String(v) } })}
                   setTp={(v) => updateStrat(s.id, { cfg: { ...(s.cfg || {}), tp: String(v) } })} />
                 <CardIndicatorOptimizeButton cfg={eCfg} sym={eSym} tf={eTf} sl={(s.cfg && s.cfg.sl) || ""} tp={(s.cfg && s.cfg.tp) || ""}
                   onApply={(defs, ntf) => updateStrat(s.id, { cfg: { ...(s.cfg || {}), defs: defs.map((d) => ({ ...d, tf: ntf })), tf: ntf }, tf: ntf })} />
-              </div>
+              </OptimizerBox>
             );
           })()}
           <button onClick={() => setEditStrat(null)} className="tap disp" style={{ width: "100%", marginTop: 12, background: "var(--primary)", color: "var(--on-primary)", border: "none", borderRadius: 11, padding: 10, fontWeight: 700, fontSize: 12.5 }}>Done</button>
@@ -3290,18 +3331,37 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                   <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{s.name || (s.symbols && s.symbols[0]) || "Strategy"}{s.paused && <span style={{ color: "var(--muted)", fontWeight: 700 }}> · paused</span>}</div>
                   <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600, marginTop: 1 }}>{(s.symbols || []).join(", ") || "—"} · Created by {creatorOf(s)}</div>
                   <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>{p.positions} position{p.positions === 1 ? "" : "s"}{p.open ? ` · ${p.open} open` : ""}{p.winRate != null ? ` · ${p.winRate.toFixed(0)}% win` : ""}</div>
-                  {/* Open-position detail: entry date/time, entry price, current price, amount invested. */}
+                  {/* Open positions as SCREENER-STYLE COLUMNS — one row per open position (a multi-symbol
+                      strategy can hold several), each with Symbol / Entry / Now / Invested / P&L. Deduped by
+                      (symbol) so a re-entry glitch can't show the same symbol open twice. */}
                   {(() => {
-                    const ot = (trades || []).find((t) => (t.strategyId != null ? String(t.strategyId) === String(s.id) : t.strategy === s.name) && t.entryAt != null && t.exitAt == null);
-                    if (!ot) return null;
-                    const st = ALL.find((x) => x.sym === ot.sym); const cur = st && st.price != null ? st.price : ot.entry;
-                    const mk = marketOf(ot.sym) || market; const ed = ot.entryAt ? new Date(ot.entryAt) : null;
+                    const opensAll = (trades || []).filter((t) => (t.strategyId != null ? String(t.strategyId) === String(s.id) : t.strategy === s.name) && t.entryAt != null && t.exitAt == null);
+                    // One open per symbol (latest entry wins) — a strategy holds at most one position per symbol.
+                    const bySym = new Map();
+                    for (const t of opensAll) { const prev = bySym.get(t.sym); if (!prev || (t.entryAt || 0) > (prev.entryAt || 0)) bySym.set(t.sym, t); }
+                    const opens = [...bySym.values()].sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
+                    if (!opens.length) return null;
+                    const gcols = "1fr .8fr .8fr .9fr .8fr";
                     return (
-                      <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700, marginTop: 2, display: "flex", flexWrap: "wrap", gap: "2px 10px" }}>
-                        <span>Entry <span className="mono" style={{ color: "var(--ink)" }}>{fmt(ot.entry, mk)}</span></span>
-                        <span>Now <span className="mono" style={{ color: "var(--ink)" }}>{fmt(cur, mk)}</span></span>
-                        <span>Invested <span className="mono" style={{ color: "var(--ink)" }}>{fmt(Number(ot.entry) * (ot.qty || 0), mk)}</span></span>
-                        {ed && <span className="mono">{ed.toLocaleDateString("en-GB")} {ed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
+                      <div style={{ marginTop: 4, border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: gcols, fontSize: 8.5, fontWeight: 800, color: "var(--muted)", background: "var(--elev)", padding: "4px 8px", letterSpacing: ".03em", gap: 6 }}>
+                          <span>SYMBOL</span><span style={{ textAlign: "right" }}>ENTRY</span><span style={{ textAlign: "right" }}>NOW</span><span style={{ textAlign: "right" }}>INVESTED</span><span style={{ textAlign: "right" }}>P&amp;L</span>
+                        </div>
+                        {opens.map((ot, i) => {
+                          const st = ALL.find((x) => x.sym === ot.sym); const cur = st && st.price != null ? st.price : ot.entry;
+                          const mk = marketOf(ot.sym) || market;
+                          const short = String(ot.side).toUpperCase() === "SELL" || ot.short === true;
+                          const pl = (short ? (Number(ot.entry) - cur) : (cur - Number(ot.entry))) * (ot.qty || 0);
+                          return (
+                            <div key={i} style={{ display: "grid", gridTemplateColumns: gcols, fontSize: 10, padding: "5px 8px", borderTop: "1px solid var(--line)", alignItems: "center", gap: 6 }}>
+                              <span className="disp" style={{ fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ot.sym}{short && <span style={{ color: "var(--down)", fontSize: 8, fontWeight: 800, marginLeft: 3 }}>S</span>}</span>
+                              <span className="mono" style={{ textAlign: "right", color: "var(--ink)" }}>{fmt(Number(ot.entry), mk)}</span>
+                              <span className="mono" style={{ textAlign: "right", color: "var(--ink)" }}>{fmt(cur, mk)}</span>
+                              <span className="mono" style={{ textAlign: "right", color: "var(--muted)" }}>{fmt(Number(ot.entry) * (ot.qty || 0), mk)}</span>
+                              <span className="mono" style={{ textAlign: "right", fontWeight: 800, color: chgColor(pl) }}>{(pl >= 0 ? "+" : "") + fmt(pl, mk)}</span>
+                            </div>
+                          );
+                        })}
                       </div>
                     );
                   })()}
@@ -3632,11 +3692,13 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         (() => {
           const renderS = ({ s }) => <SampleStrategyCard key={s.id} s={s} market={market} onActivate={useTemplateStrategy} onClone={cloneStrategy} onEdit={isAdmin ? loadForEdit : undefined} onPersist={persistCard} canBacktest={canBacktest} onConnect={onConnectBroker} />;
           if (!sampleLong.length && !sampleShort.length) return <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No sample strategies for this market.</div>;
-          const sel = lsSide === "long" ? sampleLong : sampleShort;
+          const sideList = lsSide === "long" ? sampleLong : sampleShort;
+          const sel = byStatus(sideList);
           return (<>
             <LongShortToggle side={lsSide} setSide={setLsSide} longCount={sampleLong.length} shortCount={sampleShort.length} />
+            <StatusToggle status={lsStatus} setStatus={setLsStatus} activeCount={sideList.filter((s) => s.active).length} inactiveCount={sideList.filter((s) => !s.active).length} />
             <BulkBar items={sel} />
-            {sel.length ? sel.map(renderS) : <div style={emptyNote}>No {lsSide} samples.</div>}
+            {sel.length ? sel.map(renderS) : <div style={emptyNote}>No {lsSide}{lsStatus !== "all" ? " " + lsStatus : ""} samples.</div>}
           </>);
         })()
       ) : stratTab === "premium" ? (
@@ -3651,11 +3713,14 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           {(!premiumLong.length && !premiumShort.length)
             ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No premium strategies available.</div>
             : (() => {
-                const sel = lsSide === "long" ? premiumLong : premiumShort;
+                const sideList = lsSide === "long" ? premiumLong : premiumShort;
+                // Premium "active" = deployed in this market (activeInMarket), not the plain s.active flag.
+                const selRaw = lsStatus === "all" ? sideList : sideList.filter((s) => (lsStatus === "active" ? activeInMarket(s) : !activeInMarket(s)));
                 return (<>
                   <LongShortToggle side={lsSide} setSide={setLsSide} longCount={premiumLong.length} shortCount={premiumShort.length} />
-                  <BulkBar items={sel} />
-                  {sel.length ? sel.map((s) => <PremiumStrategyCard key={s.id} s={s} active={activeInMarket(s)} market={market} onToggle={(rs, size, opts) => togglePremiumHere(s.id, rs, size, opts)} onEdit={isAdmin ? loadForEdit : undefined} onPersist={persistCard} onClone={clonePremium} canBacktest={canBacktest} onConnect={onConnectBroker} />) : <div style={emptyNote}>No {lsSide} strategies.</div>}
+                  <StatusToggle status={lsStatus} setStatus={setLsStatus} activeCount={sideList.filter((s) => activeInMarket(s)).length} inactiveCount={sideList.filter((s) => !activeInMarket(s)).length} />
+                  <BulkBar items={selRaw} />
+                  {selRaw.length ? selRaw.map((s) => <PremiumStrategyCard key={s.id} s={s} active={activeInMarket(s)} market={market} onToggle={(rs, size, opts) => togglePremiumHere(s.id, rs, size, opts)} onEdit={isAdmin ? loadForEdit : undefined} onPersist={persistCard} onClone={clonePremium} canBacktest={canBacktest} onConnect={onConnectBroker} />) : <div style={emptyNote}>No {lsSide}{lsStatus !== "all" ? " " + lsStatus : ""} strategies.</div>}
                 </>);
               })()}
         </>
@@ -3663,11 +3728,13 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         (() => {
           const renderC = ({ s }) => <CopyStrategyCard key={s.id} s={s} active={s.active} market={market} onToggle={(rs, size, opts) => togglePremiumHere(s.id, rs, size, opts)} onPersist={persistCard} onDelete={deleteStrategy} canBacktest={canBacktest} onConnect={onConnectBroker} />;
           if (!copiesLong.length && !copiesShort.length) return <div className="card" style={{ marginTop: 12, padding: 20, textAlign: "center", color: "var(--muted)", fontSize: 12.5, lineHeight: 1.6 }}>No copies yet. Open <b style={{ color: "var(--ink)" }}>Premium</b> and tap <b style={{ color: "var(--ink)" }}>Clone</b> on any strategy to make an editable copy here.</div>;
-          const sel = lsSide === "long" ? copiesLong : copiesShort;
+          const sideList = lsSide === "long" ? copiesLong : copiesShort;
+          const sel = byStatus(sideList);
           return (<>
             <LongShortToggle side={lsSide} setSide={setLsSide} longCount={copiesLong.length} shortCount={copiesShort.length} />
+            <StatusToggle status={lsStatus} setStatus={setLsStatus} activeCount={sideList.filter((s) => s.active).length} inactiveCount={sideList.filter((s) => !s.active).length} />
             <BulkBar items={sel} />
-            {sel.length ? sel.map(renderC) : <div style={emptyNote}>No {lsSide} copies.</div>}
+            {sel.length ? sel.map(renderC) : <div style={emptyNote}>No {lsSide}{lsStatus !== "all" ? " " + lsStatus : ""} copies.</div>}
           </>);
         })()
       ) : stratTab === "public" ? (
@@ -3779,11 +3846,13 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         /* MINE — only strategies this user created; a Long / Short toggle above the bulk bar filters
            the list. Each card carries its own Active/Inactive tag. */
         (() => {
-          const sel = lsSide === "long" ? mineLong : mineShort;
+          const sideList = lsSide === "long" ? mineLong : mineShort;
+          const sel = byStatus(sideList);
           return (<>
             <LongShortToggle side={lsSide} setSide={setLsSide} longCount={mineLong.length} shortCount={mineShort.length} />
+            <StatusToggle status={lsStatus} setStatus={setLsStatus} activeCount={sideList.filter((s) => s.active).length} inactiveCount={sideList.filter((s) => !s.active).length} />
             <BulkBar items={sel} />
-            {sel.length ? <CollapsibleList items={sel} render={({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>} /> : <div style={emptyNote}>No {lsSide} strategies.</div>}
+            {sel.length ? <CollapsibleList items={sel} render={({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>} /> : <div style={emptyNote}>No {lsSide}{lsStatus !== "all" ? " " + lsStatus : ""} strategies.</div>}
           </>);
         })()
       )}
