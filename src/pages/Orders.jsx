@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { tradesToCSV, downloadCSV, tradeFilename } from "../lib/csv";
 import { Bolt, Bot, Briefcase, Check, ChevronLeft, Home, Lightbulb, Moon, Search, Star, Sun, User, Wallet, X, Download } from "lucide-react";
 import { BACKEND_URL } from "../config";
-import { fmt, getUserId, lsGet, lsSet } from "../lib/format";
+import { fmt, getUserId, lsGet, lsSet, orderStatusLabel } from "../lib/format";
 import { ALL, UNIVERSE, marketOf, yahooSymbol } from "../domain/universe";
 import { fetchIndicators, fetchLiveQuotes, fetchTrades, marketOpen, postTrade, resolveExitFromCandles } from "../domain/api";
 import { DEFAULT_LIMITS, validateOrder } from "../services/riskService";
@@ -327,7 +327,22 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
               <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: typeColor(t.tradeType || "Manual") }}>{t.tradeType || "Manual"}</span>
               <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: isRejected(t) ? "var(--down-soft)" : t.open ? "var(--primary-soft)" : "var(--elev)", color: isRejected(t) ? "var(--down)" : exitColor(exitOf(t)) }}>{isRejected(t) ? "Rejected" : `Exit: ${exitOf(t)}`}</span>
               <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: "var(--muted)" }}>Strategy by: {stratBy(t)}</span>
+              {/* #9 — protection status is explicit on every OPEN position. Unprotected = visible warning. */}
+              {t.open && !isRejected(t) && (
+                <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: t.sl != null ? "var(--up-soft)" : "var(--down-soft)", color: t.sl != null ? "var(--up)" : "var(--down)" }}>
+                  {t.sl != null ? "🛡 Protected" : "⚠ Unprotected"}
+                </span>
+              )}
             </div>
+            {/* #7 — a real order still working at the broker reads in plain language ("Order sent · waiting for
+                broker confirmation", "Confirmation delayed · Matrix will not retry"), never a raw status code. */}
+            {(() => {
+              const st = String(t.status || "").toLowerCase().replace(/[\s-]+/g, "_");
+              if (!["submitted", "accepted", "pending", "open", "queued", "unknown", "reconcile", "manual_reconciliation_required"].includes(st)) return null;
+              const { label, tone } = orderStatusLabel(t.status);
+              const col = tone === "down" ? "var(--down)" : tone === "warn" ? "var(--amber)" : tone === "up" ? "var(--up)" : "var(--muted)";
+              return <div style={{ marginTop: 7, fontSize: 10.5, fontWeight: 700, color: col }}>{label}{t.entryAt ? ` · ${dt(t.entryAt)}` : ""}</div>;
+            })()}
             {/* WHY it was rejected — the broker/risk reason, so a rejected order isn't a mystery. */}
             {isRejected(t) && t.rejectReason && (
               <div style={{ marginTop: 7, fontSize: 10.5, fontWeight: 700, color: "var(--down)", background: "var(--down-soft)", borderRadius: 8, padding: "6px 9px", lineHeight: 1.4 }}>

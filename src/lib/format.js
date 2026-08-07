@@ -28,6 +28,38 @@ export function fmt(n, market = "IN") {
   return c + grouped;
 }
 
+/* #7 — translate raw system/broker states into plain user language (and a semantic tone), so the UI never
+   shows "SUBMITTED" or "UNKNOWN" to a person. Returns { label, tone } where tone ∈ up|down|warn|info|muted.
+   Unknown states fall through to a humanised title-case of the raw value rather than a scary code. */
+const _STATUS_MAP = {
+  filled:        { label: "Order completed", tone: "up" },
+  complete:      { label: "Order completed", tone: "up" },
+  completed:     { label: "Order completed", tone: "up" },
+  executed:      { label: "Order completed", tone: "up" },
+  partial:       { label: "Partially completed", tone: "warn" },
+  partially_filled: { label: "Partially completed", tone: "warn" },
+  submitted:     { label: "Order sent · waiting for broker confirmation", tone: "info" },
+  accepted:      { label: "Order sent · waiting for broker confirmation", tone: "info" },
+  pending:       { label: "Waiting for broker confirmation", tone: "info" },
+  open:          { label: "Working at the broker", tone: "info" },
+  queued:        { label: "Queued at the broker", tone: "info" },
+  unknown:       { label: "Confirmation delayed · Matrix will not retry", tone: "warn" },
+  reconcile:     { label: "Check this order with your broker", tone: "warn" },
+  manual_reconciliation_required: { label: "Check this order with your broker", tone: "warn" },
+  rejected:      { label: "Broker rejected this order", tone: "down" },
+  cancelled:     { label: "Cancelled", tone: "muted" },
+  canceled:      { label: "Cancelled", tone: "muted" },
+  failed:        { label: "Order failed", tone: "down" },
+  risk_lock:     { label: "New orders paused for your protection", tone: "warn" },
+};
+export function orderStatusLabel(state) {
+  const k = String(state || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (_STATUS_MAP[k]) return _STATUS_MAP[k];
+  if (!k) return { label: "—", tone: "muted" };
+  const nice = k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return { label: nice, tone: "info" };
+}
+
 /* P&L / money amounts ALWAYS read at exactly 2 decimals — no sub-cent 6-digit tail. `fmt` keeps extra
    digits for sub-cent PRICES (a $0.002 token must not collapse to $0.00), but a P&L of -$0.002892 should
    read "-$0.00", never a long float. Use this for every P&L / realised-gain amount; keep `fmt` for prices. */
