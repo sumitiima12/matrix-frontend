@@ -22,6 +22,7 @@ import MiniCandles from "../components/charts/MiniCandles";
 import Pop from "../components/common/Pop";
 import Section from "../components/common/Section";
 import PopularScreeners from "../components/home/PopularScreeners";
+import ActionRequired from "../components/home/ActionRequired";
 
 /**
  * Dashboard — the trading desk. Composes the market strips, Matrix's Picks, trending, gainers/losers, news and the auto-buy panel.
@@ -653,7 +654,7 @@ export function marketOpen(market) {
   return true;
 }
 
-export default function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, onAutoBuy, onScreenerBuy, isAdmin = false, mode, watch, toggleWatch, profile, portfolio = [], realPortfolio = [], onRefreshReal, wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [], liveTick = 0, onWhy, autoOnMap: autoOnMapProp, setAutoOnMap: setAutoOnMapProp, deployCapMap: deployCapMapProp, setDeployCapMap: setDeployCapMapProp, hideDash = false, onOpenScreener }) {
+export default function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, onAutoBuy, onScreenerBuy, isAdmin = false, mode, watch, toggleWatch, profile, portfolio = [], realPortfolio = [], onRefreshReal, wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [], liveTick = 0, onWhy, autoOnMap: autoOnMapProp, setAutoOnMap: setAutoOnMapProp, deployCapMap: deployCapMapProp, setDeployCapMap: setDeployCapMapProp, hideDash = false, onOpenScreener, actionItems = [] }) {
   const [glMode, setGlMode] = useState("Gainers");
   // Picks refresh ONCE AN HOUR (not on every tick) so they don't churn.
   const [pickHour, setPickHour] = useState(() => Math.floor(Date.now() / 3600000));
@@ -1025,6 +1026,25 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       <GlobalStrip market={market} />
 
       {market !== "Crypto" && <TunedStrip profile={profile} />}
+
+      {/* ACTION REQUIRED centre — one consolidated hub for account-level problems, instead of scattering
+          them across cards. Server/broker/strategy-sourced items arrive via `actionItems`; the trade-derived
+          ones (unprotected positions, unresolved orders, insufficient balance, market closed) are computed
+          here. Renders nothing when there's nothing to act on. */}
+      {(() => {
+        const it = [...(actionItems || [])];
+        if (isReal) {
+          const openReal = (trades || []).filter((t) => t.real && t.exitAt == null && inMarket(t.sym, t.market));
+          const noSL = openReal.filter((t) => t.sl == null).length;
+          if (noSL) it.push({ key: "nosl", tone: "warn", label: `${noSL} position${noSL > 1 ? "s" : ""} without a stop-loss`, detail: "Unprotected — a move against you has no automatic exit.", action: { label: "Review", onClick: onGoPortfolio } });
+          const unresolved = openReal.filter((t) => ["pending", "unknown", "submitted"].includes(String(t.status || "").toLowerCase())).length;
+          if (unresolved) it.push({ key: "unresolved", tone: "crit", label: `${unresolved} order${unresolved > 1 ? "s" : ""} awaiting broker confirmation`, detail: "Matrix won't retry these — check them with your broker.", action: { label: "Orders", onClick: onGoPortfolio } });
+          const insuff = (trades || []).filter((t) => t.real && t.status === "rejected" && /balance|insufficient|fund|margin/i.test(String(t.rejectReason || ""))).length;
+          if (insuff) it.push({ key: "balance", tone: "crit", label: "Insufficient balance", detail: "A recent real order was rejected for low funds — add funds at your broker." });
+          if (!marketOpen(market)) it.push({ key: "mktclosed", tone: "info", label: `${MKT_LABEL[market]} market is closed`, detail: `Real orders queue until the next open (${marketOpenLabelIST(market)}).` });
+        }
+        return <ActionRequired items={it} />;
+      })()}
 
       {/* Portfolio / Auto-Buy dashboard card. Hidden for gated users (non-admin, virtual mode,
           Indian paper trading off) — there is nothing to trade, so a ₹0 virtual portfolio would

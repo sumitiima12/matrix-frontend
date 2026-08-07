@@ -68,6 +68,15 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
   const [tslOn, setTslOn] = useState(false);
   const [tslPctV, setTslPctV] = useState("");
   useEffect(() => { setOrdType("MARKET"); setLimitPx(""); setTrigPx(""); setTslOn(false); setTslPctV(""); }, [order && order.s && order.s.sym]);
+  /* R43-P2-02: keep the selection valid for what's actually offered. In real mode, the allowed set is the broker's
+     certified types, or MARKET-only when capabilities can't load (fail closed). If the current ordType isn't allowed
+     (e.g. caps loaded late and hid it, or the broker changed), snap back to MARKET so a hidden/unsupported value can
+     never be submitted with stale price fields. */
+  useEffect(() => {
+    if (!isReal) return;
+    const allowed = Array.isArray(supportedOrderTypes) ? supportedOrderTypes : ["MARKET"];
+    if (!allowed.includes(ordType)) { setOrdType("MARKET"); setLimitPx(""); setTrigPx(""); }
+  }, [isReal, supportedOrderTypes, ordType]);
 
   /* STOCK or OPTION. Offered on anything with a REAL NSE lot size — that IS what
      F&O-eligible means. There is no F&O market tab; an option bought here files under
@@ -375,10 +384,12 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
           <div style={{ marginTop: 14 }}>
             <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginBottom: 7 }}>Order type</div>
             <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-              {/* R42-P2-04: in Real mode, render ONLY the order types the connected broker is certified to accept
-                 (server-owned matrix). Virtual mode / unknown caps ⇒ show all; the backend still enforces regardless. */}
+              {/* R42-P2-04 / R43-P2-02: in Real mode render ONLY the order types the connected broker is certified to
+                 accept (server-owned matrix). FAIL CLOSED: if the capability list can't be loaded in real mode, restrict
+                 to MARKET only rather than showing everything — never advertise a type the broker may reject. Virtual
+                 mode shows all; the backend still enforces regardless. */}
               {[["Market", "MARKET"], ["Limit", "LIMIT"], ["Stop-Loss", "SL"], ["Stop-Limit", "SL-L"], ["Bracket", "BRACKET"]]
-                .filter(([, v]) => !isReal || !Array.isArray(supportedOrderTypes) || supportedOrderTypes.includes(v))
+                .filter(([, v]) => (!isReal ? true : Array.isArray(supportedOrderTypes) ? supportedOrderTypes.includes(v) : v === "MARKET"))
                 .map(([lbl, v]) => (
                 <button key={v} onClick={() => setOrdType(v)} className="tap" style={{ padding: "6px 11px", borderRadius: 9, fontSize: 11.5, fontWeight: 800, cursor: "pointer", border: ordType === v ? "1.5px solid var(--ink)" : "1px solid var(--line)", background: ordType === v ? "var(--elev)" : "transparent", color: "var(--ink)" }}>{lbl}</button>
               ))}
