@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { AlertTriangle, Minus, Plus, X } from "lucide-react";
+import { AlertTriangle, Minus, Plus, X, ShieldCheck } from "lucide-react";
 import { fmt, pct } from "../../lib/format";
 import OptionPicker from "./OptionPicker";
 import { isOptionable } from "../../domain/fno";
@@ -138,6 +138,21 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
             style={{ border: "none", background: "var(--elev)", borderRadius: 10, width: 32, height: 32, display: "grid", placeItems: "center", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1 }}>
             <X size={16} />
           </button>
+        </div>
+
+        {/* #2 — MODE is unmistakable. Real = red bar + broker + "real money" (never colour alone: text + icon);
+            Virtual = neutral. This sits at the top of the point-of-no-return drawer so the user can never
+            confuse a paper order for a live one. */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8, marginTop: 12, padding: "8px 11px", borderRadius: 10,
+          background: isReal ? "rgba(239,68,68,.10)" : "var(--elev)",
+          border: `1px solid ${isReal ? "var(--down)" : "var(--line)"}`,
+          borderLeft: `3px solid ${isReal ? "var(--down)" : "var(--muted)"}`,
+        }}>
+          {isReal ? <AlertTriangle size={14} color="var(--down)" style={{ flex: "0 0 auto" }} /> : <ShieldCheck size={14} color="var(--muted)" style={{ flex: "0 0 auto" }} />}
+          <span style={{ fontSize: 11.5, fontWeight: 800, color: isReal ? "var(--down)" : "var(--muted)", letterSpacing: ".02em" }}>
+            {isReal ? `REAL${brokerName ? " · " + brokerName : ""} · uses real money` : "VIRTUAL · paper money — no real funds"}
+          </span>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 12 }}>
@@ -447,7 +462,7 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
               color: "#fff",
             }}
           >
-            {busy ? "Placing…" : `${side === "BUY" ? "Buy" : "Sell"} ${units} ${units === 1 ? "unit" : "units"}`}
+            {busy ? "Placing…" : `${side === "BUY" ? "Buy" : "Sell"} ${units} ${units === 1 ? "unit" : "units"}${isReal ? " · Real money" : ""}`}
           </button>
         </div>
         </>
