@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { defOperands, chainCode, IND_CATALOG, TEMPLATES, detectTf, detectAllTfs, tfMinutes } from "../domain/strategyLang";
 import { backtest, parseRules, getBtCosts, setBtCosts } from "../domain/backtest";
 import { stratPerf } from "../domain/strategies";
-import { Activity, Bell, Bolt, Check, ChevronDown, ChevronUp, Copy, Globe, ListChecks, Pause, Pencil, Play, Plus, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
+import { Activity, AlertTriangle, Bell, Bolt, Check, ChevronDown, ChevronUp, Copy, Globe, ListChecks, Pause, Pencil, Play, Plus, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
 import { Area, AreaChart, Bar, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { BACKEND_URL } from "../config";
 import { chgColor, clamp, fmt, fmtPnl, pct, DAY, lsGet, lsSet, strategyHealthLabel } from "../lib/format";
@@ -3131,8 +3131,58 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
               </select>
             )}
           </div>
-          {liveMsg && <div style={{ fontSize: 11.5, marginTop: 8, fontWeight: 600, color: liveMsg.e ? "var(--down)" : "var(--up)" }}>{liveMsg.t}</div>}
-          <button onClick={() => armLive(s)} disabled={liveBusy} className="tap disp glow" style={{ width: "100%", marginTop: 10, background: "linear-gradient(120deg,var(--down),#E0455E)", color: "#fff", border: "none", borderRadius: 11, padding: 11, fontWeight: 800, fontSize: 12.5 }}>{liveBusy ? "Arming…" : "Arm real-money auto-buy"}</button>
+          {/* #13 — Go-Live readiness checklist. The user sees exactly what must be true before real money
+              can move, and the Arm button stays disabled until every REQUIRED check passes. Recommended
+              (non-blocking) checks — like a configured stop-loss — show as amber warnings, not hard gates. */}
+          {(() => {
+            const sym = (s.symbols && s.symbols[0]) || null;
+            const mkt = sym ? (marketOf(sym) || market) : market;
+            const route = (sym && brokerFor) ? brokerFor(mkt) : null;
+            const connected = !!(route && route.session);
+            const certified = connected && canAutoBuyBroker(route.id);
+            const mapped = connected && sym ? !!brokerSymbol(sym, route.id) : false;
+            const hasEntry = !!(s.cfg && s.cfg.entry);
+            const amtOk = Number(liveAmt) > 0;
+            const hasSL = !!(s.cfg && (s.cfg.sl || s.cfg.tsl));
+            const hasExit = !!(s.cfg && ((Array.isArray(s.cfg.exit) && s.cfg.exit.length) || s.cfg.tp));
+            const brokerName = route && route.meta ? route.meta.name : (route ? route.id : "broker");
+            const checks = [
+              { req: true, ok: !!sym, label: sym ? `Symbol set (${sym})` : "Add a symbol to this strategy (edit ⚙)" },
+              { req: true, ok: connected, label: connected ? `Broker connected (${brokerName})` : `Connect a ${mkt} broker first` },
+              { req: true, ok: certified, label: certified ? "Broker certified for unattended auto-buy" : `Auto-buy not certified for ${brokerName} yet` },
+              { req: true, ok: mapped, label: mapped ? "Symbol tradable at this broker" : (sym ? `${brokerName} can't trade ${sym}` : "Symbol not mapped to broker") },
+              { req: true, ok: hasEntry, label: hasEntry ? "Entry rule defined" : "No entry rule to run on the server" },
+              { req: true, ok: amtOk, label: amtOk ? "Amount per trade set" : "Enter an amount per trade" },
+              { req: false, ok: hasSL, label: hasSL ? "Stop-loss configured" : "No stop-loss set (recommended)" },
+              { req: false, ok: hasExit, label: hasExit ? "Take-profit / exit rule set" : "No take-profit or exit rule (recommended)" },
+            ];
+            const blocked = checks.some((c) => c.req && !c.ok);
+            const passed = checks.filter((c) => c.ok).length;
+            return (
+              <>
+                <div style={{ marginTop: 12, border: "1px solid var(--line)", borderRadius: 12, background: "var(--elev)", padding: "10px 12px" }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".04em", color: "var(--muted)", marginBottom: 8, display: "flex", justifyContent: "space-between" }}>
+                    <span>GO-LIVE CHECKLIST</span>
+                    <span style={{ color: blocked ? "var(--down)" : "var(--up)" }}>{passed}/{checks.length} ready</span>
+                  </div>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {checks.map((c, ci) => {
+                      const tone = c.ok ? "var(--up)" : (c.req ? "var(--down)" : "var(--warn, #C77700)");
+                      const Icon = c.ok ? Check : (c.req ? X : AlertTriangle);
+                      return (
+                        <div key={ci} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, fontWeight: 600, color: c.ok ? "var(--ink)" : tone }}>
+                          <Icon size={13} style={{ color: tone, flex: "0 0 auto" }} />
+                          <span>{c.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                {liveMsg && <div style={{ fontSize: 11.5, marginTop: 8, fontWeight: 600, color: liveMsg.e ? "var(--down)" : "var(--up)" }}>{liveMsg.t}</div>}
+                <button onClick={() => armLive(s)} disabled={liveBusy || blocked} className="tap disp glow" style={{ width: "100%", marginTop: 10, background: blocked ? "var(--elev)" : "linear-gradient(120deg,var(--down),#E0455E)", color: blocked ? "var(--muted)" : "#fff", border: blocked ? "1px solid var(--line)" : "none", borderRadius: 11, padding: 11, fontWeight: 800, fontSize: 12.5, cursor: blocked ? "not-allowed" : "pointer", opacity: blocked ? 0.8 : 1 }}>{liveBusy ? "Arming…" : blocked ? "Complete checklist to go live" : "Arm real-money auto-buy"}</button>
+              </>
+            );
+          })()}
         </div>
       )}
       {editStrat === s.id && (
