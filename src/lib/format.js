@@ -60,6 +60,18 @@ export function orderStatusLabel(state) {
   return { label: nice, tone: "info" };
 }
 
+/* #12 — ONE health status per strategy (never several competing tags). Reduces a strategy's live state to a
+   single { label, tone } from a few booleans. Callers pass what they know; unknowns default to waiting. */
+export function strategyHealthLabel({ paused, hasOpen, marketClosed, brokerDown, riskLimit, needsAction } = {}) {
+  if (needsAction) return { label: "Action required", tone: "down" };
+  if (paused)      return { label: "Paused", tone: "muted" };
+  if (brokerDown)  return { label: "Broker unavailable", tone: "warn" };
+  if (riskLimit)   return { label: "Risk limit reached", tone: "warn" };
+  if (hasOpen)     return { label: "Running", tone: "up" };
+  if (marketClosed) return { label: "Market closed", tone: "info" };
+  return { label: "Waiting for signal", tone: "info" };
+}
+
 /* P&L / money amounts ALWAYS read at exactly 2 decimals — no sub-cent 6-digit tail. `fmt` keeps extra
    digits for sub-cent PRICES (a $0.002 token must not collapse to $0.00), but a P&L of -$0.002892 should
    read "-$0.00", never a long float. Use this for every P&L / realised-gain amount; keep `fmt` for prices. */

@@ -5,7 +5,7 @@ import { stratPerf } from "../domain/strategies";
 import { Activity, Bell, Bolt, Check, ChevronDown, ChevronUp, Copy, Globe, ListChecks, Pause, Pencil, Play, Plus, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
 import { Area, AreaChart, Bar, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { BACKEND_URL } from "../config";
-import { chgColor, clamp, fmt, fmtPnl, pct, DAY, lsGet, lsSet } from "../lib/format";
+import { chgColor, clamp, fmt, fmtPnl, pct, DAY, lsGet, lsSet, strategyHealthLabel } from "../lib/format";
 import { confirmDialog, alertDialog } from "../lib/confirmDialog";   // in-app confirm/notice (reliable in webviews/PWA) for money-moving gates
 import EntryKillSwitch from "../components/common/EntryKillSwitch";
 import { useBacktestStats, loadBtCandles, scoreCfg } from "../hooks/useBacktestStats";
@@ -3328,7 +3328,8 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             <CollapsibleList items={vd} initial={5} reverse={false} render={({ s, p }) => (
               <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: "1px solid var(--line)" }}>
                 <div style={{ minWidth: 0 }}>
-                  <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{s.name || (s.symbols && s.symbols[0]) || "Strategy"}{s.paused && <span style={{ color: "var(--muted)", fontWeight: 700 }}> · paused</span>}</div>
+                  <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{s.name || (s.symbols && s.symbols[0]) || "Strategy"}
+                    {(() => { const h = strategyHealthLabel({ paused: s.paused, hasOpen: (p.open || 0) > 0 }); const c = h.tone === "up" ? "var(--up)" : h.tone === "down" ? "var(--down)" : h.tone === "warn" ? "var(--amber)" : h.tone === "muted" ? "var(--muted)" : "var(--primary)"; return <span className="pill" style={{ marginLeft: 6, fontSize: 8.5, fontWeight: 800, padding: "2px 7px", borderRadius: 999, background: "var(--elev)", color: c, verticalAlign: "middle", whiteSpace: "nowrap" }}>{h.label}</span>; })()}</div>
                   <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600, marginTop: 1 }}>{(s.symbols || []).join(", ") || "—"} · Created by {creatorOf(s)}</div>
                   <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>{p.positions} position{p.positions === 1 ? "" : "s"}{p.open ? ` · ${p.open} open` : ""}{p.winRate != null ? ` · ${p.winRate.toFixed(0)}% win` : ""}</div>
                   {/* Open positions as SCREENER-STYLE COLUMNS — one row per open position (a multi-symbol

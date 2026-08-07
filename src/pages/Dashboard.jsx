@@ -654,7 +654,7 @@ export function marketOpen(market) {
   return true;
 }
 
-export default function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, onAutoBuy, onScreenerBuy, isAdmin = false, mode, watch, toggleWatch, profile, portfolio = [], realPortfolio = [], onRefreshReal, wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [], liveTick = 0, onWhy, autoOnMap: autoOnMapProp, setAutoOnMap: setAutoOnMapProp, deployCapMap: deployCapMapProp, setDeployCapMap: setDeployCapMapProp, hideDash = false, onOpenScreener, actionItems = [], strategies = [], onGoDeployed }) {
+export default function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, onAutoBuy, onScreenerBuy, isAdmin = false, mode, watch, toggleWatch, profile, portfolio = [], realPortfolio = [], onRefreshReal, wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [], liveTick = 0, onWhy, autoOnMap: autoOnMapProp, setAutoOnMap: setAutoOnMapProp, deployCapMap: deployCapMapProp, setDeployCapMap: setDeployCapMapProp, hideDash = false, onOpenScreener, actionItems = [], strategies = [], onGoDeployed, brokerName = null }) {
   const [glMode, setGlMode] = useState("Gainers");
   // Picks refresh ONCE AN HOUR (not on every tick) so they don't churn.
   const [pickHour, setPickHour] = useState(() => Math.floor(Date.now() / 3600000));
@@ -1022,6 +1022,21 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
 
   return (
     <div className="home-metal">
+      {/* #24 — persistent safety summary: mode · broker · active strategies · open positions, at a glance.
+          Real mode gets a red accent so situational awareness is continuous, never buried. */}
+      {(() => {
+        const activeStrats = (strategies || []).filter((s) => s && s.active).length;
+        const openCount = (trades || []).filter((t) => (isReal ? !!t.real : !t.real) && t.exitAt == null && t.entry != null && t.status !== "rejected" && inMarket(t.sym, t.market)).length;
+        return (
+          <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", padding: "7px 11px", borderRadius: 10, marginBottom: 10, background: isReal ? "rgba(239,68,68,.07)" : "var(--elev)", border: `1px solid ${isReal ? "var(--down)" : "var(--line)"}`, fontSize: 11, fontWeight: 700, color: "var(--muted)" }}>
+            <span style={{ fontWeight: 800, letterSpacing: ".02em", color: isReal ? "var(--down)" : "var(--ink)" }}>{isReal ? "REAL" : "VIRTUAL"}</span>
+            <span style={{ opacity: .5 }}>·</span><span>{brokerName || (isReal ? "No broker" : "Paper money")}</span>
+            <span style={{ opacity: .5 }}>·</span><span>{activeStrats} active {activeStrats === 1 ? "strategy" : "strategies"}</span>
+            <span style={{ opacity: .5 }}>·</span><span>{openCount} open</span>
+          </div>
+        );
+      })()}
+
       {/* Global markets live strip — market-aware (Crypto leads with BTC/ETH, not NIFTY) */}
       <GlobalStrip market={market} />
 
