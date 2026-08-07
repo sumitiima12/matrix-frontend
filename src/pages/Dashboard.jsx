@@ -4,7 +4,7 @@ import { currentIdeas } from "../domain/ideas";
 import { dailyPicks, techSignal } from "../domain/signals";
 import { Building2, ChevronRight, Lightbulb, Newspaper, Pencil, Sparkles, TrendingUp, X, Zap } from "lucide-react";
 import { BACKEND_URL, RECONCILE_REAL_CLOSES } from "../config";
-import { CUR, DAY, chgColor, clamp, compact, fmt, lsGet, lsSet, pct, timeAgo } from "../lib/format";
+import { CUR, DAY, chgColor, clamp, compact, fmt, fmtPnl, lsGet, lsSet, pct, timeAgo } from "../lib/format";
 import { confirmDialog } from "../lib/confirmDialog";   // in-app confirm (reliable in webviews/PWA)
 import { ALL, GLOBAL_MKTS, UNIVERSE, marketOf } from "../domain/universe";
 import { askMatrix, fetchNews, fetchNewsFeed, scanIdeas } from "../domain/api";
@@ -1057,7 +1057,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   const hr = (isReal && isLeveraged) ? dashRet : totalStats.retPct;
                   return (
                     <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
-                      <div className="mono" style={{ fontWeight: 800, fontSize: 27, color: "var(--ink)" }}>{(hp >= 0 ? "+" : "") + (isReal ? money1(hp) : fmt(hp, market))}</div>
+                      <div className="mono" style={{ fontWeight: 800, fontSize: 27, color: "var(--ink)" }}>{(hp >= 0 ? "+" : "") + (isReal ? money1(hp) : fmtPnl(hp, market))}</div>
                       <div className="mono" style={{ fontWeight: 800, fontSize: 16, color: hr >= 0 ? "var(--up)" : "var(--down)" }}>{(hr >= 0 ? "+" : "") + hr.toFixed(1) + "%"}</div>
                     </div>
                   );
@@ -1072,7 +1072,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     {[["Manual", totalStats.byType.Manual], ["Auto-Buy", totalStats.byType["Auto Buy"]], ["Automate", totalStats.byType.Automate], ["Screener", totalStats.byType["Screener Auto Buy"]]].map(([label, v]) => (
                       <div key={label} style={{ background: "var(--elev)", borderRadius: 9, padding: "7px 8px", minWidth: 0 }}>
                         <div style={{ fontSize: 9, opacity: .65, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
-                        <div className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: v >= 0 ? "var(--up)" : "var(--down)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(v >= 0 ? "+" : "") + (isReal ? money1(v) : fmt(v, market))}</div>
+                        <div className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: v >= 0 ? "var(--up)" : "var(--down)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(v >= 0 ? "+" : "") + (isReal ? money1(v) : fmtPnl(v, market))}</div>
                       </div>
                     ))}
                   </div>
@@ -1098,7 +1098,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                               <div className="disp" style={{ fontWeight: 800, fontSize: 12.5, color: "var(--primary)" }}>{t.sym} <span style={{ fontSize: 9.5, fontWeight: 700, opacity: .6 }}>{t.tradeType || "Manual"}</span></div>
                               <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>Entry {isReal ? money1(t.entry) : fmt(t.entry, market)} · now {isReal ? money1(t.cur) : fmt(t.cur, market)}</div>
                             </div>
-                            <div className="mono" style={{ flex: "0 0 auto", fontWeight: 800, fontSize: 13, color: (t.livePnl || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{(t.livePnl || 0) >= 0 ? "+" : ""}{isReal ? money1(t.livePnl) : fmt(t.livePnl, market)}</div>
+                            <div className="mono" style={{ flex: "0 0 auto", fontWeight: 800, fontSize: 13, color: (t.livePnl || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{(t.livePnl || 0) >= 0 ? "+" : ""}{isReal ? money1(t.livePnl) : fmtPnl(t.livePnl, market)}</div>
                           </div>
                         ))}
                         <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600, marginTop: 2 }}>Rejected orders aren't positions — find them under Orders.</div>

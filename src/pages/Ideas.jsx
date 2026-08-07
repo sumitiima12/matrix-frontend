@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { currentIdeas, resolveIdea } from "../domain/ideas";
 import { BACKEND_URL } from "../config";
-import { fmt } from "../lib/format";
+import { fmt, fmtPnl } from "../lib/format";
 import { alertDialog } from "../lib/confirmDialog";   // in-app notice (reliable in webviews/PWA)
 import { ALL, marketOf, UNIVERSE } from "../domain/universe";
 import { fetchHistory, apiListIdeas, apiPostIdea, apiDeleteIdea, apiReviewIdea } from "../domain/api";
@@ -88,7 +88,7 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
         </div>
         <div style={{ textAlign: "left" }}>
           <div style={{ fontSize: 10, opacity: .85, fontWeight: 700 }}>P&amp;L</div>
-          <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: netPnl >= 0 ? "var(--up)" : "var(--down)" }}>{netPnl >= 0 ? "+" : ""}{fmt(netPnl, market)}</div>
+          <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: netPnl >= 0 ? "var(--up)" : "var(--down)" }}>{netPnl >= 0 ? "+" : ""}{fmtPnl(netPnl, market)}</div>
         </div>
         <span style={{ marginLeft: "auto", display: "grid", placeItems: "center" }}><ChevronDown size={16} /></span>
       </button>
@@ -110,7 +110,7 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
       <div style={{ marginTop: 7 }}>
         <MultiSelect label="Symbols" options={symOptions} value={symFs} onChange={setSymFs} allLabel="All symbols" />
       </div>
-      <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 12, color: netPnl >= 0 ? "var(--up)" : "var(--down)" }}>{netPnl >= 0 ? "+" : ""}{fmt(netPnl, market)}</div>
+      <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 12, color: netPnl >= 0 ? "var(--up)" : "var(--down)" }}>{netPnl >= 0 ? "+" : ""}{fmtPnl(netPnl, market)}</div>
       <div style={{ fontSize: 11, opacity: .85, marginTop: -2 }}>If every idea was traded with {fmt(cap, market)} · {openN} still open</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
         <Stat k="Returns %" v={(avg >= 0 ? "+" : "") + avg.toFixed(2) + "%"} c={avg >= 0 ? "var(--up)" : "var(--down)"} />

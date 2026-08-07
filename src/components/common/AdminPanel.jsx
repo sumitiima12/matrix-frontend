@@ -230,25 +230,8 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
               : <div style={{ fontSize: 12, color: "var(--muted)" }}>No onboarding answers saved.</div>}
           </div>
 
-          {/* Strategies */}
-          <div style={card}>
-            <div className="disp" style={{ fontWeight: 800, fontSize: 13, marginBottom: 8 }}>
-              Strategies {selected.state && selected.state.strats ? `(${selected.state.strats.length})` : ""}
-            </div>
-            {selected.state && selected.state.strats && selected.state.strats.length
-              ? selected.state.strats.map((s, i) => (
-                  <div key={s.id || i} style={{ borderTop: i ? "1px solid var(--line)" : "none", paddingTop: i ? 8 : 0, marginTop: i ? 8 : 0 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ fontWeight: 700, fontSize: 12.5 }}>{s.name || "Unnamed"}</span>
-                      <span className="pill" style={{ fontSize: 9, fontWeight: 800, padding: "2px 7px", background: s.active ? "var(--up)" : "var(--elev)", color: s.active ? "#fff" : "var(--muted)" }}>{s.active ? "ACTIVE" : "OFF"}</span>
-                    </div>
-                    {s.symbols && s.symbols.length > 0 && (
-                      <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>{s.symbols.join(", ")}</div>
-                    )}
-                  </div>
-                ))
-              : <div style={{ fontSize: 12, color: "var(--muted)" }}>No strategies.</div>}
-          </div>
+          {/* Strategies — first 5 by default, "Show more" expands to the full list */}
+          <StrategiesSection strats={(selected.state && selected.state.strats) || []} cardStyle={card} />
 
           {/* Trades — last 10 by default, filters + CSV export */}
           <TradesSection trades={selected.trades || []} cardStyle={card} />
@@ -370,6 +353,41 @@ function IdeasModeration({ adminKey, card }) {
             </div>
           </div>
         ))}
+    </div>
+  );
+}
+
+/* Strategies for ONE user in the admin console.
+   - Shows the first 5 by default; "Show more" expands the section to the full list. */
+function StrategiesSection({ strats = [], cardStyle }) {
+  const [expanded, setExpanded] = useState(false);
+  const CAP = 5;
+  const shown = expanded ? strats : strats.slice(0, CAP);
+  const hidden = Math.max(0, strats.length - CAP);
+  return (
+    <div style={cardStyle}>
+      <div className="disp" style={{ fontWeight: 800, fontSize: 13, marginBottom: 8 }}>
+        Strategies {strats.length ? `(${strats.length})` : ""}
+      </div>
+      {strats.length
+        ? shown.map((s, i) => (
+            <div key={s.id || i} style={{ borderTop: i ? "1px solid var(--line)" : "none", paddingTop: i ? 8 : 0, marginTop: i ? 8 : 0 }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ fontWeight: 700, fontSize: 12.5 }}>{s.name || "Unnamed"}</span>
+                <span className="pill" style={{ fontSize: 9, fontWeight: 800, padding: "2px 7px", background: s.active ? "var(--up)" : "var(--elev)", color: s.active ? "#fff" : "var(--muted)" }}>{s.active ? "ACTIVE" : "OFF"}</span>
+              </div>
+              {s.symbols && s.symbols.length > 0 && (
+                <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>{s.symbols.join(", ")}</div>
+              )}
+            </div>
+          ))
+        : <div style={{ fontSize: 12, color: "var(--muted)" }}>No strategies.</div>}
+      {hidden > 0 && (
+        <button onClick={() => setExpanded((v) => !v)} className="tap disp"
+          style={{ marginTop: 10, width: "100%", border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: 11.5, cursor: "pointer" }}>
+          {expanded ? "Show less" : `Show more (${hidden} more)`}
+        </button>
+      )}
     </div>
   );
 }

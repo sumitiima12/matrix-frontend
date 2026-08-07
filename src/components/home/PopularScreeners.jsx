@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ALL, UNIVERSE, marketOf, yahooSymbol } from "../../domain/universe";
-import { CUR, DAY, chgColor, fmt, lsGet, lsSet } from "../../lib/format";
+import { CUR, DAY, chgColor, fmt, fmtPnl, lsGet, lsSet } from "../../lib/format";
 import { scanScreener, marketOpen } from "../../domain/api";
 import { getHistory } from "../../services/marketService";
 import { backtest } from "../../domain/backtest";
@@ -14,7 +14,7 @@ import ScreenerTradeList from "./ScreenerTradeList";
 import { CondBuilder2, IndicatorDefs, TFS, TradeLog } from "../builder/BuilderKit";
 import { useBacktestStats } from "../../hooks/useBacktestStats";
 import { defOperands } from "../../domain/strategyLang";
-import { Pencil, SlidersHorizontal, Sparkles, ChevronRight, Activity } from "lucide-react";
+import { Pencil, SlidersHorizontal, Sparkles, Activity } from "lucide-react";
 
 /* THE THREE POPULAR SCREENERS. Each is a real strategy config (indicators + entry chain) evaluated live
    on 5-minute candles by the backend /api/screener-scan. A symbol appears in a carousel only while its
@@ -177,7 +177,7 @@ function ScreenerStats({ screenerKey, market, defs, entry, exit, sl, tp, tf, sym
             should account for that. An honest label beats a misleading "Return". */}
         {cell("Return / Notional", (stats.retPct >= 0 ? "+" : "") + (stats.retPct || 0).toFixed(1) + "%", stats.retPct >= 0 ? "var(--up)" : "var(--down)")}
         {cell("P&L", stats.pnl == null ? "—" : (stats.pnl >= 0 ? "+" : "") + fmt(Number(Number(stats.pnl).toFixed(2)), market), (stats.pnl || 0) >= 0 ? "var(--up)" : "var(--down)")}
-        {cell("Max DD", stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmt(stats.maxDD, market) : fmt(0, market)) : "—", "var(--down)")}
+        {cell("Max DD", stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmtPnl(stats.maxDD, market) : fmt(0, market)) : "—", "var(--down)")}
         {cell("Symbols", stats.symbols || 0)}
       </div>
       <TradeLog trades={stats.tradeList} market={market} showSym />
@@ -538,7 +538,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
                   <div className="disp" style={{ fontSize: 12, fontWeight: 800, color: "var(--ink)" }}>{t.sym}{(t.side === "SELL" || t.short) ? <span style={{ color: "var(--down)", fontSize: 9, marginLeft: 4 }}>SHORT</span> : null}</div>
                   <div style={{ fontSize: 9, color: "var(--muted)" }}>Entry <span className="mono">{fmt(t.entry, market)}</span> · Now <span className="mono">{fmt(px, market)}</span></div>
                 </div>
-                <div className="mono" style={{ fontSize: 12, fontWeight: 800, color: pnl >= 0 ? "var(--up)" : "var(--down)", whiteSpace: "nowrap" }}>{(pnl >= 0 ? "+" : "") + fmt(pnl, market)}</div>
+                <div className="mono" style={{ fontSize: 12, fontWeight: 800, color: pnl >= 0 ? "var(--up)" : "var(--down)", whiteSpace: "nowrap" }}>{(pnl >= 0 ? "+" : "") + fmtPnl(pnl, market)}</div>
                 {onClosePosition && (
                   <button onClick={() => onClosePosition(t)} className="tap" title="Close this position now" style={{ flexShrink: 0, border: "1px solid var(--down)", background: "var(--down-soft, rgba(232,72,85,.12))", color: "var(--down)", borderRadius: 8, padding: "4px 9px", fontSize: 10, fontWeight: 800 }}>Close</button>
                 )}
@@ -942,7 +942,7 @@ function ScreenerDashboard({ trades = [], market }) {
         </select>
       </div>
       {/* Headline P&L + subline — mirrors the Automation Dashboard. */}
-      <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 6, color: up ? "var(--up)" : "var(--down)" }}>{up ? "+" : ""}{fmt(pnl, market)}</div>
+      <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 6, color: up ? "var(--up)" : "var(--down)" }}>{up ? "+" : ""}{fmtPnl(pnl, market)}</div>
       <div style={{ fontSize: 11, opacity: .85, marginTop: -2 }}>{open.length} live position{open.length === 1 ? "" : "s"} · {mine.length} trade{mine.length === 1 ? "" : "s"} in {market}</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
         <Tile k="Returns %" v={ret == null ? "—" : (ret >= 0 ? "+" : "") + ret.toFixed(2) + "%"} c={ret == null ? undefined : (ret >= 0 ? "var(--up)" : "var(--down)")} />
@@ -982,7 +982,7 @@ function LivePosRow({ t, market, td, onClosePosition, onUpdatePosition }) {
       <td style={td}><span style={{ fontWeight: 800 }}>{e.d}</span> <span style={{ color: "var(--muted)" }}>{e.t}</span></td>
       <td style={{ ...td, textAlign: "right" }}>{fmt(t.entry, market)}</td>
       <td style={{ ...td, textAlign: "right" }}>{fmt(px, market)}</td>
-      <td style={{ ...td, textAlign: "right", color: pnl >= 0 ? "var(--up)" : "var(--down)" }}>{(pnl >= 0 ? "+" : "") + fmt(pnl, market)}</td>
+      <td style={{ ...td, textAlign: "right", color: pnl >= 0 ? "var(--up)" : "var(--down)" }}>{(pnl >= 0 ? "+" : "") + fmtPnl(pnl, market)}</td>
       <td style={{ ...td, textAlign: "right", color: retPct >= 0 ? "var(--up)" : "var(--down)" }}>{(retPct >= 0 ? "+" : "") + retPct.toFixed(2)}%</td>
       <td style={{ ...td, textAlign: "center" }}>
         <input value={slDraft} onChange={(ev) => setSlDraft(ev.target.value.replace(/[^0-9.]/g, ""))} onBlur={() => commit("sl", slDraft)} onKeyDown={(ev) => { if (ev.key === "Enter") ev.currentTarget.blur(); }} inputMode="decimal" title="Stop-loss %" className="no-ring mono" style={riskBox} />
@@ -1066,11 +1066,6 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
                 </button>
               )}
             </>)}
-        {onOpenScreener && (
-          <button onClick={onOpenScreener} className="tap disp" style={{ marginTop: 10, width: "100%", border: "1px solid var(--line)", background: "var(--surface)", color: "var(--primary)", borderRadius: 11, padding: "10px 12px", fontWeight: 800, fontSize: 12.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-            Open Screener <ChevronRight size={15} />
-          </button>
-        )}
       </Section>
     );
   }

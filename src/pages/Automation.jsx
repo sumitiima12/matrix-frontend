@@ -5,7 +5,7 @@ import { stratPerf } from "../domain/strategies";
 import { Activity, Bell, Bolt, Check, ChevronDown, ChevronUp, Copy, Globe, ListChecks, Pause, Pencil, Play, Plus, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
 import { Area, AreaChart, Bar, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { BACKEND_URL } from "../config";
-import { chgColor, clamp, fmt, pct, DAY, lsGet, lsSet } from "../lib/format";
+import { chgColor, clamp, fmt, fmtPnl, pct, DAY, lsGet, lsSet } from "../lib/format";
 import { confirmDialog, alertDialog } from "../lib/confirmDialog";   // in-app confirm/notice (reliable in webviews/PWA) for money-moving gates
 import EntryKillSwitch from "../components/common/EntryKillSwitch";
 import { useBacktestStats, loadBtCandles, scoreCfg } from "../hooks/useBacktestStats";
@@ -819,9 +819,9 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, onPersist, market 
               </div>
               <div className="mono" style={{ fontWeight: 800, fontSize: 13.5, marginTop: 3, color: "var(--ink)", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 3 }}>{stats.trades}</div>
             </button>
-            <Stat k="P&L" v={(stats.pnl >= 0 ? "+" : "") + fmt(stats.pnl, market)} c={chgColor(stats.pnl)} />
+            <Stat k="P&L" v={(stats.pnl >= 0 ? "+" : "") + fmtPnl(stats.pnl, market)} c={chgColor(stats.pnl)} />
             <Stat k="RETURN" v={pct(stats.retPct, 1)} c={chgColor(stats.retPct)} />
-            <Stat k="MAX DD" v={stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmt(stats.maxDD, market) : fmt(0, market)) : "—"} c={stats.maxDD > 0 ? "var(--down)" : "var(--muted)"} />
+            <Stat k="MAX DD" v={stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmtPnl(stats.maxDD, market) : fmt(0, market)) : "—"} c={stats.maxDD > 0 ? "var(--down)" : "var(--muted)"} />
           </div>
           <CardTradeLog tradeList={stats.tradeList} market={market} open={showTrades} />
           <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.45 }}>
@@ -941,7 +941,7 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, onPersist, onClone, 
               <div className="mono" style={{ fontWeight: 800, fontSize: 13.5, marginTop: 3, color: "var(--ink)", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 3 }}>{stats.trades}</div>
             </button>
             <Stat k="RETURN" v={pct(stats.retPct, 1)} c={chgColor(stats.retPct)} />
-            <Stat k="MAX DD" v={stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmt(stats.maxDD, market) : fmt(0, market)) : "—"} c={stats.maxDD > 0 ? "var(--down)" : "var(--muted)"} />
+            <Stat k="MAX DD" v={stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmtPnl(stats.maxDD, market) : fmt(0, market)) : "—"} c={stats.maxDD > 0 ? "var(--down)" : "var(--muted)"} />
           </div>
           <CardTradeLog tradeList={stats.tradeList} market={market} open={showTrades} />
         </>
@@ -1275,7 +1275,7 @@ function CopyStrategyCard({ s, active, onToggle, onPersist, onDelete, market = "
                 <div className="mono" style={{ fontWeight: 800, fontSize: 13.5, marginTop: 3, color: "var(--ink)", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 3 }}>{stats.trades}</div>
               </button>
               <Stat k="RETURN" v={pct(stats.retPct, 1)} c={chgColor(stats.retPct)} />
-              <Stat k="MAX DD" v={stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmt(stats.maxDD, market) : fmt(0, market)) : "—"} c={stats.maxDD > 0 ? "var(--down)" : "var(--muted)"} />
+              <Stat k="MAX DD" v={stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmtPnl(stats.maxDD, market) : fmt(0, market)) : "—"} c={stats.maxDD > 0 ? "var(--down)" : "var(--muted)"} />
             </div>
             <CardTradeLog tradeList={stats.tradeList} market={market} open={showTrades} />
           </>
@@ -1348,14 +1348,14 @@ function CompareRow({ s, td, opts, onReport, market = "IN", sym, onCreateCopy, c
           : !stats || !stats.trades ? <td style={{ ...td, color: "var(--muted)" }} colSpan={9}>{stats ? "no trades" : "no data"}</td>
           : <>
               <td style={td}>{stats.trades}</td>
-              <td style={c(stats.pnl)}>{stats.pnl == null ? "—" : (stats.pnl >= 0 ? "+" : "") + fmt(stats.pnl, market)}</td>
+              <td style={c(stats.pnl)}>{stats.pnl == null ? "—" : (stats.pnl >= 0 ? "+" : "") + fmtPnl(stats.pnl, market)}</td>
               <td style={c(stats.retPct)}>{(stats.retPct >= 0 ? "+" : "") + (stats.retPct || 0).toFixed(1)}%</td>
               <td style={{ ...td, color: "var(--up)" }}>{stats.wins}</td>
               <td style={{ ...td, color: "var(--down)" }}>{stats.losses}</td>
               <td style={{ ...td, color: (stats.winRate ?? 0) >= 50 ? "var(--up)" : "var(--down)" }}>{stats.winRate != null ? stats.winRate.toFixed(0) + "%" : "—"}</td>
               <td style={{ ...td, color: "var(--up)" }}>{stats.tpHit}</td>
               <td style={{ ...td, color: "var(--down)" }}>{stats.slHit}</td>
-              <td style={{ ...td, color: stats.maxDD > 0 ? "var(--down)" : "var(--muted)" }}>{stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmt(stats.maxDD, market) : fmt(0, market)) : "—"}</td>
+              <td style={{ ...td, color: stats.maxDD > 0 ? "var(--down)" : "var(--muted)" }}>{stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmtPnl(stats.maxDD, market) : fmt(0, market)) : "—"}</td>
             </>}
       </tr>
       {open && canExpand && (
@@ -1402,14 +1402,14 @@ function SymbolRow({ strat, sym, td, opts, onReport, market = "IN", onCreateCopy
           : !stats || !stats.trades ? <td style={{ ...td, color: "var(--muted)" }} colSpan={9}>{stats ? "no trades" : "no data"}</td>
           : <>
               <td style={td}>{stats.trades}</td>
-              <td style={c(stats.pnl)}>{stats.pnl == null ? "—" : (stats.pnl >= 0 ? "+" : "") + fmt(stats.pnl, market)}</td>
+              <td style={c(stats.pnl)}>{stats.pnl == null ? "—" : (stats.pnl >= 0 ? "+" : "") + fmtPnl(stats.pnl, market)}</td>
               <td style={c(stats.retPct)}>{(stats.retPct >= 0 ? "+" : "") + (stats.retPct || 0).toFixed(1)}%</td>
               <td style={{ ...td, color: "var(--up)" }}>{stats.wins}</td>
               <td style={{ ...td, color: "var(--down)" }}>{stats.losses}</td>
               <td style={{ ...td, color: (stats.winRate ?? 0) >= 50 ? "var(--up)" : "var(--down)" }}>{stats.winRate != null ? stats.winRate.toFixed(0) + "%" : "—"}</td>
               <td style={{ ...td, color: "var(--up)" }}>{stats.tpHit}</td>
               <td style={{ ...td, color: "var(--down)" }}>{stats.slHit}</td>
-              <td style={{ ...td, color: stats.maxDD > 0 ? "var(--down)" : "var(--muted)" }}>{stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmt(stats.maxDD, market) : fmt(0, market)) : "—"}</td>
+              <td style={{ ...td, color: stats.maxDD > 0 ? "var(--down)" : "var(--muted)" }}>{stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmtPnl(stats.maxDD, market) : fmt(0, market)) : "—"}</td>
             </>}
       </tr>
       {open && canExpand && (
@@ -2198,7 +2198,7 @@ function StrategyPnLView({ strats, trades, market, onDelete }) {
               <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600, marginTop: 1 }}>{(s.symbols || []).join(", ") || "—"} · {p.trades || 0} trades{p.winRate != null ? ` · ${p.winRate.toFixed(0)}% win` : ""}</div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <div className="mono" style={{ fontWeight: 800, fontSize: 14, color: chgColor(p.pnl) }}>{p.pnl == null ? "—" : (p.pnl >= 0 ? "+" : "") + fmt(p.pnl, market)}</div>
+              <div className="mono" style={{ fontWeight: 800, fontSize: 14, color: chgColor(p.pnl) }}>{p.pnl == null ? "—" : (p.pnl >= 0 ? "+" : "") + fmtPnl(p.pnl, market)}</div>
               {onDelete && openId === s.id && <button onClick={(e) => { e.stopPropagation(); onDelete(s); }} className="tap" title="Delete strategy" style={{ border: "none", background: "transparent", padding: 2, flexShrink: 0 }}><Trash2 size={14} color="var(--down)" /></button>}
               <ChevronDown size={15} style={{ transform: openId === s.id ? "rotate(180deg)" : "none", transition: "transform .2s", color: "var(--muted)" }} />
             </div>
@@ -2213,7 +2213,7 @@ function StrategyPnLView({ strats, trades, market, onDelete }) {
                     <div style={{ color: "var(--muted)" }}>In {dt(t.entryAt)}</div>
                     <div style={{ color: "var(--muted)" }}>{t.exitAt ? "Out " + dt(t.exitAt) : "position open"}</div>
                   </div>
-                  <div className="mono" style={{ fontWeight: 800, color: pl == null ? "var(--muted)" : chgColor(pl), textAlign: "right", flex: "0 0 auto" }}>{pl == null ? "—" : (pl >= 0 ? "+" : "") + fmt(pl, marketOf(t.sym))}</div>
+                  <div className="mono" style={{ fontWeight: 800, color: pl == null ? "var(--muted)" : chgColor(pl), textAlign: "right", flex: "0 0 auto" }}>{pl == null ? "—" : (pl >= 0 ? "+" : "") + fmtPnl(pl, marketOf(t.sym))}</div>
                 </div>
               ); })}
             </div>
@@ -2254,7 +2254,7 @@ function StrategyPnl({ s, trades = [], market }) {
       <div style={{ flex: 1 }} />
       <div style={{ textAlign: "right" }}>
         <div style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 800 }}>P&amp;L</div>
-        <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: chgColor(pnl) }}>{(pnl >= 0 ? "+" : "") + fmt(pnl, market)}</div>
+        <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: chgColor(pnl) }}>{(pnl >= 0 ? "+" : "") + fmtPnl(pnl, market)}</div>
       </div>
     </div>
   );
@@ -3044,7 +3044,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         <MetricMini k="Closed" v={p.trades} />
         {(p.open || 0) > 0 && <MetricMini k="Open" v={p.open} c="var(--primary)" />}
         <MetricMini k="Win rate" v={p.winRate == null ? "—" : p.winRate.toFixed(0) + "%"} />
-        <MetricMini k="P&L" v={p.pnl == null ? "—" : (p.pnl >= 0 ? "+" : "") + fmt(p.pnl, market)} c={chgColor(p.pnl)} />
+        <MetricMini k="P&L" v={p.pnl == null ? "—" : (p.pnl >= 0 ? "+" : "") + fmtPnl(p.pnl, market)} c={chgColor(p.pnl)} />
         <MetricMini k="Returns" v={pct(p.retPct, 1)} c={chgColor(p.retPct)} />
         <MetricMini k="Stop-loss" v={(s.cfg && s.cfg.sl != null && s.cfg.sl !== "") ? s.cfg.sl + "%" : "—"} c="var(--down)" />
         <MetricMini k="Target" v={(s.cfg && s.cfg.tp != null && s.cfg.tp !== "") ? s.cfg.tp + "%" : "—"} c="var(--up)" />
@@ -3208,7 +3208,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                           <td style={td}>{closed ? fmt(t.exit, mkt(t)) : <span style={{ color: "var(--primary)", fontWeight: 800 }}>Open</span>}</td>
                           <td style={{ ...td, color: "var(--muted)" }}>{closed ? dtf(t.exitAt) : "—"}</td>
                           <td style={{ ...td, color: "var(--muted)" }}>{closed ? (t.exitType || "Closed") : "—"}</td>
-                          <td style={{ ...td, textAlign: "right", color: closed ? chgColor(pnl) : "var(--muted)" }}>{closed ? `${pnl >= 0 ? "+" : ""}${fmt(pnl, mkt(t))}` : "open"}</td>
+                          <td style={{ ...td, textAlign: "right", color: closed ? chgColor(pnl) : "var(--muted)" }}>{closed ? `${pnl >= 0 ? "+" : ""}${fmtPnl(pnl, mkt(t))}` : "open"}</td>
                         </tr>
                       );
                     })}
@@ -3358,7 +3358,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                               <span className="mono" style={{ textAlign: "right", color: "var(--ink)" }}>{fmt(Number(ot.entry), mk)}</span>
                               <span className="mono" style={{ textAlign: "right", color: "var(--ink)" }}>{fmt(cur, mk)}</span>
                               <span className="mono" style={{ textAlign: "right", color: "var(--muted)" }}>{fmt(Number(ot.entry) * (ot.qty || 0), mk)}</span>
-                              <span className="mono" style={{ textAlign: "right", fontWeight: 800, color: chgColor(pl) }}>{(pl >= 0 ? "+" : "") + fmt(pl, mk)}</span>
+                              <span className="mono" style={{ textAlign: "right", fontWeight: 800, color: chgColor(pl) }}>{(pl >= 0 ? "+" : "") + fmtPnl(pl, mk)}</span>
                             </div>
                           );
                         })}
@@ -3370,7 +3370,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                 <div style={{ marginLeft: "auto", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
                   {/* Show combined realised + unrealised P&L whenever the strategy holds ANY position. */}
                   <div style={{ textAlign: "right" }}>
-                    <div className="mono" style={{ fontSize: 12.5, fontWeight: 800, color: chgColor(p.pnl) }}>{p.positions && p.pnl != null ? (p.pnl >= 0 ? "+" : "") + fmt(p.pnl, market) : "—"}</div>
+                    <div className="mono" style={{ fontSize: 12.5, fontWeight: 800, color: chgColor(p.pnl) }}>{p.positions && p.pnl != null ? (p.pnl >= 0 ? "+" : "") + fmtPnl(p.pnl, market) : "—"}</div>
                     {p.positions && p.pnl != null
                       ? <div className="mono" style={{ fontSize: 9.5, fontWeight: 700, color: chgColor(p.retPct) }}>{p.open ? "incl. live" : (p.retPct >= 0 ? "+" : "") + (p.retPct || 0).toFixed(2) + "%"}</div>
                       : <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>{s.paused ? "paused" : "waiting for signal"}</div>}

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Check, Link2, Search, X, AlertTriangle, ExternalLink } from "lucide-react";
+import { Check, Link2, X, AlertTriangle, ExternalLink } from "lucide-react";
 import { BROKERS } from "../../domain/brokers";
 import { brokerStatus, brokerLoginUrl, saveBrokerAppCreds } from "../../services/brokerService";
 
@@ -49,13 +49,16 @@ function gateMarketsFor(b) {
 
 export default function BrokerSheet({ userId, connectedIds = [], marketMap = {}, onDisconnect, onClose, onConnect, marketFilter = null, isAdmin = false, canConnectMarket = () => true }) {
   const connectedId = connectedIds[0] || null;   // back-compat for the copy below
-  const [q, setQ] = useState("");
+  const [q] = useState("");   // retained (search removed in favour of the dropdown); keeps the filter memo stable
   const [server, setServer] = useState(null);
   const [statusErr, setStatusErr] = useState(null);
   const [busy, setBusy] = useState(null);
   const [err, setErr] = useState(null);
   const [credFor, setCredFor] = useState(null);   // broker id whose credential form is open
   const [creds, setCreds] = useState({});
+  // Profile "Connect" now uses a DROPDOWN to pick ONE broker (default Delta) instead of scrolling a long
+  // list. `selected` is the chosen broker id; only that broker's connect card renders below.
+  const [selected, setSelected] = useState("delta");
   // The static egress IP the user whitelists in their own broker app (from the server).
   const [staticIp, setStaticIp] = useState(null);
   // The redirect URL they must register in their broker app — the exact URL we send them back to.
@@ -83,6 +86,15 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
     const rank = { ready: 0, gateway: 1, none: 2 };
     return [...list].sort((a, b) => rank[a.status] - rank[b.status]);
   }, [q, marketFilter, isAdmin, canConnectMarket]);
+
+  // Keep the dropdown pointing at a broker that's actually listed. Default to Delta when present (the
+  // owner's crypto broker), otherwise the first available — so the sheet always opens on a real choice.
+  useEffect(() => {
+    if (!shown.length) return;
+    if (!shown.some((b) => b.id === selected)) {
+      setSelected(shown.some((b) => b.id === "delta") ? "delta" : shown[0].id);
+    }
+  }, [shown]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const submitCreds = async (b) => {
     const missing = (b.fields || []).filter((f) => !f.optional && !String(creds[f.key] || "").trim());
@@ -257,16 +269,21 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
           </span>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 14, background: "var(--elev)", borderRadius: 12, padding: "10px 12px" }}>
-          <Search size={16} color="var(--muted)" />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search brokers…"
-            aria-label="Search brokers"
+        {/* Pick ONE broker to connect. Defaults to Delta; only the chosen broker's card shows below. */}
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 800, letterSpacing: ".03em", marginBottom: 6 }}>SELECT A BROKER</div>
+          <select
+            value={selected || ""}
+            onChange={(e) => { setSelected(e.target.value); setErr(null); setCredFor(null); setCreds({}); }}
+            aria-label="Select a broker to connect"
             className="no-ring"
-            style={{ flex: 1, minWidth: 0, border: "none", background: "transparent", color: "var(--ink)", fontSize: 13.5 }}
-          />
+            style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: "11px 12px", fontSize: 13.5, fontWeight: 700, background: "var(--elev)", color: "var(--ink)", cursor: "pointer", appearance: "auto" }}
+          >
+            {shown.length === 0 && <option value="">No brokers available</option>}
+            {shown.map((b) => (
+              <option key={b.id} value={b.id}>{b.name} — {b.markets.join(" · ")}</option>
+            ))}
+          </select>
         </div>
 
         {err && <div style={{ fontSize: 11.5, color: "var(--down)", marginTop: 10, fontWeight: 600 }}>{err}</div>}
@@ -281,7 +298,7 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
           <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 10, fontWeight: 600 }}>Checking the server…</div>
         )}
 
-        {shown.map((b) => {
+        {shown.filter((b) => b.id === selected).map((b) => {
           const isConnected = connectedIds.includes(b.id);
           const configured = Boolean(server && server.brokers && server.brokers[b.id] && server.brokers[b.id].configured);
           // Bring-your-own-app / bring-your-own-credential brokers don't need SERVER keys — the

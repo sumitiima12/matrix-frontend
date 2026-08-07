@@ -28,6 +28,16 @@ export function fmt(n, market = "IN") {
   return c + grouped;
 }
 
+/* P&L / money amounts ALWAYS read at exactly 2 decimals — no sub-cent 6-digit tail. `fmt` keeps extra
+   digits for sub-cent PRICES (a $0.002 token must not collapse to $0.00), but a P&L of -$0.002892 should
+   read "-$0.00", never a long float. Use this for every P&L / realised-gain amount; keep `fmt` for prices. */
+export function fmtPnl(n, market = "IN") {
+  const c = CUR[market] || "₹";
+  if (n == null || isNaN(n)) return "—";
+  const inGrouping = market === "IN" || (market === "Commodity" && _commodityINR);
+  return c + Number(n).toLocaleString(inGrouping ? "en-IN" : "en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 /* Abbreviate a big number. Indian markets read in Lakh/Crore; US, Crypto and USD commodities read in
    K/M/B/T. `market` picks the convention (defaults to Indian so existing Indian call sites are unchanged).
    Passing a US/Crypto market stops absurdities like a US market cap showing "300000 Cr". */
