@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { positionsDue } from "../services/squareOff";
+import { isBackgrounded, isOnline } from "../services/dataCoordinator";
 
 /**
  * useSquareOff — closes INTRADAY positions on schedule.
@@ -19,6 +20,11 @@ export function useSquareOff({ portfolio, onSell, enabled = true, notify }) {
     if (!enabled) return undefined;
 
     const tick = () => {
+      // PERF-3/4: this is a VIRTUAL-only (paper) square-off — real intraday positions are squared off by the
+      // backend exit engine (authoritative), so it's never running for real money. Skip while the tab is hidden
+      // or offline: a paper square-off can wait for the tab to be foregrounded again, and this avoids background
+      // work in hidden tabs.
+      if (isBackgrounded() || !isOnline()) return;
       const due = positionsDue(portfolio);
       due.forEach(({ holding, reason }) => {
         const key = holding.sym + ":" + (holding.boughtAt || 0);
