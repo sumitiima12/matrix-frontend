@@ -648,6 +648,8 @@ function StratSLTP({ sl, tp, setSl, setTp, market = "IN" }) {
    exit type, return % and P&L, exportable to CSV. Same backtest ledger the tiles are computed from. */
 function CardTradeLog({ tradeList, market = "IN", open = false }) {
   const [range, setRange] = useState("all");
+  const [cFrom, setCFrom] = useState("");   // custom from (yyyy-mm-dd)
+  const [cTo, setCTo] = useState("");       // custom to
   const DAY_MS = 86400000;
   const from = useMemo(() => {
     const now = Date.now();
@@ -656,11 +658,14 @@ function CardTradeLog({ tradeList, market = "IN", open = false }) {
     if (range === "3m") return now - 91 * DAY_MS;
     if (range === "6m") return now - 182 * DAY_MS;
     if (range === "1y") return now - 365 * DAY_MS;
+    if (range === "custom") return cFrom ? new Date(cFrom + "T00:00:00").getTime() : 0;
     return 0;
-  }, [range]);
+  }, [range, cFrom]);
+  // Upper bound only applies to a custom range (inclusive of the whole 'to' day).
+  const to = useMemo(() => (range === "custom" && cTo ? new Date(cTo + "T23:59:59").getTime() : Infinity), [range, cTo]);
   const rows = useMemo(
-    () => (tradeList || []).filter((t) => (t.exitTime || t.entryTime || 0) >= from),
-    [tradeList, from]
+    () => (tradeList || []).filter((t) => { const ts = t.exitTime || t.entryTime || 0; return ts >= from && ts <= to; }),
+    [tradeList, from, to]
   );
   const sum = useMemo(() => {
     const n = rows.length;
@@ -719,7 +724,17 @@ function CardTradeLog({ tradeList, market = "IN", open = false }) {
           <option value="3m">Last 3 months</option>
           <option value="6m">Last 6 months</option>
           <option value="1y">Last 1 year</option>
+          <option value="custom">Custom range</option>
         </select>
+        {range === "custom" && (
+          <>
+            <input type="date" aria-label="From" value={cFrom} onChange={(e) => setCFrom(e.target.value)} className="no-ring mono"
+              style={{ fontSize: 10.5, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 8, padding: "5px 8px", background: "var(--surface)", color: "var(--ink)", colorScheme: "light" }} />
+            <span style={{ fontSize: 10, color: "var(--muted)" }}>to</span>
+            <input type="date" aria-label="To" value={cTo} onChange={(e) => setCTo(e.target.value)} className="no-ring mono"
+              style={{ fontSize: 10.5, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 8, padding: "5px 8px", background: "var(--surface)", color: "var(--ink)", colorScheme: "light" }} />
+          </>
+        )}
         <button onClick={exportCsv} disabled={!rows.length} className="tap"
           style={{ marginLeft: "auto", border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 8, padding: "5px 10px", fontWeight: 800, fontSize: 10.5, opacity: rows.length ? 1 : 0.5 }}>
           ⬇ CSV

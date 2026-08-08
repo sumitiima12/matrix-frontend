@@ -437,7 +437,14 @@ function AppInner() {
   const [activityOpen, setActivityOpen] = useState(false);
   useEffect(() => {
     if (!buyToast || !buyToast.t) return;
-    setActivity((prev) => { const next = [{ at: Date.now(), text: buyToast.t, err: !!buyToast.e }, ...prev].slice(0, 50); try { localStorage.setItem("mx_activity", JSON.stringify(next)); } catch {} return next; });
+    if (buyToast.transient) return;   // passive background status toasts are shown but never logged as an action
+    setActivity((prev) => {
+      // Don't log a duplicate of the most recent entry (a repeated identical status shouldn't stack up).
+      if (prev[0] && prev[0].text === buyToast.t && Date.now() - (prev[0].at || 0) < 6 * 3600 * 1000) return prev;
+      const next = [{ at: Date.now(), text: buyToast.t, err: !!buyToast.e }, ...prev].slice(0, 50);
+      try { localStorage.setItem("mx_activity", JSON.stringify(next)); } catch {}
+      return next;
+    });
   }, [buyToast]);
   const clearActivity = () => { setActivity([]); try { localStorage.removeItem("mx_activity"); } catch {} };
   const [hydratedUser, setHydratedUser] = useState(null);
@@ -744,7 +751,11 @@ function AppInner() {
         }
         if (!resolved && !warnedUnknown) {
           warnedUnknown = true;
-          setBuyToast({ t: "An earlier order's outcome is still unknown — we're checking your broker. It won't be resubmitted automatically." });
+          // `transient`: this is a passive background re-check that runs on every app open — show it once as a
+          // toast, but do NOT append it to the Activity log. Otherwise a single stuck intent stacks up a fresh
+          // "still unknown" entry every session (the bug the user saw). The Activity log records ACTIONS, not
+          // repeated status polls.
+          setBuyToast({ t: "An earlier order's outcome is still unknown — we're checking your broker. It won't be resubmitted automatically.", transient: true });
         }
       }
     })();
