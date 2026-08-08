@@ -685,6 +685,7 @@ function CardTradeLog({ tradeList, market = "IN", open = false }) {
       ["Entry Date", (r) => dt(r.entryTime).d], ["Entry Time", (r) => dt(r.entryTime).t],
       ["Exit Date", (r) => dt(r.exitTime).d], ["Exit Time", (r) => dt(r.exitTime).t],
       ["Exit Type", (r) => r.reason || ""],
+      ["Capital", (r) => (r.invested == null ? "" : r.invested.toFixed(2))],
       ["Return %", (r) => ((r.retPct || 0) >= 0 ? "+" : "") + (r.retPct || 0).toFixed(2)],
       ["P&L", (r) => (r.pnl == null ? "" : r.pnl.toFixed(2))],
     ];
@@ -734,10 +735,11 @@ function CardTradeLog({ tradeList, market = "IN", open = false }) {
       </div>
       {rows.length ? (
         <div style={{ overflowX: "auto", maxHeight: 320, overflowY: "auto", borderTop: "1px solid var(--line)" }}>
-          <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 480 }}>
+          <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 620 }}>
             <thead>
               <tr>
-                <th style={th}>#</th><th style={th}>Entry</th><th style={th}>Exit</th><th style={th}>Exit type</th>
+                <th style={th}>#</th><th style={th}>Symbol</th><th style={th}>Entry</th><th style={th}>Exit</th><th style={th}>Exit type</th>
+                <th style={{ ...th, textAlign: "right" }}>Capital</th>
                 <th style={{ ...th, textAlign: "right" }}>Return</th>
                 <th style={{ ...th, textAlign: "right" }}>P&L</th>
               </tr>
@@ -748,11 +750,13 @@ function CardTradeLog({ tradeList, market = "IN", open = false }) {
                 return (
                   <tr key={i}>
                     <td style={{ ...td, color: "var(--muted)" }}>{i + 1}</td>
+                    <td style={{ ...td, fontWeight: 800 }}>{r.sym || "—"}</td>
                     <td style={td}><span style={{ fontWeight: 800 }}>{e.d}</span> <span style={{ color: "var(--muted)" }}>{e.t}</span></td>
                     <td style={td}><span style={{ fontWeight: 800 }}>{x.d}</span> <span style={{ color: "var(--muted)" }}>{x.t}</span></td>
                     <td style={{ ...td, color: "var(--muted)" }}>{r.reason || "—"}</td>
+                    <td style={{ ...td, textAlign: "right" }}>{r.invested == null ? "—" : fmt(r.invested, market)}</td>
                     <td style={{ ...td, textAlign: "right", color: (r.retPct || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{((r.retPct || 0) >= 0 ? "+" : "") + (r.retPct || 0).toFixed(2)}%</td>
-                    <td style={{ ...td, textAlign: "right", color: (r.pnl || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{r.pnl == null ? "—" : (r.pnl >= 0 ? "+" : "") + fmt(r.pnl, market)}</td>
+                    <td style={{ ...td, textAlign: "right", color: (r.pnl || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{r.pnl == null ? "—" : (r.pnl >= 0 ? "+" : "") + fmtPnl(r.pnl, market)}</td>
                   </tr>
                 );
               })}
