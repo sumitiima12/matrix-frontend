@@ -2352,6 +2352,19 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     } catch (e) { setLiveMsg({ e: true, t: String(e.message || e) }); }
     finally { setLiveBusy(false); }
   }
+  /* The armed-real record backing this strategy card (used by #585's card-level Deactivate). */
+  const armedRecordFor = (s) => armedReal.find((a) => a && a.status !== "cancelled" && (a.name || "") === (s.name || "") && (!s.symbols || !s.symbols.length || a.symbol === s.symbols[0])) || null;
+  /* #585 — DEACTIVATE a real (armed) strategy from its card. Cancels the arm so the engine stops placing
+     NEW real orders. It does NOT close an already-open position — that stays under its server-side SL/TP
+     managed exit; use the Real Live section's Stop to flatten it. Real money implications, so confirm first. */
+  async function disarmLive(s) {
+    const rec = armedRecordFor(s);
+    if (!rec) return;
+    const label = s.name || (s.symbols && s.symbols[0]) || "this strategy";
+    if (!(await confirmDialog(`Deactivate real trading for "${label}"?\n\nThe engine will stop placing new real orders for it. Any position that's already open keeps its SL/TP and is NOT closed here — use Stop in the Real Live section to close it.`, { title: "Deactivate real strategy", confirmLabel: "Deactivate" }))) return;
+    try { await cancelAutoBuy(userId, rec.id); refreshArmed(); setToast(`Deactivated ${label} (real)`); }
+    catch (e) { await alertDialog(String(e.message || e), { title: "Couldn't deactivate" }); }
+  }
   const creator = me || "You";   // the "created by" tag for anything this user makes
   const [mode, setMode] = useState("plain");   // plain English is the default entry point
   const [defs, setDefs] = useState([
@@ -3071,6 +3084,8 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
               const c = { Premium: "var(--gold)", Sample: "var(--primary)", Public: "var(--up)", Mine: "var(--primary)" }[t];
               return <span className="pill" style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".03em", padding: "3px 8px", background: "var(--elev)", color: c, border: "1px solid var(--line)" }}>{t.toUpperCase()}</span>;
             })()}
+            {/* #584 — REAL LIVE tag pinned top-right, non-clickable: this strategy is armed on the user's broker. */}
+            {appMode === "real" && isArmedReal(s) && <span className="pill" title="Armed for real money on your broker" style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".03em", padding: "3px 8px", background: "var(--down-soft)", color: "var(--down)", border: "1px solid var(--down)", display: "inline-flex", alignItems: "center", gap: 3, cursor: "default" }}>● REAL LIVE</span>}
           </div>
           {entryTriggered && <span className="pill" style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".03em", padding: "3px 8px", background: "var(--amber-soft, rgba(245,158,11,.15))", color: "var(--amber, #F59E0B)", border: "1px solid var(--amber, #F59E0B)", display: "inline-flex", alignItems: "center", gap: 3 }}>● ENTRY TRIGGERED</span>}
         </div>
@@ -3145,15 +3160,18 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             ? <button onClick={() => unpublishOwn(s)} className="tap" title="Remove from public" style={{ border: "1px solid var(--primary)", borderRadius: 11, background: "var(--primary-soft)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 700, color: "var(--primary)" }}><Globe size={13} /> Unpublish</button>
             : null}
         {canDelete && <button onClick={() => deleteStrategy(s)} className="tap" title="Delete strategy" style={{ border: "1px solid var(--down)", borderRadius: 11, background: "var(--surface)", padding: "7px 10px", display: "grid", placeItems: "center", color: "var(--down)" }}><Trash2 size={14} /></button>}
-        <button onClick={() => toggleActive(s.id)} className="tap disp" style={{ flex: "1 1 100px", borderRadius: 11, background: s.active ? "var(--surface)" : "linear-gradient(120deg,var(--up),#0EA968)", color: s.active ? "var(--ink)" : "#fff", boxShadow: s.active ? "none" : "0 6px 16px rgba(16,185,129,.3)", padding: "7px 10px", display: "flex", gap: 5, alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800, border: s.active ? "1px solid var(--line)" : "none" }}>
-          {s.active ? <><Pause size={13} /> Deactivate</> : <><Play size={13} /> Activate</>}
-        </button>
-        {/* Real-money auto-buy: REAL mode only, and only for the user's OWN strategies. Once armed
-            it shows a non-clickable "Real Live" badge so it can't be armed twice. In Virtual mode
-            this is hidden entirely — paper strategies never place real orders. */}
-        {appMode === "real" && (isArmedReal(s)
-          ? <span className="pill" title="This strategy is live on your broker" style={{ border: "1px solid var(--down)", borderRadius: 11, background: "var(--down-soft)", color: "var(--down)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 800, cursor: "default" }}><Bolt size={13} /> ● Real Live</span>
-          : <button onClick={() => { const opening = liveStrat !== s.id; setLiveStrat(opening ? s.id : null); setLiveMsg(null); if (opening) setLiveAmt(String(s.qty != null ? s.qty : (market === "Crypto" ? 200 : 1))); }} className="tap disp" title="Trade this strategy with real money" style={{ border: "1px solid var(--down)", borderRadius: 11, background: liveStrat === s.id ? "var(--down-soft)" : "var(--surface)", color: "var(--down)", padding: "7px 11px", display: "flex", gap: 5, alignItems: "center", fontSize: 12, fontWeight: 800 }}><Bolt size={13} /> Go Live</button>)}
+        {/* #585 — the PRIMARY strategy button is mode-aware:
+            • Virtual mode → paper Activate / Deactivate (toggles the paper strategy).
+            • Real mode    → GO LIVE (arm on broker) when not yet armed; once armed the same button
+              reads DEACTIVATE and disarms it. No separate paper toggle in real mode — the real arm IS
+              the activation. The non-clickable "Real Live" status now lives as a tag in the card header. */}
+        {appMode === "real"
+          ? (isArmedReal(s)
+              ? <button onClick={() => disarmLive(s)} className="tap disp" title="Stop trading this strategy with real money" style={{ flex: "1 1 100px", borderRadius: 11, background: "var(--surface)", color: "var(--down)", padding: "7px 10px", display: "flex", gap: 5, alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800, border: "1px solid var(--down)" }}><Pause size={13} /> Deactivate</button>
+              : <button onClick={() => { const opening = liveStrat !== s.id; setLiveStrat(opening ? s.id : null); setLiveMsg(null); if (opening) setLiveAmt(String(s.qty != null ? s.qty : (market === "Crypto" ? 200 : 1))); }} className="tap disp" title="Trade this strategy with real money" style={{ flex: "1 1 100px", borderRadius: 11, background: liveStrat === s.id ? "var(--down-soft)" : "linear-gradient(120deg,var(--down),#D9403A)", color: liveStrat === s.id ? "var(--down)" : "#fff", boxShadow: liveStrat === s.id ? "none" : "0 6px 16px rgba(217,64,58,.28)", padding: "7px 10px", display: "flex", gap: 5, alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800, border: liveStrat === s.id ? "1px solid var(--down)" : "none" }}><Bolt size={13} /> Go Live</button>)
+          : <button onClick={() => toggleActive(s.id)} className="tap disp" style={{ flex: "1 1 100px", borderRadius: 11, background: s.active ? "var(--surface)" : "linear-gradient(120deg,var(--up),#0EA968)", color: s.active ? "var(--ink)" : "#fff", boxShadow: s.active ? "none" : "0 6px 16px rgba(16,185,129,.3)", padding: "7px 10px", display: "flex", gap: 5, alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800, border: s.active ? "1px solid var(--line)" : "none" }}>
+              {s.active ? <><Pause size={13} /> Deactivate</> : <><Play size={13} /> Activate</>}
+            </button>}
       </div>
       {appMode === "real" && liveStrat === s.id && !isArmedReal(s) && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
