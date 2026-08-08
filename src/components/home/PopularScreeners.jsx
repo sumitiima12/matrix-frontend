@@ -1039,6 +1039,87 @@ function ScreenerLivePositions({ trades = [], market, onClosePosition, onUpdateP
   );
 }
 
+/* UX-2 — PER-SCREENER P&L tab. Groups every "Screener Auto Buy" trade in the active market + mode by its
+   owning screener (stable screenerKey when present, else the display name), and shows one row per screener:
+   total P&L (realised on closed + unrealised on open), closed-trade count and win rate, over a date range.
+   Uses the SAME attribution rule as the cards (key first, market-scoped) so numbers reconcile with each card. */
+function ScreenerPnLTab({ trades = [], market, mode = "virtual", liveTick = 0 }) {
+  const [range, setRange] = useState("30d");
+  const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a && a.price != null ? a.price : null; };
+  const from = useMemo(() => {
+    const now = Date.now(), D = 864e5;
+    if (range === "today") return new Date(new Date().setHours(0, 0, 0, 0)).getTime();
+    if (range === "7d") return now - 7 * D;
+    if (range === "30d") return now - 30 * D;
+    if (range === "6m") return now - 182 * D;
+    return 0;   // All
+  }, [range]);
+  const rows = useMemo(() => {
+    const isReal = mode === "real";
+    const byKey = new Map();   // key → { label, pnl, closed, wins }
+    for (const t of (trades || [])) {
+      if (!t || t.tradeType !== "Screener Auto Buy") continue;
+      if ((marketOf(t.sym) || t.market || "IN") !== market) continue;   // market hard-guard
+      if (isReal ? !t.real : !!t.real) continue;                        // active mode only
+      if (t.status === "rejected" || t.entry == null) continue;
+      const key = t.screenerKey != null ? "k:" + t.screenerKey : "n:" + (t.strategy || "—");
+      const closed = t.exitAt != null && t.exit != null;
+      if (closed && (t.exitAt || t.entryAt || 0) < from) continue;      // closed inside window, or still open
+      const cur = closed ? t.exit : (priceOf(t.sym) != null ? priceOf(t.sym) : t.entry);
+      const dir = (t.side === "SELL" || t.short) ? -1 : 1;
+      const p = (cur - t.entry) * (t.qty || 0) * dir;
+      const g = byKey.get(key) || { label: t.strategy || "Screener", pnl: 0, closed: 0, wins: 0 };
+      g.pnl += p;
+      if (closed) { g.closed += 1; if (p >= 0) g.wins += 1; }
+      byKey.set(key, g);
+    }
+    return [...byKey.values()].sort((a, b) => b.pnl - a.pnl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trades, market, mode, from, liveTick]);
+  const total = rows.reduce((a, r) => a + r.pnl, 0);
+  const th = { fontSize: 9.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".02em", padding: "6px 8px", textAlign: "right" };
+  const td = { fontSize: 12, padding: "8px", textAlign: "right", borderTop: "1px solid var(--line)" };
+  const rangeSel = { border: "1px solid var(--line)", borderRadius: 9, padding: "5px 8px", fontSize: 11.5, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" };
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: "var(--ink)" }}>P&amp;L by screener <span style={{ color: "var(--muted)", fontWeight: 600 }}>({mode === "real" ? "Real" : "Virtual"})</span></div>
+        <select value={range} onChange={(e) => setRange(e.target.value)} aria-label="Date range" style={rangeSel}>
+          <option value="today">Today</option><option value="7d">7 days</option><option value="30d">30 days</option><option value="6m">6 months</option><option value="all">All time</option>
+        </select>
+      </div>
+      {rows.length === 0
+        ? <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.5, padding: "10px 2px" }}>No screener trades in this market/mode over the selected range yet. Turn on a screener's Auto-Buy to start building a track record.</div>
+        : (
+          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead><tr>
+                <th style={{ ...th, textAlign: "left" }}>Screener</th>
+                <th style={th}>Closed</th><th style={th}>Win rate</th><th style={th}>P&amp;L</th>
+              </tr></thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={i}>
+                    <td style={{ ...td, textAlign: "left", fontWeight: 700, color: "var(--ink)", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.label}</td>
+                    <td style={{ ...td, color: "var(--muted)" }}>{r.closed}</td>
+                    <td style={{ ...td, color: "var(--muted)" }}>{r.closed ? Math.round((r.wins / r.closed) * 100) + "%" : "—"}</td>
+                    <td className="mono" style={{ ...td, fontWeight: 800, color: chgColor(r.pnl) }}>{(r.pnl >= 0 ? "+" : "") + fmt(Number(r.pnl.toFixed(2)), market)}</td>
+                  </tr>
+                ))}
+                <tr>
+                  <td style={{ ...td, textAlign: "left", fontWeight: 800, borderTop: "2px solid var(--line)" }}>Total</td>
+                  <td style={{ ...td, borderTop: "2px solid var(--line)" }} /><td style={{ ...td, borderTop: "2px solid var(--line)" }} />
+                  <td className="mono" style={{ ...td, fontWeight: 800, color: chgColor(total), borderTop: "2px solid var(--line)" }}>{(total >= 0 ? "+" : "") + fmt(Number(total.toFixed(2)), market)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+      <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 8, lineHeight: 1.5 }}>Open positions are marked-to-market at the latest price; figures are estimates and update as prices move.</div>
+    </div>
+  );
+}
+
 export default function PopularScreeners({ market, mode = "virtual", list = [], isAdmin = false, onOpen, onBuy, onAutoBuy, onScreenerBuy, onClosePosition, onUpdatePosition, liveTick = 0, trades = [], variant = "full", onOpenScreener }) {
   const [tab, setTab] = useState(variant === "active" ? "popular" : "custom");   // full page defaults to Build-a-screener
   const [dir, setDir] = useState("buy");   // Buy (long) | Sell (short) for Popular Screeners
@@ -1078,7 +1159,7 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
       {/* Build a screener | Popular Screeners | My Screeners */}
       <div className="hide-scroll" style={{ display: "flex", marginBottom: 4, overflowX: "auto" }}>
         <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3 }}>
-          {[["custom", "Build a screener"], ["popular", "Popular Screeners"], ["mine", "My Screeners"]].map(([k, l]) => (
+          {[["custom", "Build a screener"], ["popular", "Popular Screeners"], ["mine", "My Screeners"], ["pnl", "P&L"]].map(([k, l]) => (
             <button key={k} onClick={() => { setTab(k); if (k !== "custom") setEditing(null); }} className="pill tap disp" style={{ padding: "6px 14px", fontSize: 12, fontWeight: 800, border: "none", whiteSpace: "nowrap", background: tab === k ? "var(--primary)" : "transparent", color: tab === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
           ))}
         </div>
@@ -1093,6 +1174,7 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
       </>}
       {tab === "custom" && <CustomScreener market={market} mode={mode} list={list} onOpen={onOpen} onScreenerBuy={onScreenerBuy} liveTick={liveTick} editing={editing} onDoneEditing={() => setEditing(null)} />}
       {tab === "mine" && <MyScreeners market={market} mode={mode} list={list} trades={trades} onOpen={onOpen} onScreenerBuy={onScreenerBuy} onEdit={startEdit} liveTick={liveTick} />}
+      {tab === "pnl" && <ScreenerPnLTab trades={trades} market={market} mode={mode} liveTick={liveTick} />}
     </Section>
   );
 }
