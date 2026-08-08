@@ -22,6 +22,7 @@ import ExitOptimizer from "../components/home/ExitOptimizer";
 import { selStyle } from "../components/common/styles";
 import { TradeLog, TFS, OPSET, IndicatorDefs, CondBuilder2 } from "../components/builder/BuilderKit";
 import { downloadCSV } from "../lib/csv";
+import { btPeriodStr, creatorOf, statCells } from "./automationHelpers";   // PERF-10: pure helpers extracted
 import { brokerSymbol } from "../domain/brokerSymbols";
 import { registerAutoBuy, loadAutoBuys, pauseAutoBuy, cancelAutoBuy, closeAutoBuy, updateAutoBuy, setAutoBuyLive, loadBrokerCapabilities, brokerCapOf } from "../services/brokerService";
 
@@ -31,11 +32,7 @@ import { registerAutoBuy, loadAutoBuys, pauseAutoBuy, cancelAutoBuy, closeAutoBu
 
 
 /* A human "5 days" / "6 months" label from the stats the headline backtest returns. */
-function btPeriodStr(stats) {
-  const p = stats && stats.period;
-  if (!p) return "the available history";
-  return `${p.n} ${p.unit}${p.n === 1 ? "" : "s"}`;
-}
+/* btPeriodStr / creatorOf / statCells extracted to ./automationHelpers (PERF-10). */
 
 /* A labeled divider that heads the "Long" and "Short" groups inside each strategy tab. */
 function SectionHead({ label, color, count }) {
@@ -497,7 +494,6 @@ function DeploySizeField({ market, value, onChange }) {
 
 /* Who made a strategy: Neo for the built-in sample/premium set, otherwise the poster's user id
    (public strategies) or "You" for your own. Drives the "Created by" tag on every card. */
-function creatorOf(s) { return (s && (s.premium || s.by === "Matrix")) ? "Neo" : ((s && s.by) || "You"); }
 /* Editable Stop-loss / Target on a strategy card. Defaults come from the strategy (0.5% / 1.5% if it
    carries none); the user can change them before deploying and the chosen values ride along on activate. */
 /* "Optimize SL & TP" for a single strategy card — ONE optimiser, TWO options (Optimize Win rate /
@@ -1454,17 +1450,6 @@ function SymbolRow({ strat, sym, td, opts, onReport, market = "IN", onCreateCopy
    row order to emit. `labelHeader` is "Strategy" or "Symbol". */
 const BT_COLS = ["Trades", "Wins", "Loss", "Win %", "Target", "SL Hit", "Return %", "P&L", "Max DD"];
 const csvEsc = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
-function statCells(st) {
-  if (!st) return ["", "", "", "", "", "", "", "", ""];
-  return [
-    st.trades || 0, st.wins || 0, st.losses || 0,
-    st.winRate != null ? st.winRate.toFixed(0) + "%" : "-",
-    st.tpHit || 0, st.slHit || 0,
-    (st.retPct >= 0 ? "+" : "") + (st.retPct || 0).toFixed(1) + "%",
-    st.pnl == null ? "" : (st.pnl >= 0 ? "+" : "") + Math.round(st.pnl),
-    st.maxDD == null ? "" : "-" + Math.round(st.maxDD),
-  ];
-}
 function exportBacktestCsv({ results, order, labelHeader, meta, filename }) {
   const lines = [];
   meta.forEach(([k, v]) => lines.push([csvEsc(k), csvEsc(v)].join(",")));
@@ -1485,10 +1470,7 @@ const oCnt = (x) => (x == null || isNaN(x)) ? "—" : String(x);
    strategies (none listed) are treated as universal. Used to scope the Per-Symbol optimiser so SOL-tuned
    SL/TP (or indicators) are only ever applied to the strategies that actually trade SOL — never pushed
    onto every strategy just because they were measured against SOL. */
-function stratRunsOnSym(s, sym) {
-  const syms = (s && (s.symbols || (s.symbol ? [s.symbol] : []))) || [];
-  return syms.length ? syms.includes(sym) : true;
-}
+/* stratRunsOnSym extracted to ./automationHelpers (PERF-10). */
 
 /* Segmented objective selector (Win rate | P&L) shared by the per-symbol optimisers. Styled as a
    toggle — a raised chip on a grey track — so it reads as a SELECTOR, not a call-to-action. */
