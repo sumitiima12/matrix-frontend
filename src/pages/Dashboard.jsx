@@ -23,6 +23,7 @@ import Pop from "../components/common/Pop";
 import Section from "../components/common/Section";
 import PopularScreeners from "../components/home/PopularScreeners";
 import ActionRequired from "../components/home/ActionRequired";
+import ActivityTimeline from "../components/home/ActivityTimeline";
 
 /**
  * Dashboard — the trading desk. Composes the market strips, Matrix's Picks, trending, gainers/losers, news and the auto-buy panel.
@@ -1383,6 +1384,9 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           </>
         );
       })()}
+
+      {/* #25 — unified activity timeline: one chronological feed of entries + exits for this book. */}
+      {!hideDash && <ActivityTimeline trades={trades} real={isReal} market={market} />}
 
       {/* Matrix picks */}
       <Section title="Top Picks" icon={<Sparkles size={17} color="var(--primary-2)" />}>

@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { } from "../../domain/universe";
 import { fmt, profileSummary } from "../../lib/format";
 import { confirmDialog } from "../../lib/confirmDialog";   // in-app confirm (reliable in webviews/PWA)
-import { Check, ChevronLeft, ChevronRight, Clock, Copy, LogIn, LogOut, Sparkles, User } from "lucide-react";
+import { Bell, BellOff, Check, ChevronLeft, ChevronRight, Clock, Copy, LogIn, LogOut, Sparkles, User } from "lucide-react";
+import { PUSH_CATEGORIES, loadLocalPrefs, enablePush, disablePush, updatePushPrefs, sendTestPush, pushState, pushSupported, isStandalone } from "../../services/pushService";
 import { apiLogin, apiRegister, apiForgotQuestion, apiForgotReset, apiGetSecurityQuestion, apiSetSecurityQuestion, apiSetUsername, apiSetEmail, apiChangePin } from "../../domain/api";
 import EquityCurve from "../common/EquityCurve";
 import headerLogo from "../../assets/brand/header-logo.png";
@@ -643,6 +644,103 @@ function RiskLimitsSection({ riskLimits, onSave }) {
   );
 }
 
+/* Push-notification preferences. A master on/off (subscribe/unsubscribe this device) plus per-category
+   toggles (Trades, Broker, Alerts, Other) that map to the backend prefs. On iOS, push only works from an
+   installed Home-Screen PWA, so we surface a hint when it's unavailable rather than a dead toggle. */
+function NotificationSettings() {
+  const [open, setOpen] = useState(false);
+  const [supported, setSupported] = useState(true);
+  const [standalone, setStandalone] = useState(true);
+  const [on, setOn] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [prefs, setPrefs] = useState(loadLocalPrefs());
+
+  useEffect(() => {
+    setSupported(pushSupported());
+    setStandalone(isStandalone());
+    pushState().then((s) => setOn(!!s.subscribed)).catch(() => {});
+  }, []);
+
+  const iosNeedsInstall = supported && !standalone && /iphone|ipad|ipod/i.test(navigator.userAgent || "");
+
+  async function toggleMaster() {
+    setBusy(true); setMsg(null);
+    try {
+      if (!on) {
+        const r = await enablePush(prefs);
+        if (r.ok) { setOn(true); setMsg({ ok: true, t: "Notifications enabled on this device." }); }
+        else {
+          const why = { unsupported: "This browser doesn't support notifications.", "server-disabled": "Notifications aren't available yet — the server isn't configured.", "sw-failed": "Couldn't start the notification service.", denied: "You blocked notifications. Allow them in your browser settings.", "subscribe-failed": "Couldn't register with the server." }[r.reason] || "Couldn't enable notifications.";
+          setMsg({ ok: false, t: why });
+        }
+      } else {
+        await disablePush(); setOn(false); setMsg({ ok: true, t: "Notifications turned off on this device." });
+      }
+    } finally { setBusy(false); }
+  }
+  function setCat(key, val) {
+    let next;
+    if (key === "all") next = { ...prefs, all: val, trades: val, broker: val, alerts: val, other: val, none: !val ? prefs.none : false };
+    else next = { ...prefs, [key]: val, none: false };
+    // If any specific category is on, "all" reflects whether every category is on.
+    if (key !== "all") next.all = ["trades", "broker", "alerts", "other"].every((k) => next[k]);
+    setPrefs(next);
+    if (on) updatePushPrefs(next);
+  }
+
+  const Toggle = ({ checked, onClick, disabled }) => (
+    <span onClick={disabled ? undefined : onClick} className="tap" style={{ width: 36, height: 21, borderRadius: 999, background: checked ? "#22C55E" : "var(--line)", position: "relative", flexShrink: 0, transition: "background .2s", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.5 : 1 }}>
+      <span style={{ position: "absolute", top: 2, left: checked ? 17 : 2, width: 17, height: 17, borderRadius: "50%", background: "#fff", transition: "left .2s" }} />
+    </span>
+  );
+
+  return (
+    <div className="card" style={{ padding: 0, marginBottom: 9, border: "1px solid var(--line)", overflow: "hidden" }}>
+      <button onClick={() => setOpen((v) => !v)} className="tap" style={{ width: "100%", textAlign: "left", padding: "13px 15px", background: "transparent", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", display: "flex", alignItems: "center", gap: 7 }}>{on ? <Bell size={15} /> : <BellOff size={15} />} Push notifications <span style={{ fontSize: 11, fontWeight: 700, color: on ? "var(--up)" : "var(--muted)" }}>· {on ? "On" : "Off"}</span></span>
+        <ChevronRight size={16} style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform .15s", color: "var(--muted)" }} />
+      </button>
+      {open && (
+        <div style={{ padding: "4px 15px 14px" }}>
+          {iosNeedsInstall ? (
+            <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.5, marginBottom: 6 }}>
+              On iPhone/iPad, add MatrixOne to your Home Screen (Share → Add to Home Screen), then open it from there to enable notifications.
+            </div>
+          ) : !supported ? (
+            <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.5 }}>This browser doesn't support push notifications.</div>
+          ) : (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0 10px" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink)" }}>Enable on this device</div>
+                  <div style={{ fontSize: 10.5, color: "var(--muted)", lineHeight: 1.4 }}>Get alerts for fills, broker events and price/strategy triggers.</div>
+                </div>
+                <Toggle checked={on} onClick={toggleMaster} disabled={busy} />
+              </div>
+              {on && (
+                <div style={{ borderTop: "1px solid var(--line)", paddingTop: 4 }}>
+                  {PUSH_CATEGORIES.map((c) => {
+                    const checked = c.key === "all" ? ["trades", "broker", "alerts", "other"].every((k) => prefs[k]) : !!prefs[c.key];
+                    return (
+                      <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderTop: c.key === "all" ? "none" : "1px solid var(--line)" }}>
+                        <div style={{ flex: 1, fontSize: 12.5, fontWeight: c.key === "all" ? 800 : 700, color: "var(--ink)" }}>{c.label}</div>
+                        <Toggle checked={checked} onClick={() => setCat(c.key, !checked)} />
+                      </div>
+                    );
+                  })}
+                  <button onClick={async () => { setMsg(null); const r = await sendTestPush(); setMsg(r.ok ? { ok: true, t: "Test notification sent." } : { ok: false, t: "Couldn't send a test." }); }} className="tap disp" style={{ width: "100%", marginTop: 10, background: "var(--surface)", color: "var(--primary)", border: "1px solid var(--primary)", borderRadius: 10, padding: 9, fontWeight: 800, fontSize: 12 }}>Send a test notification</button>
+                </div>
+              )}
+            </>
+          )}
+          {msg && <div style={{ fontSize: 11.5, marginTop: 8, fontWeight: 600, color: msg.ok ? "var(--up)" : "var(--down)" }}>{msg.t}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, onAdmin, isAdminUser = false, adminMode = false, onToggleAdminMode, portfolio = [], trades = [], deposits = [], market = "IN", onBroker, brokerName, onUsernameChanged, onEmailChanged, marketBrokers = {}, houseFeeds = {}, onDisconnectBroker, appSettings = null, onSaveAppSettings, riskLimits = null, onSaveRiskLimits, onDeleteAccount, onClearVirtual, onReconcileDelta }) {
   const [confirmDel, setConfirmDel] = useState(false);
   const [delBusy, setDelBusy] = useState(false);
@@ -942,6 +1040,7 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
           </button>
         )}
         {auth && onSaveRiskLimits && <RiskLimitsSection riskLimits={riskLimits} onSave={onSaveRiskLimits} />}
+        {auth && <NotificationSettings />}
 
         {auth ? (
           <button onClick={() => { onClose && onClose(); onLogout && onLogout(); }} className="tap disp" style={{ width: "100%", margin: "16px 0 8px", background: "var(--surface)", color: "var(--down)", border: "1px solid var(--line)", borderRadius: 14, padding: 12, fontWeight: 800, fontSize: 13.5, display: "flex", gap: 7, alignItems: "center", justifyContent: "center" }}><LogOut size={16} /> Log out</button>

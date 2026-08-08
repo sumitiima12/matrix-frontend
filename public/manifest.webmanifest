@@ -1,0 +1,14 @@
+{
+  "name": "MatrixOne",
+  "short_name": "MatrixOne",
+  "description": "MatrixOne — market research & trading automation.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b0b0d",
+  "theme_color": "#0b0b0d",
+  "icons": [
+    { "src": "/matrixone-icon.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/matrixone-icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
