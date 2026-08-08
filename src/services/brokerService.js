@@ -186,6 +186,15 @@ export async function brokerStatus() {
   return get(`/api/broker/status`, tokenHdr());
 }
 
+/** STOR-1: single first-paint bootstrap — state + notices + capabilities + app-settings + screeners +
+    strategies in ONE round-trip instead of ~6 separate GETs. Server draws from its short-TTL read cache
+    and ETags the body, so the browser auto-revalidates (304) an unchanged bootstrap. Every field is
+    fail-soft server-side, so callers can rely on the shape. Falls back naturally: if this call fails, the
+    existing per-resource fetches still work. */
+export async function bootstrap() {
+  return get(`/api/bootstrap`, tokenHdr());
+}
+
 /** Step 1: the broker's own login page. We never see the user's password.
     userId is passed so the server resolves THIS user's bring-your-own app (BYOA) credentials. */
 export async function brokerLoginUrl(broker, redirect, userId) {

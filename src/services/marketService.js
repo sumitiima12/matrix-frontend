@@ -9,19 +9,31 @@
  * fabricate data — the UI is responsible for saying "unavailable".
  */
 import { BACKEND_URL, TF_YF, BT_YF } from "../config";
+import { coordinatedFetch } from "./dataCoordinator";
 
+// Per-endpoint freshness: quotes change fast; candle history and static-ish reads can be cached longer. This
+// is what lets many features asking for the same quotes/history within the window share ONE network trip.
+function ttlForPath(path) {
+  if (path.startsWith("/api/quote")) return 8000;
+  if (path.startsWith("/api/history") || path.startsWith("/api/indicators")) return 60000;
+  return 15000;
+}
+// All market-data GETs flow through the coordinator: de-duplicated, TTL-cached, paused while the tab is hidden
+// or offline, and adaptively backed-off on error — instead of every mounted component fetching independently.
 const get = async (path) => {
   if (!BACKEND_URL) return null;
-  // Attach the logged-in user's token when present. Market data is public, but the server uses the
-  // identity to decide whether to serve the OWNER's licensed FYERS feed (owner only) vs Yahoo.
-  let headers;
-  try {
-    const tok = typeof localStorage !== "undefined" && localStorage.getItem("mx_token");
-    if (tok) headers = { Authorization: `Bearer ${tok}` };
-  } catch { /* ignore */ }
-  const r = await fetch(`${BACKEND_URL}${path}`, headers ? { headers } : undefined);
-  if (!r.ok) throw new Error(`${path} -> ${r.status}`);
-  return r.json();
+  return coordinatedFetch(`GET ${path}`, async () => {
+    // Attach the logged-in user's token when present. Market data is public, but the server uses the
+    // identity to decide whether to serve the OWNER's licensed FYERS feed (owner only) vs Yahoo.
+    let headers;
+    try {
+      const tok = typeof localStorage !== "undefined" && localStorage.getItem("mx_token");
+      if (tok) headers = { Authorization: `Bearer ${tok}` };
+    } catch { /* ignore */ }
+    const r = await fetch(`${BACKEND_URL}${path}`, headers ? { headers } : undefined);
+    if (!r.ok) throw new Error(`${path} -> ${r.status}`);
+    return r.json();
+  }, { ttlMs: ttlForPath(path), priority: "normal" });
 };
 
 /** Live quotes. Returns [{ sym, price, chg }] keyed by Yahoo symbol. */
