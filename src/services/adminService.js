@@ -159,3 +159,7 @@ export async function adminAudit(userId, key, limit = 100) {
   const r = await fetch(`${BACKEND_URL}/api/admin/audit?limit=${encodeURIComponent(limit)}`, { headers: headers(userId, key) });
   const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || `admin ${r.status}`); return d;
 }
+export async function adminOpsCostMetrics(userId, key, phone, days = 30) {
+  const r = await fetch(`${BACKEND_URL}/api/admin/ops/cost-metrics?phone=${encodeURIComponent(phone)}&days=${encodeURIComponent(days)}`, { headers: headers(userId, key) });
+  const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || `admin ${r.status}`); return d;
+}

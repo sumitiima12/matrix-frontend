@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { adminListUsers, adminGetUser, adminSetBlocked, adminResetPin, adminPendingUsers, adminApproveUser, adminDeleteUser, adminClearVirtual, adminClearTradesByType, adminOpsOverview, adminOpsPauseUser, adminOpsResumeUser, adminOpsIncidentNote, adminAudit } from "../../services/adminService";
+import { adminListUsers, adminGetUser, adminSetBlocked, adminResetPin, adminPendingUsers, adminApproveUser, adminDeleteUser, adminClearVirtual, adminClearTradesByType, adminOpsOverview, adminOpsPauseUser, adminOpsResumeUser, adminOpsIncidentNote, adminAudit, adminOpsCostMetrics } from "../../services/adminService";
 import { apiListIdeas, apiReviewIdea, apiDeleteIdea } from "../../domain/api";
 import { tradesToCSV, downloadCSV, tradeFilename } from "../../lib/csv";
 import { confirmDialog, promptDialog, alertDialog } from "../../lib/confirmDialog";   // in-app dialogs (reliable in webviews/PWA)
@@ -287,6 +287,8 @@ function OpsConsole({ userId, adminKey, card }) {
   const [note, setNote] = useState("");
   const [audit, setAudit] = useState(null);
   const [showAudit, setShowAudit] = useState(false);
+  const [cm, setCm] = useState(null);        // FIN-2 cost metrics result
+  const [cmPhone, setCmPhone] = useState("");
 
   const refresh = () => { setErr(null); adminOpsOverview(userId, adminKey).then(setOv).catch((e) => setErr(String(e.message || e))); };
   useEffect(() => { refresh(); /* eslint-disable-next-line */ }, []);
@@ -311,6 +313,12 @@ function OpsConsole({ userId, adminKey, card }) {
     catch (e) { setErr(String(e.message || e)); } finally { setBusy(false); }
   };
   const loadAudit = () => { setShowAudit(true); adminAudit(userId, adminKey, 100).then((d) => setAudit(d.entries || [])).catch((e) => setErr(String(e.message || e))); };
+  const loadCost = async () => {
+    if (!cmPhone.trim()) return;
+    setErr(null); setCm(null);
+    try { setCm(await adminOpsCostMetrics(userId, adminKey, cmPhone.trim(), 30)); }
+    catch (e) { setErr(String(e.message || e)); }
+  };
 
   const s = ov && ov.summary;
   const tile = (label, val, warn) => (
@@ -375,6 +383,35 @@ function OpsConsole({ userId, adminKey, card }) {
             <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Record an incident / action for the audit trail…" rows={2}
               style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 10, padding: 9, fontSize: 12.5, background: "var(--elev)", color: "var(--ink)", resize: "vertical" }} />
             <button onClick={saveNote} disabled={busy || !note.trim()} className="tap disp" style={{ marginTop: 6, border: "none", background: "var(--primary)", color: "var(--on-primary)", borderRadius: 10, padding: "7px 14px", fontWeight: 800, fontSize: 12, opacity: note.trim() ? 1 : 0.6 }}>Record note</button>
+          </div>
+
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 11.5, fontWeight: 800, marginBottom: 6 }}>Cost / slippage (last 30d)</div>
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+              <input value={cmPhone} onChange={(e) => setCmPhone(e.target.value)} placeholder="user phone" className="mono" style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "6px 9px", fontSize: 12, background: "var(--elev)", color: "var(--ink)", width: 150 }} />
+              <button onClick={loadCost} disabled={!cmPhone.trim()} className="tap disp" style={{ border: "1px solid var(--line)", background: "var(--surface)", borderRadius: 8, padding: "6px 12px", fontWeight: 800, fontSize: 12, opacity: cmPhone.trim() ? 1 : 0.6 }}>Load</button>
+            </div>
+            {cm && (
+              <div style={{ ...card, marginTop: 8, padding: "10px 12px", fontSize: 11.5 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                  <span>Net P&L: <b className="mono" style={{ color: cm.realizedNet >= 0 ? "var(--up)" : "var(--down)" }}>{cm.realizedNet}</b></span>
+                  <span>Gross: <b className="mono">{cm.realizedGross}</b></span>
+                  <span>Fees: <b className="mono">{cm.totalFees}</b></span>
+                  <span>Fee drag: <b className="mono">{cm.feeDragPct == null ? "—" : cm.feeDragPct + "%"}</b></span>
+                  <span>Round-trips: <b className="mono">{cm.roundTrips}</b></span>
+                </div>
+                <div style={{ marginTop: 6, color: "var(--muted)" }}>
+                  Slippage: {cm.slippage && cm.slippage.available ? <b>{cm.slippage.avgBps} bps avg ({cm.slippage.samples})</b> : <span>not measurable yet (no reference price on fills)</span>}
+                </div>
+                {cm.byBroker && Object.keys(cm.byBroker).length > 0 && (
+                  <div style={{ marginTop: 6 }}>
+                    {Object.entries(cm.byBroker).map(([b, v]) => (
+                      <div key={b} className="mono" style={{ fontSize: 10.5, color: "var(--muted)" }}>{b}: net {v.net} · fees {v.fees} · {v.matched} rt</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div style={{ marginTop: 14 }}>
