@@ -355,11 +355,15 @@ export function ownsStrategyTrade(t, strat) {
   if (t.strategyId != null) return String(t.strategyId) === String(strat.id);
   return t.strategy === strat.name;
 }
-export function stratPerf(strat, trades = [], rangeDays = 365, priceOf = null) {
-  const from = Date.now() - rangeDays * 86_400_000;
+export function stratPerf(strat, trades = [], rangeDays = 365, priceOf = null, win = null) {
+  // `win` (optional) is an explicit { from, to } window — used by the Custom date range. When absent we fall
+  // back to the rolling rangeDays window (from = now − rangeDays, no upper bound), preserving prior behaviour.
+  const from = win && Number.isFinite(win.from) ? win.from : Date.now() - rangeDays * 86_400_000;
+  const to = win && Number.isFinite(win.to) ? win.to : Infinity;
+  const inWin = (ts) => ts >= from && ts <= to;
   const mine = (trades || []).filter(
     (t) => ownsStrategyTrade(t, strat) && t.status !== "rejected"
-  ).filter((t) => (t.exitAt || t.entryAt || 0) >= from);
+  ).filter((t) => inWin(t.exitAt || t.entryAt || 0));
 
   const closed = mine.filter((t) => t.exitAt != null && t.exit != null);
   const openPos = mine.filter((t) => t.entry != null && (t.exitAt == null || t.exit == null));

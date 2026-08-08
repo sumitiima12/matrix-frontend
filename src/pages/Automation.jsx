@@ -2199,19 +2199,35 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators,
    formula (qty is an amount, not a coin count), matching the fixed stratPerf. */
 function StrategyPnLView({ strats, trades, market, onDelete }) {
   const [range, setRange] = useState(1);
+  const [cFrom, setCFrom] = useState("");   // #610 custom from/to
+  const [cTo, setCTo] = useState("");
   const [openId, setOpenId] = useState(null);
   const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a ? a.price : null; };
   const inMkt = (s) => !(s.symbols && s.symbols.length) || s.symbols.some((x) => marketOf(x) === market);
-  const RANGES = [[1, "Today"], [7, "Last 7 days"], [30, "Last 30 days"], [180, "Last 6 months"]];
-  const rows = strats.filter(inMkt).map((s) => ({ s, p: stratPerf(s, trades, range, priceOf) })).sort((a, b) => (b.p.pnl || 0) - (a.p.pnl || 0));
+  const RANGES = [[1, "Today"], [7, "Last 7 days"], [30, "Last 30 days"], [180, "Last 6 months"], ["custom", "Custom range"]];
+  const isCustom = range === "custom";
+  // Explicit window for Custom; else the rolling day-count window handled inside stratPerf.
+  const win = isCustom ? { from: cFrom ? new Date(cFrom + "T00:00:00").getTime() : 0, to: cTo ? new Date(cTo + "T23:59:59").getTime() : Date.now() } : null;
+  const days = isCustom ? 365 : range;   // rangeDays ignored when win is provided
+  const rows = strats.filter(inMkt).map((s) => ({ s, p: stratPerf(s, trades, days, priceOf, win) })).sort((a, b) => (b.p.pnl || 0) - (a.p.pnl || 0));
   const dt = (t) => (t ? new Date(t).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
-  const tradesFor = (s) => (trades || []).filter((t) => (t.strategyId != null ? String(t.strategyId) === String(s.id) : t.strategy === s.name) && t.status !== "rejected" && (t.exitAt || t.entryAt || 0) >= Date.now() - range * 864e5).sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
+  const inWin = (ts) => { const from = win ? win.from : Date.now() - range * 864e5; const to = win ? win.to : Infinity; return ts >= from && ts <= to; };
+  const tradesFor = (s) => (trades || []).filter((t) => (t.strategyId != null ? String(t.strategyId) === String(s.id) : t.strategy === s.name) && t.status !== "rejected" && inWin(t.exitAt || t.entryAt || 0)).sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
   const tPnl = (t) => { const px = t.exit != null ? t.exit : priceOf(t.sym); if (t.entry == null || px == null) return null; const dir = (t.side === "SELL" || t.short) ? -1 : 1; return (px - t.entry) * (Number(t.qty) || (marketOf(t.sym) === "Crypto" ? 0 : 1)) * dir; };
   return (
     <div className="fade">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "18px 2px 4px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "18px 2px 4px", gap: 8, flexWrap: "wrap" }}>
         <div className="disp" style={{ fontWeight: 700, fontSize: 18 }}>Strategy P&amp;L</div>
-        <select aria-label="Date range" value={range} onChange={(e) => setRange(+e.target.value)} style={{ ...selStyle, flex: "0 0 auto", width: "auto", fontSize: 12 }}>{RANGES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          {isCustom && (
+            <>
+              <input type="date" aria-label="From" value={cFrom} onChange={(e) => setCFrom(e.target.value)} className="no-ring mono" style={{ ...selStyle, width: "auto", fontSize: 11.5, padding: "6px 8px", colorScheme: "light" }} />
+              <span style={{ fontSize: 11, color: "var(--muted)" }}>to</span>
+              <input type="date" aria-label="To" value={cTo} onChange={(e) => setCTo(e.target.value)} className="no-ring mono" style={{ ...selStyle, width: "auto", fontSize: 11.5, padding: "6px 8px", colorScheme: "light" }} />
+            </>
+          )}
+          <select aria-label="Date range" value={range} onChange={(e) => { const v = e.target.value; setRange(v === "custom" ? "custom" : +v); }} style={{ ...selStyle, flex: "0 0 auto", width: "auto", fontSize: 12 }}>{RANGES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+        </div>
       </div>
       {rows.length === 0 && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 12 }}>No strategies in this market yet.</div>}
       {rows.map(({ s, p }) => (
@@ -3261,8 +3277,8 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                 <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 620 }}>
                   <thead>
                     <tr>
-                      {["Symbol", "Side", "Entry", "Entry time", "Exit", "Exit time", "Exit type", "P&L"].map((h, hi) => (
-                        <th key={h} style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", padding: "6px 7px", textAlign: hi === 7 ? "right" : "left", whiteSpace: "nowrap", borderBottom: "1px solid var(--line)" }}>{h}</th>
+                      {["Symbol", "Side", "Capital", "Entry", "Entry time", "Exit", "Exit time", "Exit type", "P&L"].map((h, hi) => (
+                        <th key={h} style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", padding: "6px 7px", textAlign: (hi === 2 || hi === 8) ? "right" : "left", whiteSpace: "nowrap", borderBottom: "1px solid var(--line)" }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -3277,6 +3293,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                         <tr key={t.id || i}>
                           <td style={{ ...td, fontWeight: 800 }}>{t.sym}</td>
                           <td style={{ ...td, color: dir < 0 ? "var(--down)" : "var(--up)" }}>{t.side || "BUY"}</td>
+                          <td style={{ ...td, textAlign: "right" }}>{t.entry != null ? fmt(Number(t.entry) * (t.qty || 1), mkt(t)) : "—"}</td>
                           <td style={td}>{fmt(t.entry, mkt(t))}</td>
                           <td style={{ ...td, color: "var(--muted)" }}>{dtf(t.entryAt)}</td>
                           <td style={td}>{closed ? fmt(t.exit, mkt(t)) : <span style={{ color: "var(--primary)", fontWeight: 800 }}>Open</span>}</td>
