@@ -655,6 +655,54 @@ export function marketOpen(market) {
   return true;
 }
 
+/* Homepage — Live Positions + Recent Activity as TWO TABS in one section (instead of two stacked cards).
+   Defaults to Live Positions when there are open positions, else Recent Activity. Renders nothing if the
+   book is completely empty (no positions and no activity). */
+function LiveActivityTabs({ opens = [], gcols, market, onGoPortfolio, trades = [], isReal = false }) {
+  const [tab, setTab] = useState(opens.length ? "pos" : "act");
+  // Any activity to show? (cheap check — same predicate ActivityTimeline uses.)
+  const hasActivity = (trades || []).some((t) => (isReal ? !!t.real : !t.real) && t.entry != null && t.entryAt != null);
+  if (!opens.length && !hasActivity) return null;
+  const tabBtn = (k, label) => (
+    <button key={k} onClick={() => setTab(k)} className="pill tap disp" style={{ padding: "5px 13px", fontSize: 11.5, fontWeight: 800, border: "none", whiteSpace: "nowrap", background: tab === k ? "var(--primary)" : "transparent", color: tab === k ? "var(--on-primary)" : "var(--muted)" }}>{label}</button>
+  );
+  return (
+    <Section title={tab === "pos" ? "Live Positions" : "Recent Activity"} icon={<TrendingUp size={17} color="var(--primary)" />} right={
+      <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3 }}>
+        {tabBtn("pos", "Positions")}{tabBtn("act", "Activity")}
+      </div>
+    }>
+      {/* Soft pastel wash — light green → blue-silver — so the section reads as a distinct, less-bland card. */}
+      <div style={{ background: "linear-gradient(150deg, rgba(16,185,129,.12) 0%, rgba(150,190,235,.12) 55%, rgba(200,205,220,.10) 100%)", border: "1px solid var(--line)", borderRadius: 16, padding: 12 }}>
+      {tab === "pos" ? (
+        opens.length ? (
+          <>
+            <div style={{ border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden" }}>
+              <div style={{ display: "grid", gridTemplateColumns: gcols, fontSize: 8.5, fontWeight: 800, color: "var(--muted)", background: "var(--elev)", padding: "5px 10px", letterSpacing: ".03em", gap: 6 }}>
+                <span>SYMBOL</span><span style={{ textAlign: "right" }}>ENTRY</span><span style={{ textAlign: "right" }}>NOW</span><span style={{ textAlign: "right" }}>P&amp;L</span>
+              </div>
+              {opens.slice(0, 5).map((t, i) => (
+                <div key={t.id || i} style={{ display: "grid", gridTemplateColumns: gcols, fontSize: 10.5, padding: "7px 10px", borderTop: "1px solid var(--line)", alignItems: "center", gap: 6 }}>
+                  <span className="disp" style={{ fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.sym} <span style={{ fontSize: 8, fontWeight: 700, opacity: .55 }}>{t.tradeType || "Manual"}</span></span>
+                  <span className="mono" style={{ textAlign: "right" }}>{fmt(Number(t.entry), t.market || market)}</span>
+                  <span className="mono" style={{ textAlign: "right" }}>{fmt(t.cur, t.market || market)}</span>
+                  <span className="mono" style={{ textAlign: "right", fontWeight: 800, color: t.pl >= 0 ? "var(--up)" : "var(--down)" }}>{(t.pl >= 0 ? "+" : "") + fmtPnl(t.pl, t.market || market)}</span>
+                </div>
+              ))}
+            </div>
+            {opens.length > 5 && (
+              <button onClick={onGoPortfolio} className="tap disp" style={{ marginTop: 8, width: "100%", border: "1px solid var(--line)", background: "var(--elev)", color: "var(--primary)", borderRadius: 10, padding: "8px", fontWeight: 800, fontSize: 12 }}>See all {opens.length} positions</button>
+            )}
+          </>
+        ) : <div style={{ fontSize: 11.5, color: "var(--muted)", padding: "14px 4px", textAlign: "center" }}>No open positions.</div>
+      ) : (
+        <ActivityTimeline trades={trades} real={isReal} market={market} embedded />
+      )}
+      </div>
+    </Section>
+  );
+}
+
 export default function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, onAutoBuy, onScreenerBuy, isAdmin = false, mode, watch, toggleWatch, profile, portfolio = [], realPortfolio = [], onRefreshReal, wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [], liveTick = 0, onWhy, autoOnMap: autoOnMapProp, setAutoOnMap: setAutoOnMapProp, deployCapMap: deployCapMapProp, setDeployCapMap: setDeployCapMapProp, hideDash = false, onOpenScreener, actionItems = [], strategies = [], onGoDeployed, brokerName = null }) {
   const [glMode, setGlMode] = useState("Gainers");
   // Picks refresh ONCE AN HOUR (not on every tick) so they don't churn.
@@ -1324,71 +1372,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       </div>
       )}
 
-      {/* #1 — OPERATIONAL STATUS ranks above discovery: your open positions and running strategies show
-          BEFORE Top Picks. Live Positions mirrors the Screener's compact table; Active Strategies shows the
-          top 3 deployed by P&L with "Show all" → Automate. Hidden for gated users (nothing to trade). */}
-      {!hideDash && (() => {
-        const priceOf = (sym) => { const st = ALL.find((x) => x.sym === sym); return st && st.price != null ? st.price : null; };
-        const opens = (trades || [])
-          .filter((t) => (isReal ? !!t.real : !t.real) && t.exitAt == null && t.entry != null && t.status !== "rejected" && inMarket(t.sym, t.market))
-          .map((t) => { const cur = priceOf(t.sym) ?? t.entry; const dir = (t.side === "SELL" || t.short) ? -1 : 1; return { ...t, cur, pl: (cur - Number(t.entry)) * (t.qty || 0) * dir }; })
-          .sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
-        const deployed = (strategies || []).filter((s) => s && s.active);
-        const stratRows = deployed.map((s) => {
-          const ts = (trades || []).filter((t) => (isReal ? !!t.real : !t.real) && (t.strategyId != null ? String(t.strategyId) === String(s.id) : t.strategy === s.name));
-          const pl = ts.reduce((a, t) => { const closed = t.exitAt != null && t.exit != null; const cur = closed ? t.exit : (priceOf(t.sym) ?? t.entry); const dir = (t.side === "SELL" || t.short) ? -1 : 1; return a + (cur - Number(t.entry)) * (t.qty || 0) * dir; }, 0);
-          return { s, pl, open: ts.filter((t) => t.exitAt == null).length };
-        }).sort((a, b) => b.pl - a.pl);
-        if (!opens.length && !stratRows.length) return null;
-        const gcols = "1.1fr .9fr .9fr .8fr";
-        return (
-          <>
-            {opens.length > 0 && (
-              <Section title="Live Positions" icon={<TrendingUp size={17} color="var(--primary)" />}>
-                <div style={{ border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden" }}>
-                  <div style={{ display: "grid", gridTemplateColumns: gcols, fontSize: 8.5, fontWeight: 800, color: "var(--muted)", background: "var(--elev)", padding: "5px 10px", letterSpacing: ".03em", gap: 6 }}>
-                    <span>SYMBOL</span><span style={{ textAlign: "right" }}>ENTRY</span><span style={{ textAlign: "right" }}>NOW</span><span style={{ textAlign: "right" }}>P&amp;L</span>
-                  </div>
-                  {opens.slice(0, 5).map((t, i) => (
-                    <div key={t.id || i} style={{ display: "grid", gridTemplateColumns: gcols, fontSize: 10.5, padding: "7px 10px", borderTop: "1px solid var(--line)", alignItems: "center", gap: 6 }}>
-                      <span className="disp" style={{ fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.sym} <span style={{ fontSize: 8, fontWeight: 700, opacity: .55 }}>{t.tradeType || "Manual"}</span></span>
-                      <span className="mono" style={{ textAlign: "right" }}>{fmt(Number(t.entry), t.market || market)}</span>
-                      <span className="mono" style={{ textAlign: "right" }}>{fmt(t.cur, t.market || market)}</span>
-                      <span className="mono" style={{ textAlign: "right", fontWeight: 800, color: t.pl >= 0 ? "var(--up)" : "var(--down)" }}>{(t.pl >= 0 ? "+" : "") + fmtPnl(t.pl, t.market || market)}</span>
-                    </div>
-                  ))}
-                </div>
-                {opens.length > 5 && (
-                  <button onClick={onGoPortfolio} className="tap disp" style={{ marginTop: 8, width: "100%", border: "1px solid var(--line)", background: "var(--elev)", color: "var(--primary)", borderRadius: 10, padding: "8px", fontWeight: 800, fontSize: 12 }}>See all {opens.length} positions</button>
-                )}
-              </Section>
-            )}
-            {stratRows.length > 0 && (
-              <Section title="Active Strategies" icon={<Zap size={17} color="var(--primary)" />}>
-                {stratRows.slice(0, 3).map(({ s, pl, open }) => (
-                  <div key={s.id} onClick={onGoDeployed} className="tap" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", marginBottom: 8, borderRadius: 11, border: "1px solid var(--line)", background: "var(--surface)", cursor: onGoDeployed ? "pointer" : "default" }}>
-                    <div style={{ flex: "1 1 0", minWidth: 0 }}>
-                      <div className="disp" style={{ fontWeight: 800, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name || (s.symbols && s.symbols[0]) || "Strategy"}</div>
-                      <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, marginTop: 1 }}>{open} open position{open === 1 ? "" : "s"}{s.paused ? " · paused" : ""}</div>
-                    </div>
-                    <div className="mono" style={{ flex: "0 0 auto", fontWeight: 800, fontSize: 13.5, color: pl >= 0 ? "var(--up)" : "var(--down)" }}>{(pl >= 0 ? "+" : "") + fmtPnl(pl, market)}</div>
-                  </div>
-                ))}
-                {(stratRows.length > 3 || onGoDeployed) && (
-                  <button onClick={onGoDeployed} className="tap disp" style={{ width: "100%", border: "1px solid var(--line)", background: "var(--elev)", color: "var(--primary)", borderRadius: 10, padding: "8px", fontWeight: 800, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
-                    Show all{stratRows.length > 3 ? ` (${stratRows.length})` : ""} <ChevronRight size={14} />
-                  </button>
-                )}
-              </Section>
-            )}
-          </>
-        );
-      })()}
-
-      {/* #25 — unified activity timeline: one chronological feed of entries + exits for this book. */}
-      {!hideDash && <ActivityTimeline trades={trades} real={isReal} market={market} />}
-
-      {/* Matrix picks */}
+      {/* Matrix picks — Top Picks now ranks ABOVE Live Positions on the homepage. */}
       <Section title="Top Picks" icon={<Sparkles size={17} color="var(--primary-2)" />}>
         {/* An empty carousel is a void the user has to interpret. Say what's happening:
             picks need real indicators (RSI, 50-DMA), and those arrive after the prices. */}
@@ -1488,6 +1472,48 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           ))}
         </div>
       </Section>
+
+      {/* OPERATIONAL STATUS — open positions + running strategies. Now ranked BELOW Top Picks on the homepage.
+          Live Positions + Recent Activity share one tabbed section; Active Strategies shows top-3 by P&L. */}
+      {!hideDash && (() => {
+        const priceOf = (sym) => { const st = ALL.find((x) => x.sym === sym); return st && st.price != null ? st.price : null; };
+        const opens = (trades || [])
+          .filter((t) => (isReal ? !!t.real : !t.real) && t.exitAt == null && t.entry != null && t.status !== "rejected" && inMarket(t.sym, t.market))
+          .map((t) => { const cur = priceOf(t.sym) ?? t.entry; const dir = (t.side === "SELL" || t.short) ? -1 : 1; return { ...t, cur, pl: (cur - Number(t.entry)) * (t.qty || 0) * dir }; })
+          .sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
+        const deployed = (strategies || []).filter((s) => s && s.active);
+        const stratRows = deployed.map((s) => {
+          const ts = (trades || []).filter((t) => (isReal ? !!t.real : !t.real) && (t.strategyId != null ? String(t.strategyId) === String(s.id) : t.strategy === s.name));
+          const pl = ts.reduce((a, t) => { const closed = t.exitAt != null && t.exit != null; const cur = closed ? t.exit : (priceOf(t.sym) ?? t.entry); const dir = (t.side === "SELL" || t.short) ? -1 : 1; return a + (cur - Number(t.entry)) * (t.qty || 0) * dir; }, 0);
+          return { s, pl, open: ts.filter((t) => t.exitAt == null).length };
+        }).sort((a, b) => b.pl - a.pl);
+        const hasAct = (trades || []).some((t) => (isReal ? !!t.real : !t.real) && t.entry != null && t.entryAt != null);
+        if (!opens.length && !stratRows.length && !hasAct) return null;
+        const gcols = "1.1fr .9fr .9fr .8fr";
+        return (
+          <>
+            <LiveActivityTabs opens={opens} gcols={gcols} market={market} onGoPortfolio={onGoPortfolio} trades={trades} isReal={isReal} />
+            {stratRows.length > 0 && (
+              <Section title="Active Strategies" icon={<Zap size={17} color="var(--primary)" />}>
+                {stratRows.slice(0, 3).map(({ s, pl, open }) => (
+                  <div key={s.id} onClick={onGoDeployed} className="tap" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", marginBottom: 8, borderRadius: 11, border: "1px solid var(--line)", background: "var(--surface)", cursor: onGoDeployed ? "pointer" : "default" }}>
+                    <div style={{ flex: "1 1 0", minWidth: 0 }}>
+                      <div className="disp" style={{ fontWeight: 800, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name || (s.symbols && s.symbols[0]) || "Strategy"}</div>
+                      <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, marginTop: 1 }}>{open} open position{open === 1 ? "" : "s"}{s.paused ? " · paused" : ""}</div>
+                    </div>
+                    <div className="mono" style={{ flex: "0 0 auto", fontWeight: 800, fontSize: 13.5, color: pl >= 0 ? "var(--up)" : "var(--down)" }}>{(pl >= 0 ? "+" : "") + fmtPnl(pl, market)}</div>
+                  </div>
+                ))}
+                {(stratRows.length > 3 || onGoDeployed) && (
+                  <button onClick={onGoDeployed} className="tap disp" style={{ width: "100%", border: "1px solid var(--line)", background: "var(--elev)", color: "var(--primary)", borderRadius: 10, padding: "8px", fontWeight: 800, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                    Show all{stratRows.length > 3 ? ` (${stratRows.length})` : ""} <ChevronRight size={14} />
+                  </button>
+                )}
+              </Section>
+            )}
+          </>
+        );
+      })()}
 
       {/* Market updates summary — hidden on Crypto (news-driven brief doesn't fit 24/7 crypto). */}
       {market !== "Crypto" && (

@@ -177,6 +177,14 @@ const CSS = `
 .mx{font-family:'Nunito',system-ui,sans-serif;color:var(--ink)}
 .disp{font-family:'Quicksand','Nunito',sans-serif;letter-spacing:-.01em}
 .mono{font-family:'Nunito',sans-serif;font-variant-numeric:tabular-nums;font-feature-settings:'tnum' 1}
+/* UX-4 — shared TYPOGRAPHY SCALE. A single modular scale (≈1.22 ratio) so headings/labels/values are sized
+   from one system instead of ad-hoc px. Theme-independent, defined on the app root so any component can use
+   var(--fs-*) or the .t-* utilities. .num aligns digits (tabular) without forcing a different font. */
+.mx{--fs-2xs:10px;--fs-xs:11px;--fs-sm:12.5px;--fs-md:14px;--fs-lg:16.5px;--fs-xl:20px;--fs-2xl:26px;
+    --lh-tight:1.2;--lh-normal:1.45}
+.t-2xs{font-size:var(--fs-2xs)}.t-xs{font-size:var(--fs-xs)}.t-sm{font-size:var(--fs-sm)}
+.t-md{font-size:var(--fs-md)}.t-lg{font-size:var(--fs-lg)}.t-xl{font-size:var(--fs-xl)}.t-2xl{font-size:var(--fs-2xl)}
+.num{font-variant-numeric:tabular-nums;font-feature-settings:'tnum' 1}
 .card{background:var(--card-grad);border:1px solid var(--line);border-radius:24px;box-shadow:var(--shadow)}
 .flat{box-shadow:var(--shadow)}
 .pill{border-radius:999px}

@@ -7,7 +7,7 @@ import Section from "../common/Section";
    Automate and Portfolio, this collapses every trade event (entries + exits, real and paper) into a
    single chronological feed, newest first. It's read-only and derived purely from `trades`, so it
    never disagrees with the books it summarises. Pass `real` to show the matching account's events. */
-export default function ActivityTimeline({ trades = [], real = false, market = "IN", limit = 8 }) {
+export default function ActivityTimeline({ trades = [], real = false, market = "IN", limit = 8, embedded = false }) {
   const [showAll, setShowAll] = useState(false);
 
   const events = useMemo(() => {
@@ -47,11 +47,14 @@ export default function ActivityTimeline({ trades = [], real = false, market = "
     return out.sort((a, b) => (b.at || 0) - (a.at || 0));
   }, [trades, real, market]);
 
-  if (!events.length) return null;
+  // Embedded mode (used inside the Live Positions / Recent Activity tab): render just the content, and show an
+  // explicit empty state instead of vanishing, so the tab is never blank.
+  if (embedded && !events.length) return <div style={{ fontSize: 11.5, color: "var(--muted)", padding: "14px 4px", textAlign: "center" }}>No activity yet.</div>;
+  if (!embedded && !events.length) return null;
   const shown = showAll ? events.slice(0, 40) : events.slice(0, limit);
 
-  return (
-    <Section title="Recent Activity" icon={<Clock size={17} color="var(--primary)" />}>
+  const inner = (
+    <>
       <div style={{ border: "1px solid var(--line)", borderRadius: 12, overflow: "hidden", background: "var(--surface)" }}>
         {shown.map((e, i) => {
           const isExit = e.kind === "exit";
@@ -87,6 +90,13 @@ export default function ActivityTimeline({ trades = [], real = false, market = "
           {showAll ? "Show less" : `Show more (${events.length})`}
         </button>
       )}
+    </>
+  );
+
+  if (embedded) return inner;
+  return (
+    <Section title="Recent Activity" icon={<Clock size={17} color="var(--primary)" />}>
+      {inner}
     </Section>
   );
 }
