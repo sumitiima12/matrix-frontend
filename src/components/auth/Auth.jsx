@@ -4,6 +4,7 @@ import { fmt, profileSummary } from "../../lib/format";
 import { confirmDialog } from "../../lib/confirmDialog";   // in-app confirm (reliable in webviews/PWA)
 import { Bell, BellOff, Check, ChevronLeft, ChevronRight, Clock, Copy, LogIn, LogOut, Sparkles, User } from "lucide-react";
 import { PUSH_CATEGORIES, loadLocalPrefs, enablePush, disablePush, updatePushPrefs, sendTestPush, pushState, pushSupported, isStandalone } from "../../services/pushService";
+import { listAlerts, createAlert, toggleAlert, deleteAlert } from "../../services/alertService";
 import { apiLogin, apiRegister, apiForgotQuestion, apiForgotReset, apiGetSecurityQuestion, apiSetSecurityQuestion, apiSetUsername, apiSetEmail, apiChangePin } from "../../domain/api";
 import EquityCurve from "../common/EquityCurve";
 import headerLogo from "../../assets/brand/header-logo.png";
@@ -741,6 +742,68 @@ function NotificationSettings() {
   );
 }
 
+/* UX-3 — PRICE ALERTS manager. Create a "tell me when X does Y" alert (delivered as a push notification), and
+   see / toggle / delete your existing alerts. Collapsible card, mounted alongside notification settings. */
+function PriceAlerts({ market = "IN" }) {
+  const [open, setOpen] = useState(false);
+  const [alerts, setAlerts] = useState([]);
+  const [sym, setSym] = useState("");
+  const [mkt, setMkt] = useState(market);
+  const [type, setType] = useState("above");
+  const [thr, setThr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const load = () => listAlerts().then((d) => setAlerts(d.alerts || [])).catch(() => {});
+  useEffect(() => { if (open) load(); }, [open]);
+  const TYPE_LABEL = { above: "Price ≥", below: "Price ≤", pct_up: "Up % today ≥", pct_down: "Down % today ≥" };
+  const sel = { border: "1px solid var(--line)", borderRadius: 9, padding: "8px 9px", fontSize: 12.5, background: "var(--elev)", color: "var(--ink)", fontWeight: 600 };
+  async function add() {
+    setMsg(null);
+    const symbol = sym.trim().toUpperCase();
+    const threshold = Number(thr);
+    if (!symbol || !(threshold > 0)) { setMsg({ ok: false, t: "Enter a symbol and a positive value." }); return; }
+    setBusy(true);
+    try { await createAlert({ symbol, market: mkt, type, threshold, note: "" }); setSym(""); setThr(""); setMsg({ ok: true, t: "Alert created. You'll be notified when it triggers." }); load(); }
+    catch (e) { setMsg({ ok: false, t: String(e.message || e) }); }
+    finally { setBusy(false); }
+  }
+  return (
+    <div className="card" style={{ padding: 0, marginBottom: 9, border: "1px solid var(--line)", overflow: "hidden" }}>
+      <button onClick={() => setOpen((v) => !v)} className="tap" style={{ width: "100%", textAlign: "left", padding: "13px 15px", background: "transparent", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", display: "flex", alignItems: "center", gap: 7 }}><Bell size={15} /> Price alerts{alerts.length ? <span style={{ fontSize: 11, fontWeight: 700, color: "var(--primary)" }}>· {alerts.length}</span> : null}</span>
+        <ChevronRight size={16} style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform .15s", color: "var(--muted)" }} />
+      </button>
+      {open && (
+        <div style={{ padding: "4px 15px 14px" }}>
+          <div style={{ fontSize: 10.5, color: "var(--muted)", lineHeight: 1.5, marginBottom: 8 }}>Get a push when a symbol crosses a price or moves a % on the day. Enable notifications above to receive them.</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1.2fr .9fr", gap: 6 }}>
+            <input value={sym} onChange={(e) => setSym(e.target.value.toUpperCase())} placeholder="Symbol (e.g. BTC)" className="no-ring" style={sel} />
+            <select value={mkt} onChange={(e) => setMkt(e.target.value)} style={sel}><option value="IN">🇮🇳 IN</option><option value="US">🇺🇸 US</option><option value="Crypto">₿ Crypto</option><option value="Commodity">🪙 Comm.</option></select>
+            <select value={type} onChange={(e) => setType(e.target.value)} style={sel}>{Object.entries(TYPE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+            <input value={thr} onChange={(e) => setThr(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder={type.startsWith("pct") ? "% e.g. 3" : "price"} className="no-ring mono" style={sel} />
+          </div>
+          <button onClick={add} disabled={busy} className="tap disp" style={{ width: "100%", marginTop: 8, background: "linear-gradient(120deg,var(--primary),var(--primary-2))", color: "var(--on-primary)", border: "none", borderRadius: 10, padding: 10, fontWeight: 800, fontSize: 12.5, opacity: busy ? 0.7 : 1 }}>Create alert</button>
+          {msg && <div style={{ fontSize: 11.5, marginTop: 8, fontWeight: 600, color: msg.ok ? "var(--up)" : "var(--down)" }}>{msg.t}</div>}
+          {alerts.length > 0 && (
+            <div style={{ marginTop: 12, borderTop: "1px solid var(--line)", paddingTop: 4 }}>
+              {alerts.map((a) => (
+                <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: "1px solid var(--line)" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink)" }}>{a.symbol} <span style={{ color: "var(--muted)", fontWeight: 600, fontSize: 11 }}>{TYPE_LABEL[a.type]} {a.threshold}{a.type.startsWith("pct") ? "%" : ""}</span></div>
+                    <div style={{ fontSize: 10, color: "var(--muted)" }}>{a.market}{a.active ? "" : " · paused"}</div>
+                  </div>
+                  <button onClick={() => toggleAlert(a.id, !a.active).then(load).catch(() => {})} className="tap" style={{ fontSize: 11, fontWeight: 700, color: a.active ? "var(--muted)" : "var(--up)", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "5px 9px" }}>{a.active ? "Pause" : "Resume"}</button>
+                  <button onClick={() => deleteAlert(a.id).then(load).catch(() => {})} className="tap" style={{ fontSize: 11, fontWeight: 700, color: "var(--down)", background: "var(--surface)", border: "1px solid var(--down)", borderRadius: 8, padding: "5px 9px" }}>Delete</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ProfileSheet({ profile, walletMap = {}, onClose, onTradeHistory, auth, onLogin, onLogout, onPersonalise, onAdmin, isAdminUser = false, adminMode = false, onToggleAdminMode, portfolio = [], trades = [], deposits = [], market = "IN", onBroker, brokerName, onUsernameChanged, onEmailChanged, marketBrokers = {}, houseFeeds = {}, onDisconnectBroker, appSettings = null, onSaveAppSettings, riskLimits = null, onSaveRiskLimits, onDeleteAccount, onClearVirtual, onReconcileDelta }) {
   const [confirmDel, setConfirmDel] = useState(false);
   const [delBusy, setDelBusy] = useState(false);
@@ -1041,6 +1104,7 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
         )}
         {auth && onSaveRiskLimits && <RiskLimitsSection riskLimits={riskLimits} onSave={onSaveRiskLimits} />}
         {auth && <NotificationSettings />}
+        {auth && <PriceAlerts market={market} />}
 
         {auth ? (
           <button onClick={() => { onClose && onClose(); onLogout && onLogout(); }} className="tap disp" style={{ width: "100%", margin: "16px 0 8px", background: "var(--surface)", color: "var(--down)", border: "1px solid var(--line)", borderRadius: 14, padding: 12, fontWeight: 800, fontSize: 13.5, display: "flex", gap: 7, alignItems: "center", justifyContent: "center" }}><LogOut size={16} /> Log out</button>
