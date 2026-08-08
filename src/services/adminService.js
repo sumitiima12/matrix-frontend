@@ -135,3 +135,27 @@ export async function adminClearTradesByType(userId, key, phone, tradeType, scop
   if (!r.ok) throw new Error(d.error || `admin ${r.status}`);
   return d;
 }
+
+/* ---- OPS-1 ops console + SEC-1 audit ---- */
+export async function adminOpsOverview(userId, key) {
+  const r = await fetch(`${BACKEND_URL}/api/admin/ops/overview`, { headers: headers(userId, key) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || `admin ${r.status}`);
+  return d;
+}
+export async function adminOpsPauseUser(userId, key, phone) {
+  const r = await fetch(`${BACKEND_URL}/api/admin/ops/pause-user`, { method: "POST", headers: headers(userId, key), body: JSON.stringify({ phone }) });
+  const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || `admin ${r.status}`); return d;
+}
+export async function adminOpsResumeUser(userId, key, phone) {
+  const r = await fetch(`${BACKEND_URL}/api/admin/ops/resume-user`, { method: "POST", headers: headers(userId, key), body: JSON.stringify({ phone }) });
+  const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || `admin ${r.status}`); return d;
+}
+export async function adminOpsIncidentNote(userId, key, note, ref = null) {
+  const r = await fetch(`${BACKEND_URL}/api/admin/ops/incident-note`, { method: "POST", headers: headers(userId, key), body: JSON.stringify({ note, ref }) });
+  const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || `admin ${r.status}`); return d;
+}
+export async function adminAudit(userId, key, limit = 100) {
+  const r = await fetch(`${BACKEND_URL}/api/admin/audit?limit=${encodeURIComponent(limit)}`, { headers: headers(userId, key) });
+  const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || `admin ${r.status}`); return d;
+}

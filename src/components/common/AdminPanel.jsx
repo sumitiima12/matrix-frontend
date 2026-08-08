@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { adminListUsers, adminGetUser, adminSetBlocked, adminResetPin, adminPendingUsers, adminApproveUser, adminDeleteUser, adminClearVirtual, adminClearTradesByType } from "../../services/adminService";
+import { adminListUsers, adminGetUser, adminSetBlocked, adminResetPin, adminPendingUsers, adminApproveUser, adminDeleteUser, adminClearVirtual, adminClearTradesByType, adminOpsOverview, adminOpsPauseUser, adminOpsResumeUser, adminOpsIncidentNote, adminAudit } from "../../services/adminService";
 import { apiListIdeas, apiReviewIdea, apiDeleteIdea } from "../../domain/api";
 import { tradesToCSV, downloadCSV, tradeFilename } from "../../lib/csv";
 import { confirmDialog, promptDialog, alertDialog } from "../../lib/confirmDialog";   // in-app dialogs (reliable in webviews/PWA)
@@ -240,11 +240,13 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
         /* USER LIST + IDEAS MODERATION */
         <div>
           <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3, marginTop: 8, marginBottom: 4 }}>
-            {[["users", "Users"], ["pending", "Pending"], ["ideas", "Ideas"]].map(([k, l]) => (
+            {[["users", "Users"], ["pending", "Pending"], ["ideas", "Ideas"], ["ops", "Ops"]].map(([k, l]) => (
               <button key={k} onClick={() => setSection(k)} className="pill tap disp" style={{ padding: "6px 16px", fontSize: 12, fontWeight: 800, border: "none", background: section === k ? "var(--primary)" : "transparent", color: section === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
             ))}
           </div>
-          {section === "ideas" ? (
+          {section === "ops" ? (
+            <OpsConsole userId={userId} adminKey={adminKey} card={card} />
+          ) : section === "ideas" ? (
             <IdeasModeration adminKey={adminKey} card={card} />
           ) : section === "pending" ? (
             <PendingUsers userId={userId} adminKey={adminKey} card={card} />
@@ -270,6 +272,134 @@ export default function AdminPanel({ userId, adminKey, onClose }) {
           </>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+/* OPS-1 — operations console: one live snapshot of unattended real-money health (real traders, unprotected
+   positions, unresolved orders, pending protection, halted accounts) with pause/resume + incident notes, plus
+   the immutable audit log. Read model comes from /api/admin/ops/overview; actions are audited server-side. */
+function OpsConsole({ userId, adminKey, card }) {
+  const [ov, setOv] = useState(null);
+  const [err, setErr] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+  const [audit, setAudit] = useState(null);
+  const [showAudit, setShowAudit] = useState(false);
+
+  const refresh = () => { setErr(null); adminOpsOverview(userId, adminKey).then(setOv).catch((e) => setErr(String(e.message || e))); };
+  useEffect(() => { refresh(); /* eslint-disable-next-line */ }, []);
+
+  const pauseUser = async () => {
+    const phone = await promptDialog("Pause automated entries for which account? (phone)", { title: "Pause user" });
+    if (!phone) return;
+    setBusy(true);
+    try { await adminOpsPauseUser(userId, adminKey, phone.trim()); await alertDialog("Entries paused for " + phone, { title: "Paused" }); refresh(); }
+    catch (e) { setErr(String(e.message || e)); } finally { setBusy(false); }
+  };
+  const resumeUser = async (phone) => {
+    if (!(await confirmDialog(`Resume automated entries for ${phone}? Real trading will run again.`, { title: "Resume user", confirmLabel: "Resume" }))) return;
+    setBusy(true);
+    try { await adminOpsResumeUser(userId, adminKey, phone); refresh(); }
+    catch (e) { setErr(String(e.message || e)); } finally { setBusy(false); }
+  };
+  const saveNote = async () => {
+    if (!note.trim()) return;
+    setBusy(true);
+    try { await adminOpsIncidentNote(userId, adminKey, note.trim()); setNote(""); await alertDialog("Incident note recorded to the audit log.", { title: "Saved" }); }
+    catch (e) { setErr(String(e.message || e)); } finally { setBusy(false); }
+  };
+  const loadAudit = () => { setShowAudit(true); adminAudit(userId, adminKey, 100).then((d) => setAudit(d.entries || [])).catch((e) => setErr(String(e.message || e))); };
+
+  const s = ov && ov.summary;
+  const tile = (label, val, warn) => (
+    <div style={{ ...card, flex: "1 1 100px", minWidth: 92, margin: 0, textAlign: "center", padding: "10px 8px", border: "1px solid " + (warn ? "var(--down)" : "var(--line)") }}>
+      <div style={{ fontSize: 9, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".03em" }}>{label}</div>
+      <div className="mono" style={{ fontWeight: 800, fontSize: 18, marginTop: 3, color: warn ? "var(--down)" : "var(--ink)" }}>{val}</div>
+    </div>
+  );
+  const ageStr = (ms) => (ms == null ? "—" : ms < 60000 ? Math.round(ms / 1000) + "s" : ms < 3600000 ? Math.round(ms / 60000) + "m" : Math.round(ms / 3600000) + "h");
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <button onClick={refresh} className="tap disp" style={{ border: "1px solid var(--line)", background: "var(--surface)", borderRadius: 10, padding: "6px 12px", fontWeight: 800, fontSize: 12 }}>↻ Refresh</button>
+        <button onClick={pauseUser} disabled={busy} className="tap disp" style={{ border: "1px solid var(--down)", background: "var(--surface)", color: "var(--down)", borderRadius: 10, padding: "6px 12px", fontWeight: 800, fontSize: 12 }}>Pause a user</button>
+        {ov && ov.role && <span style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--muted)", fontWeight: 700 }}>role: {ov.role}</span>}
+      </div>
+      {err && <div style={{ fontSize: 12, color: "var(--down)", marginBottom: 8 }}>{err}</div>}
+      {!ov ? <div style={{ fontSize: 12, color: "var(--muted)" }}>Loading…</div> : (
+        <>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {tile("Real traders", s.realTradingUsers)}
+            {tile("Active real", s.activeRealStrategies)}
+            {tile("Open pos", s.openManagedPositions)}
+            {tile("Unprotected", s.unprotectedPositions, s.unprotectedPositions > 0)}
+            {tile("Unresolved", s.unresolvedOrders, s.unresolvedOrders > 0)}
+            {tile("Pending prot", s.pendingProtection, s.pendingProtection > 0)}
+            {tile("Halted", s.haltedAccounts)}
+          </div>
+          {(s.oldestUnresolvedMs != null || s.oldestPendingProtectionMs != null) && (
+            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 8 }}>
+              Oldest unresolved order: <b style={{ color: s.oldestUnresolvedMs > 3600000 ? "var(--down)" : "var(--ink)" }}>{ageStr(s.oldestUnresolvedMs)}</b> · oldest pending protection: <b>{ageStr(s.oldestPendingProtectionMs)}</b>
+            </div>
+          )}
+
+          {ov.unprotectedPositions && ov.unprotectedPositions.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 800, color: "var(--down)", marginBottom: 6 }}>⚠ Unprotected positions ({ov.unprotectedPositions.length})</div>
+              {ov.unprotectedPositions.slice(0, 20).map((p, i) => (
+                <div key={i} style={{ ...card, margin: "6px 0", padding: "8px 10px", fontSize: 11.5, display: "flex", justifyContent: "space-between" }}>
+                  <span className="mono">{p.symbol} · {p.broker} · qty {p.qty}</span>
+                  <span style={{ color: "var(--muted)" }}>{p.userId}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {ov.haltedAccounts && ov.haltedAccounts.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 800, marginBottom: 6 }}>Halted accounts ({ov.haltedAccounts.length})</div>
+              {ov.haltedAccounts.slice(0, 20).map((uid, i) => (
+                <div key={i} style={{ ...card, margin: "6px 0", padding: "8px 10px", fontSize: 11.5, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span className="mono">{uid}</span>
+                  <button onClick={() => resumeUser(String(uid).replace(/^ph_/, ""))} disabled={busy} className="tap" style={{ border: "1px solid var(--up)", background: "var(--surface)", color: "var(--up)", borderRadius: 8, padding: "4px 10px", fontWeight: 800, fontSize: 11 }}>Resume</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 11.5, fontWeight: 800, marginBottom: 6 }}>Incident note</div>
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Record an incident / action for the audit trail…" rows={2}
+              style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 10, padding: 9, fontSize: 12.5, background: "var(--elev)", color: "var(--ink)", resize: "vertical" }} />
+            <button onClick={saveNote} disabled={busy || !note.trim()} className="tap disp" style={{ marginTop: 6, border: "none", background: "var(--primary)", color: "var(--on-primary)", borderRadius: 10, padding: "7px 14px", fontWeight: 800, fontSize: 12, opacity: note.trim() ? 1 : 0.6 }}>Record note</button>
+          </div>
+
+          <div style={{ marginTop: 14 }}>
+            {!showAudit ? (
+              <button onClick={loadAudit} className="tap disp" style={{ border: "1px solid var(--line)", background: "var(--surface)", borderRadius: 10, padding: "7px 14px", fontWeight: 800, fontSize: 12 }}>View audit log</button>
+            ) : (
+              <>
+                <div style={{ fontSize: 11.5, fontWeight: 800, marginBottom: 6 }}>Audit log (latest 100)</div>
+                {audit == null ? <div style={{ fontSize: 12, color: "var(--muted)" }}>Loading…</div> : audit.length === 0 ? <div style={{ fontSize: 12, color: "var(--muted)" }}>No entries yet.</div> : (
+                  <div style={{ maxHeight: 320, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 10 }}>
+                    {audit.map((a, i) => (
+                      <div key={a.id || i} style={{ padding: "7px 10px", borderTop: i ? "1px solid var(--line)" : "none", fontSize: 11 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                          <span style={{ fontWeight: 800 }}>{a.action}{a.target ? ` · ${a.target}` : ""}</span>
+                          <span style={{ color: "var(--muted)" }}>{new Date(a.at).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                        </div>
+                        <div style={{ color: "var(--muted)", marginTop: 1 }}>{a.actor} ({a.role}){a.detail && a.detail.note ? ` — ${a.detail.note}` : ""}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </>
       )}
     </div>
   );
