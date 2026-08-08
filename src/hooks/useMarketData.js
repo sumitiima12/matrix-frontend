@@ -118,8 +118,13 @@ export function useMarketData(market, intervalMs = 60000) {   // 60s quote poll 
       } catch { /* stays null -> Trending simply shows less */ }
     };
 
+    // PERF: don't poll while the tab is backgrounded — a hidden PWA/tab doesn't need live prices, and skipping
+    // the fetch cuts request volume, backend load and battery drain for every idle session. On return to the
+    // foreground we refresh immediately so the user never sees stale prices on wake.
+    const hidden = () => (typeof document !== "undefined" && document.visibilityState === "hidden");
+
     const refresh = () => {
-      if (!BACKEND_URL) { setLive(false); return; }
+      if (!BACKEND_URL || hidden()) { if (!BACKEND_URL) setLive(false); return; }
       pullQuotes();
       pullIndicators();
     };
@@ -128,12 +133,16 @@ export function useMarketData(market, intervalMs = 60000) {   // 60s quote poll 
     pullIntraday();
     const id = setInterval(refresh, intervalMs);
 
-    // Intraday momentum: every 60s, and only while the market is actually open.
+    // Intraday momentum: every 60s, and only while the market is actually open AND the tab is visible.
     const intraId = setInterval(() => {
-      if (BACKEND_URL && marketOpen(market)) pullIntraday();
+      if (BACKEND_URL && !hidden() && marketOpen(market)) pullIntraday();
     }, 60000);
 
-    return () => { stop = true; clearInterval(id); clearInterval(intraId); };
+    // Immediate catch-up when the tab comes back to the foreground.
+    const onVis = () => { if (!hidden()) { refresh(); if (marketOpen(market)) pullIntraday(); } };
+    if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVis);
+
+    return () => { stop = true; clearInterval(id); clearInterval(intraId); if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVis); };
   }, [market, intervalMs]);
 
   return { live, liveAt, tick, src };
