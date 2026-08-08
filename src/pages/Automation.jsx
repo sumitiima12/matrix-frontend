@@ -748,6 +748,11 @@ function CardTradeLog({ tradeList, market = "IN", open = false }) {
         {sCell("P&L", (sum.pnl >= 0 ? "+" : "") + fmt(sum.pnl, market), chgColor(sum.pnl))}
         {sCell("Return", (sum.ret >= 0 ? "+" : "") + sum.ret.toFixed(1) + "%", chgColor(sum.ret))}
       </div>
+      {/* FIN-3(b) — backtests run on raw prices; splits/bonuses/dividends are NOT adjusted, so a result that
+          spans a corporate action can look artificially good or bad. Say so plainly rather than imply precision. */}
+      <div style={{ fontSize: 9.5, color: "var(--muted)", padding: "0 10px 8px", lineHeight: 1.4 }}>
+        Estimated · prices not adjusted for splits, bonuses or dividends.
+      </div>
       {rows.length ? (
         <div style={{ overflowX: "auto", maxHeight: 320, overflowY: "auto", borderTop: "1px solid var(--line)" }}>
           <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 620 }}>

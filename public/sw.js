@@ -9,12 +9,15 @@ self.addEventListener("push", (event) => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch { data = { title: "MatrixOne", body: event.data ? event.data.text() : "" }; }
   const title = data.title || "MatrixOne";
+  const urgent = data.severity === "urgent";   // ALERT-1: urgent alerts stay on screen and vibrate
   const options = {
     body: data.body || "",
     icon: "/matrixone-icon.png",
     badge: "/matrixone-icon.png",
-    data: { url: data.url || "/" },
+    data: { url: data.url || "/", severity: data.severity || "info" },
     tag: data.tag || undefined,
+    requireInteraction: urgent,               // urgent notifications don't auto-dismiss
+    vibrate: urgent ? [200, 100, 200] : undefined,
   };
   event.waitUntil(self.registration.showNotification(title, options));
 });
