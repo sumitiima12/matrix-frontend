@@ -237,8 +237,10 @@ export function Onboarding({ onDone, onSkip, initial, theme }) {
 export function LoginModal({ onClose, onAuthed }) {
   const [tab, setTab] = useState("login");
   const [phone, setPhone] = useState(""); const [pin, setPin] = useState(""); const [name, setName] = useState("");
+  const [userId, setUserId] = useState("");
   const [secQ, setSecQ] = useState(""); const [secA, setSecA] = useState("");
   const [busy, setBusy] = useState(false); const [err, setErr] = useState(null);
+  const validId = /^[A-Za-z][A-Za-z0-9_]{2,19}$/.test(userId);   // 3–20 chars, starts with a letter
 
   // Forgot-PIN sub-flow state.
   const [mode, setMode] = useState("auth");   // "auth" | "forgot"
@@ -246,10 +248,12 @@ export function LoginModal({ onClose, onAuthed }) {
   const [fQuestion, setFQuestion] = useState(""); const [fAnswer, setFAnswer] = useState(""); const [fNewPin, setFNewPin] = useState("");
 
   const submit = async () => {
-    setErr(null); setBusy(true);
+    setErr(null);
+    if (tab === "register" && !validId) { setErr("Choose a user ID: 3–20 characters, starting with a letter (letters, numbers, underscore)."); return; }
+    setBusy(true);
     let res;
     if (tab === "login") res = await apiLogin(phone, pin);
-    else res = await apiRegister(phone, pin, name, secQ, secA);
+    else res = await apiRegister(phone, pin, name, secQ, secA, userId);
     setBusy(false);
     if (res && res.ok) onAuthed({ phone: res.userId, name: res.name || name || "" });
     else setErr((res && res.error) || "Something went wrong.");
@@ -290,6 +294,9 @@ export function LoginModal({ onClose, onAuthed }) {
             {tab === "register" && (<>
               {label("Name")}
               <input value={name} onChange={(e) => setName(e.target.value)} className="no-ring" style={inpStyle} placeholder="Your name" />
+              {label("User ID")}
+              <input value={userId} onChange={(e) => setUserId(e.target.value.replace(/[^A-Za-z0-9_]/g, "").slice(0, 20))} className="no-ring mono" style={{ ...inpStyle, borderColor: userId ? (validId ? "var(--up)" : "var(--down)") : (inpStyle.borderColor || inpStyle.border) }} placeholder="Choose a user ID (unique)" />
+              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 5 }}>3–20 characters, starts with a letter. This is your public handle &amp; referral code.</div>
             </>)}
 
             {label("Phone number")}
@@ -307,7 +314,7 @@ export function LoginModal({ onClose, onAuthed }) {
             </>)}
 
             {err && <div style={{ fontSize: 12, color: "var(--down)", marginTop: 12, fontWeight: 600 }}>{err}</div>}
-            <button onClick={submit} disabled={busy} className="tap disp glow" style={{ width: "100%", marginTop: 16, padding: 13, borderRadius: 12, border: "none", background: "var(--primary)", color: "var(--on-primary)", fontWeight: 800, fontSize: 14, cursor: "pointer", opacity: busy ? 0.7 : 1 }}>{busy ? "Please wait…" : tab === "login" ? "Log in" : "Create account"}</button>
+            <button onClick={submit} disabled={busy || (tab === "register" && !validId)} className="tap disp glow" style={{ width: "100%", marginTop: 16, padding: 13, borderRadius: 12, border: "none", background: "var(--primary)", color: "var(--on-primary)", fontWeight: 800, fontSize: 14, cursor: "pointer", opacity: (busy || (tab === "register" && !validId)) ? 0.7 : 1 }}>{busy ? "Please wait…" : tab === "login" ? "Log in" : "Create account"}</button>
 
             {tab === "login" && (
               <button onClick={() => { setMode("forgot"); setFStep(1); setErr(null); }} className="tap disp" style={{ width: "100%", marginTop: 10, background: "none", border: "none", color: "var(--primary)", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>Forgot PIN?</button>

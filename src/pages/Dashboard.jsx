@@ -7,6 +7,7 @@ import { BACKEND_URL, RECONCILE_REAL_CLOSES } from "../config";
 import { CUR, DAY, chgColor, clamp, compact, fmt, fmtPnl, lsGet, lsSet, pct, timeAgo } from "../lib/format";
 import { confirmDialog } from "../lib/confirmDialog";   // in-app confirm (reliable in webviews/PWA)
 import { ALL, GLOBAL_MKTS, UNIVERSE, marketOf } from "../domain/universe";
+import { stratPerf } from "../domain/strategies";   // same P&L engine the Automate page uses, so the two agree
 import { askMatrix, fetchNews, fetchNewsFeed, scanIdeas } from "../domain/api";
 import AddBtn from "../components/common/AddBtn";
 import SectorHeatmap from "../components/common/SectorHeatmap";
@@ -864,6 +865,8 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   useEffect(() => { setCapDraft(deployCapMap[market] != null ? deployCapMap[market] : capDefault(market)); /* eslint-disable-next-line */ }, [market]);
   const [plPeriod, setPlPeriod] = useState("today");
   const [totPeriod, setTotPeriod] = useState("today");   // Total-card timeframe (default Today)
+  const [totCustFrom, setTotCustFrom] = useState("");     // custom range (YYYY-MM-DD) for the Total card
+  const [totCustTo, setTotCustTo] = useState("");
   /* Product type — PER MARKET, persisted. "Intraday" = auto-square-off (MIS/INTRADAY);
      "NRML" = carry-forward / delivery (CNC on equity). Only meaningful for Indian markets;
      crypto/US ignore it. Default to NRML so positions aren't force-closed at 3:20pm. */
@@ -879,6 +882,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const [slMode, setSlMode] = useState("default");
   const [autoSL, setAutoSL] = useState(0.5);
   const [autoTP, setAutoTP] = useState(1.5);
+  // Smart Auto-Buy symbol selection + minimum reward:risk (like screeners). sabSyms empty = all of today's
+  // picks; sabMinRR defaults to 2 (2:1) so only picks whose target ÷ stop meets the ratio are bought.
+  const [sabSyms, setSabSyms] = useState([]);
+  const [sabMinRR, setSabMinRR] = useState(2);
   const [editSym, setEditSym] = useState(null);
   const [showTrades, setShowTrades] = useState(false);
   const [showTotalPos, setShowTotalPos] = useState(false);   // Total card "Show positions" toggle
@@ -904,7 +911,9 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     if (marketOf(s.sym) === "Crypto") { tp = clamp(tp * 2, 2, 16); sl = clamp(sl * 1.6, 1, 9); }
     return { tp: +tp.toFixed(1), sl: +sl.toFixed(1) };
   };
-  const autoPicks = useMemo(() => dailyPicks(UNIVERSE[market]).slice(0, 6), [market]);
+  const autoPicksAll = useMemo(() => dailyPicks(UNIVERSE[market]).slice(0, 6), [market]);
+  // SYMBOL SELECT — empty selection means "all of today's picks".
+  const autoPicks = useMemo(() => autoPicksAll.filter((s) => sabSyms.length === 0 || sabSyms.includes(s.sym)), [autoPicksAll, sabSyms]);
   const perCap = capNum / Math.max(1, autoPicks.length);
   const autoTrades = autoPicks.map((s) => {
     const m = marketOf(s.sym);
@@ -913,12 +922,12 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     // Precedence: a per-symbol edit wins; else (Custom mode) the one global SL/TP; else the pick's own.
     const tpPct = ov ? ov.tp : (slMode === "custom" ? autoTP : auto.tp);
     const slPct = ov ? ov.sl : (slMode === "custom" ? autoSL : auto.sl);
+    const rr = slPct > 0 ? +(tpPct / slPct).toFixed(2) : 0;   // reward:risk of this pick
     const entry = s.price;
     // Crypto sizes by AMOUNT (fractional units); stocks by whole shares.
     const qty = m === "Crypto" ? +(perCap / entry).toFixed(6) : Math.max(1, Math.floor(perCap / entry));
-    const dp = entry < 1 ? 6 : entry < 10 ? 4 : 2;
-    return { sym: s.sym, m, qty, entry, tpPct, slPct, auto };   // planned entry; the exit engine closes it at real prices
-  }).filter(Boolean);   // F&O names with no real lot size are dropped, not guessed
+    return { sym: s.sym, m, qty, entry, tpPct, slPct, rr, auto };   // planned entry; the exit engine closes it at real prices
+  }).filter((t) => t && t.rr >= sabMinRR);   // MIN R:R gate — only buy picks that meet the ratio (F&O with no lot size still dropped)
   // When Auto-Buy is ON, actually place today's picks as REAL positions (once per
   // day per market) with their target/stop attached. The exit engine then closes
   // them at real market prices — no simulated win/loss.
@@ -1010,8 +1019,15 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     const d = new Date();
     if (totPeriod === "today") { d.setHours(0, 0, 0, 0); return d.getTime(); }
     if (totPeriod === "month") { d.setDate(1); d.setHours(0, 0, 0, 0); return d.getTime(); }
+    if (totPeriod === "last12") { d.setFullYear(d.getFullYear() - 1); d.setHours(0, 0, 0, 0); return d.getTime(); }
+    if (totPeriod === "custom") { const t = Date.parse(totCustFrom); return Number.isFinite(t) ? t : 0; }
     return 0;                                       // lifetime
-  }, [totPeriod]);
+  }, [totPeriod, totCustFrom]);
+  // Upper bound — only Custom has one (end of the chosen day); every other period runs to "now".
+  const totTo = useMemo(() => {
+    if (totPeriod === "custom") { const t = Date.parse(totCustTo); return Number.isFinite(t) ? t + 86399999 : Infinity; }
+    return Infinity;
+  }, [totPeriod, totCustTo]);
   const totalStats = useMemo(() => {
     // A trade is dated by its EXIT if closed, else its ENTRY (an open position is "current").
     const stampT = (t) => (t.exitAt || t.entryAt || 0);
@@ -1022,7 +1038,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       // An OPEN position is live right now, so its P&L belongs in every period (even if it was
       // entered before the window) — matching what the Smart Auto-Buy card shows. Closed trades
       // are still scoped to the selected date range.
-      (t.exitAt == null || stampT(t) >= totFrom));
+      (t.exitAt == null || (stampT(t) >= totFrom && stampT(t) <= totTo)));
     const todayStart = new Date(new Date().setHours(0, 0, 0, 0)).getTime();
     let pnl = 0, invested = 0, open = 0, closedN = 0, wins = 0, byType = { Manual: 0, "Auto Buy": 0, Automate: 0, "Screener Auto Buy": 0 };
     for (const t of rows) {
@@ -1050,8 +1066,19 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     }
     // Win rate is over CLOSED trades only (an open position hasn't won or lost yet).
     return { pnl: +pnl.toFixed(2), invested: +invested.toFixed(2), count: rows.length, open, closedN, wins, winRate: closedN ? (wins / closedN) * 100 : null, byType, retPct: invested ? (pnl / invested) * 100 : 0 };
-  }, [trades, market, isReal, totFrom, totPeriod]);
-  const totLabel = totPeriod === "today" ? "today" : totPeriod === "month" ? "this month" : "all time";
+  }, [trades, market, isReal, totFrom, totTo, totPeriod]);
+  const totLabel = totPeriod === "today" ? "today" : totPeriod === "month" ? "this month" : totPeriod === "last12" ? "last 12 months" : totPeriod === "custom" ? "in range" : "all time";
+
+  /* The "Automate" box uses the SAME P&L engine as the Automate page (stratPerf over the deployed strategies)
+     so the two agree instead of diverging in sign. It sums each strategy's realised (closed-in-window) +
+     unrealised (open, priced) P&L over the Total card's window, scoped to this mode + market. */
+  const automatePnl = useMemo(() => {
+    const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a && a.price != null ? a.price : null; };
+    const modeTrades = (trades || []).filter((t) => (isReal ? !!t.real : !t.real));
+    const win = { from: totFrom, to: totTo === Infinity ? undefined : totTo };
+    const inMkt = (s) => !(s.symbols && s.symbols.length) || (s.symbols || []).some((x) => marketOf(x) === market);
+    return (strategies || []).filter(inMkt).reduce((a, s) => a + (stratPerf(s, modeTrades, 365, priceOf, win).pnl || 0), 0);
+  }, [strategies, trades, isReal, market, totFrom, totTo]);
 
   /* The OPEN positions that make up the Total — every trade type (Manual / Auto-Buy / Automate /
      Screener), still open, for this market + mode. Rejected orders are excluded (they live in Orders,
@@ -1126,9 +1153,19 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
             <select aria-label="Date range" value={dashView === "total" ? totPeriod : plPeriod} onChange={(e) => { const v = e.target.value; if (dashView === "total") setTotPeriod(v); else setPlPeriod(v); }} style={{ fontSize: 11, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 9, padding: "5px 8px", background: "var(--elev)", color: "var(--ink)" }}>
               <option value="today">Today</option>
               <option value="month">This month</option>
+              {dashView === "total" && <option value="last12">Last 12 months</option>}
               <option value="lifetime">{dashView === "total" ? "All time" : "Lifetime"}</option>
+              {dashView === "total" && <option value="custom">Custom…</option>}
             </select>
           </div>
+          {/* Custom range pickers — only for the Total card, only when Custom is selected. */}
+          {dashView === "total" && totPeriod === "custom" && (
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+              <input type="date" aria-label="From date" value={totCustFrom} max={totCustTo || undefined} onChange={(e) => setTotCustFrom(e.target.value)} style={{ fontSize: 11, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 9, padding: "5px 8px", background: "var(--elev)", color: "var(--ink)" }} />
+              <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>→</span>
+              <input type="date" aria-label="To date" value={totCustTo} min={totCustFrom || undefined} onChange={(e) => setTotCustTo(e.target.value)} style={{ fontSize: 11, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 9, padding: "5px 8px", background: "var(--elev)", color: "var(--ink)" }} />
+            </div>
+          )}
 
           {dashView === "total" ? (
             <div>
@@ -1153,7 +1190,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     their recorded activity came from Manual vs Auto-Buy vs Automate vs Screener. */}
                 {(
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginTop: 12 }}>
-                    {[["Manual", totalStats.byType.Manual], ["Auto-Buy", totalStats.byType["Auto Buy"]], ["Automate", totalStats.byType.Automate], ["Screener", totalStats.byType["Screener Auto Buy"]]].map(([label, v]) => (
+                    {[["Manual", totalStats.byType.Manual], ["Auto-Buy", totalStats.byType["Auto Buy"]], ["Automate", automatePnl], ["Screener", totalStats.byType["Screener Auto Buy"]]].map(([label, v]) => (
                       <div key={label} style={{ background: "var(--elev)", borderRadius: 9, padding: "7px 8px", minWidth: 0 }}>
                         <div style={{ fontSize: 9, opacity: .65, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
                         <div className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: v >= 0 ? "var(--up)" : "var(--down)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(v >= 0 ? "+" : "") + (isReal ? money1(v) : fmtPnl(v, market))}</div>
@@ -1165,6 +1202,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 <div style={{ display: "flex", gap: 14, marginTop: 10, fontSize: 12, opacity: .9, flexWrap: "wrap" }}>
                   <span><b style={{ fontWeight: 800 }}>{totalStats.count}</b> <span style={{ opacity: .7 }}>trades</span></span>
                   <span><b style={{ fontWeight: 800 }}>{totalOpenRows.length}</b> <span style={{ opacity: .7 }}>open</span></span>
+                  {totalStats.winRate != null && <span><b style={{ fontWeight: 800 }}>{totalStats.winRate.toFixed(0)}%</b> <span style={{ opacity: .7 }}>win rate</span></span>}
                 </div>
                 {totalStats.count === 0 && <div style={{ fontSize: 11.5, opacity: .8, marginTop: 10 }}>No {isReal ? "real" : "virtual"} trades {totLabel} in {MKT_LABEL[market]}.</div>}
 
@@ -1281,6 +1319,29 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 ) : (
                   <div style={{ fontSize: 10, opacity: .65, marginTop: 6 }}>Each pick uses its own target &amp; stop from Matrix's Top Picks.</div>
                 )}
+              </div>
+
+              {/* SYMBOLS + MIN REWARD:RISK — pick which of today's symbols to auto-buy, and the minimum
+                  target-to-stop ratio a pick must meet (like screeners). Empty selection = all picks. */}
+              <div style={{ marginTop: 12, background: "var(--elev)", borderRadius: 12, padding: "10px 12px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                  <div style={{ fontSize: 9.5, opacity: .8, fontWeight: 700 }}>SYMBOLS ({sabSyms.length === 0 ? "all" : sabSyms.length})</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 9.5, opacity: .8, fontWeight: 700 }}>MIN R:R</span>
+                    <input value={sabMinRR} onChange={(e) => setSabMinRR(Math.max(0, +String(e.target.value).replace(/[^0-9.]/g, "") || 0))} inputMode="decimal" className="no-ring mono" style={{ width: 46, textAlign: "center", border: "none", background: "var(--surface)", borderRadius: 8, padding: "5px 4px", fontWeight: 800, fontSize: 13, color: "var(--primary)" }} />
+                    <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 800 }}>: 1</span>
+                  </div>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 9 }}>
+                  {autoPicksAll.map((s) => {
+                    const on = sabSyms.length === 0 || sabSyms.includes(s.sym);
+                    return (
+                      <button key={s.sym} onClick={() => setSabSyms((prev) => prev.includes(s.sym) ? prev.filter((x) => x !== s.sym) : [...(prev.length ? prev : []), s.sym])} className="tap disp" style={{ border: "1px solid " + (on && sabSyms.includes(s.sym) ? "var(--primary)" : "var(--line)"), background: sabSyms.includes(s.sym) ? "var(--primary-soft)" : "var(--surface)", color: "var(--ink)", borderRadius: 999, padding: "5px 11px", fontWeight: 800, fontSize: 11 }}>{s.sym}</button>
+                    );
+                  })}
+                  {sabSyms.length > 0 && <button onClick={() => setSabSyms([])} className="tap disp" style={{ border: "1px solid var(--line)", background: "var(--surface)", color: "var(--muted)", borderRadius: 999, padding: "5px 11px", fontWeight: 800, fontSize: 11 }}>All</button>}
+                </div>
+                <div style={{ fontSize: 10, opacity: .65, marginTop: 7 }}>Only picks whose target ÷ stop is at least {sabMinRR}:1 are bought. {autoTrades.length} of {autoPicksAll.length} qualify now.</div>
               </div>
 
               {/* capital — type then Save */}
