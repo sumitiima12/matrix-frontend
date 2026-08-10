@@ -1121,7 +1121,7 @@ function ScreenerPnLTab({ trades = [], market, mode = "virtual", liveTick = 0 })
 }
 
 export default function PopularScreeners({ market, mode = "virtual", list = [], isAdmin = false, onOpen, onBuy, onAutoBuy, onScreenerBuy, onClosePosition, onUpdatePosition, liveTick = 0, trades = [], variant = "full", onOpenScreener }) {
-  const [tab, setTab] = useState(variant === "active" ? "popular" : "custom");   // full page defaults to Build-a-screener
+  const [tab, setTab] = useState(variant === "active" ? "popular" : "active");   // full page defaults to Active Screeners
   const [dir, setDir] = useState("buy");   // Buy (long) | Sell (short) for Popular Screeners
   const [editing, setEditing] = useState(null);   // a saved screener loaded into the builder for editing
   const [showAllActive, setShowAllActive] = useState(false);   // homepage: collapse Active Screeners to 2 + "Show all"
@@ -1141,9 +1141,9 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
               {(showAllActive ? activeScreeners : activeScreeners.slice(0, 2)).map((s) => (
                 <ScreenerRow key={s.key} screener={s} market={market} mode={mode} trades={trades} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} onClosePosition={onClosePosition} liveTick={liveTick} side="BUY" />
               ))}
-              {activeScreeners.length > 2 && (
-                <button onClick={() => setShowAllActive((v) => !v)} className="tap disp" style={{ marginTop: 4, width: "100%", border: "none", background: "transparent", color: "var(--primary)", fontWeight: 800, fontSize: 12, padding: "6px", cursor: "pointer" }}>
-                  {showAllActive ? "Show less" : `Show all (${activeScreeners.length})`}
+              {(onOpenScreener || activeScreeners.length > 2) && (
+                <button onClick={() => { if (onOpenScreener) onOpenScreener(); else setShowAllActive((v) => !v); }} className="tap disp" style={{ marginTop: 4, width: "100%", border: "none", background: "transparent", color: "var(--primary)", fontWeight: 800, fontSize: 12, padding: "6px", cursor: "pointer" }}>
+                  {onOpenScreener ? `Show all (${activeScreeners.length})` : (showAllActive ? "Show less" : `Show all (${activeScreeners.length})`)}
                 </button>
               )}
             </>)}
@@ -1159,12 +1159,27 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
       {/* Build a screener | Popular Screeners | My Screeners */}
       <div className="hide-scroll" style={{ display: "flex", marginBottom: 4, overflowX: "auto" }}>
         <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3 }}>
-          {[["custom", "Build a screener"], ["popular", "Popular Screeners"], ["mine", "My Screeners"], ["pnl", "P&L"]].map(([k, l]) => (
+          {[["active", "Active Screeners"], ["custom", "Build a screener"], ["popular", "Popular Screeners"], ["mine", "My Screeners"], ["pnl", "P&L"]].map(([k, l]) => (
             <button key={k} onClick={() => { setTab(k); if (k !== "custom") setEditing(null); }} className="pill tap disp" style={{ padding: "6px 14px", fontSize: 12, fontWeight: 800, border: "none", whiteSpace: "nowrap", background: tab === k ? "var(--primary)" : "transparent", color: tab === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
           ))}
         </div>
       </div>
 
+      {tab === "active" && (() => {
+        const activeRows = [];
+        SCREENERS.forEach((s) => {
+          if (isScreenerActive(s.key, market, false)) activeRows.push({ s, side: "BUY" });
+          if (isScreenerActive(s.key, market, true)) activeRows.push({ s, side: "SELL" });
+        });
+        if (activeRows.length === 0) return (
+          <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.55, padding: "10px 2px 14px" }}>
+            No active screeners yet. Open <b>Popular Screeners</b> or <b>Build a screener</b> and turn on Auto-Buy — activated screeners show up here.
+          </div>
+        );
+        return activeRows.map(({ s, side }) => (
+          <ScreenerRow key={s.key + side} screener={s} market={market} mode={mode} trades={trades} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} onClosePosition={onClosePosition} liveTick={liveTick} side={side} />
+        ));
+      })()}
       {tab === "popular" && <>
         <ScreenerDirToggle dir={dir} setDir={setDir} />
         {dir === "sell" && <div style={{ fontSize: 10.5, color: "var(--muted)", lineHeight: 1.5, margin: "0 2px 8px" }}>Sell mode shorts each match instead of buying it. Shorting executes on crypto and Indian options; elsewhere it runs in paper.</div>}
