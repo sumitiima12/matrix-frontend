@@ -2406,7 +2406,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const [notifs, setNotifs] = useState([]);
   const [toast, setToast] = useState(null);
   const [dashBy, setDashBy] = useState("All");
-  const [dashOpen, setDashOpen] = useState(false);          // collapsed by default (P&L only)
+  const [dashOpen, setDashOpen] = useState(true);           // expanded by default — full stats like the Screener dashboard
   const [dashDrill, setDashDrill] = useState(false);        // Trades tile → drill-down trade list (Screener-style)
   const [dashLivePosAll, setDashLivePosAll] = useState(false);   // Live Positions "See all" toggle
   const [dashPreset, setDashPreset] = useState("today");   // default Today (label shown even when collapsed)
@@ -3414,7 +3414,6 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             <div style={{ fontSize: 10, opacity: .7, fontWeight: 700, letterSpacing: ".04em", margin: "16px 0 7px" }}>FILTERS</div>
             <div style={{ display: "flex", gap: 8 }}>
               <select aria-label="Created by" value={dashBy} onChange={(e) => setDashBy(e.target.value)} style={dsel}>{byOptions.map((o) => <option key={o} value={o}>Created by: {o}</option>)}</select>
-              <select aria-label="Time period" value={dashPreset} onChange={(e) => setDashPreset(e.target.value)} style={dsel}>{DASH_PRESETS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
             </div>
             {dashPreset === "custom" && (
               <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
