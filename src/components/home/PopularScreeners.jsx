@@ -1151,7 +1151,7 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
     );
   }
   return (
-    <Section title="Screener" icon={<SlidersHorizontal size={17} color="var(--primary)" />}>
+    <Section title="Screener" tight icon={<SlidersHorizontal size={17} color="var(--primary)" />}>
       {/* Automate-style performance dashboard for Screener Auto-Buy trades in this market. */}
       <ScreenerDashboard trades={trades} market={market} />
       {/* Live Positions — its OWN section below the dashboard (Screener column, editable SL/TP, Close). */}

@@ -2407,6 +2407,8 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const [toast, setToast] = useState(null);
   const [dashBy, setDashBy] = useState("All");
   const [dashOpen, setDashOpen] = useState(false);          // collapsed by default (P&L only)
+  const [dashDrill, setDashDrill] = useState(false);        // Trades tile → drill-down trade list (Screener-style)
+  const [dashLivePosAll, setDashLivePosAll] = useState(false);   // Live Positions "See all" toggle
   const [dashPreset, setDashPreset] = useState("today");   // default Today (label shown even when collapsed)
   const [dashFrom, setDashFrom] = useState("");             // custom range (yyyy-mm-dd)
   const [dashTo, setDashTo] = useState("");
@@ -2812,6 +2814,17 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const dLosses = Math.max(0, agg.trades - agg.wins);
   const dRet = agg.cap ? agg.pnl / agg.cap * 100 : 0;
   const dAnn = perf.length ? agg.annSum / perf.length : 0;
+  /* Trades + open positions BEHIND the dashboard — Automate trades in this market + book (real/virtual),
+     scoped by the selected window. Powers the Screener-style Trades drill-down and the Live Positions table. */
+  const dashWinFrom = Date.now() - dashRange * 864e5;
+  const dashTrades = (trades || []).filter((t) =>
+    t && t.tradeType === "Automate" && ((t.market || marketOf(t.sym) || "IN")) === market
+    && (appMode === "real" ? !!t.real : !t.real) && t.status !== "rejected" && Number(t.entry) > 0
+    && ((t.exitAt == null || t.exit == null) || (Number(t.exitAt || t.entryAt || 0) >= dashWinFrom)))
+    .sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
+  const dashOpenPos = dashTrades.filter((t) => t.exitAt == null || t.exit == null);
+  const dPriceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a && a.price != null ? a.price : null; };
+  const dPnlOf = (t, px) => { const dir = (t.side === "SELL" || t.short) ? -1 : 1; return (Number(px) - Number(t.entry)) * Number(t.qty || 0) * dir; };
 
   /* VIRTUAL PAPER AUTO-EXECUTION — the paper twin of the server's real-money auto-buy engine.
      In Virtual mode nothing else opens trades for a deployed Automate strategy, so 80 active
@@ -2981,11 +2994,12 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const dsel = { ...selStyle, flex: "1 1 0", minWidth: 0, padding: "8px 8px", fontSize: 11.5 };
   const fmtDate = (t) => new Date(t).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" });
 
-  const DStat = ({ k, v, c }) => (
-    <div style={{ flex: "1 1 0", minWidth: 0, background: "rgba(0,0,0,.05)", borderRadius: 14, padding: "10px 8px" }}>
-      <div style={{ fontSize: 9, opacity: .85, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".02em", whiteSpace: "nowrap" }}>{k}</div>
+  const DStat = ({ k, v, c, onClick, active }) => (
+    <button onClick={onClick} disabled={!onClick} className={onClick ? "tap" : undefined}
+      style={{ flex: "1 1 0", minWidth: 0, textAlign: "left", background: active ? "var(--primary-soft)" : "rgba(0,0,0,.05)", border: active ? "1px solid var(--primary)" : "1px solid transparent", borderRadius: 14, padding: "10px 8px", cursor: onClick ? "pointer" : "default" }}>
+      <div style={{ fontSize: 9, opacity: .85, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".02em", whiteSpace: "nowrap" }}>{k}{onClick ? " ›" : ""}</div>
       <div className="mono" style={{ fontWeight: 800, fontSize: 15, marginTop: 3, color: c || "#141416" }}>{v}</div>
-    </div>
+    </button>
   );
   const MetricMini = ({ k, v, c }) => (
     <div style={{ flex: "1 1 30%", minWidth: 74 }}>
@@ -3348,7 +3362,8 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".02em", padding: "2px 7px", borderRadius: 999, color: appMode === "real" ? "var(--down)" : "var(--muted)", background: appMode === "real" ? "rgba(232,72,85,.12)" : "var(--elev)", border: "1px solid " + (appMode === "real" ? "rgba(232,72,85,.3)" : "var(--line)") }}>{appMode === "real" ? "REAL" : "VIRTUAL"}</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 10.5, opacity: .85 }}>{(DASH_PRESETS.find(([v]) => v === dashPreset) || [null, "Today"])[1]}</span>
+            {/* Date range in the header (like the Screener dashboard) — Created-by + Symbol stay in Filters. */}
+            <select aria-label="Date range" value={dashPreset} onChange={(e) => setDashPreset(e.target.value)} className="no-ring" style={{ fontSize: 11, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 9, padding: "5px 8px", background: "var(--surface)", color: "var(--ink)" }}>{DASH_PRESETS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
             <button onClick={() => setDashOpen(false)} className="tap" title="Collapse" style={{ flex: "0 0 auto", display: "grid", placeItems: "center", border: "1px solid rgba(0,0,0,.12)", background: "rgba(0,0,0,.06)", color: "#141416", borderRadius: 10, padding: "5px" }}><ChevronUp size={15} /></button>
           </div>
         </div>
@@ -3358,8 +3373,42 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           <DStat k="Returns %" v={(dRet >= 0 ? "+" : "") + dRet.toFixed(2) + "%"} c={dRet >= 0 ? "var(--up)" : "var(--down)"} />
           <DStat k="Win rate" v={agg.trades ? dWinRate.toFixed(0) + "%" : "—"} />
           <DStat k="Win / Loss" v={agg.wins + " : " + dLosses} />
-          <DStat k="Trades" v={agg.trades} />
+          <DStat k="Trades" v={agg.trades} onClick={() => setDashDrill((v) => !v)} active={dashDrill} />
         </div>
+        {/* Trades drill-down — the automate trades behind the dashboard, like the Screener dashboard. */}
+        {dashDrill && (
+          <div style={{ overflowX: "auto", border: "1px solid var(--line)", borderRadius: 10, marginTop: 10 }}>
+            {dashTrades.length === 0 ? (
+              <div style={{ fontSize: 11, color: "var(--muted)", padding: 12 }}>No automate trades in this window.</div>
+            ) : (
+              <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 560 }}>
+                <thead><tr>
+                  {["Symbol", "Strategy", "Entry", "Exit / now", "P&L", "Status"].map((h, i) => (
+                    <th key={h} style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", padding: "6px 8px", textAlign: i >= 2 && i <= 4 ? "right" : "left", whiteSpace: "nowrap" }}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {dashTrades.slice(0, 50).map((t) => {
+                    const closed = t.exitAt != null && t.exit != null;
+                    const cur = closed ? t.exit : (dPriceOf(t.sym) != null ? dPriceOf(t.sym) : t.entry);
+                    const pnl = dPnlOf(t, cur);
+                    const cell = { fontSize: 10.5, fontWeight: 700, padding: "6px 8px", borderTop: "1px solid var(--line)", whiteSpace: "nowrap" };
+                    return (
+                      <tr key={t.id || `${t.sym}-${t.entryAt}`}>
+                        <td style={{ ...cell, fontWeight: 800 }}>{t.sym}{(t.side === "SELL" || t.short) ? <span style={{ color: "var(--down)", fontSize: 8, marginLeft: 4 }}>SHORT</span> : null}</td>
+                        <td style={{ ...cell, color: "var(--muted)", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis" }}>{t.strategy || "—"}</td>
+                        <td style={{ ...cell, textAlign: "right" }}>{fmt(t.entry, market)}</td>
+                        <td style={{ ...cell, textAlign: "right" }}>{fmt(cur, market)}</td>
+                        <td style={{ ...cell, textAlign: "right", color: pnl >= 0 ? "var(--up)" : "var(--down)" }}>{(pnl >= 0 ? "+" : "") + fmtPnl(pnl, market)}</td>
+                        <td style={{ ...cell, color: "var(--muted)" }}>{closed ? "Closed" : "Open"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
         {(
           <>
             <div style={{ fontSize: 10, opacity: .7, fontWeight: 700, letterSpacing: ".04em", margin: "16px 0 7px" }}>FILTERS</div>
@@ -3380,6 +3429,50 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         )}
       </div>
       )}
+
+      {/* Live Positions — a flat, at-a-glance table of every OPEN automate position in this market/book, mirroring
+          the Screener dashboard's Live Positions. Read-only summary; per-position controls live in the deployed
+          lists below. Up to 5 shown, then See all. */}
+      {dashOpenPos.length > 0 && (() => {
+        const th2 = { fontSize: 8.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", padding: "6px 8px", textAlign: "left", whiteSpace: "nowrap" };
+        const td2 = { fontSize: 10.5, fontWeight: 700, padding: "6px 8px", borderTop: "1px solid var(--line)", whiteSpace: "nowrap" };
+        const rows = dashLivePosAll ? dashOpenPos : dashOpenPos.slice(0, 5);
+        return (
+          <div className="card" style={{ padding: 12, marginTop: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <div className="disp" style={{ fontWeight: 800, fontSize: 12.5 }}>Live Positions <span style={{ color: "var(--muted)" }}>· {dashOpenPos.length}</span></div>
+              {dashOpenPos.length > 5 && <button onClick={() => setDashLivePosAll((v) => !v)} className="tap" style={{ border: "none", background: "none", color: "var(--primary)", fontWeight: 800, fontSize: 11, cursor: "pointer" }}>{dashLivePosAll ? "Show less" : "See all"}</button>}
+            </div>
+            <div style={{ overflowX: "auto", border: "1px solid var(--line)", borderRadius: 10 }}>
+              <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 620 }}>
+                <thead><tr>
+                  <th style={{ ...th2, position: "sticky", left: 0, zIndex: 2, background: "var(--surface)" }}>Symbol</th><th style={th2}>Strategy</th>
+                  <th style={{ ...th2, textAlign: "right" }}>Amount</th><th style={{ ...th2, textAlign: "right" }}>Entry px</th>
+                  <th style={{ ...th2, textAlign: "right" }}>Current px</th><th style={{ ...th2, textAlign: "right" }}>P&amp;L</th><th style={{ ...th2, textAlign: "right" }}>Return</th>
+                </tr></thead>
+                <tbody>
+                  {rows.map((t) => {
+                    const px = dPriceOf(t.sym) != null ? dPriceOf(t.sym) : t.entry;
+                    const pnl = dPnlOf(t, px);
+                    const ret = Number(t.entry) ? ((Number(px) / Number(t.entry)) - 1) * 100 * ((t.side === "SELL" || t.short) ? -1 : 1) : 0;
+                    return (
+                      <tr key={t.id || `${t.sym}-${t.entryAt}`}>
+                        <td style={{ ...td2, fontWeight: 800, position: "sticky", left: 0, zIndex: 1, background: "var(--surface)" }}>{t.sym}{(t.side === "SELL" || t.short) ? <span style={{ color: "var(--down)", fontSize: 8, marginLeft: 4 }}>SHORT</span> : null}</td>
+                        <td style={{ ...td2, color: "var(--muted)", maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis" }}>{t.strategy || "—"}</td>
+                        <td style={{ ...td2, textAlign: "right" }}>{fmt(Number(t.entry) * Number(t.qty || 0), market)}</td>
+                        <td style={{ ...td2, textAlign: "right" }}>{fmt(t.entry, market)}</td>
+                        <td style={{ ...td2, textAlign: "right" }}>{fmt(px, market)}</td>
+                        <td style={{ ...td2, textAlign: "right", color: pnl >= 0 ? "var(--up)" : "var(--down)" }}>{(pnl >= 0 ? "+" : "") + fmtPnl(pnl, market)}</td>
+                        <td style={{ ...td2, textAlign: "right", color: ret >= 0 ? "var(--up)" : "var(--down)" }}>{(ret >= 0 ? "+" : "") + ret.toFixed(2)}%</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Live Real Deployed — REAL mode only (real-money armed strategies). */}
       {appMode === "real" && <div style={{ marginTop: 14 }}><LiveAutoBuys userId={userId} market={market} isAdmin={isAdmin} adminKey={adminKey} /></div>}
