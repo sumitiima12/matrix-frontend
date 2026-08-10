@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ALL, UNIVERSE, marketOf, yahooSymbol } from "../../domain/universe";
+import { positionPnl } from "../../domain/leverage";   // Delta-parity crypto P&L (margin cap + fees), same for paper & real
 import { CUR, DAY, chgColor, fmt, fmtPnl, lsGet, lsSet } from "../../lib/format";
 import { scanScreener, marketOpen } from "../../domain/api";
 import { getHistory } from "../../services/marketService";
@@ -408,12 +409,8 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
       // Include: closed trades that closed inside the window, OR anything still open.
       if (closed && (t.exitAt || t.entryAt || 0) < periodFrom) return a;
       const cur = closed ? t.exit : (priceOf(t.sym) != null ? priceOf(t.sym) : t.entry);
-      const dir = (t.side === "SELL" || t.short) ? -1 : 1;   // shorts profit when price falls
-      // P&L = price move × quantity held. t.qty is the amount of the asset (coins / shares / lots) for
-      // BOTH crypto and everything else, so this is uniform. The old crypto branch wrongly treated qty
-      // as a USD notional and multiplied by the return fraction, which for a sub-cent coin blew a
-      // $1,000 stop up into a -$300k figure (qty × -100%).
-      const p = (cur - t.entry) * (t.qty || 0) * dir;
+      // Delta-parity: crypto is a leveraged perp (margin cap + fees); other markets stay plain spot.
+      const p = positionPnl(t, cur, marketOf(t.sym));
       return a + p;
     }, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -440,8 +437,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
     const closed = mine.filter((t) => t.exitAt != null && t.exit != null);
     let wins = 0, losses = 0;
     for (const t of closed) {
-      const dir = (t.side === "SELL" || t.short) ? -1 : 1;
-      const p = (t.exit - t.entry) * (t.qty || 0) * dir;
+      const p = positionPnl(t, t.exit, marketOf(t.sym));
       if (p > 0) wins++; else if (p < 0) losses++;
     }
     const decided = wins + losses;
@@ -817,7 +813,7 @@ export function DashTradeTable({ rows = [], market, priceOf, onlyOpen = false, c
       const cur = isOpen ? (priceOf(t.sym) != null ? priceOf(t.sym) : t.entry) : t.exit;
       const dir = (t.side === "SELL" || t.short) ? -1 : 1;
       const qty = Number(t.qty || 0);
-      const pnl = (Number(cur) - Number(t.entry)) * qty * dir;
+      const pnl = positionPnl(t, cur, marketOf(t.sym) || market);
       const retPct = Number(t.entry) ? ((Number(cur) / Number(t.entry)) - 1) * 100 * dir : 0;
       return { sym: t.sym, amount: Number(t.entry) * qty, entryAt: t.entryAt, entry: Number(t.entry), exit: isOpen ? null : Number(t.exit), exitAt: isOpen ? null : t.exitAt, exitType: isOpen ? "Open" : (t.exitType || "Closed"), pnl, retPct, open: isOpen };
     }).filter((r) => (onlyOpen ? r.open : true)).sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
@@ -1066,8 +1062,7 @@ function ScreenerPnLTab({ trades = [], market, mode = "virtual", liveTick = 0 })
       const closed = t.exitAt != null && t.exit != null;
       if (closed && (t.exitAt || t.entryAt || 0) < from) continue;      // closed inside window, or still open
       const cur = closed ? t.exit : (priceOf(t.sym) != null ? priceOf(t.sym) : t.entry);
-      const dir = (t.side === "SELL" || t.short) ? -1 : 1;
-      const p = (cur - t.entry) * (t.qty || 0) * dir;
+      const p = positionPnl(t, cur, marketOf(t.sym) || market);
       const g = byKey.get(key) || { label: t.strategy || "Screener", pnl: 0, closed: 0, wins: 0 };
       g.pnl += p;
       if (closed) { g.closed += 1; if (p >= 0) g.wins += 1; }

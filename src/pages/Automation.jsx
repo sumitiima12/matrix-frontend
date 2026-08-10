@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { defOperands, chainCode, IND_CATALOG, TEMPLATES, detectTf, detectAllTfs, tfMinutes } from "../domain/strategyLang";
 import { backtest, parseRules, getBtCosts, setBtCosts } from "../domain/backtest";
 import { stratPerf } from "../domain/strategies";
+import { positionPnl } from "../domain/leverage";   // Delta-parity crypto P&L (margin cap + fees), same for paper & real
 import { Activity, AlertTriangle, Bell, Bolt, Check, ChevronDown, ChevronUp, Copy, Globe, ListChecks, Pause, Pencil, Play, Plus, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
 import { Area, AreaChart, Bar, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { BACKEND_URL } from "../config";
@@ -2195,7 +2196,7 @@ function StrategyPnLView({ strats, trades, market, onDelete }) {
   const dt = (t) => (t ? new Date(t).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
   const inWin = (ts) => { const from = win ? win.from : Date.now() - range * 864e5; const to = win ? win.to : Infinity; return ts >= from && ts <= to; };
   const tradesFor = (s) => (trades || []).filter((t) => (t.strategyId != null ? String(t.strategyId) === String(s.id) : t.strategy === s.name) && t.status !== "rejected" && inWin(t.exitAt || t.entryAt || 0)).sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
-  const tPnl = (t) => { const px = t.exit != null ? t.exit : priceOf(t.sym); if (t.entry == null || px == null) return null; const dir = (t.side === "SELL" || t.short) ? -1 : 1; return (px - t.entry) * (Number(t.qty) || (marketOf(t.sym) === "Crypto" ? 0 : 1)) * dir; };
+  const tPnl = (t) => { const px = t.exit != null ? t.exit : priceOf(t.sym); if (t.entry == null || px == null) return null; return positionPnl(t, px, marketOf(t.sym)); };
   return (
     <div className="fade">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "18px 2px 4px", gap: 8, flexWrap: "wrap" }}>
@@ -2265,8 +2266,7 @@ function StrategyPnl({ s, trades = [], market }) {
     const closed = t.exitAt != null && t.exit != null;
     if (closed && (t.exitAt || t.entryAt || 0) < from) return a;   // closed before the window → skip
     const cur = closed ? t.exit : (priceOf(t.sym) != null ? priceOf(t.sym) : t.entry);
-    const dir = (t.side === "SELL" || t.short) ? -1 : 1;
-    return a + (Number(cur) - Number(t.entry)) * (t.qty || 0) * dir;
+    return a + positionPnl(t, cur, marketOf(t.sym));
   }, 0), [trades, s.id, s.name, from]);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
@@ -3050,8 +3050,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     const livePnl = openTrades.reduce((a, t) => {
       const st = ALL.find((x) => x.sym === t.sym);
       const cur = st && st.price != null ? st.price : t.entry;
-      const dir = (t.side === "SELL" || t.short) ? -1 : 1;   // short profits when price falls
-      return a + (cur - t.entry) * (t.qty || 1) * dir;
+      return a + positionPnl(t, cur, marketOf(t.sym));
     }, 0);
     const liveMkt = openTrades[0] ? (marketOf(openTrades[0].sym) || "IN") : "IN";
     return (
@@ -3300,7 +3299,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                     {rows.slice(0, 60).map((t, i) => {
                       const closed = t.exitAt != null && t.exit != null && t.exitType !== "Open";
                       const dir = (t.side === "SELL" || t.short) ? -1 : 1;   // shorts profit when price falls
-                      const pnl = closed ? (t.exit - t.entry) * (t.qty || 1) * dir : null;
+                      const pnl = closed ? positionPnl(t, t.exit, marketOf(t.sym)) : null;
                       const dtf = (ms) => ms ? new Date(ms).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
                       const td = { fontSize: 10.5, fontWeight: 700, padding: "6px 7px", borderTop: "1px solid var(--line)", whiteSpace: "nowrap" };
                       return (

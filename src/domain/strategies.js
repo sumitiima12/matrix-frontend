@@ -2,6 +2,7 @@
  * domain/strategies.js — starter strategies and the instruments automations can trade.
  */
 import { ALL, marketOf } from "./universe";
+import { positionPnl } from "./leverage";
 
 /**
  * Sample strategies, across EVERY market — not just Indian indices.
@@ -375,8 +376,8 @@ export function stratPerf(strat, trades = [], rangeDays = 365, priceOf = null, w
      that form is off by a factor of the entry price.) Shorts profit when price falls. */
   const tradePnl = (t, exitPx) => {
     if (t.entry == null || exitPx == null) return 0;
-    const dir = (t.side === "SELL" || t.short) ? -1 : 1;
-    return (exitPx - t.entry) * (Number(t.qty) || (marketOf(t.sym) === "Crypto" ? 0 : 1)) * dir;
+    // Delta-parity: crypto is a leveraged perp (margin cap + fees); other markets stay plain spot.
+    return positionPnl(t, exitPx, marketOf(t.sym));
   };
   const realised = closed.reduce((a, t) => a + tradePnl(t, t.exit), 0);
   const unrealised = openPos.reduce((a, t) => {
