@@ -20,8 +20,8 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
   const capDefault = (m) => (m === "Crypto" || m === "US" ? 1000 : 100000);   // crypto/US in USD
   const [postedBy, setPostedBy] = useState("All");
   const [preset, setPreset] = useState("365");   // "1"|"7"|"30"|"182"|"365"|"custom" — Automate-style date range
-  const [cFrom, setCFrom] = useState("");         // custom-range bounds (yyyy-mm-dd)
-  const [cTo, setCTo] = useState("");
+  const [cFrom, setCFrom] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; });   // default: 1st of current month
+  const [cTo, setCTo] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });   // default: today
   const [cap, setCap] = useState(capDefault(market));
   const [symFs, setSymFs] = useState([]);   // multi-select symbol filter ([] = all)
   // Each market carries its own sensible per-idea capital + currency; reset on market switch.
@@ -118,18 +118,19 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
           <option value="custom">Custom range</option>
         </select>
       </div>
+      {/* Custom from/to appear directly under the date-range control, defaulting to this-month → today. */}
+      {preset === "custom" && (
+        <div style={{ display: "flex", gap: 7, marginTop: 8, justifyContent: "flex-end" }}>
+          <input type="date" aria-label="From" value={cFrom} max={cTo || undefined} onChange={(e) => setCFrom(e.target.value)} className="no-ring mono" style={{ ...sel, flex: "0 1 auto", colorScheme: "light" }} />
+          <input type="date" aria-label="To" value={cTo} min={cFrom || undefined} onChange={(e) => setCTo(e.target.value)} className="no-ring mono" style={{ ...sel, flex: "0 1 auto", colorScheme: "light" }} />
+        </div>
+      )}
       {/* Filters sit directly under the title, above the numbers. Options are plain ids; symbols are
           multi-select; capital is a free-editable amount (like Smart Auto-Buy). */}
       <div style={{ display: "flex", gap: 7, marginTop: 10, flexWrap: "wrap" }}>
         <select aria-label="Posted by" value={postedBy} onChange={(e) => setPostedBy(e.target.value)} style={sel}>{postedByOptions.map((b) => <option key={b} value={b}>{b}</option>)}</select>
         <input aria-label="Capital to deploy" value={cap} onChange={(e) => setCap(Math.max(0, +String(e.target.value).replace(/[^0-9]/g, "") || 0))} inputMode="numeric" placeholder={String(capDefault(market))} className="no-ring mono" style={{ ...sel, textAlign: "left" }} />
       </div>
-      {preset === "custom" && (
-        <div style={{ display: "flex", gap: 7, marginTop: 7 }}>
-          <input type="date" aria-label="From" value={cFrom} onChange={(e) => setCFrom(e.target.value)} className="no-ring mono" style={{ ...sel, colorScheme: "light" }} />
-          <input type="date" aria-label="To" value={cTo} onChange={(e) => setCTo(e.target.value)} className="no-ring mono" style={{ ...sel, colorScheme: "light" }} />
-        </div>
-      )}
       <div style={{ marginTop: 7 }}>
         <MultiSelect label="Symbols" options={symOptions} value={symFs} onChange={setSymFs} allLabel="All symbols" />
       </div>

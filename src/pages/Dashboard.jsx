@@ -866,8 +866,8 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   useEffect(() => { setCapDraft(deployCapMap[market] != null ? deployCapMap[market] : capDefault(market)); /* eslint-disable-next-line */ }, [market]);
   const [plPeriod, setPlPeriod] = useState("today");
   const [totPeriod, setTotPeriod] = useState("today");   // Total-card timeframe (default Today)
-  const [totCustFrom, setTotCustFrom] = useState("");     // custom range (YYYY-MM-DD) for the Total card
-  const [totCustTo, setTotCustTo] = useState("");
+  const [totCustFrom, setTotCustFrom] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; });   // default: 1st of current month
+  const [totCustTo, setTotCustTo] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });   // default: today
   /* Product type — PER MARKET, persisted. "Intraday" = auto-square-off (MIS/INTRADAY);
      "NRML" = carry-forward / delivery (CNC on equity). Only meaningful for Indian markets;
      crypto/US ignore it. Default to NRML so positions aren't force-closed at 3:20pm. */

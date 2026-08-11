@@ -2282,7 +2282,7 @@ function StrategyPnl({ s, trades = [], market }) {
   );
 }
 
-export default function Automation({ market = "IN", appMode = "virtual", onRecord, trades = [], strats = [], setStrats, onExitAll, onCloseStrategy = null, onReconcileDelta = null, me = null, isAdmin = false, userId = null, brokerFor = null, adminKey = "", onConnectBroker = null }) {
+export default function Automation({ market = "IN", appMode = "virtual", onRecord, trades = [], strats = [], setStrats, onExitAll, onCloseStrategy = null, onClosePosition = null, onReconcileDelta = null, me = null, isAdmin = false, userId = null, brokerFor = null, adminKey = "", onConnectBroker = null }) {
   /* Backtesting Indian stocks needs real history, which — for compliance — can only come from the
      user's OWN connected broker (or the owner's house feed). Crypto (Delta) and US (Yahoo) have
      usable public/delayed feeds, so those don't require a broker. */
@@ -2410,8 +2410,8 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const [dashDrill, setDashDrill] = useState(false);        // Trades tile → drill-down trade list (Screener-style)
   const [dashLivePosAll, setDashLivePosAll] = useState(false);   // Live Positions "See all" toggle
   const [dashPreset, setDashPreset] = useState("today");   // default Today (label shown even when collapsed)
-  const [dashFrom, setDashFrom] = useState("");             // custom range (yyyy-mm-dd)
-  const [dashTo, setDashTo] = useState("");
+  const [dashFrom, setDashFrom] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; });   // default: 1st of current month
+  const [dashTo, setDashTo] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });   // default: today
   const dashRange = useMemo(() => {
     const DAY = 86400000, now = Date.now(), d = new Date();
     switch (dashPreset) {
@@ -3366,6 +3366,13 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             <button onClick={() => setDashOpen(false)} className="tap" title="Collapse" style={{ flex: "0 0 auto", display: "grid", placeItems: "center", border: "1px solid rgba(0,0,0,.12)", background: "rgba(0,0,0,.06)", color: "#141416", borderRadius: 10, padding: "5px" }}><ChevronUp size={15} /></button>
           </div>
         </div>
+        {/* Custom from/to appear directly under the date-range control, defaulting to this-month → today. */}
+        {dashPreset === "custom" && (
+          <div style={{ display: "flex", gap: 8, marginTop: 8, justifyContent: "flex-end" }}>
+            <input type="date" aria-label="From" value={dashFrom} max={dashTo || undefined} onChange={(e) => setDashFrom(e.target.value)} className="no-ring mono" style={{ ...dsel, colorScheme: "light", flex: "0 1 auto" }} />
+            <input type="date" aria-label="To" value={dashTo} min={dashFrom || undefined} onChange={(e) => setDashTo(e.target.value)} className="no-ring mono" style={{ ...dsel, colorScheme: "light", flex: "0 1 auto" }} />
+          </div>
+        )}
         <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 6, color: agg.pnl >= 0 ? "var(--up)" : "var(--down)" }}>{agg.pnl >= 0 ? "+" : ""}{fmt(agg.pnl, market)}</div>
         <div style={{ fontSize: 11, opacity: .85, marginTop: -2 }}>{activeCount} active of {shown.length} strategies · {agg.open} still open</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
@@ -3414,12 +3421,6 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             <div style={{ display: "flex", gap: 8 }}>
               <select aria-label="Created by" value={dashBy} onChange={(e) => setDashBy(e.target.value)} style={dsel}>{byOptions.map((o) => <option key={o} value={o}>Created by: {o}</option>)}</select>
             </div>
-            {dashPreset === "custom" && (
-              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                <input type="date" aria-label="From" value={dashFrom} onChange={(e) => setDashFrom(e.target.value)} className="no-ring mono" style={{ ...dsel, colorScheme: "light" }} />
-                <input type="date" aria-label="To" value={dashTo} onChange={(e) => setDashTo(e.target.value)} className="no-ring mono" style={{ ...dsel, colorScheme: "light" }} />
-              </div>
-            )}
             <div style={{ marginTop: 8 }}>
               <MultiSelect label="Symbol" options={DEPLOY_OPTIONS} value={symFilter} onChange={setSymFilter} />
             </div>
@@ -3447,6 +3448,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                   <th style={{ ...th2, position: "sticky", left: 0, zIndex: 2, background: "var(--surface)" }}>Symbol</th><th style={th2}>Strategy</th>
                   <th style={{ ...th2, textAlign: "right" }}>Amount</th><th style={{ ...th2, textAlign: "right" }}>Entry px</th>
                   <th style={{ ...th2, textAlign: "right" }}>Current px</th><th style={{ ...th2, textAlign: "right" }}>P&amp;L</th><th style={{ ...th2, textAlign: "right" }}>Return</th>
+                  {onClosePosition && <th style={{ ...th2, textAlign: "right" }}>Close</th>}
                 </tr></thead>
                 <tbody>
                   {rows.map((t) => {
@@ -3462,6 +3464,10 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                         <td style={{ ...td2, textAlign: "right" }}>{fmt(px, market)}</td>
                         <td style={{ ...td2, textAlign: "right", color: pnl >= 0 ? "var(--up)" : "var(--down)" }}>{(pnl >= 0 ? "+" : "") + fmtPnl(pnl, market)}</td>
                         <td style={{ ...td2, textAlign: "right", color: ret >= 0 ? "var(--up)" : "var(--down)" }}>{(ret >= 0 ? "+" : "") + ret.toFixed(2)}%</td>
+                        {onClosePosition && <td style={{ ...td2, textAlign: "right" }}>
+                          <button onClick={async () => { if (await confirmDialog(`Close ${t.sym} now?\n\nThis flattens the open position at the live price${appMode === "real" ? " (reduce-only broker sell)" : ""} and books the exit.`, { title: "Close position", confirmLabel: "Close" })) onClosePosition(t); }}
+                            className="tap" title="Close this position now" style={{ border: "1px solid var(--down)", background: "var(--down-soft)", color: "var(--down)", borderRadius: 8, padding: "3px 9px", fontSize: 10, fontWeight: 800, whiteSpace: "nowrap" }}>Close</button>
+                        </td>}
                       </tr>
                     );
                   })}
@@ -3472,102 +3478,6 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         );
       })()}
 
-      {/* Live Real Deployed — REAL mode only (real-money armed strategies). */}
-      {appMode === "real" && <div style={{ marginTop: 14 }}><LiveAutoBuys userId={userId} market={market} isAdmin={isAdmin} adminKey={adminKey} /></div>}
-
-      {/* Virtual Live Deployed — the paper-mode twin of "Live Real Deployed": every ACTIVE
-          paper strategy for this market, with its simulated P&L. VIRTUAL mode only. */}
-      {appMode !== "real" && (() => {
-        /* Latest ENTRY first: a strategy that just opened a paper trade sits at the top. */
-        const lastEntry = (s) => (trades || []).reduce((mx, t) => ((t.strategyId != null ? String(t.strategyId) === String(s.id) : t.strategy === s.name) && (t.entryAt || 0) > mx ? t.entryAt : mx), 0);
-        const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a ? a.price : null; };
-        const vd = strats.filter((s) => s.active && inMkt(s))
-          .map((s) => ({ s, p: stratPerf(s, trades, dashRange, priceOf), e: lastEntry(s) }))
-          // "Live" means a position is actually OPEN right now (entry fired, exit/SL/TP not yet). A
-          // deployed strategy still waiting for its signal isn't live, so it doesn't belong here.
-          .filter((x) => x.p && x.p.open > 0)
-          .sort((a, b) => b.e - a.e);
-        if (!vd.length) return null;
-        /* PAPER controls, mirroring "Live Real Deployed": Pause keeps the strategy deployed but stops
-           it taking new signals; Stop removes it from the deployed list (deactivates it). Both just
-           flip flags on the local strategy — there's no broker involved in paper mode. */
-        const vPause = (s) => setStrats((p) => p.map((x) => x.id === s.id ? { ...x, paused: !x.paused } : x));
-        /* Stop = close the open paper position(s) at the live price (realising P&L), then deactivate. */
-        const vStop = async (s) => {
-          if (!(await confirmDialog(`Close ${s.name || (s.symbols && s.symbols[0]) || "this strategy"} now? This sells its open paper position at the live price.`, { title: "Close position", confirmLabel: "Close" }))) return;
-          if (onCloseStrategy) onCloseStrategy(s.id);
-          else setStrats((p) => p.map((x) => x.id === s.id ? { ...x, active: false } : x));
-        };
-        /* Edit SL/TP → persisted onto the strategy's exit config so the paper exit engine uses them. */
-        const vUpdate = (s, { sl, tp }) => setStrats((p) => p.map((x) => x.id === s.id ? { ...x, cfg: { ...(x.cfg || {}), sl: sl || null, tp: tp || null } } : x));
-        return (
-          <div className="card" style={{ padding: 14, marginTop: 12, border: "1px solid var(--primary)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-              <Sparkles size={15} color="var(--primary)" />
-              <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>Virtual Live</div>
-              <span className="pill" style={{ marginLeft: "auto", fontSize: 9, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: "var(--muted)" }}>PAPER</span>
-            </div>
-            <CollapsibleList items={vd} initial={5} reverse={false} render={({ s, p }) => (
-              <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: "1px solid var(--line)" }}>
-                <div style={{ minWidth: 0 }}>
-                  <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{s.name || (s.symbols && s.symbols[0]) || "Strategy"}
-                    {(() => { const h = strategyHealthLabel({ paused: s.paused, hasOpen: (p.open || 0) > 0 }); const c = h.tone === "up" ? "var(--up)" : h.tone === "down" ? "var(--down)" : h.tone === "warn" ? "var(--amber)" : h.tone === "muted" ? "var(--muted)" : "var(--primary)"; return <span className="pill" style={{ marginLeft: 6, fontSize: 8.5, fontWeight: 800, padding: "2px 7px", borderRadius: 999, background: "var(--elev)", color: c, verticalAlign: "middle", whiteSpace: "nowrap" }}>{h.label}</span>; })()}</div>
-                  <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600, marginTop: 1 }}>{(s.symbols || []).join(", ") || "—"} · Created by {creatorOf(s)}</div>
-                  <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>{p.positions} position{p.positions === 1 ? "" : "s"}{p.open ? ` · ${p.open} open` : ""}{p.winRate != null ? ` · ${p.winRate.toFixed(0)}% win` : ""}</div>
-                  {/* Open positions as SCREENER-STYLE COLUMNS — one row per open position (a multi-symbol
-                      strategy can hold several), each with Symbol / Entry / Now / Invested / P&L. Deduped by
-                      (symbol) so a re-entry glitch can't show the same symbol open twice. */}
-                  {(() => {
-                    const opensAll = (trades || []).filter((t) => (t.strategyId != null ? String(t.strategyId) === String(s.id) : t.strategy === s.name) && t.entryAt != null && t.exitAt == null);
-                    // One open per symbol (latest entry wins) — a strategy holds at most one position per symbol.
-                    const bySym = new Map();
-                    for (const t of opensAll) { const prev = bySym.get(t.sym); if (!prev || (t.entryAt || 0) > (prev.entryAt || 0)) bySym.set(t.sym, t); }
-                    const opens = [...bySym.values()].sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
-                    if (!opens.length) return null;
-                    const gcols = "1fr .8fr .8fr .9fr .8fr";
-                    return (
-                      <div style={{ marginTop: 4, border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" }}>
-                        <div style={{ display: "grid", gridTemplateColumns: gcols, fontSize: 8.5, fontWeight: 800, color: "var(--muted)", background: "var(--elev)", padding: "4px 8px", letterSpacing: ".03em", gap: 6 }}>
-                          <span>SYMBOL</span><span style={{ textAlign: "right" }}>ENTRY</span><span style={{ textAlign: "right" }}>NOW</span><span style={{ textAlign: "right" }}>INVESTED</span><span style={{ textAlign: "right" }}>P&amp;L</span>
-                        </div>
-                        {opens.map((ot, i) => {
-                          const st = ALL.find((x) => x.sym === ot.sym); const cur = st && st.price != null ? st.price : ot.entry;
-                          const mk = marketOf(ot.sym) || market;
-                          const short = String(ot.side).toUpperCase() === "SELL" || ot.short === true;
-                          const pl = (short ? (Number(ot.entry) - cur) : (cur - Number(ot.entry))) * (ot.qty || 0);
-                          return (
-                            <div key={i} style={{ display: "grid", gridTemplateColumns: gcols, fontSize: 10, padding: "5px 8px", borderTop: "1px solid var(--line)", alignItems: "center", gap: 6 }}>
-                              <span className="disp" style={{ fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ot.sym}{short && <span style={{ color: "var(--down)", fontSize: 8, fontWeight: 800, marginLeft: 3 }}>S</span>}</span>
-                              <span className="mono" style={{ textAlign: "right", color: "var(--ink)" }}>{fmt(Number(ot.entry), mk)}</span>
-                              <span className="mono" style={{ textAlign: "right", color: "var(--ink)" }}>{fmt(cur, mk)}</span>
-                              <span className="mono" style={{ textAlign: "right", color: "var(--muted)" }}>{fmt(Number(ot.entry) * (ot.qty || 0), mk)}</span>
-                              <span className="mono" style={{ textAlign: "right", fontWeight: 800, color: chgColor(pl) }}>{(pl >= 0 ? "+" : "") + fmtPnl(pl, mk)}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()}
-                  <SlTpEditor sl={s.cfg && s.cfg.sl != null ? s.cfg.sl : null} tp={s.cfg && s.cfg.tp != null ? s.cfg.tp : null} onSave={(v) => vUpdate(s, v)} />
-                </div>
-                <div style={{ marginLeft: "auto", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-                  {/* Show combined realised + unrealised P&L whenever the strategy holds ANY position. */}
-                  <div style={{ textAlign: "right" }}>
-                    <div className="mono" style={{ fontSize: 12.5, fontWeight: 800, color: chgColor(p.pnl) }}>{p.positions && p.pnl != null ? (p.pnl >= 0 ? "+" : "") + fmtPnl(p.pnl, market) : "—"}</div>
-                    {p.positions && p.pnl != null
-                      ? <div className="mono" style={{ fontSize: 9.5, fontWeight: 700, color: chgColor(p.retPct) }}>{p.open ? "incl. live" : (p.retPct >= 0 ? "+" : "") + (p.retPct || 0).toFixed(2) + "%"}</div>
-                      : <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>{s.paused ? "paused" : "waiting for signal"}</div>}
-                  </div>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={() => vPause(s)} className="tap" style={{ border: "1px solid " + (s.paused ? "var(--up)" : "var(--line)"), background: s.paused ? "var(--up-soft)" : "transparent", color: s.paused ? "var(--up)" : "var(--muted)", borderRadius: 8, padding: "3px 9px", fontSize: 10, fontWeight: 800 }}>{s.paused ? "▶ Start" : "❚❚ Pause"}</button>
-                    <button onClick={() => vStop(s)} className="tap" title="Sell the open paper position now and stop the strategy" style={{ border: "1px solid var(--down)", background: "var(--down-soft)", color: "var(--down)", borderRadius: 8, padding: "3px 8px", fontSize: 10, fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 2 }}><X size={10} /> Stop &amp; sell</button>
-                  </div>
-                </div>
-              </div>
-            )} />
-          </div>
-        );
-      })()}
 
       {/* TOP SELECTOR — one place to switch between building, samples, and your own. */}
       <div className="hide-scroll" style={{ display: "flex", gap: 7, marginTop: 18, overflowX: "auto" }}>

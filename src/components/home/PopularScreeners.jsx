@@ -870,9 +870,12 @@ export function DashTradeTable({ rows = [], market, priceOf, onlyOpen = false, c
 function ScreenerDashboard({ trades = [], market }) {
   const [drill, setDrill] = useState(null);      // null | 'trades' | 'open'
   const [dOpen, setDOpen] = useState(true);      // expanded by default — full stats + collapse chevron (like Automate)
-  const [rangeDays, setRangeDays] = useState(() => lsGet("mx_scr_dash_range", 0));   // 0 = Today; else last N days
+  const [rangeDays, setRangeDays] = useState(() => lsGet("mx_scr_dash_range", 0));   // 0 = Today; number of days; or "custom"
   const setRange = (d) => { setRangeDays(d); lsSet("mx_scr_dash_range", d); };
-  const since = rangeDays === 0 ? new Date().setHours(0, 0, 0, 0) : Date.now() - rangeDays * 864e5;
+  const [scrFrom, setScrFrom] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; });   // default: 1st of current month
+  const [scrTo, setScrTo] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });   // default: today
+  const since = rangeDays === "custom" ? (Date.parse(scrFrom) || 0) : (rangeDays === 0 ? new Date().setHours(0, 0, 0, 0) : Date.now() - rangeDays * 864e5);
+  const until = rangeDays === "custom" ? ((Date.parse(scrTo) || Date.now()) + 86399999) : Infinity;   // upper bound for the custom window
   const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a && a.price != null ? a.price : null; };
   const pnlOf = (t, px) => {
     const dir = (t.side === "SELL" || t.short) ? -1 : 1;
@@ -882,7 +885,7 @@ function ScreenerDashboard({ trades = [], market }) {
   // included only if its exit (or entry) falls inside the selected window.
   const mine = (trades || []).filter((t) =>
     t && (t.tradeType === "Screener Auto Buy") && (t.market || "") === market && t.status !== "rejected" && Number(t.entry) > 0
-    && ((t.exitAt == null || t.exit == null) || (Number(t.exitAt || t.entryAt || 0) >= since)));
+    && ((t.exitAt == null || t.exit == null) || (Number(t.exitAt || t.entryAt || 0) >= since && Number(t.exitAt || t.entryAt || 0) <= until)));
   const closed = mine.filter((t) => t.exitAt != null && t.exit != null);
   const open = mine.filter((t) => t.exitAt == null || t.exit == null);
   const realised = closed.reduce((a, t) => a + pnlOf(t, t.exit), 0);
@@ -946,17 +949,25 @@ function ScreenerDashboard({ trades = [], market }) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         <div className="disp" style={{ fontWeight: 700, fontSize: 15 }}>Screener Dashboard</div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <select value={rangeDays} onChange={(e) => setRange(Number(e.target.value))} className="no-ring"
+          <select value={String(rangeDays)} onChange={(e) => setRange(e.target.value === "custom" ? "custom" : Number(e.target.value))} className="no-ring"
             style={{ fontSize: 11.5, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 9, padding: "5px 8px", background: "var(--surface)", color: "var(--ink)" }}>
-            <option value={0}>Today</option>
-            <option value={7}>7 days</option>
-            <option value={30}>30 days</option>
-            <option value={182}>6 months</option>
-            <option value={3650}>All time</option>
+            <option value="0">Today</option>
+            <option value="7">7 days</option>
+            <option value="30">30 days</option>
+            <option value="182">6 months</option>
+            <option value="3650">All time</option>
+            <option value="custom">Custom range</option>
           </select>
           <button onClick={() => setDOpen(false)} className="tap" title="Collapse" style={{ flex: "0 0 auto", display: "grid", placeItems: "center", border: "1px solid rgba(0,0,0,.12)", background: "rgba(0,0,0,.06)", color: "#141416", borderRadius: 10, padding: "5px" }}><ChevronUp size={15} /></button>
         </div>
       </div>
+      {/* Custom from/to appear directly under the date-range control, defaulting to this-month → today. */}
+      {rangeDays === "custom" && (
+        <div style={{ display: "flex", gap: 8, marginTop: 8, justifyContent: "flex-end" }}>
+          <input type="date" aria-label="From" value={scrFrom} max={scrTo || undefined} onChange={(e) => setScrFrom(e.target.value)} className="no-ring mono" style={{ fontSize: 11, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 9, padding: "5px 8px", background: "var(--surface)", color: "var(--ink)", colorScheme: "light" }} />
+          <input type="date" aria-label="To" value={scrTo} min={scrFrom || undefined} onChange={(e) => setScrTo(e.target.value)} className="no-ring mono" style={{ fontSize: 11, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 9, padding: "5px 8px", background: "var(--surface)", color: "var(--ink)", colorScheme: "light" }} />
+        </div>
+      )}
       {/* Headline P&L + subline — mirrors the Automation Dashboard. */}
       <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 6, color: up ? "var(--up)" : "var(--down)" }}>{up ? "+" : ""}{fmtPnl(pnl, market)}</div>
       <div style={{ fontSize: 11, opacity: .85, marginTop: -2 }}>{open.length} live position{open.length === 1 ? "" : "s"} · {mine.length} trade{mine.length === 1 ? "" : "s"} in {market}</div>
