@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { getEntryHalt, setEntryHalt } from "../../services/brokerService";
-import { confirmDialog } from "../../lib/confirmDialog";
+import { confirmDialog, alertDialog } from "../../lib/confirmDialog";
 
 /**
  * EntryKillSwitch — one-tap pause of all NEW real entries (auto-buy + screener auto-buy), server-side.
@@ -23,7 +23,15 @@ export default function EntryKillSwitch({ compact = false }) {
       { title: "Pause new entries", confirmLabel: "Pause entries" }
     ))) return;
     setBusy(true);
-    try { setHalted(await setEntryHalt(next)); } catch { /* leave state; user can retry */ } finally { setBusy(false); }
+    // Surface failures instead of silently doing nothing — a failed toggle (e.g. session expired) used to
+    // look like the button was dead. Re-read the true state after, so the label reflects the server.
+    try {
+      await setEntryHalt(next);
+      const v = await getEntryHalt();
+      setHalted(v);
+    } catch (e) {
+      await alertDialog(String((e && e.message) || e || "Couldn't update — try again."), { title: next ? "Couldn't stop entries" : "Couldn't resume entries" });
+    } finally { setBusy(false); }
   };
 
   if (halted === null) return null;   // don't flash a wrong state while loading
@@ -42,7 +50,7 @@ export default function EntryKillSwitch({ compact = false }) {
         color: halted ? "var(--up)" : "var(--down)", opacity: busy ? 0.6 : 1,
       }}
     >
-      {busy ? "…" : halted ? "▶ Resume New Entries" : "⏸ Pause New Entries"}
+      {busy ? "…" : halted ? "▶ Resume New Entries" : "⏸ Stop New Entries"}
     </button>
   );
 }

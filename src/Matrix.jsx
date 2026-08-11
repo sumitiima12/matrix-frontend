@@ -1435,18 +1435,20 @@ function AppInner() {
             </div>
           )}
 
-          <div style={{ padding: "0 18px 14px" }}>
-            <div onClick={() => setSearch(true)} className="tap" style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--elev)", border: "1px solid var(--line)", borderRadius: 14, padding: "11px 13px", color: "var(--muted)", fontSize: 13.5 }}>
-              <Search size={17} /> Search any stock, crypto or commodity…
+          {/* Search + Watch share one row — Watch moved here from the market-chips row so the chips stay clean. */}
+          <div style={{ padding: "0 18px 14px", display: "flex", gap: 8, alignItems: "center" }}>
+            <div onClick={() => setSearch(true)} className="tap" style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, background: "var(--elev)", border: "1px solid var(--line)", borderRadius: 14, padding: "11px 13px", color: "var(--muted)", fontSize: 13.5 }}>
+              <Search size={17} style={{ flex: "0 0 auto" }} /> <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Search any stock, crypto or commodity…</span>
             </div>
+            {!detail && ["home", "ideas", "automation", "portfolio", "screener", "watchlist"].includes(tab) && (
+              <button onClick={() => { setHistOpen(false); setTab("watchlist"); setTradePreset(null); }} className="pill tap disp" style={{ flex: "0 0 auto", padding: "11px 13px", fontWeight: 700, fontSize: 12.5, display: "inline-flex", alignItems: "center", gap: 5, borderRadius: 14, border: "1px solid " + (tab === "watchlist" ? "var(--primary)" : "var(--line)"), background: tab === "watchlist" ? "var(--primary)" : "var(--surface)", color: tab === "watchlist" ? "var(--on-primary)" : "var(--ink)" }}><Star size={14} fill={tab === "watchlist" ? "var(--on-primary)" : "none"} /> Watch</button>
+            )}
           </div>
           {!detail && ["home", "ideas", "automation", "portfolio", "screener", "watchlist"].includes(tab) && (
             <div className="hide-scroll" style={{ display: "flex", gap: 8, overflowX: "auto", padding: "0 18px 12px" }}>
               {[["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["Commodity", "🪙 Commodity"]].filter(([k]) => marketVisible(k)).map(([k, l]) => (
                 <button key={k} onClick={() => { setMarket(k); if (tab === "watchlist") { setHistOpen(false); setTab("home"); } }} className="pill tap disp" style={{ flex: "0 0 auto", padding: "8px 14px", fontWeight: 700, fontSize: 12.5, border: "1px solid " + (market === k ? "var(--primary)" : "var(--line)"), background: market === k ? "var(--primary)" : "var(--surface)", color: market === k ? "var(--on-primary)" : "var(--ink)" }}>{l}</button>
               ))}
-              {/* Watchlist entry — moved up here from the bottom nav, right after the market chips. */}
-              <button onClick={() => { setHistOpen(false); setTab("watchlist"); setTradePreset(null); }} className="pill tap disp" style={{ flex: "0 0 auto", padding: "8px 13px", fontWeight: 700, fontSize: 12.5, display: "inline-flex", alignItems: "center", gap: 5, border: "1px solid " + (tab === "watchlist" ? "var(--primary)" : "var(--line)"), background: tab === "watchlist" ? "var(--primary)" : "var(--surface)", color: tab === "watchlist" ? "var(--on-primary)" : "var(--ink)" }}><Star size={13} fill={tab === "watchlist" ? "var(--on-primary)" : "none"} /> Watch</button>
             </div>
           )}
         </div>
@@ -1522,7 +1524,7 @@ function AppInner() {
       {/* NEO — floating chatbot button, bottom-right, just above the bottom bar. Replaces the old Neo
           tab. Sits inside a centered 460-wide track so it hugs the app's right edge, not the viewport. */}
       {!detail && !onboarding && !drawer && !confirmOrder && !walletOpen && !brokerOpen && !search && !showProfile && tab !== "ask" && (
-        <div style={{ position: "fixed", left: 0, right: 0, bottom: 92, maxWidth: 460, margin: "0 auto", zIndex: 105, display: "flex", justifyContent: "flex-end", paddingRight: 16, pointerEvents: "none" }}>
+        <div style={{ position: "fixed", left: 0, right: 0, bottom: "calc(env(safe-area-inset-bottom, 0px) + 108px)", maxWidth: 460, margin: "0 auto", zIndex: 105, display: "flex", justifyContent: "flex-end", paddingRight: 16, pointerEvents: "none" }}>
           <button onClick={() => { setHistOpen(false); setTab("ask"); setTradePreset(null); }} aria-label="Ask Neo" className="tap" style={{ pointerEvents: "auto", width: 56, height: 56, borderRadius: "50%", border: "none", background: "linear-gradient(135deg, var(--primary), var(--primary-2))", boxShadow: "0 8px 24px rgba(40,10,80,.4)", display: "grid", placeItems: "center", color: "var(--on-primary)" }}>
             <NeoIcon size={28} />
           </button>

@@ -527,14 +527,14 @@ function CardOptimizeButton({ cfg, sym, tf = "5m", sl, tp, setSl, setTp }) {
     setSt({ loading: false, done: !!best, none: !best });
   };
   const optBtn = (k, label) => (
-    <button key={k} onClick={() => run(k)} disabled={st.loading || !canOpt} className="tap disp" style={{ flex: "1 1 90px", padding: "9px 8px", fontSize: 11, fontWeight: 800, borderRadius: 10, border: "1px solid " + (objective === k ? "#7C3AED" : "var(--line)"), background: objective === k ? "#7C3AED" : "var(--surface)", color: objective === k ? "#fff" : "var(--ink)", cursor: canOpt ? "pointer" : "not-allowed", opacity: (st.loading || !canOpt) ? 0.6 : 1 }}>{label}</button>
+    <button key={k} onClick={() => run(k)} disabled={st.loading || !canOpt} className="tap disp" style={{ flex: "1 1 0", minWidth: 0, padding: "9px 8px", fontSize: 11, fontWeight: 800, borderRadius: 10, border: "1px solid " + (objective === k ? "#7C3AED" : "var(--line)"), background: objective === k ? "#7C3AED" : "var(--surface)", color: objective === k ? "#fff" : "var(--ink)", cursor: canOpt ? "pointer" : "not-allowed", opacity: (st.loading || !canOpt) ? 0.6 : 1 }}>{label}</button>
   );
   return (
     <div style={{ marginTop: 8 }}>
-      {/* Title + its two objective buttons on one line. */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      {/* Title + its two objective buttons; the two buttons always share ONE line (nowrap group). */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <div className="disp" style={{ fontSize: 11.5, fontWeight: 800, color: "var(--ink)", display: "flex", alignItems: "center", gap: 5, flex: "0 0 auto", width: OPT_TITLE_W, whiteSpace: "nowrap" }}><Sparkles size={13} color="#7C3AED" /> SL &amp; TP</div>
-        {optBtn("winrate", "Win rate")}{optBtn("pnl", "P&L")}
+        <div style={{ display: "flex", gap: 8, flex: "1 1 0", minWidth: 0 }}>{optBtn("winrate", "Win rate")}{optBtn("pnl", "P&L")}</div>
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center" }}><RRMinSelect value={rrMin} onChange={setRrMin} /><MaxSlSelect value={maxSl} onChange={setMaxSl} /></div>
       {st.loading && <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 6 }}>Backtesting on historical candles…</div>}
@@ -564,14 +564,14 @@ function CardIndicatorOptimizeButton({ cfg, sym, tf = "5m", sl, tp, onApply }) {
     setSt({ loading: false, done: !!best, none: !best, changes: (res && res.changes) || null });
   };
   const optBtn = (k, label) => (
-    <button key={k} onClick={() => run(k)} disabled={st.loading || !canOpt} className="tap disp" title={!numericDefs ? "This strategy has no tunable indicator lengths" : undefined} style={{ flex: "1 1 90px", padding: "9px 8px", fontSize: 11, fontWeight: 800, borderRadius: 10, border: "1px solid " + (objective === k ? "#0EA5E9" : "var(--line)"), background: objective === k ? "#0EA5E9" : "var(--surface)", color: objective === k ? "#fff" : "var(--ink)", cursor: canOpt ? "pointer" : "not-allowed", opacity: (st.loading || !canOpt) ? 0.6 : 1 }}>{label}</button>
+    <button key={k} onClick={() => run(k)} disabled={st.loading || !canOpt} className="tap disp" title={!numericDefs ? "This strategy has no tunable indicator lengths" : undefined} style={{ flex: "1 1 0", minWidth: 0, padding: "9px 8px", fontSize: 11, fontWeight: 800, borderRadius: 10, border: "1px solid " + (objective === k ? "#0EA5E9" : "var(--line)"), background: objective === k ? "#0EA5E9" : "var(--surface)", color: objective === k ? "#fff" : "var(--ink)", cursor: canOpt ? "pointer" : "not-allowed", opacity: (st.loading || !canOpt) ? 0.6 : 1 }}>{label}</button>
   );
   return (
     <div style={{ marginTop: 10 }}>
-      {/* Title + its two objective buttons on one line. */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      {/* Title + its two objective buttons; the two buttons always share ONE line (nowrap group). */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <div className="disp" style={{ fontSize: 11.5, fontWeight: 800, color: "var(--ink)", display: "flex", alignItems: "center", gap: 5, flex: "0 0 auto", width: OPT_TITLE_W, whiteSpace: "nowrap" }}><Sparkles size={13} color="#0EA5E9" /> Indicators</div>
-        {optBtn("winrate", "Win rate")}{optBtn("pnl", "P&L")}
+        <div style={{ display: "flex", gap: 8, flex: "1 1 0", minWidth: 0 }}>{optBtn("winrate", "Win rate")}{optBtn("pnl", "P&L")}</div>
       </div>
       {/* Lock timeframe — when on, the optimiser only tunes indicator lengths and keeps this tf fixed. */}
       <label className="tap" style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 7, fontSize: 10, fontWeight: 700, color: lockable ? "var(--ink)" : "var(--muted)", cursor: lockable ? "pointer" : "not-allowed" }}>
@@ -3080,7 +3080,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
               return <span className="pill" style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".03em", padding: "3px 8px", background: "var(--elev)", color: c, border: "1px solid var(--line)" }}>{t.toUpperCase()}</span>;
             })()}
             {/* #584 — REAL LIVE tag pinned top-right, non-clickable: this strategy is armed on the user's broker. */}
-            {appMode === "real" && isArmedReal(s) && <span className="pill" title="Armed for real money on your broker" style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".03em", padding: "3px 8px", background: "var(--down-soft)", color: "var(--down)", border: "1px solid var(--down)", display: "inline-flex", alignItems: "center", gap: 3, cursor: "default" }}>● REAL LIVE</span>}
+            {appMode === "real" && isArmedReal(s) && <span className="pill" title="Armed for real money on your broker" style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".03em", padding: "3px 8px", background: "var(--down-soft)", color: "var(--down)", border: "1px solid var(--down)", display: "inline-flex", alignItems: "center", gap: 3, cursor: "default" }}>● LIVE</span>}
           </div>
           {entryTriggered && <span className="pill" style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".03em", padding: "3px 8px", background: "var(--amber-soft, rgba(245,158,11,.15))", color: "var(--amber, #F59E0B)", border: "1px solid var(--amber, #F59E0B)", display: "inline-flex", alignItems: "center", gap: 3 }}>● ENTRY TRIGGERED</span>}
         </div>
@@ -3907,9 +3907,9 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                 const live = arr.filter(({ s }) => isArmedReal(s));
                 const notLive = arr.filter(({ s }) => !isArmedReal(s));
                 // Live / Not-Live tabs collapse to a single sub-section; Long/Short/All keep both.
-                const subs = deployTab === "live" ? [["Real Live", live, "var(--up)"]]
+                const subs = deployTab === "live" ? [["Live", live, "var(--up)"]]
                   : deployTab === "notlive" ? [["Not Live", notLive, "var(--muted)"]]
-                  : [["Real Live", live, "var(--up)"], ["Not Live", notLive, "var(--muted)"]];
+                  : [["Live", live, "var(--up)"], ["Not Live", notLive, "var(--muted)"]];
                 if ((deployTab === "live" && !live.length) || (deployTab === "notlive" && !notLive.length)) return null;
                 return (
                   <div key={key} style={{ marginBottom: 16 }}>
