@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { AlertTriangle, ChevronRight, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, ChevronRight, CheckCircle2, X } from "lucide-react";
 
 /**
  * ActionRequired — ONE consolidated "things that need you" hub for the homepage.
@@ -20,8 +20,10 @@ const TONE = {
 const RANK = { crit: 0, warn: 1, info: 2 };
 
 export default function ActionRequired({ items = [], defaultOpen = false }) {
-  const list = (items || []).filter(Boolean);
   const [open, setOpen] = useState(defaultOpen);
+  const [dismissed, setDismissed] = useState(() => new Set());   // keys the user has cleared this session
+  const dismiss = (k) => setDismissed((prev) => { const n = new Set(prev); n.add(k); return n; });
+  const list = (items || []).filter(Boolean).filter((it) => !dismissed.has(it.key));
   if (!list.length) return null;
 
   // Header colour = the worst severity present.
@@ -63,6 +65,11 @@ export default function ActionRequired({ items = [], defaultOpen = false }) {
                     {it.action.label}
                   </button>
                 )}
+                {/* Dismiss — clears this item for the session (it returns if the underlying condition persists on reload). */}
+                <button onClick={() => dismiss(it.key)} aria-label="Dismiss" title="Dismiss" className="tap"
+                  style={{ flex: "0 0 auto", border: "none", background: "transparent", color: "var(--muted)", borderRadius: 8, padding: 4, cursor: "pointer", display: "grid", placeItems: "center" }}>
+                  <X size={15} />
+                </button>
               </div>
             );
           })}

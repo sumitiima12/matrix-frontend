@@ -1106,9 +1106,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
         const activeStrats = (strategies || []).filter((s) => s && s.active).length;
         const openCount = (trades || []).filter((t) => (isReal ? !!t.real : !t.real) && t.exitAt == null && t.entry != null && t.status !== "rejected" && inMarket(t.sym, t.market)).length;
         return (
-          <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", padding: "7px 11px", borderRadius: 10, marginBottom: 10, background: isReal ? "rgba(239,68,68,.07)" : "var(--elev)", border: `1px solid ${isReal ? "var(--down)" : "var(--line)"}`, fontSize: 11, fontWeight: 700, color: "var(--muted)" }}>
-            <span style={{ fontWeight: 800, letterSpacing: ".02em", color: isReal ? "var(--down)" : "var(--ink)" }}>{isReal ? "REAL" : "VIRTUAL"}</span>
-            <span style={{ opacity: .5 }}>·</span><span>{brokerName || (isReal ? "No broker" : "Paper money")}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", padding: "7px 11px", borderRadius: 10, marginBottom: 10, background: "var(--elev)", border: "1px solid var(--line)", fontSize: 11, fontWeight: 700, color: "var(--muted)" }}>
+            {/* Neutral STATUS strip (not an alert). Mode is a small badge; the rest is plain status text. */}
+            <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".02em", padding: "2px 8px", borderRadius: 999, color: isReal ? "var(--down)" : "var(--muted)", background: isReal ? "rgba(239,68,68,.10)" : "var(--surface)", border: "1px solid " + (isReal ? "rgba(239,68,68,.22)" : "var(--line)") }}>{isReal ? "REAL" : "VIRTUAL"}</span>
+            <span>{brokerName || (isReal ? "No broker" : "Paper money")}</span>
             <span style={{ opacity: .5 }}>·</span><span>{activeStrats} active {activeStrats === 1 ? "strategy" : "strategies"}</span>
             <span style={{ opacity: .5 }}>·</span><span>{openCount} open</span>
           </div>
