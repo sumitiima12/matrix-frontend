@@ -18,10 +18,10 @@ import MultiSelect from "../components/common/MultiSelect";
 
 function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, market = "IN" }) {
   const capDefault = (m) => (m === "Crypto" || m === "US" ? 1000 : 100000);   // crypto/US in USD
-  // Capital presets are market-aware: USD ladders for crypto/US, INR ladders for IN/Commodity.
-  const capOptions = (m) => (m === "Crypto" || m === "US") ? [1000, 5000, 10000, 50000] : [50000, 100000, 500000, 1000000];
   const [postedBy, setPostedBy] = useState("All");
-  const [range, setRange] = useState(365);
+  const [preset, setPreset] = useState("365");   // "1"|"7"|"30"|"182"|"365"|"custom" — Automate-style date range
+  const [cFrom, setCFrom] = useState("");         // custom-range bounds (yyyy-mm-dd)
+  const [cTo, setCTo] = useState("");
   const [cap, setCap] = useState(capDefault(market));
   const [symFs, setSymFs] = useState([]);   // multi-select symbol filter ([] = all)
   // Each market carries its own sensible per-idea capital + currency; reset on market switch.
@@ -48,13 +48,23 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
      target or stop was hit, otherwise the live mark-to-market. So open positions count as
      trades too (their unrealised return is real, just not yet closed). */
   const signupCutoff = signupAt || 0;
+  const DAY = 864e5;
+  const cFromT = cFrom ? new Date(cFrom).getTime() : null;
+  const cToT = cTo ? new Date(cTo).getTime() + DAY - 1 : null;
+  const inRange = (id, o) => {
+    if (preset === "custom") {
+      const t = id.publishedAt || (Date.now() - o.daysAgo * DAY);
+      return (cFromT == null || t >= cFromT) && (cToT == null || t <= cToT);
+    }
+    return o.daysAgo <= Number(preset);
+  };
   const all = ideas
     .map((id) => ({ id, o: outcomes[id.sym] }))
     .filter(({ id, o }) => o &&
       (postedBy === "All" || id.by === postedBy) &&
       (symFs.length === 0 || symFs.includes(id.sym)) &&
       ((id.publishedAt || 0) >= signupCutoff) &&
-      o.daysAgo <= range);
+      inRange(id, o));
   const n = all.length;                                   // every idea is an assumed trade
   const isWin = (r) => (r.o.status === "closed" ? r.o.win : r.o.ret >= 0);
   const wins = all.filter(isWin).length;
@@ -69,7 +79,7 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
      older, we show the selected range window ("last 3 months", etc.). */
   const monthTag = (ts) => new Date(ts).toLocaleDateString("en-GB", { month: "short", year: "2-digit" }).replace(" ", "'");
   const ageMonths = signupAt ? (Date.now() - signupAt) / (30 * 864e5) : Infinity;
-  const rangeText = ({ 30: "last 30 days", 90: "last 3 months", 180: "last 6 months", 365: "last 12 months" })[range] || `last ${range}d`;
+  const rangeText = preset === "custom" ? "custom range" : (({ 1: "today", 7: "last 7 days", 30: "last 30 days", 182: "last 6 months", 365: "last 12 months" })[Number(preset)] || `last ${preset}d`);
   const periodLabel = (signupAt && ageMonths < 3) ? `Since ${monthTag(signupAt)}` : rangeText;
   const sel = { ...selStyle, flex: "1 1 0", minWidth: 0, padding: "8px 6px", fontSize: 11.5 };
   const Stat = ({ k, v, c }) => (
@@ -98,15 +108,28 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
     <div className="card glow" style={{ marginTop: 14, padding: 16, border: "1px solid var(--line)", outline: "none", background: "var(--card-grad)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.10), inset 0 0 0 1px rgba(255,255,255,.02), 0 10px 30px rgba(0,0,0,.28)", color: "var(--ink)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div className="disp" style={{ fontWeight: 700, fontSize: 15 }}>Ideas Dashboard</div>
-        <span style={{ fontSize: 10.5, opacity: .85, marginRight: 34 }}>{periodLabel}</span>
+        {/* Date range in the header (Automate-style) — presets + Custom (from/to). */}
+        <select aria-label="Date range" value={preset} onChange={(e) => setPreset(e.target.value)} className="no-ring" style={{ fontSize: 11, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 9, padding: "5px 8px", background: "var(--surface)", color: "var(--ink)", marginRight: 34 }}>
+          <option value="1">Today</option>
+          <option value="7">Last 7 days</option>
+          <option value="30">Last 30 days</option>
+          <option value="182">Last 6 months</option>
+          <option value="365">Last 12 months</option>
+          <option value="custom">Custom range</option>
+        </select>
       </div>
-      {/* Filters sit directly under the title, above the numbers. Options are plain ids (no "Posted by:"
-          prefix); symbols are multi-select; capital ladder is market-aware. */}
+      {/* Filters sit directly under the title, above the numbers. Options are plain ids; symbols are
+          multi-select; capital is a free-editable amount (like Smart Auto-Buy). */}
       <div style={{ display: "flex", gap: 7, marginTop: 10, flexWrap: "wrap" }}>
         <select aria-label="Posted by" value={postedBy} onChange={(e) => setPostedBy(e.target.value)} style={sel}>{postedByOptions.map((b) => <option key={b} value={b}>{b}</option>)}</select>
-        <select aria-label="Range" value={range} onChange={(e) => setRange(+e.target.value)} style={sel}><option value={30}>30d</option><option value={90}>3m</option><option value={180}>6m</option><option value={365}>12m</option></select>
-        <select aria-label="Capital" value={cap} onChange={(e) => setCap(+e.target.value)} style={sel}>{capOptions(market).map((c) => <option key={c} value={c}>{fmt(c, market)}</option>)}</select>
+        <input aria-label="Capital to deploy" value={cap} onChange={(e) => setCap(Math.max(0, +String(e.target.value).replace(/[^0-9]/g, "") || 0))} inputMode="numeric" placeholder={String(capDefault(market))} className="no-ring mono" style={{ ...sel, textAlign: "left" }} />
       </div>
+      {preset === "custom" && (
+        <div style={{ display: "flex", gap: 7, marginTop: 7 }}>
+          <input type="date" aria-label="From" value={cFrom} onChange={(e) => setCFrom(e.target.value)} className="no-ring mono" style={{ ...sel, colorScheme: "light" }} />
+          <input type="date" aria-label="To" value={cTo} onChange={(e) => setCTo(e.target.value)} className="no-ring mono" style={{ ...sel, colorScheme: "light" }} />
+        </div>
+      )}
       <div style={{ marginTop: 7 }}>
         <MultiSelect label="Symbols" options={symOptions} value={symFs} onChange={setSymFs} allLabel="All symbols" />
       </div>
@@ -250,7 +273,7 @@ function CommunityIdeas({ market, me, isAdmin, adminKey = "", onOpen }) {
 }
 
 export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, isAdmin = false, adminKey = "", signupAt = null }) {
-  const [dashOpen, setDashOpen] = useState(false);
+  const [dashOpen, setDashOpen] = useState(true);   // expanded by default — full stats like the Automate dashboard
   const [view, setView] = useState("all");   // "all" | "neo" | "community"
   // Recomputed from real data as it arrives, rather than frozen at import time.
   const [ideas, setIdeas] = useState(currentIdeas);

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { currentIdeas } from "../domain/ideas";
 import { dailyPicks, techSignal } from "../domain/signals";
-import { Building2, ChevronRight, Lightbulb, Newspaper, Pencil, Sparkles, TrendingUp, X, Zap } from "lucide-react";
+import { Building2, ChevronDown, ChevronRight, Lightbulb, Newspaper, Pencil, Sparkles, TrendingUp, X, Zap } from "lucide-react";
 import { BACKEND_URL, RECONCILE_REAL_CLOSES } from "../config";
 import { CUR, DAY, chgColor, clamp, compact, fmt, fmtPnl, lsGet, lsSet, pct, timeAgo } from "../lib/format";
 import { confirmDialog } from "../lib/confirmDialog";   // in-app confirm (reliable in webviews/PWA)
@@ -886,6 +886,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   // Smart Auto-Buy symbol selection + minimum reward:risk (like screeners). sabSyms empty = all of today's
   // picks; sabMinRR defaults to 2 (2:1) so only picks whose target ÷ stop meets the ratio are bought.
   const [sabSyms, setSabSyms] = useState([]);
+  const [sabSymOpen, setSabSymOpen] = useState(false);   // collapse the symbol chip picker to a count by default
   const [sabMinRR, setSabMinRR] = useState(2);
   const [editSym, setEditSym] = useState(null);
   const [showTrades, setShowTrades] = useState(false);
@@ -1329,22 +1330,26 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   target-to-stop ratio a pick must meet (like screeners). Empty selection = all picks. */}
               <div style={{ marginTop: 12, background: "var(--elev)", borderRadius: 12, padding: "10px 12px" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                  <div style={{ fontSize: 9.5, opacity: .8, fontWeight: 700 }}>SYMBOLS ({sabSyms.length === 0 ? "all" : sabSyms.length})</div>
+                  <button onClick={() => setSabSymOpen((v) => !v)} className="tap disp" style={{ display: "inline-flex", alignItems: "center", gap: 5, border: "none", background: "transparent", color: "var(--ink)", fontSize: 9.5, opacity: .85, fontWeight: 700, padding: 0, cursor: "pointer" }}>
+                    SYMBOLS ({sabSyms.length === 0 ? "all" : sabSyms.length}) <ChevronDown size={12} style={{ transform: sabSymOpen ? "rotate(180deg)" : "none", transition: "transform .2s" }} />
+                  </button>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <span style={{ fontSize: 9.5, opacity: .8, fontWeight: 700 }}>MIN R:R</span>
                     <input value={sabMinRR} onChange={(e) => setSabMinRR(Math.max(0, +String(e.target.value).replace(/[^0-9.]/g, "") || 0))} inputMode="decimal" className="no-ring mono" style={{ width: 46, textAlign: "center", border: "none", background: "var(--surface)", borderRadius: 8, padding: "5px 4px", fontWeight: 800, fontSize: 13, color: "var(--primary)" }} />
                     <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 800 }}>: 1</span>
                   </div>
                 </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 9 }}>
-                  {autoPicksAll.map((s) => {
-                    const on = sabSyms.length === 0 || sabSyms.includes(s.sym);
-                    return (
-                      <button key={s.sym} onClick={() => setSabSyms((prev) => prev.includes(s.sym) ? prev.filter((x) => x !== s.sym) : [...(prev.length ? prev : []), s.sym])} className="tap disp" style={{ border: "1px solid " + (on && sabSyms.includes(s.sym) ? "var(--primary)" : "var(--line)"), background: sabSyms.includes(s.sym) ? "var(--primary-soft)" : "var(--surface)", color: "var(--ink)", borderRadius: 999, padding: "5px 11px", fontWeight: 800, fontSize: 11 }}>{s.sym}</button>
-                    );
-                  })}
-                  {sabSyms.length > 0 && <button onClick={() => setSabSyms([])} className="tap disp" style={{ border: "1px solid var(--line)", background: "var(--surface)", color: "var(--muted)", borderRadius: 999, padding: "5px 11px", fontWeight: 800, fontSize: 11 }}>All</button>}
-                </div>
+                {sabSymOpen && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 9 }}>
+                    {autoPicksAll.map((s) => {
+                      const on = sabSyms.length === 0 || sabSyms.includes(s.sym);
+                      return (
+                        <button key={s.sym} onClick={() => setSabSyms((prev) => prev.includes(s.sym) ? prev.filter((x) => x !== s.sym) : [...(prev.length ? prev : []), s.sym])} className="tap disp" style={{ border: "1px solid " + (on && sabSyms.includes(s.sym) ? "var(--primary)" : "var(--line)"), background: sabSyms.includes(s.sym) ? "var(--primary-soft)" : "var(--surface)", color: "var(--ink)", borderRadius: 999, padding: "5px 11px", fontWeight: 800, fontSize: 11 }}>{s.sym}</button>
+                      );
+                    })}
+                    {sabSyms.length > 0 && <button onClick={() => setSabSyms([])} className="tap disp" style={{ border: "1px solid var(--line)", background: "var(--surface)", color: "var(--muted)", borderRadius: 999, padding: "5px 11px", fontWeight: 800, fontSize: 11 }}>All</button>}
+                  </div>
+                )}
                 <div style={{ fontSize: 10, opacity: .65, marginTop: 7 }}>Only picks whose target ÷ stop is at least {sabMinRR}:1 are bought. {autoTrades.length} of {autoPicksAll.length} qualify now.</div>
               </div>
 
@@ -1456,6 +1461,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 16 }}>💎</span>
                   <div style={{ minWidth: 0 }}><div className="disp" style={{ fontWeight: 700, fontSize: 15.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.sym}</div><div style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</div></div>
+                  {s.pickTpPct != null && <span className="pill disp" style={{ marginLeft: "auto", flex: "0 0 auto", background: "var(--up-soft)", color: "var(--up)", fontWeight: 700, fontSize: 11, padding: "3px 9px" }}>{s.pickDir === "short" ? "−" : "+"}{s.pickTpPct}% potential</span>}
                 </div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 12 }}>
                   <span className="mono" style={{ fontWeight: 800, fontSize: 19 }}>{fmt(s.price, market)}</span>
@@ -1509,6 +1515,16 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     </div>}
                   </div>
                 )}
+                {/* Potential left — favourable move still available from the live price to the target (like Ideas cards). */}
+                {s.pickTarget != null && s.price != null && (() => {
+                  const left = (s.pickDir === "short" ? -1 : 1) * ((s.pickTarget - s.price) / s.price) * 100;
+                  return (
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+                      <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>Potential left</span>
+                      <span className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: left > 0 ? "var(--up)" : "var(--muted)" }}>{left > 0 ? "+" + left.toFixed(1) + "%" : "target hit"}</span>
+                    </div>
+                  );
+                })()}
                 {/* Buy with explicit quantity; the pick's REAL stop & target are armed with it. Sits right
                     under the setup (no "auto" push) so there's no big empty gap above it. */}
                 <div style={{ marginTop: 12, paddingTop: 0 }} onClick={(e) => e.stopPropagation()}>

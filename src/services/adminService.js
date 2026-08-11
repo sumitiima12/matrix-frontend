@@ -143,6 +143,14 @@ export async function adminOpsOverview(userId, key) {
   if (!r.ok) throw new Error(d.error || `admin ${r.status}`);
   return d;
 }
+/* Delta connectivity diagnosis — probes proxy/public/signed and (with a userId) YOUR own Delta key,
+   returning a plain-English `diagnosis` + the serverOutboundIp to whitelist. Admin-only. */
+export async function adminDeltaDiag(userId, key) {
+  const r = await fetch(`${BACKEND_URL}/api/diag/delta?userId=${encodeURIComponent(userId || "")}`, { headers: headers(userId, key) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || `admin ${r.status}`);
+  return d;
+}
 export async function adminOpsPauseUser(userId, key, phone) {
   const r = await fetch(`${BACKEND_URL}/api/admin/ops/pause-user`, { method: "POST", headers: headers(userId, key), body: JSON.stringify({ phone }) });
   const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || `admin ${r.status}`); return d;

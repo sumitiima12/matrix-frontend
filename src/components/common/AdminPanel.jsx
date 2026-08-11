@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { adminListUsers, adminGetUser, adminSetBlocked, adminResetPin, adminPendingUsers, adminApproveUser, adminDeleteUser, adminClearVirtual, adminClearTradesByType, adminOpsOverview, adminOpsPauseUser, adminOpsResumeUser, adminOpsIncidentNote, adminAudit, adminOpsCostMetrics } from "../../services/adminService";
+import { adminListUsers, adminGetUser, adminSetBlocked, adminResetPin, adminPendingUsers, adminApproveUser, adminDeleteUser, adminClearVirtual, adminClearTradesByType, adminOpsOverview, adminOpsPauseUser, adminOpsResumeUser, adminOpsIncidentNote, adminAudit, adminOpsCostMetrics, adminDeltaDiag } from "../../services/adminService";
 import { apiListIdeas, apiReviewIdea, apiDeleteIdea } from "../../domain/api";
 import { tradesToCSV, downloadCSV, tradeFilename } from "../../lib/csv";
 import { confirmDialog, promptDialog, alertDialog } from "../../lib/confirmDialog";   // in-app dialogs (reliable in webviews/PWA)
@@ -289,6 +289,8 @@ function OpsConsole({ userId, adminKey, card }) {
   const [showAudit, setShowAudit] = useState(false);
   const [cm, setCm] = useState(null);        // FIN-2 cost metrics result
   const [cmPhone, setCmPhone] = useState("");
+  const [delta, setDelta] = useState(null);  // Delta connection diagnosis result
+  const [deltaBusy, setDeltaBusy] = useState(false);
 
   const refresh = () => { setErr(null); adminOpsOverview(userId, adminKey).then(setOv).catch((e) => setErr(String(e.message || e))); };
   useEffect(() => { refresh(); /* eslint-disable-next-line */ }, []);
@@ -319,6 +321,11 @@ function OpsConsole({ userId, adminKey, card }) {
     try { setCm(await adminOpsCostMetrics(userId, adminKey, cmPhone.trim(), 30)); }
     catch (e) { setErr(String(e.message || e)); }
   };
+  const checkDelta = async () => {
+    setDeltaBusy(true); setErr(null); setDelta(null);
+    try { setDelta(await adminDeltaDiag(userId, adminKey)); }
+    catch (e) { setErr(String(e.message || e)); } finally { setDeltaBusy(false); }
+  };
 
   const s = ov && ov.summary;
   const tile = (label, val, warn) => (
@@ -334,8 +341,20 @@ function OpsConsole({ userId, adminKey, card }) {
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <button onClick={refresh} className="tap disp" style={{ border: "1px solid var(--line)", background: "var(--surface)", borderRadius: 10, padding: "6px 12px", fontWeight: 800, fontSize: 12 }}>↻ Refresh</button>
         <button onClick={pauseUser} disabled={busy} className="tap disp" style={{ border: "1px solid var(--down)", background: "var(--surface)", color: "var(--down)", borderRadius: 10, padding: "6px 12px", fontWeight: 800, fontSize: 12 }}>Pause a user</button>
+        <button onClick={checkDelta} disabled={deltaBusy} className="tap disp" style={{ border: "1px solid var(--line)", background: "var(--surface)", borderRadius: 10, padding: "6px 12px", fontWeight: 800, fontSize: 12 }}>{deltaBusy ? "Checking…" : "Check Delta connection"}</button>
         {ov && ov.role && <span style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--muted)", fontWeight: 700 }}>role: {ov.role}</span>}
       </div>
+      {delta && (() => {
+        const ok = /^OK/.test(delta.diagnosis || "");
+        return (
+          <div style={{ ...card, margin: "0 0 8px", padding: "10px 12px", border: "1px solid " + (ok ? "var(--up)" : "var(--down)") }}>
+            <div style={{ fontSize: 9, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".03em", marginBottom: 4 }}>Delta connection</div>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: ok ? "var(--up)" : "var(--down)", lineHeight: 1.45 }}>{delta.diagnosis}</div>
+            {delta.serverOutboundIp && <div className="mono" style={{ fontSize: 11, color: "var(--muted)", marginTop: 6 }}>IP to whitelist on your Delta key: <b style={{ color: "var(--ink)" }}>{delta.serverOutboundIp}</b></div>}
+            <div className="mono" style={{ fontSize: 10, color: "var(--muted)", marginTop: 4 }}>public {delta.public && delta.public.ok ? "✓" : "✗"} · signed {(delta.userSigned || delta.signed || {}).ok ? "✓" : "✗"} · proxy {delta.proxyConfigured ? "on" : "off"}</div>
+          </div>
+        );
+      })()}
       {err && <div style={{ fontSize: 12, color: "var(--down)", marginBottom: 8 }}>{err}</div>}
       {!ov ? <div style={{ fontSize: 12, color: "var(--muted)" }}>Loading…</div> : (
         <>

@@ -2897,7 +2897,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const [lsStatus, setLsStatus] = useState("all");        // All / Active / Inactive filter (orthogonal to Long/Short), per strategy type
   /* Apply the Active/Inactive filter to a side-filtered list. "all" = no filter. */
   const byStatus = (arr) => (lsStatus === "all" ? arr : arr.filter((s) => (lsStatus === "active" ? !!s.active : !s.active)));
-  const [topTab, setTopTab] = useState("build");   // build | sample | premium | public | mine
+  const [topTab, setTopTab] = useState("strategies");   // default to Strategies ▸ Deployed (stratTab defaults to "deployed")
   const [compareOpen, setCompareOpen] = useState(false);   // premium "Compare all" backtest table
 
   // ---- Public strategies (shared across users) ----

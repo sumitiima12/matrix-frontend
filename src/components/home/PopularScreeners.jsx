@@ -15,7 +15,7 @@ import ScreenerTradeList from "./ScreenerTradeList";
 import { CondBuilder2, IndicatorDefs, TFS, TradeLog } from "../builder/BuilderKit";
 import { useBacktestStats } from "../../hooks/useBacktestStats";
 import { defOperands } from "../../domain/strategyLang";
-import { Pencil, SlidersHorizontal, Sparkles, Activity } from "lucide-react";
+import { Pencil, SlidersHorizontal, Sparkles, Activity, ChevronDown, ChevronUp } from "lucide-react";
 
 /* THE THREE POPULAR SCREENERS. Each is a real strategy config (indicators + entry chain) evaluated live
    on 5-minute candles by the backend /api/screener-scan. A symbol appears in a carousel only while its
@@ -869,6 +869,7 @@ export function DashTradeTable({ rows = [], market, priceOf, onlyOpen = false, c
 
 function ScreenerDashboard({ trades = [], market }) {
   const [drill, setDrill] = useState(null);      // null | 'trades' | 'open'
+  const [dOpen, setDOpen] = useState(true);      // expanded by default — full stats + collapse chevron (like Automate)
   const [rangeDays, setRangeDays] = useState(() => lsGet("mx_scr_dash_range", 0));   // 0 = Today; else last N days
   const setRange = (d) => { setRangeDays(d); lsSet("mx_scr_dash_range", d); };
   const since = rangeDays === 0 ? new Date().setHours(0, 0, 0, 0) : Date.now() - rangeDays * 864e5;
@@ -916,6 +917,22 @@ function ScreenerDashboard({ trades = [], market }) {
   const ret = retDenom > 0 ? (pnl / retDenom) * 100 : null;
   // Always render (even with no trades yet) so the Screener dashboard is visible; it just shows zeros.
   const up = pnl >= 0;
+  // Collapsed: a compact Win/Loss + P&L strip with an expand chevron (mirrors the Automation Dashboard).
+  if (!dOpen) {
+    return (
+      <button onClick={() => setDOpen(true)} className="tap disp card flat" style={{ width: "100%", marginBottom: 10, border: "1px solid var(--line)", outline: "none", background: "var(--card-grad, var(--elev))", color: "var(--ink)", borderRadius: 16, padding: "13px 16px", display: "flex", alignItems: "center", gap: 14 }}>
+        <div style={{ textAlign: "left" }}>
+          <div style={{ fontSize: 10, opacity: .8, fontWeight: 700 }}>WIN / LOSS</div>
+          <div className="mono" style={{ fontWeight: 800, fontSize: 15 }}>{wins} : {losses}</div>
+        </div>
+        <div style={{ textAlign: "left" }}>
+          <div style={{ fontSize: 10, opacity: .8, fontWeight: 700 }}>P&amp;L</div>
+          <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: up ? "var(--up)" : "var(--down)" }}>{up ? "+" : ""}{fmtPnl(pnl, market)}</div>
+        </div>
+        <span style={{ marginLeft: "auto", display: "grid", placeItems: "center" }}><ChevronDown size={16} /></span>
+      </button>
+    );
+  }
   // Automate-style DStat tile.
   const Tile = ({ k, v, c, onClick, active }) => (
     <button onClick={onClick} disabled={!onClick} className={onClick ? "tap" : undefined}
@@ -928,14 +945,17 @@ function ScreenerDashboard({ trades = [], market }) {
     <div className="card flat" style={{ padding: 16, marginBottom: 10, border: "1px solid var(--line)", background: "var(--card-grad, var(--elev))", color: "var(--ink)" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         <div className="disp" style={{ fontWeight: 700, fontSize: 15 }}>Screener Dashboard</div>
-        <select value={rangeDays} onChange={(e) => setRange(Number(e.target.value))} className="no-ring"
-          style={{ fontSize: 11.5, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 9, padding: "5px 8px", background: "var(--surface)", color: "var(--ink)" }}>
-          <option value={0}>Today</option>
-          <option value={7}>7 days</option>
-          <option value={30}>30 days</option>
-          <option value={182}>6 months</option>
-          <option value={3650}>All time</option>
-        </select>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <select value={rangeDays} onChange={(e) => setRange(Number(e.target.value))} className="no-ring"
+            style={{ fontSize: 11.5, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 9, padding: "5px 8px", background: "var(--surface)", color: "var(--ink)" }}>
+            <option value={0}>Today</option>
+            <option value={7}>7 days</option>
+            <option value={30}>30 days</option>
+            <option value={182}>6 months</option>
+            <option value={3650}>All time</option>
+          </select>
+          <button onClick={() => setDOpen(false)} className="tap" title="Collapse" style={{ flex: "0 0 auto", display: "grid", placeItems: "center", border: "1px solid rgba(0,0,0,.12)", background: "rgba(0,0,0,.06)", color: "#141416", borderRadius: 10, padding: "5px" }}><ChevronUp size={15} /></button>
+        </div>
       </div>
       {/* Headline P&L + subline — mirrors the Automation Dashboard. */}
       <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 6, color: up ? "var(--up)" : "var(--down)" }}>{up ? "+" : ""}{fmtPnl(pnl, market)}</div>
