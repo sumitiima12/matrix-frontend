@@ -182,8 +182,9 @@ async function get(path, headers = {}) {
 
 /** Which brokers this server actually has credentials for THIS user. Identity comes from the verified
     token (R14-P2-05) — the server ignores any userId param, so we just send the auth header. */
-export async function brokerStatus() {
-  return get(`/api/broker/status`, tokenHdr());
+export async function brokerStatus({ verify = false } = {}) {
+  // verify=true runs a live signed check (Delta) so "Connected" reflects a working key, not just a stored one.
+  return get(`/api/broker/status${verify ? "?verify=1" : ""}`, tokenHdr());
 }
 
 /** STOR-1: single first-paint bootstrap — state + notices + capabilities + app-settings + screeners +

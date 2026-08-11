@@ -65,7 +65,7 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
   const redirectUrl = typeof window !== "undefined" ? window.location.origin + window.location.pathname : "";
 
   useEffect(() => {
-    brokerStatus(userId)
+    brokerStatus({ verify: true })
       .then((d) => { setServer(d); setStatusErr(null); if (d && d.staticIp) setStaticIp(d.staticIp); })
       .catch((e) => { setServer(null); setStatusErr(String(e.message || e)); });
   }, []);
@@ -310,8 +310,13 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
           const marketAllowed = gm.some((m) => canConnectMarket(m));
           const canConnect = b.status === "ready" && (configured || selfServe) && marketAllowed;
           const tone = TONE[b.status] || TONE.none;
+          // Live verification (Delta): keys stored ≠ keys working. `verified === false` means the last
+          // signed check FAILED (bad IP whitelist / revoked key), so show honest status instead of "Connected".
+          const sb = (server && server.brokers && server.brokers[b.id]) || {};
+          const verifyFailed = isConnected && sb.verified === false;
 
-          const stateLabel = isConnected ? "Connected"
+          const stateLabel = verifyFailed ? "Needs attention"
+            : isConnected ? "Connected"
             : canConnect ? "Ready to connect"
             : !marketAllowed ? "Turned off by admin"
             : selfServe ? "Enter your keys to connect"      // BYOA — no server keys needed
@@ -319,20 +324,26 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
             : b.status === "ready" ? tone.label
             : tone.label;
 
-          const stateColor = isConnected || canConnect ? "var(--up)"
+          const stateColor = verifyFailed ? "var(--down)"
+            : isConnected || canConnect ? "var(--up)"
             : !marketAllowed ? "var(--muted)"
             : b.status === "ready" && server ? "var(--amber)"
             : tone.c;
 
           return (
-            <div key={b.id} className="card" style={{ marginTop: 10, padding: 13, border: isConnected ? "1px solid var(--up)" : undefined }}>
+            <div key={b.id} className="card" style={{ marginTop: 10, padding: 13, border: `1px solid ${verifyFailed ? "var(--down)" : isConnected ? "var(--up)" : "transparent"}` }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                     <span className="disp" style={{ fontWeight: 800, fontSize: 14 }}>{b.name}</span>
-                    {isConnected && (
+                    {isConnected && !verifyFailed && (
                       <span className="pill" style={{ fontSize: 9, fontWeight: 800, padding: "2px 7px", background: "var(--up-soft)", color: "var(--up)", display: "flex", alignItems: "center", gap: 3 }}>
                         <Check size={9} /> LIVE
+                      </span>
+                    )}
+                    {verifyFailed && (
+                      <span className="pill" style={{ fontSize: 9, fontWeight: 800, padding: "2px 7px", background: "rgba(239,68,68,.12)", color: "var(--down)", border: "1px solid rgba(239,68,68,.25)" }}>
+                        NOT WORKING
                       </span>
                     )}
                   </div>
@@ -340,6 +351,9 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
                     {b.markets.join(" · ")}
                     <span style={{ color: stateColor, marginLeft: 8 }}>● {stateLabel}</span>
                   </div>
+                  {verifyFailed && sb.verifyHint && (
+                    <div style={{ fontSize: 10.5, color: "var(--down)", marginTop: 5, fontWeight: 600, lineHeight: 1.4 }}>{sb.verifyHint}</div>
+                  )}
                 </div>
 
                 {isConnected ? (
