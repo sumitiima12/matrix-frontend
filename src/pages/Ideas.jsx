@@ -291,7 +291,10 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
     .map((i) => {
       const st = ALL.find((a) => a.sym === i.sym);
       const cur = st && st.price != null ? st.price : i.entry;
-      return { i, left: cur ? ((i.exit - cur) / cur) * 100 : -Infinity };
+      const isShort = i.direction === "Short" || i.side === "SELL" || i.short;
+      // Potential left toward target is direction-aware: for a short the target sits BELOW the price.
+      const left = cur ? (isShort ? ((cur - i.exit) / cur) : ((i.exit - cur) / cur)) * 100 : -Infinity;
+      return { i, left };
     })
     .sort((a, b) => b.left - a.left)
     .map((x) => x.i);
@@ -326,8 +329,9 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span className="pill" style={{ background: "var(--primary-soft)", color: "var(--primary)", fontSize: 11, fontWeight: 700, padding: "3px 9px" }}>Neo</span>
                 <span onClick={() => s && onOpen(s)} className="disp tap" style={{ fontWeight: 700, fontSize: 14 }}>{idea.sym}</span>
+                {(idea.direction === "Short" || idea.side === "SELL" || idea.short) && <span className="pill" style={{ background: "var(--down-soft)", color: "var(--down)", fontWeight: 800, fontSize: 9.5, padding: "2px 7px", letterSpacing: ".03em" }}>SHORT</span>}
               </div>
-              <span className="pill disp" style={{ background: "var(--up-soft)", color: "var(--up)", fontWeight: 700, fontSize: 12.5, padding: "4px 11px" }}>+{idea.gain}% potential</span>
+              {(() => { const short = idea.direction === "Short" || idea.side === "SELL" || idea.short; const c = short ? "var(--down)" : "var(--up)"; const cs = short ? "var(--down-soft)" : "var(--up-soft)"; return <span className="pill disp" style={{ background: cs, color: c, fontWeight: 700, fontSize: 12.5, padding: "4px 11px" }}>{short ? "↓" : "+"}{idea.gain}% potential</span>; })()}
             </div>
             {s && (
               <div style={{ marginTop: 10 }}>
@@ -345,7 +349,7 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
               <div style={{ marginTop: 12 }}>
                 <BuyButton s={s} market={market} onBuy={onBuy} lot={s.lot || 1} fullWidth
                   only={(idea.direction === "Short" || idea.side === "SELL" || idea.short) ? "sell" : "buy"}
-                  opts={{ tp: idea.gain, sl: (idea.entry && idea.stop) ? +(((idea.entry - idea.stop) / idea.entry) * 100).toFixed(2) : undefined, tradeType: "Manual" }} />
+                  opts={{ tp: idea.gain, sl: (idea.entry && idea.stop) ? +((Math.abs(idea.stop - idea.entry) / idea.entry) * 100).toFixed(2) : undefined, tradeType: "Manual" }} />
               </div>
             )}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, gap: 8 }}>
@@ -354,7 +358,7 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
               ) : <span />}
               <div style={{ textAlign: "right" }}>
                 <div style={{ fontSize: 10, color: "var(--muted)" }}>Potential left</div>
-                {(() => { const cur = s ? s.price : idea.entry; const pl = (idea.exit - cur) / cur * 100; return <div className="mono" style={{ fontWeight: 800, fontSize: 13, color: pl >= 0 ? "var(--up)" : "var(--muted)" }}>{pl >= 0 ? "+" + pl.toFixed(1) + "%" : "target hit"}</div>; })()}
+                {(() => { const cur = s ? s.price : idea.entry; const short = idea.direction === "Short" || idea.side === "SELL" || idea.short; const pl = (short ? (cur - idea.exit) : (idea.exit - cur)) / cur * 100; return <div className="mono" style={{ fontWeight: 800, fontSize: 13, color: pl >= 0 ? "var(--up)" : "var(--muted)" }}>{pl >= 0 ? "+" + pl.toFixed(1) + "%" : "target hit"}</div>; })()}
               </div>
             </div>
           </div>

@@ -1,5 +1,5 @@
 import { ALL, marketOf } from "../domain/universe";
-import { techSignal } from "../domain/signals";
+import { techSignal, techSignalShort } from "../domain/signals";
 
 /**
  * Trade ideas — published by Matrix from the real signal engine, resolved against real candles.
@@ -26,11 +26,15 @@ export function buildDailyIdeas() {
   const out = [];
   for (const m of Object.keys(byMarket)) {
     byMarket[m].sort((a, b) => b.t.score - a.t.score);
-    for (const { s, t } of byMarket[m].slice(0, 5)) {
+    // Crypto is the one market where shorting is offered (mirrors Top Picks), so leave room for a couple of
+    // SHORT ideas alongside the longs. Every other market stays long-only.
+    const isCrypto = m === "Crypto";
+    for (const { s, t } of byMarket[m].slice(0, isCrypto ? 4 : 5)) {
       out.push({
         by: "Neo",
         publishedAt: today,
         sym: s.sym,
+        direction: "Long",
         entry: +s.price.toFixed(2),
         exit: t.target,               // real: 60-session resistance or ATR projection
         stop: t.stop,                 // real: swing support cushioned by ATR
@@ -41,6 +45,36 @@ export function buildDailyIdeas() {
         signal: t.signal,
         logic: t.why,
       });
+    }
+    // SHORT ideas (crypto only): the strongest genuine bearish setups (score ≥ 2.4), excluding anything
+    // already surfaced as a long. Target sits BELOW entry (downside profit), stop ABOVE.
+    if (isCrypto) {
+      const longSyms = new Set(out.filter((o) => o.direction === "Long" && marketOf(o.sym) === m).map((o) => o.sym));
+      const shorts = byMarket[m]
+        .filter((x) => !longSyms.has(x.s.sym))
+        .map((x) => ({ s: x.s, t: techSignalShort(x.s) }))
+        .filter((x) => x.t && x.t.score >= 2.4 && x.t.target && x.t.stop)
+        .sort((a, b) => b.t.score - a.t.score)
+        .slice(0, 2);
+      for (const { s, t } of shorts) {
+        out.push({
+          by: "Neo",
+          publishedAt: today,
+          sym: s.sym,
+          direction: "Short",
+          side: "SELL",
+          short: true,
+          entry: +s.price.toFixed(2),
+          exit: t.target,             // downside target (below entry)
+          stop: t.stop,               // upside risk (above entry)
+          gain: t.tpPct,              // downside reward %, positive
+          rr: t.rr,
+          pattern: t.pattern,
+          tradeType: "Stock",
+          signal: t.signal,
+          logic: t.why,
+        });
+      }
     }
   }
   return out;
@@ -84,6 +118,17 @@ export function resolveIdea(idea, candles) {
   if (!after.length) return null;
   const first = after[0].t;
   const daysAgo = Math.max(0, Math.round((Date.now() - first) / 864e5));
+  const isShort = idea.direction === "Short" || idea.side === "SELL" || idea.short;
+  if (isShort) {
+    // SHORT: profit when price falls to target (below entry); stopped when it rises to stop (above entry).
+    // Ties inside one candle assume the stop, same conservative rule as longs. P&L% = (entry − exit) / entry.
+    for (const c of after) {
+      if (c.h >= stop) return { status: "closed", win: false, ret: (entry - stop) / entry * 100, reason: "Stop", exitAt: c.t, daysAgo, type, mkt, stop };
+      if (c.l <= target) return { status: "closed", win: true, ret: (entry - target) / entry * 100, reason: "Target", exitAt: c.t, daysAgo, type, mkt, stop };
+    }
+    const lastS = after[after.length - 1].c;
+    return { status: "open", ret: (entry - lastS) / entry * 100, last: lastS, daysAgo, type, mkt, stop };
+  }
   for (const c of after) {
     if (c.l <= stop) return { status: "closed", win: false, ret: (stop / entry - 1) * 100, reason: "Stop", exitAt: c.t, daysAgo, type, mkt, stop };
     if (c.h >= target) return { status: "closed", win: true, ret: (target / entry - 1) * 100, reason: "Target", exitAt: c.t, daysAgo, type, mkt, stop };

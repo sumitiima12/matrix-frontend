@@ -831,7 +831,7 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, onPersist, market 
         </div>
       ) : (
         <>
-          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 12 }}>
             <Stat k="WIN RATE" v={stats.winRate.toFixed(0) + "%"} />
             <button type="button" onClick={() => setShowTrades((v) => !v)} className="tap" title="Tap to see the list of trades"
               style={{ flex: 1, minWidth: 0, textAlign: "left", cursor: "pointer", background: "var(--elev)", borderRadius: 11, padding: "9px 10px", border: "1px solid " + (showTrades ? "var(--primary)" : "var(--line)") }}>
@@ -952,7 +952,7 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, onPersist, onClone, 
         <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 12 }}>Backtesting on real prices…</div>
       ) : stats && stats.trades > 0 ? (
         <>
-          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 12 }}>
             <Stat k="WIN RATE" v={stats.winRate.toFixed(0) + "%"} />
             <button type="button" onClick={() => setShowTrades((v) => !v)} className="tap" title="Tap to see the list of trades"
               style={{ flex: 1, minWidth: 0, textAlign: "left", cursor: "pointer", background: "var(--elev)", borderRadius: 11, padding: "9px 10px", border: "1px solid " + (showTrades ? "var(--primary)" : "var(--line)") }}>
@@ -1286,7 +1286,7 @@ function CopyStrategyCard({ s, active, onToggle, onPersist, onDelete, market = "
       {loading ? <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 12 }}>Backtesting on real prices…</div>
         : stats && stats.trades > 0 ? (
           <>
-            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 12 }}>
               <Stat k="WIN RATE" v={stats.winRate.toFixed(0) + "%"} />
               <button type="button" onClick={() => setShowTrades((v) => !v)} className="tap" title="Tap to see the list of trades"
                 style={{ flex: 1, minWidth: 0, textAlign: "left", cursor: "pointer", background: "var(--elev)", borderRadius: 11, padding: "9px 10px", border: "1px solid " + (showTrades ? "var(--primary)" : "var(--line)") }}>
@@ -2282,7 +2282,7 @@ function StrategyPnl({ s, trades = [], market }) {
   );
 }
 
-export default function Automation({ market = "IN", appMode = "virtual", onRecord, trades = [], strats = [], setStrats, onExitAll, onCloseStrategy = null, onClosePosition = null, onReconcileDelta = null, me = null, isAdmin = false, userId = null, brokerFor = null, adminKey = "", onConnectBroker = null }) {
+export default function Automation({ market = "IN", appMode = "virtual", onRecord, trades = [], strats = [], setStrats, onExitAll, onCloseStrategy = null, onClosePosition = null, onUpdatePosition = null, onReconcileDelta = null, me = null, isAdmin = false, userId = null, brokerFor = null, adminKey = "", onConnectBroker = null }) {
   /* Backtesting Indian stocks needs real history, which — for compliance — can only come from the
      user's OWN connected broker (or the owner's house feed). Crypto (Delta) and US (Yahoo) have
      usable public/delayed feeds, so those don't require a broker. */
@@ -3085,7 +3085,11 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           {entryTriggered && <span className="pill" style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".03em", padding: "3px 8px", background: "var(--amber-soft, rgba(245,158,11,.15))", color: "var(--amber, #F59E0B)", border: "1px solid var(--amber, #F59E0B)", display: "inline-flex", alignItems: "center", gap: 3 }}>● ENTRY TRIGGERED</span>}
         </div>
       </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+      {/* Per-strategy P&L with a date-range selector at the TOP (right under the name) — like the Screener card. */}
+      <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+        <StrategyPnl s={s} trades={trades} market={market} />
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
         {/* A strategy with no closed trades has NO win rate. stratPerf returns null
             rather than inventing one, so every figure here must handle null.
             R34-P3-05: `p.trades` counts CLOSED round-trips only, so a strategy with a single OPEN triggered entry used
@@ -3099,8 +3103,6 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         <MetricMini k="Stop-loss" v={(s.cfg && s.cfg.sl != null && s.cfg.sl !== "") ? s.cfg.sl + "%" : "—"} c="var(--down)" />
         <MetricMini k="Target" v={(s.cfg && s.cfg.tp != null && s.cfg.tp !== "") ? s.cfg.tp + "%" : "—"} c="var(--up)" />
       </div>
-      {/* Per-strategy P&L with a date-range selector (like the Screener card). */}
-      <StrategyPnl s={s} trades={trades} market={market} />
       {/* Deploy size — AMOUNT (USD) for crypto, QUANTITY for other markets. Default $10 / 1 qty. */}
       {(() => {
         const isC = market === "Crypto";
@@ -3443,11 +3445,12 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
               {dashOpenPos.length > 5 && <button onClick={() => setDashLivePosAll((v) => !v)} className="tap" style={{ border: "none", background: "none", color: "var(--primary)", fontWeight: 800, fontSize: 11, cursor: "pointer" }}>{dashLivePosAll ? "Show less" : "See all"}</button>}
             </div>
             <div style={{ overflowX: "auto", border: "1px solid var(--line)", borderRadius: 10 }}>
-              <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 620 }}>
+              <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 720 }}>
                 <thead><tr>
                   <th style={{ ...th2, position: "sticky", left: 0, zIndex: 2, background: "var(--surface)" }}>Symbol</th><th style={th2}>Strategy</th>
                   <th style={{ ...th2, textAlign: "right" }}>Amount</th><th style={{ ...th2, textAlign: "right" }}>Entry px</th>
                   <th style={{ ...th2, textAlign: "right" }}>Current px</th><th style={{ ...th2, textAlign: "right" }}>P&amp;L</th><th style={{ ...th2, textAlign: "right" }}>Return</th>
+                  {onUpdatePosition && <><th style={{ ...th2, textAlign: "center" }}>SL %</th><th style={{ ...th2, textAlign: "center" }}>TP %</th></>}
                   {onClosePosition && <th style={{ ...th2, textAlign: "right" }}>Close</th>}
                 </tr></thead>
                 <tbody>
@@ -3464,6 +3467,14 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                         <td style={{ ...td2, textAlign: "right" }}>{fmt(px, market)}</td>
                         <td style={{ ...td2, textAlign: "right", color: pnl >= 0 ? "var(--up)" : "var(--down)" }}>{(pnl >= 0 ? "+" : "") + fmtPnl(pnl, market)}</td>
                         <td style={{ ...td2, textAlign: "right", color: ret >= 0 ? "var(--up)" : "var(--down)" }}>{(ret >= 0 ? "+" : "") + ret.toFixed(2)}%</td>
+                        {onUpdatePosition && <>
+                          <td style={{ ...td2, textAlign: "center" }}>
+                            <input key={"sl" + (t.sl ?? "")} defaultValue={t.sl != null ? String(t.sl) : ""} onBlur={(ev) => onUpdatePosition(t, { sl: ev.target.value === "" ? null : Number(ev.target.value) })} onKeyDown={(ev) => { if (ev.key === "Enter") ev.currentTarget.blur(); }} inputMode="decimal" title="Stop-loss %" className="no-ring mono" style={{ width: 44, textAlign: "center", border: "1px solid var(--line)", background: "var(--elev)", borderRadius: 7, padding: "3px 4px", fontWeight: 800, fontSize: 10.5, color: "var(--ink)" }} />
+                          </td>
+                          <td style={{ ...td2, textAlign: "center" }}>
+                            <input key={"tp" + (t.tp ?? "")} defaultValue={t.tp != null ? String(t.tp) : ""} onBlur={(ev) => onUpdatePosition(t, { tp: ev.target.value === "" ? null : Number(ev.target.value) })} onKeyDown={(ev) => { if (ev.key === "Enter") ev.currentTarget.blur(); }} inputMode="decimal" title="Target %" className="no-ring mono" style={{ width: 44, textAlign: "center", border: "1px solid var(--line)", background: "var(--elev)", borderRadius: 7, padding: "3px 4px", fontWeight: 800, fontSize: 10.5, color: "var(--ink)" }} />
+                          </td>
+                        </>}
                         {onClosePosition && <td style={{ ...td2, textAlign: "right" }}>
                           <button onClick={async () => { if (await confirmDialog(`Close ${t.sym} now?\n\nThis flattens the open position at the live price${appMode === "real" ? " (reduce-only broker sell)" : ""} and books the exit.`, { title: "Close position", confirmLabel: "Close" })) onClosePosition(t); }}
                             className="tap" title="Close this position now" style={{ border: "1px solid var(--down)", background: "var(--down-soft)", color: "var(--down)", borderRadius: 8, padding: "3px 9px", fontSize: 10, fontWeight: 800, whiteSpace: "nowrap" }}>Close</button>

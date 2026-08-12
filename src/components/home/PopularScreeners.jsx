@@ -518,6 +518,38 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
         </div>
       </div>
 
+      {/* Date range + P&L + stats sit at the TOP (right under the name), so the card leads with performance. */}
+      {(autoOn || hasScreenerTrades) && (
+      <>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+        <select aria-label="Date range" value={period} onChange={(e) => setPeriod(e.target.value)} style={{ flex: "0 0 auto", fontSize: 10.5, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 9, padding: "7px 8px", background: "var(--surface)", color: "var(--ink)" }}>
+          <option value="today">Today</option>
+          <option value="7d">Last 7 days</option>
+          <option value="30d">Last 30 days</option>
+          <option value="6m">Last 6 months</option>
+        </select>
+        <div style={{ flex: "1 1 0" }} />
+        <button type="button" onClick={() => setShowTrades((v) => !v)} className="tap" title="Tap to see the list of trades" style={{ flex: "0 0 auto", textAlign: "right", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>
+          <div style={{ fontSize: 8.5, color: "var(--primary)", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3 }}>P&amp;L <span style={{ display: "inline-block", transform: showTrades ? "rotate(180deg)" : "none", transition: "transform .15s", fontSize: 8 }}>▾</span></div>
+          <div className="mono" style={{ fontWeight: 800, fontSize: 16, color: chgColor(periodPnl), textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 3 }}>{(periodPnl >= 0 ? "+" : "") + fmt(Number(Number(periodPnl).toFixed(2)), market)}</div>
+        </button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginTop: 8 }}>
+        {[
+          { k: "Trades", v: String(screenerStats.trades), c: "var(--ink)" },
+          { k: "Wins", v: String(screenerStats.wins), c: "var(--pos, #16a34a)" },
+          { k: "Loss", v: String(screenerStats.losses), c: "var(--neg, #dc2626)" },
+          { k: "Win rate", v: screenerStats.winRate == null ? "—" : screenerStats.winRate + "%", c: "var(--ink)" },
+        ].map((s) => (
+          <div key={s.k} style={{ border: "1px solid var(--line)", borderRadius: 9, padding: "5px 6px", textAlign: "center", minWidth: 0 }}>
+            <div className="mono" style={{ fontSize: 13, fontWeight: 800, color: s.c }}>{s.v}</div>
+            <div style={{ fontSize: 8, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.3 }}>{s.k}</div>
+          </div>
+        ))}
+      </div>
+      </>
+      )}
+
       {/* LIVE POSITIONS (expandable) — this screener's own open positions, each with a Close button that
           flattens it (reduce-only broker sell in real mode) and books the exit. */}
       {showLivePos && (
@@ -760,40 +792,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
         )}
       </div>
       )}
-      {/* P&L — shown whenever the screener is live OR has ever traded (in this mode), so its performance stays
-         visible after Auto-Buy is turned off. Date range (left) + P&L (right); P&L doubles as the trade-list toggle. */}
-      {(autoOn || hasScreenerTrades) && (
-      <>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
-        <select aria-label="Date range" value={period} onChange={(e) => setPeriod(e.target.value)} style={{ flex: "0 0 auto", fontSize: 10.5, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 9, padding: "7px 8px", background: "var(--surface)", color: "var(--ink)" }}>
-          <option value="today">Today</option>
-          <option value="7d">Last 7 days</option>
-          <option value="30d">Last 30 days</option>
-          <option value="6m">Last 6 months</option>
-        </select>
-        <div style={{ flex: "1 1 0" }} />
-        <button type="button" onClick={() => setShowTrades((v) => !v)} className="tap" title="Tap to see the list of trades" style={{ flex: "0 0 auto", textAlign: "right", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>
-          <div style={{ fontSize: 8.5, color: "var(--primary)", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3 }}>P&amp;L <span style={{ display: "inline-block", transform: showTrades ? "rotate(180deg)" : "none", transition: "transform .15s", fontSize: 8 }}>▾</span></div>
-          <div className="mono" style={{ fontWeight: 800, fontSize: 16, color: chgColor(periodPnl), textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 3 }}>{(periodPnl >= 0 ? "+" : "") + fmt(Number(Number(periodPnl).toFixed(2)), market)}</div>
-        </button>
-      </div>
-      {/* Trade stats — mirrors the strategy cards: Trades, Wins, Loss, Win rate (P&L shown above). */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginTop: 8 }}>
-        {[
-          { k: "Trades", v: String(screenerStats.trades), c: "var(--ink)" },
-          { k: "Wins", v: String(screenerStats.wins), c: "var(--pos, #16a34a)" },
-          { k: "Loss", v: String(screenerStats.losses), c: "var(--neg, #dc2626)" },
-          { k: "Win rate", v: screenerStats.winRate == null ? "—" : screenerStats.winRate + "%", c: "var(--ink)" },
-        ].map((s) => (
-          <div key={s.k} style={{ border: "1px solid var(--line)", borderRadius: 9, padding: "5px 6px", textAlign: "center", minWidth: 0 }}>
-            <div className="mono" style={{ fontSize: 13, fontWeight: 800, color: s.c }}>{s.v}</div>
-            <div style={{ fontSize: 8, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.3 }}>{s.k}</div>
-          </div>
-        ))}
-      </div>
       <ScreenerTradeList trades={trades} strategyName={dispName} screenerKey={screener.key} nameAmbiguous={AMBIGUOUS_SCREENER_NAMES.has(screener.name)} mode={mode} market={market} periodFrom={periodFrom} priceOf={priceOf} open={showTrades} />
-      </>
-      )}
     </div>
   );
 }

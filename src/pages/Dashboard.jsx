@@ -1022,12 +1022,15 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     if (totPeriod === "today") { d.setHours(0, 0, 0, 0); return d.getTime(); }
     if (totPeriod === "month") { d.setDate(1); d.setHours(0, 0, 0, 0); return d.getTime(); }
     if (totPeriod === "last12") { d.setFullYear(d.getFullYear() - 1); d.setHours(0, 0, 0, 0); return d.getTime(); }
-    if (totPeriod === "custom") { const t = Date.parse(totCustFrom); return Number.isFinite(t) ? t : 0; }
+    // While the user is mid-edit the date field can briefly be empty/partial. Falling back to 0 (lifetime)
+    // there made the win rate / open counts flash the all-time numbers for a moment; fall back to the
+    // month-start default instead so the window never momentarily blows open.
+    if (totPeriod === "custom") { const t = Date.parse(totCustFrom); if (Number.isFinite(t)) return t; const d = new Date(); d.setDate(1); d.setHours(0, 0, 0, 0); return d.getTime(); }
     return 0;                                       // lifetime
   }, [totPeriod, totCustFrom]);
   // Upper bound — only Custom has one (end of the chosen day); every other period runs to "now".
   const totTo = useMemo(() => {
-    if (totPeriod === "custom") { const t = Date.parse(totCustTo); return Number.isFinite(t) ? t + 86399999 : Infinity; }
+    if (totPeriod === "custom") { const t = Date.parse(totCustTo); if (Number.isFinite(t)) return t + 86399999; const d = new Date(); d.setHours(23, 59, 59, 999); return d.getTime(); }
     return Infinity;
   }, [totPeriod, totCustTo]);
   const totalStats = useMemo(() => {
