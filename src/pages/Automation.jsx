@@ -3855,8 +3855,10 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           const sideList = lsSide === "long" ? sampleLong : sampleShort;
           const sel = byStatus(sideList);
           return (<>
-            <LongShortToggle side={lsSide} setSide={setLsSide} longCount={sampleLong.length} shortCount={sampleShort.length} />
-            <StatusToggle status={lsStatus} setStatus={setLsStatus} activeCount={sideList.filter((s) => s.active).length} inactiveCount={sideList.filter((s) => !s.active).length} />
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+              <div style={{ flex: "1 1 150px", minWidth: 0 }}><LongShortToggle side={lsSide} setSide={setLsSide} longCount={sampleLong.length} shortCount={sampleShort.length} /></div>
+              <div style={{ flex: "1 1 180px", minWidth: 0 }}><StatusToggle status={lsStatus} setStatus={setLsStatus} activeCount={sideList.filter((s) => s.active).length} inactiveCount={sideList.filter((s) => !s.active).length} /></div>
+            </div>
             <BulkBar items={sel} />
             {sel.length ? sel.map(renderS) : <div style={emptyNote}>No {lsSide}{lsStatus !== "all" ? " " + lsStatus : ""} samples.</div>}
           </>);
@@ -3877,8 +3879,10 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                 // Premium "active" = deployed in this market (activeInMarket), not the plain s.active flag.
                 const selRaw = lsStatus === "all" ? sideList : sideList.filter((s) => (lsStatus === "active" ? activeInMarket(s) : !activeInMarket(s)));
                 return (<>
-                  <LongShortToggle side={lsSide} setSide={setLsSide} longCount={premiumLong.length} shortCount={premiumShort.length} />
-                  <StatusToggle status={lsStatus} setStatus={setLsStatus} activeCount={sideList.filter((s) => activeInMarket(s)).length} inactiveCount={sideList.filter((s) => !activeInMarket(s)).length} />
+                  <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+                    <div style={{ flex: "1 1 150px", minWidth: 0 }}><LongShortToggle side={lsSide} setSide={setLsSide} longCount={premiumLong.length} shortCount={premiumShort.length} /></div>
+                    <div style={{ flex: "1 1 180px", minWidth: 0 }}><StatusToggle status={lsStatus} setStatus={setLsStatus} activeCount={sideList.filter((s) => activeInMarket(s)).length} inactiveCount={sideList.filter((s) => !activeInMarket(s)).length} /></div>
+                  </div>
                   <BulkBar items={selRaw} />
                   {selRaw.length ? selRaw.map((s) => <PremiumStrategyCard key={s.id} s={s} active={activeInMarket(s)} market={market} onToggle={(rs, size, opts) => togglePremiumHere(s.id, rs, size, opts)} onEdit={isAdmin ? loadForEdit : undefined} onPersist={persistCard} onClone={clonePremium} canBacktest={canBacktest} onConnect={onConnectBroker} />) : <div style={emptyNote}>No {lsSide}{lsStatus !== "all" ? " " + lsStatus : ""} strategies.</div>}
                 </>);
@@ -3891,8 +3895,10 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           const sideList = lsSide === "long" ? copiesLong : copiesShort;
           const sel = byStatus(sideList);
           return (<>
-            <LongShortToggle side={lsSide} setSide={setLsSide} longCount={copiesLong.length} shortCount={copiesShort.length} />
-            <StatusToggle status={lsStatus} setStatus={setLsStatus} activeCount={sideList.filter((s) => s.active).length} inactiveCount={sideList.filter((s) => !s.active).length} />
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+              <div style={{ flex: "1 1 150px", minWidth: 0 }}><LongShortToggle side={lsSide} setSide={setLsSide} longCount={copiesLong.length} shortCount={copiesShort.length} /></div>
+              <div style={{ flex: "1 1 180px", minWidth: 0 }}><StatusToggle status={lsStatus} setStatus={setLsStatus} activeCount={sideList.filter((s) => s.active).length} inactiveCount={sideList.filter((s) => !s.active).length} /></div>
+            </div>
             <BulkBar items={sel} />
             {sel.length ? sel.map(renderC) : <div style={emptyNote}>No {lsSide}{lsStatus !== "all" ? " " + lsStatus : ""} copies.</div>}
           </>);
@@ -4009,8 +4015,10 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           const sideList = lsSide === "long" ? mineLong : mineShort;
           const sel = byStatus(sideList);
           return (<>
-            <LongShortToggle side={lsSide} setSide={setLsSide} longCount={mineLong.length} shortCount={mineShort.length} />
-            <StatusToggle status={lsStatus} setStatus={setLsStatus} activeCount={sideList.filter((s) => s.active).length} inactiveCount={sideList.filter((s) => !s.active).length} />
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+              <div style={{ flex: "1 1 150px", minWidth: 0 }}><LongShortToggle side={lsSide} setSide={setLsSide} longCount={mineLong.length} shortCount={mineShort.length} /></div>
+              <div style={{ flex: "1 1 180px", minWidth: 0 }}><StatusToggle status={lsStatus} setStatus={setLsStatus} activeCount={sideList.filter((s) => s.active).length} inactiveCount={sideList.filter((s) => !s.active).length} /></div>
+            </div>
             <BulkBar items={sel} />
             {sel.length ? <CollapsibleList items={sel} render={({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>} /> : <div style={emptyNote}>No {lsSide}{lsStatus !== "all" ? " " + lsStatus : ""} strategies.</div>}
           </>);
