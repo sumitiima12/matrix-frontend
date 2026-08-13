@@ -151,6 +151,7 @@ const CSS = `
   --gold-grad:linear-gradient(120deg,#8A8A92,#D8D8DE 45%,#F4F4F6 55%,#A8A8B0);
   --silver-grad:linear-gradient(135deg,#6E6E78 0%,#C9C9D4 30%,#F4F4F8 50%,#B7B7C2 72%,#6E6E78 100%);
   --card-grad:linear-gradient(160deg,#17171A,#111113);
+  --card-border:linear-gradient(160deg, rgba(255,255,255,.30), rgba(255,255,255,.05) 45%, rgba(0,0,0,.30));
   --feature-grad:linear-gradient(150deg,#33333a 0%,#232329 42%,#141417 78%,#0d0d10 100%);
   --app-bg:radial-gradient(120% 60% at 50% -10%, #1A1A1D 0%, #0E0E10 50%, #08080A 100%);
   --header-bg:#0B0B0D;
@@ -167,6 +168,7 @@ const CSS = `
   --gold-grad:linear-gradient(120deg,#9A9AA2,#C9C9D0 45%,#6E6E78);
   --silver-grad:linear-gradient(135deg,#9A9AA6 0%,#CFCFDA 30%,#FFFFFF 50%,#BFBFCC 72%,#9A9AA6 100%);
   --card-grad:linear-gradient(170deg,#FFFFFF,#FBFBFC);
+  --card-border:linear-gradient(160deg, #FFFFFF, rgba(150,153,163,.5) 50%, rgba(96,99,110,.4));
   --feature-grad:linear-gradient(150deg,#33333a 0%,#232329 42%,#141417 78%,#0d0d10 100%);
   --app-bg:linear-gradient(180deg,#FAFAFB 0%,#F5F5F7 100%);
   --header-bg:rgba(247,247,248,.8);
@@ -185,7 +187,12 @@ const CSS = `
 .t-2xs{font-size:var(--fs-2xs)}.t-xs{font-size:var(--fs-xs)}.t-sm{font-size:var(--fs-sm)}
 .t-md{font-size:var(--fs-md)}.t-lg{font-size:var(--fs-lg)}.t-xl{font-size:var(--fs-xl)}.t-2xl{font-size:var(--fs-2xl)}
 .num{font-variant-numeric:tabular-nums;font-feature-settings:'tnum' 1}
-.card{background:var(--card-grad);border:1px solid var(--line);border-radius:24px;box-shadow:var(--shadow)}
+.card{background:var(--card-grad) padding-box,var(--card-border) border-box;border:1px solid transparent;border-radius:24px;box-shadow:var(--shadow)}
+/* Design-system pastel section tints (light mode only). Soft Technicolor washes + a glossy top sheen,
+   keeping the metallic hairline. Opt-in per section via className. Dark mode is never tinted. */
+.theme-light .tint-blue{background:linear-gradient(150deg,rgba(255,255,255,.6),rgba(255,255,255,0) 46%) padding-box,linear-gradient(165deg,rgba(236,245,252,1),#D9EDF8) padding-box,var(--card-border) border-box !important;box-shadow:inset 0 1px 0 rgba(255,255,255,.85),var(--shadow)}
+.theme-light .tint-green{background:linear-gradient(150deg,rgba(255,255,255,.6),rgba(255,255,255,0) 46%) padding-box,linear-gradient(165deg,rgba(240,248,246,1),#E4F1EE) padding-box,var(--card-border) border-box !important;box-shadow:inset 0 1px 0 rgba(255,255,255,.85),var(--shadow)}
+.theme-light .tint-lavender{background:linear-gradient(150deg,rgba(255,255,255,.6),rgba(255,255,255,0) 46%) padding-box,linear-gradient(165deg,rgba(238,236,250,1),#DEDAF4) padding-box,var(--card-border) border-box !important;box-shadow:inset 0 1px 0 rgba(255,255,255,.85),var(--shadow)}
 .flat{box-shadow:var(--shadow)}
 .pill{border-radius:999px}
 .hide-scroll::-webkit-scrollbar{display:none}
