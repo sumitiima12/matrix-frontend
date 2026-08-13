@@ -3,7 +3,7 @@ import { defOperands, chainCode, IND_CATALOG, TEMPLATES, detectTf, detectAllTfs,
 import { backtest, parseRules, getBtCosts, setBtCosts } from "../domain/backtest";
 import { stratPerf } from "../domain/strategies";
 import { positionPnl } from "../domain/leverage";   // Delta-parity crypto P&L (margin cap + fees), same for paper & real
-import { Activity, AlertTriangle, Bell, Bolt, Check, ChevronDown, ChevronUp, Copy, Globe, ListChecks, Pause, Pencil, Play, Plus, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
+import { Activity, AlertTriangle, Bell, Bolt, Check, ChevronDown, ChevronLeft, ChevronUp, Copy, Globe, ListChecks, Pause, Pencil, Play, Plus, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
 import { Area, AreaChart, Bar, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { BACKEND_URL } from "../config";
 import { chgColor, clamp, fmt, fmtPnl, pct, DAY, lsGet, lsSet, strategyHealthLabel } from "../lib/format";
@@ -3514,9 +3514,10 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       })()}
 
 
-      {/* TOP SELECTOR — one place to switch between building, samples, and your own. */}
+      {/* TOP SELECTOR — Build is no longer a tab; it's reached via the "+ New strategy" button below,
+          so the resting Automate screen leads with your strategies instead of three tab rows. */}
       <div className="hide-scroll" style={{ display: "flex", gap: 7, marginTop: 18, overflowX: "auto" }}>
-        {[["build", "Build"], ["strategies", "Strategies"], ["pnl", "P&L"], ["backtest", "Backtesting"]].map(([k, label]) => (
+        {[["strategies", "Strategies"], ["pnl", "P&L"], ["backtest", "Backtesting"]].map(([k, label]) => (
           <button
             key={k}
             onClick={() => setTopTab(k)}
@@ -3534,8 +3535,19 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         ))}
       </div>
 
+      {/* + New strategy — the primary way into the builder now that Build isn't a tab. */}
+      {topTab === "strategies" && (
+        <button onClick={() => { setEditingId(null); setStratName(""); setTopTab("build"); setTimeout(() => { try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {} }, 40); }}
+          className="tap disp" style={{ width: "100%", marginTop: 12, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 14, padding: "13px", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>
+          <Plus size={16} /> New strategy
+        </button>
+      )}
+
       {/* BUILD ZONE — the builder is always expanded (no create/close toggle). */}
       {topTab === "build" && (<>
+      <button onClick={() => { setEditingId(null); setStratName(""); setTopTab("strategies"); }} className="tap disp" style={{ marginTop: 16, display: "inline-flex", alignItems: "center", gap: 6, border: "none", background: "transparent", color: "var(--muted)", fontWeight: 800, fontSize: 12.5, cursor: "pointer", padding: 0 }}>
+        <ChevronLeft size={16} /> Back to strategies
+      </button>
       {(
         <div className="fade">
           {/* how do you want to build it? */}
@@ -3968,7 +3980,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         </>
       ) : mineOwn.length === 0 ? (
         <div className="card" style={{ marginTop: 12, padding: 20, textAlign: "center", color: "var(--muted)", fontSize: 12.5, lineHeight: 1.6 }}>
-          You haven't created a strategy yet. Build one from the Build tab, or start from a sample.
+          You haven't created a strategy yet. Tap <b style={{ color: "var(--ink)" }}>+ New strategy</b> above, or start from a sample.
         </div>
       ) : (
         /* MINE — only strategies this user created; a Long / Short toggle above the bulk bar filters
