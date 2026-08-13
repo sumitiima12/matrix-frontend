@@ -673,8 +673,9 @@ function LiveActivityTabs({ opens = [], gcols, market, onGoPortfolio, trades = [
         {tabBtn("pos", "Positions")}{tabBtn("act", "Activity")}
       </div>
     }>
-      {/* Soft pastel wash — light green → blue-silver — so the section reads as a distinct, less-bland card. */}
-      <div style={{ background: "linear-gradient(150deg, rgba(16,185,129,.12) 0%, rgba(150,190,235,.12) 55%, rgba(200,205,220,.10) 100%)", border: "1px solid var(--line)", borderRadius: 16, padding: 12 }}>
+      {/* Group wrapper is transparent — cards inside carry their own glass fill; a filled panel here reads as an
+          odd grey/tinted box in dark mode (design-system §4.2: never nest filled cards). */}
+      <div style={{ background: "transparent", border: "none", borderRadius: 16, padding: 0 }}>
       {tab === "pos" ? (
         opens.length ? (
           <>
