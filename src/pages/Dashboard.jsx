@@ -1150,7 +1150,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           Indian paper trading off) — there is nothing to trade, so a ₹0 virtual portfolio would
           only mislead. */}
       {!hideDash && (
-      <div className="card flat" style={{ marginTop: 14, padding: 16, border: "1px solid var(--line)", outline: "none", color: "var(--ink)", position: "relative", overflow: "hidden", boxShadow: "inset 0 1px 0 rgba(255,255,255,.10), inset 0 0 0 1px rgba(255,255,255,.02), 0 10px 30px rgba(0,0,0,.28)", background: "var(--card-grad)" }}>
+      <div className="card flat tint-blue" style={{ marginTop: 14, padding: 16, border: "1px solid var(--line)", outline: "none", color: "var(--ink)", position: "relative", overflow: "hidden", boxShadow: "inset 0 1px 0 rgba(255,255,255,.10), inset 0 0 0 1px rgba(255,255,255,.02), 0 10px 30px rgba(0,0,0,.28)", background: "var(--card-grad)" }}>
         <div style={{ position: "relative" }}>
           {/* slider + date range on ONE row (the dropdown controls whichever view is showing) */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
@@ -1605,7 +1605,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       {/* Market updates summary — hidden on Crypto (news-driven brief doesn't fit 24/7 crypto). */}
       {market !== "Crypto" && (
       <Pop style={{ marginTop: 22 }}>
-        <div className="card" style={{ padding: 15 }}>
+        <div className="card tint-green" style={{ padding: 15 }}>
           <div className="disp" style={{ fontWeight: 700, fontSize: 13.5, display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}><Newspaper size={15} color="var(--primary)" /> Market updates</div>
           <MarketBrief market={market} list={list} />
         </div>
@@ -1654,7 +1654,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
               ))}
             </div>
           }>
-          <div className="card" style={{ padding: "4px 14px" }}>
+          <div className="card tint-lavender" style={{ padding: "4px 14px" }}>
             {(glMode === "Gainers" ? gainers : losers).map((s) => <ListRow key={s.sym} s={s} market={market} onOpen={onOpen} />)}
           </div>
         </Section>
