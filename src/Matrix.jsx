@@ -1592,15 +1592,27 @@ function AppInner() {
             <div className="hide-scroll" style={{ overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
               {activity.length === 0 ? (
                 <div style={{ fontSize: 12.5, color: "var(--muted)", padding: "20px 0", textAlign: "center" }}>No recent activity yet. Orders, rejects and connections will appear here.</div>
-              ) : activity.map((a, i) => (
+              ) : activity.map((a, i) => {
+                // Connection / unknown-outcome errors are the recurring pain point — give them a next step
+                // (open the broker sheet, where the honest verify status + IP-whitelist fix hint live) instead
+                // of leaving the user only with a worry.
+                const connErr = a.err && /outcome unknown|couldn't confirm|couldn.t read your|couldn.t reach|whitelist|not working|connection/i.test(a.text || "");
+                return (
                 <div key={a.at + "-" + i} style={{ display: "flex", gap: 9, alignItems: "flex-start", padding: "9px 11px", borderRadius: 11, background: "var(--elev)", border: "1px solid " + (a.err ? "rgba(232,72,85,.35)" : "var(--line)") }}>
                   {a.err ? <X size={15} color="var(--down)" style={{ flex: "0 0 auto", marginTop: 1 }} /> : <Check size={15} color="var(--up)" style={{ flex: "0 0 auto", marginTop: 1 }} />}
-                  <div style={{ minWidth: 0 }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontSize: 12, color: "var(--ink)", lineHeight: 1.4 }}>{a.text}</div>
                     <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2 }}>{new Date(a.at).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</div>
+                    {connErr && (
+                      <button onClick={() => { setActivityOpen(false); setBrokerOpen(true); }} className="tap disp"
+                        style={{ marginTop: 8, border: "1px solid var(--down)", background: "var(--down-soft)", color: "var(--down)", borderRadius: 9, padding: "5px 11px", fontWeight: 800, fontSize: 11, cursor: "pointer" }}>
+                        Check connection
+                      </button>
+                    )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </Portal>
