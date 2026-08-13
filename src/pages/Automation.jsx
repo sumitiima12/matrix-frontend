@@ -3514,33 +3514,22 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       })()}
 
 
-      {/* TOP SELECTOR — Build is no longer a tab; it's reached via the "+ New strategy" button below,
-          so the resting Automate screen leads with your strategies instead of three tab rows. */}
-      <div className="hide-scroll" style={{ display: "flex", gap: 7, marginTop: 18, overflowX: "auto" }}>
-        {[["strategies", "Strategies"], ["pnl", "P&L"], ["backtest", "Backtesting"]].map(([k, label]) => (
-          <button
-            key={k}
-            onClick={() => setTopTab(k)}
-            className="tap disp"
-            style={{
-              flex: 1, borderRadius: 10, padding: "10px 2px", fontWeight: 800, fontSize: 10.5,
-              cursor: "pointer",
-              border: "1px solid " + (topTab === k ? "var(--primary)" : "var(--line)"),
-              background: topTab === k ? "var(--primary)" : "var(--surface)",
-              color: topTab === k ? "var(--on-primary)" : "var(--ink)",
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* TOP TAB ROW REMOVED (Phase 4): Strategies is the only primary view. P&L and Backtesting are now
+          reached via secondary links under "+ New strategy" (each opens with a Back-to-strategies link),
+          so the resting Automate screen is just: New strategy → your strategies. */}
 
-      {/* + New strategy — the primary way into the builder now that Build isn't a tab. */}
+      {/* + New strategy (primary) + secondary P&L / Backtest links. */}
       {topTab === "strategies" && (
-        <button onClick={() => { setEditingId(null); setStratName(""); setTopTab("build"); setTimeout(() => { try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {} }, 40); }}
-          className="tap disp" style={{ width: "100%", marginTop: 12, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 14, padding: "13px", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>
-          <Plus size={16} /> New strategy
-        </button>
+        <div style={{ marginTop: 18 }}>
+          <button onClick={() => { setEditingId(null); setStratName(""); setTopTab("build"); setTimeout(() => { try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {} }, 40); }}
+            className="tap disp" style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 14, padding: "13px", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>
+            <Plus size={16} /> New strategy
+          </button>
+          <div style={{ display: "flex", gap: 18, justifyContent: "center", marginTop: 11 }}>
+            <button onClick={() => { setTopTab("pnl"); setTimeout(() => { try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {} }, 40); }} className="tap disp" style={{ border: "none", background: "transparent", color: "var(--muted)", fontWeight: 800, fontSize: 12, cursor: "pointer", padding: 0 }}>P&amp;L ▸</button>
+            <button onClick={() => { setTopTab("backtest"); setTimeout(() => { try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {} }, 40); }} className="tap disp" style={{ border: "none", background: "transparent", color: "var(--muted)", fontWeight: 800, fontSize: 12, cursor: "pointer", padding: 0 }}>Backtest all ▸</button>
+          </div>
+        </div>
       )}
 
       {/* BUILD ZONE — the builder is always expanded (no create/close toggle). */}
@@ -3801,7 +3790,12 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       )}
       </>)}
 
-      {/* SAMPLES + MY STRATEGIES — driven by the TOP selector now, not a second tab row. */}
+      {(topTab === "pnl" || topTab === "backtest") && (
+        <button onClick={() => setTopTab("strategies")} className="tap disp" style={{ marginTop: 16, display: "inline-flex", alignItems: "center", gap: 6, border: "none", background: "transparent", color: "var(--muted)", fontWeight: 800, fontSize: 12.5, cursor: "pointer", padding: 0 }}>
+          <ChevronLeft size={16} /> Back to strategies
+        </button>
+      )}
+
       {topTab === "pnl" && <StrategyPnLView strats={strats} trades={trades} market={market} onDelete={deleteStrategy} />}
 
       {topTab === "backtest" && (
