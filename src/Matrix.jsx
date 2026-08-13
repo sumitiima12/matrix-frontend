@@ -163,14 +163,14 @@ const CSS = `
   --primary-soft:#F1F1F3; --up:#10B981; --up-soft:#E6F7F0;
   --down:#EF4444; --down-soft:#FDECEC; --gold:#6E6E78; --gold-soft:#F1F1F3;
   --lime:#C9FF3D; --grid:rgba(20,20,25,.06); --back:#F1F1F3; --amber:#F59E0B;
-  --shadow:0 22px 44px rgba(35,38,55,.16), 0 4px 12px rgba(35,38,55,.10);
+  --shadow:0 26px 50px rgba(30,34,52,.22), 0 6px 16px rgba(30,34,52,.13);
   --glow:0 14px 32px rgba(20,20,30,.12);
   --gold-grad:linear-gradient(120deg,#9A9AA2,#C9C9D0 45%,#6E6E78);
   --silver-grad:linear-gradient(135deg,#9A9AA6 0%,#CFCFDA 30%,#FFFFFF 50%,#BFBFCC 72%,#9A9AA6 100%);
-  --card-grad:linear-gradient(165deg, rgba(255,255,255,.94), rgba(255,255,255,.74));
-  --card-border:linear-gradient(160deg, #ffffff, rgba(150,153,163,.55) 48%, rgba(96,99,110,.42));
+  --card-grad:linear-gradient(165deg, #ffffff, #eef0f5);
+  --card-border:linear-gradient(160deg, #ffffff, rgba(140,144,156,.75) 46%, rgba(84,88,100,.58));
   --feature-grad:linear-gradient(150deg,#33333a 0%,#232329 42%,#141417 78%,#0d0d10 100%);
-  --app-bg:radial-gradient(115% 60% at 22% -6%, #ffffff 0%, rgba(255,255,255,0) 55%), radial-gradient(120% 68% at 96% 106%, #e4e7ec 0%, rgba(228,231,236,0) 55%), linear-gradient(180deg,#fbfbfd 0%, #e9ebf0 100%);
+  --app-bg:radial-gradient(115% 60% at 22% -6%, #ffffff 0%, rgba(255,255,255,0) 55%), radial-gradient(125% 72% at 96% 106%, #d7dae2 0%, rgba(215,218,226,0) 58%), linear-gradient(180deg,#f1f2f6 0%, #dde0e8 100%);
   --header-bg:rgba(247,247,248,.8);
   --on-primary:#FFFFFF;
   --header-bg:#FFFFFF;

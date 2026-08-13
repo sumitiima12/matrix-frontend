@@ -1585,7 +1585,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
               <Section title="Active Strategies" icon={<Zap size={17} color="var(--primary)" />}>
                 <div style={{ background: "transparent", border: "none", borderRadius: 16, padding: 0 }}>
                 {stratRows.slice(0, 3).map(({ s, pl, open }) => (
-                  <div key={s.id} onClick={onGoDeployed} className="tap" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", marginBottom: 8, borderRadius: 11, border: "1px solid var(--line)", background: "var(--surface)", cursor: onGoDeployed ? "pointer" : "default" }}>
+                  <div key={s.id} onClick={onGoDeployed} className="card tap" style={{ display: "flex", alignItems: "center", gap: 10, padding: "13px 15px", marginBottom: 10, borderRadius: 16, boxShadow: "0 10px 26px -14px rgba(0,0,0,.55)", cursor: onGoDeployed ? "pointer" : "default" }}>
                     <div style={{ flex: "1 1 0", minWidth: 0 }}>
                       <div className="disp" style={{ fontWeight: 800, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name || (s.symbols && s.symbols[0]) || "Strategy"}</div>
                       <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, marginTop: 1 }}>{open} open position{open === 1 ? "" : "s"}{s.paused ? " · paused" : ""}</div>
@@ -1594,7 +1594,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   </div>
                 ))}
                 {(stratRows.length > 3 || onGoDeployed) && (
-                  <button onClick={onGoDeployed} className="tap disp" style={{ width: "100%", border: "1px solid var(--line)", background: "var(--elev)", color: "var(--primary)", borderRadius: 10, padding: "8px", fontWeight: 800, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                  <button onClick={onGoDeployed} className="card tap disp" style={{ width: "100%", color: "var(--primary)", borderRadius: 16, padding: "12px", fontWeight: 800, fontSize: 12.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, boxShadow: "0 10px 26px -14px rgba(0,0,0,.55)", cursor: "pointer" }}>
                     Show all{stratRows.length > 3 ? ` (${stratRows.length})` : ""} <ChevronRight size={14} />
                   </button>
                 )}
