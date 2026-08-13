@@ -3036,6 +3036,9 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     const showUnpublishOnly = !deployed && isAdmin && !own && !sampleOrPremium && !!s.publicId;  // admin: unpublish others' public
     // Owners can delete their OWN strategy; admins can delete anyone's (premium/sample + others' public).
     const canDelete = own || isAdmin;
+    // UX audit D2 — the resting card leads with name · status · P&L · primary action. The detailed metric grid
+    // and the deploy-size stepper fold behind a "Details" toggle so the card is calm at rest, not a wall of numbers.
+    const [detailsOpen, setDetailsOpen] = useState(false);
     /* Open positions this strategy opened but hasn't exited yet -> "Entry triggered" + live P&L.
        BUGFIX: strategy NAMES are not unique (Neo names collide), so matching by name alone leaked another
        strategy's open trade onto this card (e.g. a BTC strategy showing a BAJAJFINSV position). We now:
@@ -3105,6 +3108,10 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
         <StrategyPnl s={s} trades={trades} market={market} />
       </div>
+      <button onClick={() => setDetailsOpen((v) => !v)} className="tap disp" style={{ width: "100%", marginTop: 10, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--line)", background: "transparent", color: "var(--muted)", borderRadius: 10, padding: "7px", fontWeight: 800, fontSize: 11.5, cursor: "pointer" }}>
+        {detailsOpen ? "Hide details" : "Details"} <ChevronDown size={13} style={{ transform: detailsOpen ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
+      </button>
+      {detailsOpen && (<>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
         {/* A strategy with no closed trades has NO win rate. stratPerf returns null
             rather than inventing one, so every figure here must handle null.
@@ -3137,6 +3144,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           </div>
         );
       })()}
+      </>)}
       {/* LIVE POSITION (singular — a strategy holds at most one open position). Shows the open trade's
           symbol, entry, current price and live P&L. */}
       {entryTriggered && (() => {
