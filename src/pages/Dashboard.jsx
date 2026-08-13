@@ -1465,7 +1465,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 16 }}>💎</span>
                   <div style={{ minWidth: 0 }}><div className="disp" style={{ fontWeight: 700, fontSize: 15.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.sym}</div><div style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</div></div>
-                  {s.pickTpPct != null && <span className="pill disp" style={{ marginLeft: "auto", flex: "0 0 auto", background: "var(--up-soft)", color: "var(--up)", fontWeight: 700, fontSize: 11, padding: "3px 9px" }}>{s.pickDir === "short" ? "−" : "+"}{s.pickTpPct}% potential</span>}
+                  {s.pickTpPct != null && <span className="pill disp" title="Estimated move to Matrix's target level — an outlook, not a guarantee." style={{ marginLeft: "auto", flex: "0 0 auto", background: "var(--up-soft)", color: "var(--up)", fontWeight: 700, fontSize: 11, padding: "3px 9px" }}>{s.pickDir === "short" ? "−" : "+"}{s.pickTpPct}% potential</span>}
                 </div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 12 }}>
                   <span className="mono" style={{ fontWeight: 800, fontSize: 19 }}>{fmt(s.price, market)}</span>
