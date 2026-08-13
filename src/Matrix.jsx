@@ -151,7 +151,7 @@ const CSS = `
   --gold-grad:linear-gradient(120deg,#8A8A92,#D8D8DE 45%,#F4F4F6 55%,#A8A8B0);
   --silver-grad:linear-gradient(135deg,#6E6E78 0%,#C9C9D4 30%,#F4F4F8 50%,#B7B7C2 72%,#6E6E78 100%);
   --card-grad:linear-gradient(160deg,#17171A,#111113);
-  --card-border:linear-gradient(160deg, rgba(255,255,255,.30), rgba(255,255,255,.05) 45%, rgba(0,0,0,.30));
+  --card-border:linear-gradient(160deg, rgba(255,255,255,.14), rgba(255,255,255,.03) 50%, rgba(0,0,0,.14));
   --feature-grad:linear-gradient(150deg,#33333a 0%,#232329 42%,#141417 78%,#0d0d10 100%);
   --app-bg:radial-gradient(120% 60% at 50% -10%, #1A1A1D 0%, #0E0E10 50%, #08080A 100%);
   --header-bg:#0B0B0D;
@@ -168,7 +168,7 @@ const CSS = `
   --gold-grad:linear-gradient(120deg,#9A9AA2,#C9C9D0 45%,#6E6E78);
   --silver-grad:linear-gradient(135deg,#9A9AA6 0%,#CFCFDA 30%,#FFFFFF 50%,#BFBFCC 72%,#9A9AA6 100%);
   --card-grad:linear-gradient(170deg,#FFFFFF,#FBFBFC);
-  --card-border:linear-gradient(160deg, #FFFFFF, rgba(150,153,163,.5) 50%, rgba(96,99,110,.4));
+  --card-border:linear-gradient(160deg, rgba(255,255,255,.9), rgba(150,153,163,.26) 55%, rgba(96,99,110,.18));
   --feature-grad:linear-gradient(150deg,#33333a 0%,#232329 42%,#141417 78%,#0d0d10 100%);
   --app-bg:linear-gradient(180deg,#FAFAFB 0%,#F5F5F7 100%);
   --header-bg:rgba(247,247,248,.8);
@@ -206,13 +206,13 @@ const CSS = `
 .metalblack::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.14),transparent);pointer-events:none;}
 .metalblack::after{content:"";position:absolute;inset:0;background:radial-gradient(120% 90% at 50% 0%,rgba(255,255,255,.04),transparent 55%);pointer-events:none;}
 /* Homepage cards — premium metallic treatment: edge highlight + rim light + edge reflection (box-shadow), specular highlight (::before). */
-.home-metal .card{position:relative;border:1px solid rgba(255,255,255,.12);box-shadow:inset 0 1.4px 0 rgba(255,255,255,.22), inset 0 0 0 1px rgba(255,255,255,.05), inset 0 -1px 0 rgba(255,255,255,.05), inset 24px 0 42px -34px rgba(255,255,255,.14), inset -24px 0 42px -34px rgba(255,255,255,.14), 0 24px 56px -22px rgba(0,0,0,.85), 0 8px 20px rgba(0,0,0,.4)}
-.home-metal .card::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(130% 80% at 18% -12%, rgba(255,255,255,.13), rgba(255,255,255,0) 46%)}
+.home-metal .card{position:relative;border:1px solid rgba(255,255,255,.07);box-shadow:inset 0 1px 0 rgba(255,255,255,.06), 0 12px 34px -20px rgba(0,0,0,.6)}
+.home-metal .card::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(130% 80% at 18% -12%, rgba(255,255,255,.05), rgba(255,255,255,0) 44%)}
 /* Matrix's Picks — soft light-grey cards (dark text), theme-aware. */
 .pickcard{background:#F1F1F3 !important;box-shadow:inset 0 1px 0 rgba(255,255,255,.75), 0 1px 2px rgba(20,20,30,.06), 0 14px 30px -14px rgba(20,20,30,.24) !important;border:1px solid #E7E7EA !important}
 .theme-dark .pickcard{background:#202024 !important;border:1px solid #2c2c30 !important;box-shadow:inset 0 1px 0 rgba(255,255,255,.10), inset 0 0 0 1px rgba(255,255,255,.02), 0 12px 32px rgba(0,0,0,.42) !important}
-.theme-light .home-metal .card{border-color:rgba(20,20,30,.10);box-shadow:inset 0 1.2px 0 rgba(255,255,255,.9), inset 0 0 0 1px rgba(255,255,255,.5), inset 0 -1px 0 rgba(20,20,30,.05), inset 24px 0 42px -34px rgba(255,255,255,.6), inset -24px 0 42px -34px rgba(255,255,255,.6), 0 18px 44px -22px rgba(20,20,30,.16), 0 6px 16px rgba(20,20,30,.05)}
-.theme-light .home-metal .card::before{background:radial-gradient(130% 80% at 18% -12%, rgba(255,255,255,.7), rgba(255,255,255,0) 46%)}
+.theme-light .home-metal .card{border-color:rgba(20,20,30,.07);box-shadow:inset 0 1px 0 rgba(255,255,255,.8), 0 12px 30px -20px rgba(20,20,30,.12)}
+.theme-light .home-metal .card::before{background:radial-gradient(130% 80% at 18% -12%, rgba(255,255,255,.35), rgba(255,255,255,0) 46%)}
 @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .fade{animation:fadeUp .3s ease both}
 @keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
@@ -299,7 +299,7 @@ function seededStrats(saved) {
 
 function AppInner() {
   // Theme persists across sessions — it reset to light on every reload before.
-  const [theme, setTheme] = useState(() => lsGet("mx_theme", "light"));
+  const [theme, setTheme] = useState(() => lsGet("mx_theme", "dark"));
   useEffect(() => { lsSet("mx_theme", theme); }, [theme]);
   const [onboardSkipped, setOnboardSkipped] = useState(false);
   const [profile, setProfile] = useState(null);
@@ -1418,8 +1418,12 @@ function AppInner() {
                   {new Date(brokerTick || liveAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </span>
               )}
-              <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label="Toggle light or dark mode" title="Light / dark mode" className="tap" style={{ border: "1px solid var(--line)", background: "transparent", borderRadius: 9, width: 30, height: 30, display: "grid", placeItems: "center", cursor: "pointer", flexShrink: 0 }}>
-                {theme === "dark" ? <Moon size={15} color="var(--muted)" /> : <Sun size={15} color="var(--muted)" />}
+              <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label="Toggle light or dark mode" aria-pressed={theme === "dark"} title="Light / dark mode" className="tap" style={{ border: "1px solid var(--line)", background: "var(--surface)", borderRadius: 999, width: 58, height: 30, padding: 3, display: "flex", alignItems: "center", cursor: "pointer", flexShrink: 0, position: "relative" }}>
+                <span style={{ position: "absolute", top: 3, left: theme === "dark" ? 3 : 30, width: 24, height: 24, borderRadius: 999, background: theme === "dark" ? "#26262b" : "#ffffff", boxShadow: "0 1px 3px rgba(0,0,0,.28)", display: "grid", placeItems: "center", transition: "left .18s ease" }}>
+                  {theme === "dark" ? <Moon size={13} color="#e7e7ea" /> : <Sun size={13} color="#8a6d1f" />}
+                </span>
+                <Sun size={12} color="var(--muted)" style={{ position: "absolute", left: 9, opacity: theme === "dark" ? .5 : 0 }} />
+                <Moon size={12} color="var(--muted)" style={{ position: "absolute", right: 9, opacity: theme === "dark" ? 0 : .5 }} />
               </button>
             </div>
           </div>
