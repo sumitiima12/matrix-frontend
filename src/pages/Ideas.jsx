@@ -331,7 +331,7 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
                 <span onClick={() => s && onOpen(s)} className="disp tap" style={{ fontWeight: 700, fontSize: 14 }}>{idea.sym}</span>
                 {(idea.direction === "Short" || idea.side === "SELL" || idea.short) && <span className="pill" style={{ background: "var(--down-soft)", color: "var(--down)", fontWeight: 800, fontSize: 9.5, padding: "2px 7px", letterSpacing: ".03em" }}>SHORT</span>}
               </div>
-              {(() => { const short = idea.direction === "Short" || idea.side === "SELL" || idea.short; const c = short ? "var(--down)" : "var(--up)"; const cs = short ? "var(--down-soft)" : "var(--up-soft)"; return <span className="pill disp" style={{ background: cs, color: c, fontWeight: 700, fontSize: 12.5, padding: "4px 11px" }}>{short ? "↓" : "+"}{idea.gain}% potential</span>; })()}
+              {(() => { const short = idea.direction === "Short" || idea.side === "SELL" || idea.short; const c = short ? "var(--down)" : "var(--up)"; const cs = short ? "var(--down-soft)" : "var(--up-soft)"; return <span className="pill disp" title="Estimated move to the idea's target — an outlook, not a guarantee." style={{ background: cs, color: c, fontWeight: 700, fontSize: 12.5, padding: "4px 11px" }}>{short ? "↓" : "+"}{idea.gain}% potential</span>; })()}
             </div>
             {s && (
               <div style={{ marginTop: 10 }}>
