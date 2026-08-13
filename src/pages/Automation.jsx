@@ -3372,7 +3372,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             <div className="mono" style={{ fontWeight: 800, fontSize: 15 }}>{agg.wins} : {dLosses}</div>
           </div>
           <div style={{ textAlign: "left" }}>
-            <div style={{ fontSize: 10, opacity: .8, fontWeight: 700 }}>P&amp;L</div>
+            <div style={{ fontSize: 10, opacity: .8, fontWeight: 700 }}>P&amp;L{appMode === "real" && <span title="Estimated from live prices — broker-verified P&L is in Portfolio."> · est.</span>}</div>
             <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: agg.pnl >= 0 ? "var(--up)" : "var(--down)" }}>{agg.pnl >= 0 ? "+" : ""}{fmt(agg.pnl, market)}</div>
           </div>
           <span style={{ marginLeft: "auto", display: "grid", placeItems: "center" }}><ChevronDown size={16} /></span>
