@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ALL, UNIVERSE, marketOf, yahooSymbol } from "../../domain/universe";
 import { positionPnl } from "../../domain/leverage";   // Delta-parity crypto P&L (margin cap + fees), same for paper & real
 import { CUR, DAY, chgColor, fmt, fmtPnl, lsGet, lsSet } from "../../lib/format";
+import { confirmDialog } from "../../lib/confirmDialog";
 import { scanScreener, marketOpen } from "../../domain/api";
 import { getHistory } from "../../services/marketService";
 import { backtest } from "../../domain/backtest";
@@ -509,7 +510,16 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           <label className="tap" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, fontWeight: 800, color: "var(--ink)" }}>
-            <span onClick={() => { const v = !autoOn; setAutoOn(v); lsSet(autoKey, v); }} style={{ width: 36, height: 21, borderRadius: 999, background: autoOn ? "#22C55E" : "var(--line)", position: "relative", flexShrink: 0, transition: "background .2s" }}>
+            <span onClick={async () => {
+              const v = !autoOn;
+              // Real-money confirm — turning Auto-Buy ON in Real mode makes this screener place REAL orders on
+              // every matching symbol. Confirm the money moment; disabling never needs a prompt.
+              if (v && mode === "real" && !(await confirmDialog(
+                `Screener   ${dispName}\nMode       Real\nBroker     your connected broker\n\nWhile ON, this places REAL orders on every symbol this screener matches, each with its default SL/TP. Turn OFF anytime to stop new entries.`,
+                { title: "Turn on real Auto-Buy?", confirmLabel: "Turn on" }
+              ))) return;
+              setAutoOn(v); lsSet(autoKey, v);
+            }} style={{ width: 36, height: 21, borderRadius: 999, background: autoOn ? "#22C55E" : "var(--line)", position: "relative", flexShrink: 0, transition: "background .2s" }}>
               <span style={{ position: "absolute", top: 2, left: autoOn ? 17 : 2, width: 17, height: 17, borderRadius: 999, background: "#fff", transition: "left .2s" }} />
             </span>
             Auto-Buy

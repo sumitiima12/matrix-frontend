@@ -2317,6 +2317,22 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     if (!bsym) { setLiveMsg({ e: true, t: `${route.id} can't trade ${sym} (no symbol mapping).` }); return; }
     const amt = Number(liveAmt);
     if (!(amt > 0)) { setLiveMsg({ e: true, t: "Enter an amount per trade." }); return; }
+    // Real-money confirm-summary — the trust moment. Show exactly what will happen (symbol, size, broker,
+    // direction, protection) before arming the engine to place REAL orders.
+    const short = (s.side === "SELL" || (s.cfg && s.cfg.side === "SELL"));
+    const brokerName = route.meta ? route.meta.name : route.id;
+    const cur = mkt === "Crypto" ? "$" : "₹";
+    const slTxt = (s.cfg && s.cfg.sl != null && s.cfg.sl !== "") ? s.cfg.sl + "%" : "—";
+    const tpTxt = (s.cfg && s.cfg.tp != null && s.cfg.tp !== "") ? s.cfg.tp + "%" : "—";
+    const summary =
+      `Strategy   ${s.name || "—"}\n` +
+      `Symbol     ${sym}${short ? "  (SHORT)" : ""}\n` +
+      `Per trade  ${cur}${amt}\n` +
+      `Broker     ${brokerName}\n` +
+      `Product    ${liveProduct}\n` +
+      `SL / TP    ${slTxt} / ${tpTxt}\n\n` +
+      `This places REAL orders on your broker when the entry fires. You can Deactivate anytime.`;
+    if (!(await confirmDialog(summary, { title: "Go live with real money?", confirmLabel: "Go live" }))) return;
     setLiveBusy(true);
     try {
       const cfg = s.cfg && s.cfg.entry ? { defs: s.cfg.defs || [], entry: s.cfg.entry, exit: s.cfg.exit || [] } : null;
