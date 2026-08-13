@@ -1583,7 +1583,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
             <LiveActivityTabs opens={opens} gcols={gcols} market={market} onGoPortfolio={onGoPortfolio} trades={trades} isReal={isReal} />
             {stratRows.length > 0 && (
               <Section title="Active Strategies" icon={<Zap size={17} color="var(--primary)" />}>
-                <div style={{ background: "linear-gradient(150deg, rgba(219,234,254,.6) 0%, rgba(224,231,245,.55) 55%, rgba(226,232,240,.45) 100%)", border: "1px solid var(--line)", borderRadius: 16, padding: 12 }}>
+                <div style={{ background: "transparent", border: "none", borderRadius: 16, padding: 0 }}>
                 {stratRows.slice(0, 3).map(({ s, pl, open }) => (
                   <div key={s.id} onClick={onGoDeployed} className="tap" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", marginBottom: 8, borderRadius: 11, border: "1px solid var(--line)", background: "var(--surface)", cursor: onGoDeployed ? "pointer" : "default" }}>
                     <div style={{ flex: "1 1 0", minWidth: 0 }}>
