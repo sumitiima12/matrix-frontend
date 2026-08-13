@@ -1043,27 +1043,19 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       // entered before the window) — matching what the Smart Auto-Buy card shows. Closed trades
       // are still scoped to the selected date range.
       (t.exitAt == null || (stampT(t) >= totFrom && stampT(t) <= totTo)));
-    const todayStart = new Date(new Date().setHours(0, 0, 0, 0)).getTime();
     let pnl = 0, invested = 0, open = 0, closedN = 0, wins = 0, byType = { Manual: 0, "Auto Buy": 0, Automate: 0, "Screener Auto Buy": 0 };
     for (const t of rows) {
       const closed = t.exitAt != null && t.exit != null;
       const st = ALL.find((a) => a.sym === t.sym) || {};
       const last = st.price;
       const cur = closed ? t.exit : (last != null ? last : t.entry);
-      /* Reference the P&L is measured FROM. Normally the entry price. But an OPEN position carried in
-         from a PRIOR day, shown under "Today", should contribute only TODAY's move — not its whole
-         unrealised loss since entry. So we measure from today's open (derived from the live day-change %),
-         which is why "Today" no longer shows a big loss for positions you didn't trade today. */
-      let ref = t.entry;
-      if (!closed && totPeriod === "today" && (t.entryAt || 0) < todayStart && st.chg != null && last != null) {
-        ref = last / (1 + st.chg / 100);
-      }
-      // P&L = price move × quantity held. t.qty is the amount of the asset (coins / shares / lots) for
-      // ALL markets — do NOT treat crypto qty as a USD notional (that multiplied a small stop by the
-      // return fraction and blew a tiny loss into a huge phantom one). Shorts profit when price falls.
-      const dir = (t.side === "SELL" || t.short) ? -1 : 1;
-      const p = (cur - ref) * (t.qty != null ? t.qty : (market === "Crypto" ? 0 : 1)) * dir;
-      pnl += p; invested += t.entry * (t.qty || (market === "Crypto" ? 0 : 1));
+      // P&L via the SAME leverage-aware engine (positionPnl) the Screener / Automate / Portfolio pages use,
+      // measured from ENTRY — so the Home Total's per-type boxes reconcile with every feature dashboard.
+      // (User decision: "from entry, everywhere". This replaces the old "today's-move-only" reference for
+      // carried-over open positions and the crypto-qty→0 fallback, both of which made the Home boxes read
+      // different numbers than the Screener / Automate pages for the same open position.)
+      const p = positionPnl(t, cur, marketOf(t.sym) || market);
+      pnl += p; invested += Number(t.entry) * Number(t.qty || (market === "Crypto" ? 0 : 1));
       if (!closed) open++; else { closedN++; if (p > 0) wins++; }
       const key = t.tradeType === "Auto Buy" ? "Auto Buy" : t.tradeType === "Automate" ? "Automate" : t.tradeType === "Screener Auto Buy" ? "Screener Auto Buy" : "Manual";
       byType[key] += p;

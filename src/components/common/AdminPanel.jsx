@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { adminListUsers, adminGetUser, adminSetBlocked, adminResetPin, adminPendingUsers, adminApproveUser, adminDeleteUser, adminClearVirtual, adminClearTradesByType, adminOpsOverview, adminOpsPauseUser, adminOpsResumeUser, adminOpsIncidentNote, adminAudit, adminOpsCostMetrics, adminDeltaDiag } from "../../services/adminService";
+import { adminListUsers, adminGetUser, adminSetBlocked, adminResetPin, adminPendingUsers, adminApproveUser, adminDeleteUser, adminClearVirtual, adminClearTradesByType, adminOpsOverview, adminOpsPauseUser, adminOpsResumeUser, adminOpsClearHalt, adminOpsIncidentNote, adminAudit, adminOpsCostMetrics, adminDeltaDiag } from "../../services/adminService";
 import { apiListIdeas, apiReviewIdea, apiDeleteIdea } from "../../domain/api";
 import { tradesToCSV, downloadCSV, tradeFilename } from "../../lib/csv";
 import { confirmDialog, promptDialog, alertDialog } from "../../lib/confirmDialog";   // in-app dialogs (reliable in webviews/PWA)
@@ -308,6 +308,14 @@ function OpsConsole({ userId, adminKey, card }) {
     try { await adminOpsResumeUser(userId, adminKey, phone); refresh(); }
     catch (e) { setErr(String(e.message || e)); } finally { setBusy(false); }
   };
+  const clearHalt = async () => {
+    const phone = await promptDialog("Clear the trading halt for which account? (phone)\n\nDo this only AFTER verifying at the broker (e.g. the Delta app) that there is no unknown open position from the stuck order.", { title: "Resolve halt (override)" });
+    if (!phone) return;
+    if (!(await confirmDialog(`Manually clear the entry-halt AND risk-lock for ${phone.trim()}?\n\nThis is an override for when the broker-backed reconcile can't run (e.g. proxy down). Use only when you've confirmed the broker state out of band. It's written to the audit log. Real orders still route through the proxy, so trading only resumes once the proxy is reachable.`, { title: "Resolve halt", confirmLabel: "Clear halt", danger: true }))) return;
+    setBusy(true);
+    try { const r = await adminOpsClearHalt(userId, adminKey, phone.trim(), "manual override from ops console"); await alertDialog((r && r.note) || "Halt cleared.", { title: "Halt cleared" }); refresh(); }
+    catch (e) { setErr(String(e.message || e)); } finally { setBusy(false); }
+  };
   const saveNote = async () => {
     if (!note.trim()) return;
     setBusy(true);
@@ -341,6 +349,7 @@ function OpsConsole({ userId, adminKey, card }) {
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <button onClick={refresh} className="tap disp" style={{ border: "1px solid var(--line)", background: "var(--surface)", borderRadius: 10, padding: "6px 12px", fontWeight: 800, fontSize: 12 }}>↻ Refresh</button>
         <button onClick={pauseUser} disabled={busy} className="tap disp" style={{ border: "1px solid var(--down)", background: "var(--surface)", color: "var(--down)", borderRadius: 10, padding: "6px 12px", fontWeight: 800, fontSize: 12 }}>Pause a user</button>
+        <button onClick={clearHalt} disabled={busy} title="Manual override: clear a stuck entry-halt + risk-lock after verifying the broker state" className="tap disp" style={{ border: "1px solid var(--primary)", background: "var(--surface)", color: "var(--primary)", borderRadius: 10, padding: "6px 12px", fontWeight: 800, fontSize: 12 }}>Resolve halt</button>
         <button onClick={checkDelta} disabled={deltaBusy} className="tap disp" style={{ border: "1px solid var(--line)", background: "var(--surface)", borderRadius: 10, padding: "6px 12px", fontWeight: 800, fontSize: 12 }}>{deltaBusy ? "Checking…" : "Check Delta connection"}</button>
         {ov && ov.role && <span style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--muted)", fontWeight: 700 }}>role: {ov.role}</span>}
       </div>

@@ -159,6 +159,12 @@ export async function adminOpsResumeUser(userId, key, phone) {
   const r = await fetch(`${BACKEND_URL}/api/admin/ops/resume-user`, { method: "POST", headers: headers(userId, key), body: JSON.stringify({ phone }) });
   const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || `admin ${r.status}`); return d;
 }
+/* Manual override: fully clear a stuck trading halt (entry-halt + risk-lock). Requires confirm:true — the caller
+   must have verified the broker state out of band first. Audited + financial-logged server-side. */
+export async function adminOpsClearHalt(userId, key, phone, reason = "") {
+  const r = await fetch(`${BACKEND_URL}/api/admin/ops/clear-halt`, { method: "POST", headers: headers(userId, key), body: JSON.stringify({ phone, confirm: true, reason }) });
+  const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || `admin ${r.status}`); return d;
+}
 export async function adminOpsIncidentNote(userId, key, note, ref = null) {
   const r = await fetch(`${BACKEND_URL}/api/admin/ops/incident-note`, { method: "POST", headers: headers(userId, key), body: JSON.stringify({ note, ref }) });
   const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || `admin ${r.status}`); return d;

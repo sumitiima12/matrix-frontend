@@ -2,7 +2,13 @@ name: CI
 on:
   push:
     branches: [main, master]
+    # CI-COST: doc-only commits (markdown / license / gitignore) don't change the app, so skip the
+    # whole Playwright+build run for them. Any code/config change still triggers full CI.
+    paths-ignore: ['**.md', 'docs/**', 'LICENSE', '.gitignore']
   pull_request:
+    branches: [main, master]
+    paths-ignore: ['**.md', 'docs/**', 'LICENSE', '.gitignore']
+  workflow_dispatch:
 # R38-P1-03: cancel superseded revisions so runs don't pile up.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -31,11 +37,24 @@ jobs:
         run: npm audit --omit=dev --audit-level=high
       # R34-P3-06: Playwright runs on a real browser and its report is published per-SHA. `continue-on-error: false`
       # means a failing (or empty) journey fails CI — the virtual-execution + portal specs must actually pass.
+      # CI-COST: cache the ~130MB Chromium download between runs (keyed on the lockfile, so it refreshes
+      # when the Playwright version changes). On a cache hit `install` skips the download and only the
+      # (fast) system-deps step runs.
+      - name: Cache Playwright browser
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: Playwright (desktop + mobile, real browser)
         continue-on-error: false
         run: |
           set -o pipefail
-          npx playwright install --with-deps chromium
+          if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
+            npx playwright install-deps chromium
+          else
+            npx playwright install --with-deps chromium
+          fi
           npm run test:e2e 2>&1 | tee artifacts/frontend-e2e.txt
       - name: Evidence summary (per-SHA)
         if: always()
