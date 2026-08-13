@@ -1178,7 +1178,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
 
           {dashView === "total" ? (
             <div>
-              <span style={{ fontSize: 12, opacity: .85, fontWeight: 700 }}>P&amp;L</span>
+              <span style={{ fontSize: 12, opacity: .85, fontWeight: 700 }}>P&amp;L{isReal && <span title="Estimated from live prices. Your broker-verified P&L lives in Portfolio." style={{ fontWeight: 700, opacity: .6 }}> · est.</span>}</span>
               <div onClick={onGoPortfolio} className="tap" style={{ marginTop: 2 }}>
                 {/* Headline = total P&L (Manual + Smart Auto-Buy + Automate) in BLACK, with Returns %
                     right beside it in green/red. Everything else on the card stays black. */}
