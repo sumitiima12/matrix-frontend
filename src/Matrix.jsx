@@ -220,6 +220,7 @@ const CSS = `
 .sheet{animation:sheetUp .28s cubic-bezier(.22,1,.36,1) both;max-height:80vh !important;overflow-y:auto}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
 .shine{background:linear-gradient(90deg,rgba(255,255,255,0) 0%,rgba(160,160,170,.55) 50%,rgba(255,255,255,0) 100%);background-size:200% 100%;animation:shimmer 2.6s infinite}
+.skel{border-radius:14px;background:linear-gradient(90deg,var(--elev),var(--line),var(--elev));background-size:200% 100%;animation:shimmer 1.4s linear infinite}
 .gradtext{background:linear-gradient(120deg,var(--ink),var(--muted));-webkit-background-clip:text;background-clip:text;color:transparent}
 .gold-text{background:var(--gold-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
 .gold-line{height:1px;background:var(--gold-grad);opacity:.85}
@@ -1469,7 +1470,7 @@ function AppInner() {
           {/* key per tab/detail: a crash in one page no longer latches the boundary for every
               other tab — switching tabs remounts a fresh boundary and clears the error. */}
           <ErrorBoundary key={detail ? "detail" : tab} name={detail ? "Stock detail" : tab}>
-          <Suspense fallback={<div style={{ padding: 40, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>Loading…</div>}>
+          <Suspense fallback={<div style={{ padding: 16 }}><div className="skel" style={{ height: 128, marginBottom: 12 }} /><div className="skel" style={{ height: 84, marginBottom: 12 }} /><div className="skel" style={{ height: 84 }} /></div>}>
           {detail ? (
             <DetailPage s={detail} onBack={() => setDetail(null)} watched={watch.includes(detail.sym)} toggleWatch={toggleWatch} onTrade={goTrade} onBuy={buyStock} canBuy={canBuy} />
           ) : (
@@ -1596,7 +1597,17 @@ function AppInner() {
             <div className="hide-scroll" style={{ overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
               {activity.length === 0 ? (
                 <div style={{ fontSize: 12.5, color: "var(--muted)", padding: "20px 0", textAlign: "center" }}>No recent activity yet. Orders, rejects and connections will appear here.</div>
-              ) : activity.map((a, i) => {
+              ) : (() => {
+                // Collapse consecutive identical entries (same text + same success/error) into one row with a
+                // ×N badge, so a repeating "outcome unknown" doesn't stack ten times and bury everything else.
+                const grouped = [];
+                for (const a of activity) {
+                  const last = grouped[grouped.length - 1];
+                  if (last && last.text === a.text && !!last.err === !!a.err) { last.count++; if (a.at > last.at) last.at = a.at; }
+                  else grouped.push({ ...a, count: 1 });
+                }
+                return grouped;
+              })().map((a, i) => {
                 // Connection / unknown-outcome errors are the recurring pain point — give them a next step
                 // (open the broker sheet, where the honest verify status + IP-whitelist fix hint live) instead
                 // of leaving the user only with a worry.
@@ -1605,7 +1616,7 @@ function AppInner() {
                 <div key={a.at + "-" + i} style={{ display: "flex", gap: 9, alignItems: "flex-start", padding: "9px 11px", borderRadius: 11, background: "var(--elev)", border: "1px solid " + (a.err ? "rgba(232,72,85,.35)" : "var(--line)") }}>
                   {a.err ? <X size={15} color="var(--down)" style={{ flex: "0 0 auto", marginTop: 1 }} /> : <Check size={15} color="var(--up)" style={{ flex: "0 0 auto", marginTop: 1 }} />}
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontSize: 12, color: "var(--ink)", lineHeight: 1.4 }}>{a.text}</div>
+                    <div style={{ fontSize: 12, color: "var(--ink)", lineHeight: 1.4 }}>{a.text}{a.count > 1 && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: "var(--muted)", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 6, padding: "1px 5px" }}>×{a.count}</span>}</div>
                     <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2 }}>{new Date(a.at).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</div>
                     {connErr && (
                       <button onClick={() => { setActivityOpen(false); setBrokerOpen(true); }} className="tap disp"

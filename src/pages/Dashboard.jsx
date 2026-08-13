@@ -526,8 +526,7 @@ function MarketBrief({ market, list = [] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
-  if (busy) return <p style={{ fontSize: 12.8, lineHeight: 1.6, margin: 0, color: "var(--muted)" }}>Loading…</p>;
-  if (!text) return <p style={{ fontSize: 12.8, lineHeight: 1.6, margin: 0, color: "var(--muted)" }}>Loading…</p>;
+  if (busy || !text) return <div style={{ margin: 0 }}><div className="skel" style={{ height: 11, borderRadius: 6, marginBottom: 7 }} /><div className="skel" style={{ height: 11, borderRadius: 6, marginBottom: 7, width: "92%" }} /><div className="skel" style={{ height: 11, borderRadius: 6, width: "70%" }} /></div>;
   return <p style={{ fontSize: 12.8, lineHeight: 1.6, margin: 0, color: "var(--ink-soft)" }}>{text}</p>;
 }
 
