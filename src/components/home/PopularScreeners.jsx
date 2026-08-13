@@ -540,7 +540,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
         </select>
         <div style={{ flex: "1 1 0" }} />
         <button type="button" onClick={() => setShowTrades((v) => !v)} className="tap" title="Tap to see the list of trades" style={{ flex: "0 0 auto", textAlign: "right", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>
-          <div style={{ fontSize: 8.5, color: "var(--primary)", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3 }}>P&amp;L <span style={{ display: "inline-block", transform: showTrades ? "rotate(180deg)" : "none", transition: "transform .15s", fontSize: 8 }}>▾</span></div>
+          <div style={{ fontSize: 8.5, color: "var(--primary)", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3 }}>P&amp;L{mode === "real" && <span title="Estimated from live prices — broker-verified P&L is in Portfolio." style={{ opacity: .7 }}>·est.</span>} <span style={{ display: "inline-block", transform: showTrades ? "rotate(180deg)" : "none", transition: "transform .15s", fontSize: 8 }}>▾</span></div>
           <div className="mono" style={{ fontWeight: 800, fontSize: 16, color: chgColor(periodPnl), textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 3 }}>{(periodPnl >= 0 ? "+" : "") + fmt(Number(Number(periodPnl).toFixed(2)), market)}</div>
         </button>
       </div>

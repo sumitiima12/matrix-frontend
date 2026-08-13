@@ -2249,7 +2249,7 @@ function StrategyPnLView({ strats, trades, market, onDelete }) {
 /* Per-strategy P&L with a Today / 7d / 30d / 6m date-range selector — mirrors the Screener card. Sums this
    strategy's realised P&L on trades closed inside the window plus unrealised P&L on anything still open.
    A real mounted component (not called as a bare function) so its period state is legal. */
-function StrategyPnl({ s, trades = [], market }) {
+function StrategyPnl({ s, trades = [], market, appMode = "virtual" }) {
   const [period, setPeriod] = useState("today");
   const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a && a.price != null ? a.price : null; };
   const from = useMemo(() => {
@@ -2275,7 +2275,7 @@ function StrategyPnl({ s, trades = [], market }) {
       </select>
       <div style={{ flex: 1 }} />
       <div style={{ textAlign: "right" }}>
-        <div style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 800 }}>P&amp;L</div>
+        <div style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 800 }}>P&amp;L{appMode === "real" && <span title="Estimated from live prices — broker-verified P&L is in Portfolio."> · est.</span>}</div>
         <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: chgColor(pnl) }}>{(pnl >= 0 ? "+" : "") + fmtPnl(pnl, market)}</div>
       </div>
     </div>
@@ -3106,7 +3106,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       </div>
       {/* Per-strategy P&L with a date-range selector at the TOP (right under the name) — like the Screener card. */}
       <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-        <StrategyPnl s={s} trades={trades} market={market} />
+        <StrategyPnl s={s} trades={trades} market={market} appMode={appMode} />
       </div>
       <button onClick={() => setDetailsOpen((v) => !v)} className="tap disp" style={{ width: "100%", marginTop: 10, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--line)", background: "transparent", color: "var(--muted)", borderRadius: 10, padding: "7px", fontWeight: 800, fontSize: 11.5, cursor: "pointer" }}>
         {detailsOpen ? "Hide details" : "Details"} <ChevronDown size={13} style={{ transform: detailsOpen ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
