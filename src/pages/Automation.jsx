@@ -3811,12 +3811,32 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       )}
 
       {topTab === "strategies" && (<>
-      {/* Sub-sections under Strategies — shown directly (no redundant "Strategies" heading). */}
-      <div ref={stratsRef} className="hide-scroll" style={{ display: "flex", gap: 7, margin: "18px 0 14px", scrollMarginTop: 80, overflowX: "auto" }}>
-        {[["deployed", "Deployed"], ["sample", "Samples"], ["premium", "Premium"], ["public", "Public"], ["mine", "Mine"], ["copies", "My Copies"]].map(([k, label]) => (
-          <button key={k} onClick={() => setStratTab(k)} className="tap disp" style={{ flex: "0 0 auto", borderRadius: 999, padding: "7px 14px", fontWeight: 800, fontSize: 11.5, whiteSpace: "nowrap", border: "1px solid " + (stratTab === k ? "var(--primary)" : "var(--line)"), background: stratTab === k ? "var(--primary)" : "var(--surface)", color: stratTab === k ? "var(--on-primary)" : "var(--ink)" }}>{label}</button>
-        ))}
-      </div>
+      {/* Sub-sections under Strategies (Phase 2): two-tier grouping — primary Yours / Library, then a
+         segmented control of that group's tabs. stratTab stays the single source of truth, so clone /
+         create / publish deep-links (setStratTab("mine"/"copies"/"public")) still resolve and auto-select
+         the correct group; only the tab chrome changed, not the list/filter/action logic. */}
+      {(() => {
+        const YOURS = ["deployed", "mine", "copies"];
+        const group = YOURS.includes(stratTab) ? "yours" : "library";
+        const members = group === "yours"
+          ? [["deployed", "Deployed"], ["mine", "Mine"], ["copies", "My Copies"]]
+          : [["sample", "Samples"], ["premium", "Premium"], ["public", "Public"]];
+        return (
+          <div ref={stratsRef} style={{ margin: "18px 0 14px", scrollMarginTop: 80 }}>
+            <div style={{ display: "flex", gap: 7, marginBottom: 9 }}>
+              {[["yours", "Yours"], ["library", "Library"]].map(([g, label]) => (
+                <button key={g} onClick={() => setStratTab(g === "yours" ? "deployed" : "sample")} className="tap disp"
+                  style={{ flex: 1, borderRadius: 11, padding: "9px 2px", fontWeight: 800, fontSize: 12, cursor: "pointer", border: "1px solid " + (group === g ? "var(--primary)" : "var(--line)"), background: group === g ? "var(--primary)" : "var(--surface)", color: group === g ? "var(--on-primary)" : "var(--ink)" }}>{label}</button>
+              ))}
+            </div>
+            <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto" }}>
+              {members.map(([k, label]) => (
+                <button key={k} onClick={() => setStratTab(k)} className="tap disp" style={{ flex: "0 0 auto", borderRadius: 999, padding: "6px 13px", fontWeight: 800, fontSize: 11, whiteSpace: "nowrap", cursor: "pointer", border: "1px solid " + (stratTab === k ? "var(--primary)" : "var(--line)"), background: stratTab === k ? "var(--primary-soft)" : "var(--surface)", color: stratTab === k ? "var(--primary)" : "var(--ink)" }}>{label}</button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Symbol filter — narrows the visible cards in this bucket to one or more symbols (default All).
          Backtest has its own symbol control; Public has its own filter row, so skip both here. */}
