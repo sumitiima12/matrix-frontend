@@ -3023,6 +3023,12 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       <div className="mono" style={{ fontWeight: 800, fontSize: 13, color: c || "var(--ink)" }}>{v}</div>
     </div>
   );
+  // CRASH FIX (React #300): StrategyCard is invoked as a plain function — StrategyCard({s,p}) — inside
+  // CollapsibleList's map, so ANY hook it calls runs as one of Automation's own hooks, once per visible
+  // card. The moment the visible-card count changes (Show more, a background refresh, a filter), Automation's
+  // hook count changes and React throws "Rendered fewer/more hooks than expected". So StrategyCard must be
+  // hook-FREE. We lift its only hook (the Details fold) up to this single, stable parent-level map.
+  const [detailsOpenIds, setDetailsOpenIds] = useState({});
   const StrategyCard = ({ s, p, deployed = false }) => {
     /* PERMISSIONS. Non-admins can only Edit/Clone/Publish their OWN strategies. Admins can also
        manage premium/sample and other people's public strategies (publish/unpublish/delete/clone).
@@ -3038,7 +3044,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     const canDelete = own || isAdmin;
     // UX audit D2 — the resting card leads with name · status · P&L · primary action. The detailed metric grid
     // and the deploy-size stepper fold behind a "Details" toggle so the card is calm at rest, not a wall of numbers.
-    const [detailsOpen, setDetailsOpen] = useState(false);
+    const detailsOpen = !!detailsOpenIds[s.id];   // lifted out of the card — see note above (no hook here)
     /* Open positions this strategy opened but hasn't exited yet -> "Entry triggered" + live P&L.
        BUGFIX: strategy NAMES are not unique (Neo names collide), so matching by name alone leaked another
        strategy's open trade onto this card (e.g. a BTC strategy showing a BAJAJFINSV position). We now:
@@ -3108,7 +3114,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
         <StrategyPnl s={s} trades={trades} market={market} appMode={appMode} />
       </div>
-      <button onClick={() => setDetailsOpen((v) => !v)} className="tap disp" style={{ width: "100%", marginTop: 10, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--line)", background: "transparent", color: "var(--muted)", borderRadius: 10, padding: "7px", fontWeight: 800, fontSize: 11.5, cursor: "pointer" }}>
+      <button onClick={() => setDetailsOpenIds((m) => ({ ...m, [s.id]: !m[s.id] }))} className="tap disp" style={{ width: "100%", marginTop: 10, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--line)", background: "transparent", color: "var(--muted)", borderRadius: 10, padding: "7px", fontWeight: 800, fontSize: 11.5, cursor: "pointer" }}>
         {detailsOpen ? "Hide details" : "Details"} <ChevronDown size={13} style={{ transform: detailsOpen ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
       </button>
       {detailsOpen && (<>

@@ -1182,8 +1182,15 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 {/* Headline = total P&L (Manual + Smart Auto-Buy + Automate) in BLACK, with Returns %
                     right beside it in green/red. Everything else on the card stays black. */}
                 {(() => {
-                  const hp = (isReal && isLeveraged) ? dashNet : totalStats.pnl;
-                  const hr = (isReal && isLeveraged) ? dashRet : totalStats.retPct;
+                  // The four tiles below must add up to this headline. The Automate tile shows `automatePnl`
+                  // (the stratPerf engine, so it agrees with the Automate page), while Manual/Auto-Buy/Screener
+                  // come from `totalStats.byType`. So the headline is the SUM OF THOSE SAME FOUR VALUES — if we
+                  // used totalStats.pnl instead, its Automate slice (byType.Automate) would differ from the tile
+                  // and the boxes wouldn't reconcile. Leveraged-real crypto keeps the broker-wallet headline
+                  // (dashNet), which is broker truth and intentionally separate from recorded per-type activity.
+                  const tileSum = totalStats.byType.Manual + totalStats.byType["Auto Buy"] + automatePnl + totalStats.byType["Screener Auto Buy"];
+                  const hp = (isReal && isLeveraged) ? dashNet : tileSum;
+                  const hr = (isReal && isLeveraged) ? dashRet : (totalStats.invested ? (tileSum / totalStats.invested) * 100 : totalStats.retPct);
                   return (
                     <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
                       <div className="mono" style={{ fontWeight: 800, fontSize: 27, color: "var(--ink)" }}>{(hp >= 0 ? "+" : "") + (isReal ? money1(hp) : fmtPnl(hp, market))}</div>
@@ -1204,6 +1211,11 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                         <div className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: v >= 0 ? "var(--up)" : "var(--down)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(v >= 0 ? "+" : "") + (isReal ? money1(v) : fmtPnl(v, market))}</div>
                       </div>
                     ))}
+                  </div>
+                )}
+                {isReal && isLeveraged && (
+                  <div style={{ marginTop: 7, fontSize: 10, lineHeight: 1.45, opacity: .6 }}>
+                    Headline is your live <b style={{ opacity: .85 }}>Delta wallet</b> P&amp;L (broker truth). The boxes are Matrix's recorded per-type activity, so they may not add up to it.
                   </div>
                 )}
                 {/* At-a-glance counts — trades and OPEN positions for THIS market. */}
