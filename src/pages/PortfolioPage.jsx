@@ -107,8 +107,11 @@ function Stat({ k, v, c }) { return <div><div style={{ color: "var(--muted)" }}>
 /* ============================== WATCHLIST ============================== */
 
 function ManageHolding({ r, st, onBuy, onSell, onClosePosition, onUpdate, onClose, real = false, onArmExit }) {
+  const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+  const holdQty = round2(Math.abs(Number(r.qty) || 0)) || 1;
   const [buyQty, setBuyQty] = useState(1);
-  const [sellQty, setSellQty] = useState(r.qty || 1);   // default to selling the whole holding
+  const [sellQty, setSellQty] = useState(holdQty);   // default to selling the whole holding
+  const [closeQty, setCloseQty] = useState(holdQty); // default to flattening the whole position
   const [sl, setSl] = useState(r.sl ? String(r.sl) : "");
   const [tsl, setTsl] = useState(r.tsl ? String(r.tsl) : "");
   const [tp, setTp] = useState(r.tp ? String(r.tp) : "");
@@ -126,23 +129,36 @@ function ManageHolding({ r, st, onBuy, onSell, onClosePosition, onUpdate, onClos
     borderRadius: 9, display: "grid", placeItems: "center", cursor: "pointer", fontWeight: 800,
   };
 
+  const isShort = !!(r.short || r.side === "SELL" || (Number(r.qty) < 0));
+  // Live price + currency for the "amount" readout under each qty (qty × price). Crypto/US settle in USD.
+  const dmkt = r.market || r.m || marketOf(r.sym);
+  const dccy = (dmkt === "Crypto" || dmkt === "US") ? "$" : "₹";
+  const px = Number(r.ltp != null ? r.ltp : (st && st.price != null ? st.price : r.avg)) || 0;
+  const amtText = (q) => px ? `≈ ${dccy}${round2((Number(q) || 0) * px).toLocaleString(dccy === "$" ? "en-US" : "en-IN", { maximumFractionDigits: 2 })}` : "";
+  // Qty stepper — 2-decimal aware (crypto holdings are fractional, so no more 1.4000000000000001) with the
+  // notional amount shown underneath. `max` caps sell/close to the holding size.
   const stepper = (val, setter, max) => (
-    <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto" }}>
-      <button onClick={() => setter((q) => Math.max(1, q - 1))} className="tap" style={{ ...qBtn, width: 30, height: 30, fontSize: 16 }}>–</button>
-      <input value={val} onChange={(e) => setter(Math.max(1, Math.min(max || 9999, parseInt(e.target.value) || 1)))} className="no-ring mono" style={{ width: 44, textAlign: "center", border: "1px solid var(--line)", borderRadius: 9, padding: 6, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }} />
-      <button onClick={() => setter((q) => Math.min(max || 9999, q + 1))} className="tap" style={{ ...qBtn, width: 30, height: 30, fontSize: 16 }}>+</button>
+    <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: "0 0 auto" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <button onClick={() => setter((q) => round2(Math.max(0, (Number(q) || 0) - 1)))} className="tap" style={{ ...qBtn, width: 30, height: 30, fontSize: 16 }}>–</button>
+        <input value={val} inputMode="decimal" onChange={(e) => { const raw = e.target.value.replace(/[^0-9.]/g, ""); if (raw === "") { setter(""); return; } setter(round2(Math.min(max != null ? max : 9999999, parseFloat(raw) || 0))); }} className="no-ring mono" style={{ width: 60, textAlign: "center", border: "1px solid var(--line)", borderRadius: 9, padding: 6, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }} />
+        <button onClick={() => setter((q) => round2(Math.min(max != null ? max : 9999999, (Number(q) || 0) + 1)))} className="tap" style={{ ...qBtn, width: 30, height: 30, fontSize: 16 }}>+</button>
+      </div>
+      {px ? <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 600, textAlign: "center" }}>{amtText(val)}</div> : null}
     </div>
   );
-  const isShort = !!(r.short || r.side === "SELL" || (Number(r.qty) < 0));
   return (
     <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-      {/* CLOSE POSITION — direction-aware reduce-only flatten (SELL closes a long, BUY covers a short).
-         Distinct from the plain Sell below, which OPENS/adds short exposure. */}
+      {/* CLOSE POSITION — direction-aware reduce-only close (SELL closes a long, BUY covers a short), qty
+         editable for a partial close. Distinct from the plain Sell below, which OPENS/adds short exposure. */}
       {onClosePosition && (
-        <button onClick={() => { onClosePosition(r); onClose && onClose(); }} className="tap disp"
-          style={{ width: "100%", background: "var(--ink)", color: "var(--surface)", border: "none", borderRadius: 10, padding: 12, fontWeight: 800, fontSize: 13, marginBottom: 10 }}>
-          Close position · flatten {qtyText(Math.abs(r.qty || 0), r.sym)} {isShort ? "short" : "long"}
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          {stepper(closeQty, setCloseQty, holdQty)}
+          <button onClick={() => { onClosePosition({ ...r, qty: round2(Number(closeQty) || holdQty), short: isShort, side: isShort ? "SELL" : "BUY" }); onClose && onClose(); }} className="tap disp"
+            style={{ flex: 1, background: "var(--ink)", color: "var(--surface)", border: "none", borderRadius: 10, padding: 11, fontWeight: 800, fontSize: 13 }}>
+            Close position
+          </button>
+        </div>
       )}
       {/* Buy more (adds to a long / covers a short) */}
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -151,10 +167,10 @@ function ManageHolding({ r, st, onBuy, onSell, onClosePosition, onUpdate, onClos
       </div>
       {/* Sell — opens / adds SHORT exposure (directional). To exit, use Close position above. */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 9 }}>
-        {stepper(sellQty, setSellQty, r.qty)}
+        {stepper(sellQty, setSellQty, holdQty)}
         <button onClick={() => { onSell && onSell(st, sellQty, { market: r.market || r.m, product: r.product || r.productType || undefined }); onClose && onClose(); }} className="tap disp" style={{ flex: 1, background: "linear-gradient(120deg,var(--down),#D93A4E)", color: "#fff", border: "none", borderRadius: 10, padding: 11, fontWeight: 800, fontSize: 13 }}>Sell (short) · {sellQty}</button>
       </div>
-      <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 7 }}>Quantities are in units/contracts. <b>Close position</b> flattens your holding; <b>Sell</b> opens/adds a short. You hold {qtyText(r.qty, r.sym)}.</div>
+      <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 7 }}>Quantities are in units/contracts. <b>Close position</b> reduces/flattens your holding; <b>Sell</b> opens/adds a short. You hold {qtyText(r.qty, r.sym)}.</div>
       <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600, margin: "12px 0 6px" }}>{real ? "Stop / target (%) — armed with your broker" : "Risk orders (%)"}</div>
       <div style={{ display: "flex", gap: 8 }}>
         {[["Stop loss", sl, setSl], ["Trailing SL", tsl, setTsl], ["Take profit", tp, setTp]].map(([lbl, val, setter]) => (
@@ -240,6 +256,19 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
     finally { setAiLoading(false); }
   };
 
+  /* AUTO-RETRY a failed real-portfolio load. A cold backend (Render spins down when idle) or a brief
+     Delta/proxy blip makes the first fetch fail — instead of dead-ending on the error screen, retry a
+     few times with exponential backoff. Manual "Try again" still works and resets the counter. */
+  const RETRY_MAX = 4;
+  const [retryN, setRetryN] = useState(0);
+  useEffect(() => {
+    if (mode !== "real" || !realErr || !onRefreshReal) { setRetryN((n) => (n === 0 ? n : 0)); return; }
+    if (retryN >= RETRY_MAX) return;   // stop auto-retrying; the user can still tap Try again
+    const delay = Math.min(15000, 2500 * Math.pow(2, retryN));   // 2.5s → 5s → 10s → 15s
+    const id = setTimeout(() => { setRetryN((n) => n + 1); onRefreshReal(); }, delay);
+    return () => clearTimeout(id);
+  }, [mode, realErr, onRefreshReal, retryN]);
+
   /* ---- VIRTUAL-book state & derived data ----
      These hooks and computations MUST run on every render (Rules of Hooks). They used to
      live below the `if (mode === "real")` early-return, so switching to Real ran fewer hooks
@@ -305,11 +334,15 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
       return <div style={{ padding: "40px 16px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>Loading your {brokerName || "broker"} portfolio…</div>;
     }
     if (realErr) {
+      const stillRetrying = retryN < RETRY_MAX;
       return (
         <div style={{ padding: "40px 16px", textAlign: "center" }}>
           <div style={{ color: "var(--down)", fontSize: 13, fontWeight: 700 }}>Couldn't load your real portfolio</div>
           <div style={{ color: "var(--muted)", fontSize: 11.5, marginTop: 6, lineHeight: 1.5 }}>{realErr}</div>
-          <button onClick={onRefreshReal} className="tap disp" style={{ marginTop: 14, border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 10, padding: "9px 18px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>Try again</button>
+          <div style={{ color: "var(--muted)", fontSize: 10.5, marginTop: 6 }}>
+            {stillRetrying ? (realLoading ? "Retrying…" : `Retrying automatically… (attempt ${retryN + 1} of ${RETRY_MAX}) — the backend may be waking up.`) : "Automatic retries paused. Tap Try again."}
+          </div>
+          <button onClick={() => { setRetryN(0); onRefreshReal && onRefreshReal(); }} className="tap disp" style={{ marginTop: 14, border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 10, padding: "9px 18px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>Try again</button>
         </div>
       );
     }
