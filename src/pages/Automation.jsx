@@ -2741,6 +2741,16 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     }));
     setToast(on ? `Activated ${targets.length} strateg${targets.length > 1 ? "ies" : "y"}` : `Deactivated ${targets.length} strateg${targets.length > 1 ? "ies" : "y"}`);
   };
+  /* Total strategies active across EVERY market (not just the current tab). The per-tab "Deactivate All" is
+     market-scoped, so strategies deployed on other markets stay active — that's why the homepage "Active
+     Strategies" count didn't drop to 0 after deactivating one tab. This global control flips them all off. */
+  const activeCountGlobal = (strats || []).filter((s) => s && s.active).length;
+  const deactivateAllStrategiesGlobal = async () => {
+    if (!activeCountGlobal) { setToast("No active strategies to deactivate."); return; }
+    if (!(await confirmDialog(`Deactivate ALL ${activeCountGlobal} active strateg${activeCountGlobal > 1 ? "ies" : "y"} across every market? Paper strategies stop running and any REAL-armed ones stop placing new orders (open positions keep their SL/TP).`, { title: "Deactivate all strategies", confirmLabel: "Deactivate all" }))) return;
+    setStrats((p) => (p || []).map((s) => (s && s.active) ? { ...s, active: false } : s));
+    setToast(`Deactivated all ${activeCountGlobal} strateg${activeCountGlobal > 1 ? "ies" : "y"} across every market.`);
+  };
   /* Two-button bar shown atop a strategy section. `items` is ALREADY scoped to the current market by
      the caller. Each button's count is the number it will actually change — inactive count for
      Activate, active count for Deactivate — so the numbers match what happens. */
@@ -2749,9 +2759,16 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     const offCount = rows.filter((s) => !activeInMarket(s)).length;   // will be activated
     const onCount = rows.filter((s) => activeInMarket(s)).length;     // will be deactivated
     return (
-      <div style={{ display: "flex", gap: 8, margin: "4px 0 6px" }}>
-        <button onClick={() => bulkSetActive(items, true)} disabled={!offCount} className="tap disp" style={{ flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11.5, border: "none", background: offCount ? "linear-gradient(120deg,var(--up),#0EA968)" : "var(--elev)", color: offCount ? "#fff" : "var(--muted)", cursor: offCount ? "pointer" : "not-allowed" }}>Activate All{offCount ? ` (${offCount})` : ""}</button>
-        <button onClick={() => bulkSetActive(items, false)} disabled={!onCount} className="tap disp" style={{ flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11.5, border: "1px solid var(--line)", background: onCount ? "var(--surface)" : "var(--elev)", color: onCount ? "var(--ink)" : "var(--muted)", cursor: onCount ? "pointer" : "not-allowed" }}>Deactivate All{onCount ? ` (${onCount})` : ""}</button>
+      <div style={{ margin: "4px 0 6px" }}>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => bulkSetActive(items, true)} disabled={!offCount} className="tap disp" style={{ flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11.5, border: "none", background: offCount ? "linear-gradient(120deg,var(--up),#0EA968)" : "var(--elev)", color: offCount ? "#fff" : "var(--muted)", cursor: offCount ? "pointer" : "not-allowed" }}>Activate All{offCount ? ` (${offCount})` : ""}</button>
+          <button onClick={() => bulkSetActive(items, false)} disabled={!onCount} className="tap disp" style={{ flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11.5, border: "1px solid var(--line)", background: onCount ? "var(--surface)" : "var(--elev)", color: onCount ? "var(--ink)" : "var(--muted)", cursor: onCount ? "pointer" : "not-allowed" }}>Deactivate All{onCount ? ` (${onCount})` : ""}</button>
+        </div>
+        {/* Only when strategies are active BEYOND this market's section — the one-tap "turn everything off" the
+            homepage count reflects, so "I deactivated all but 91 still show" can't happen. */}
+        {activeCountGlobal > onCount && (
+          <button onClick={deactivateAllStrategiesGlobal} className="tap disp" style={{ width: "100%", marginTop: 8, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11, border: "1px solid var(--line)", background: "transparent", color: "var(--muted)", cursor: "pointer" }}>Deactivate ALL {activeCountGlobal} strategies (every market)</button>
+        )}
       </div>
     );
   };
