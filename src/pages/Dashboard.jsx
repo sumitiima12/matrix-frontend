@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { currentIdeas } from "../domain/ideas";
 import { dailyPicks, techSignal } from "../domain/signals";
@@ -991,11 +991,26 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   // broker. Never mutates the journal; only trusts holdings once they've actually LOADED (array present) so a failed
   // read can never hide a genuine position. Symbols normalised (strip USD/USDT/INR/-EQ) so DOGE == DOGEUSD.
   const _normSym = (s) => String(s || "").replace(/(USDT|USD|INR|PERP)$/i, "").replace(/-EQ$/i, "").toUpperCase();
-  const realHeld = (isReal && realPortfolio && Array.isArray(realPortfolio.holdings))
+  const _liveHeld = (isReal && realPortfolio && Array.isArray(realPortfolio.holdings))
     ? new Set(realPortfolio.holdings.filter((h) => Number(h.qty)).map((h) => _normSym(h.sym)))
     : null;
-  // A real journalled-open trade the broker doesn't actually hold → treat as closed (phantom open).
-  const isPhantomOpen = (t) => !!(realHeld && t && t.real && t.exitAt == null && t.status !== "rejected" && !realHeld.has(_normSym(t.sym)));
+  /* Remember the LAST SUCCESSFUL holdings read so a transient fetch failure ("Couldn't load your real
+     portfolio") doesn't blank realHeld and un-hide phantom rows the broker already told us are gone.
+     We keep both the set and WHEN it was taken. Cleared when leaving real mode so a virtual→real switch
+     never reuses stale crypto holdings. */
+  const _heldSnap = useRef({ set: null, at: 0 });
+  if (!isReal) { _heldSnap.current = { set: null, at: 0 }; }
+  else if (_liveHeld) { _heldSnap.current = { set: _liveHeld, at: Date.now() }; }
+  const realHeld = _liveHeld || _heldSnap.current.set;   // survive a transient fetch failure
+  const _heldAt = _liveHeld ? Date.now() : _heldSnap.current.at;
+  /* A real journalled-open trade the broker doesn't actually hold → treat as closed (phantom open).
+     CRITICAL SAFETY: when we're falling back to a STALE snapshot (live read failed), never hide a
+     position that was OPENED AFTER that snapshot — we have no broker truth for it yet, so hiding it
+     would wrongly bury a genuine new position during an outage. With a fresh live read, _heldAt≈now
+     so this guard is a no-op and behaviour is unchanged. */
+  const isPhantomOpen = (t) => !!(realHeld && t && t.real && t.exitAt == null && t.status !== "rejected"
+    && !realHeld.has(_normSym(t.sym))
+    && (t.entryAt == null || t.entryAt <= _heldAt));
   const autoRows = useMemo(() => (trades || [])
     .filter((t) => (t.tradeType === "Auto Buy") && ((t.market || marketOf(t.sym) || "IN")) === market && (t.entryAt || 0) >= periodFrom)
     .map((t) => {
