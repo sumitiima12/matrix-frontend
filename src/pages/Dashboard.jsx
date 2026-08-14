@@ -1184,10 +1184,16 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   const tileSum = totalStats.byType.Manual + totalStats.byType["Auto Buy"] + automatePnl + totalStats.byType["Screener Auto Buy"];
                   const hp = (isReal && isLeveraged) ? dashNet : tileSum;
                   const hr = (isReal && isLeveraged) ? dashRet : (totalStats.invested ? (tileSum / totalStats.invested) * 100 : totalStats.retPct);
+                  // Suppress the % when the capital base is too small for it to mean anything: a few dollars of P&L
+                  // on a tiny deployed base produces absurd triple-digit percentages (e.g. "+214%") that overstate
+                  // performance — misleading on a real-money app. Below the floor we show just the absolute P&L.
+                  const pctBase = (isReal && isLeveraged) ? dashInv : totalStats.invested;
+                  const pctFloor = (market === "Crypto" || market === "US") ? 25 : 2000;
+                  const showPct = pctBase >= pctFloor && isFinite(hr);
                   return (
                     <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
                       <div className="mono" style={{ fontWeight: 800, fontSize: 27, color: "var(--ink)" }}>{(hp >= 0 ? "+" : "") + (isReal ? money1(hp) : fmtPnl(hp, market))}</div>
-                      <div className="mono" style={{ fontWeight: 800, fontSize: 16, color: hr >= 0 ? "var(--up)" : "var(--down)" }}>{(hr >= 0 ? "+" : "") + hr.toFixed(1) + "%"}</div>
+                      {showPct && <div className="mono" style={{ fontWeight: 800, fontSize: 16, color: hr >= 0 ? "var(--up)" : "var(--down)" }}>{(hr >= 0 ? "+" : "") + hr.toFixed(1) + "%"}</div>}
                     </div>
                   );
                 })()}

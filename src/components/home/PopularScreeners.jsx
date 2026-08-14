@@ -949,7 +949,7 @@ function ScreenerDashboard({ trades = [], market }) {
   const Tile = ({ k, v, c, onClick, active }) => (
     <button onClick={onClick} disabled={!onClick} className={onClick ? "tap" : undefined}
       style={{ flex: "1 1 0", minWidth: 0, textAlign: "left", background: active ? "var(--primary-soft)" : "rgba(0,0,0,.05)", border: active ? "1px solid var(--primary)" : "1px solid transparent", borderRadius: 12, padding: "9px 8px", cursor: onClick ? "pointer" : "default" }}>
-      <div style={{ fontSize: 9, opacity: .85, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".02em", whiteSpace: "nowrap" }}>{k}{onClick ? " ›" : ""}</div>
+      <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700, letterSpacing: ".01em", whiteSpace: "nowrap" }}>{k}{onClick ? " ›" : ""}</div>
       <div className="mono" style={{ fontWeight: 800, fontSize: 14, marginTop: 3, color: c || "var(--ink)" }}>{v}</div>
     </button>
   );

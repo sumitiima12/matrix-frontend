@@ -150,7 +150,7 @@ const CSS = `
   --glow:0 16px 40px rgba(0,0,0,.5);
   --gold-grad:linear-gradient(120deg,#8A8A92,#D8D8DE 45%,#F4F4F6 55%,#A8A8B0);
   --silver-grad:linear-gradient(135deg,#6E6E78 0%,#C9C9D4 30%,#F4F4F8 50%,#B7B7C2 72%,#6E6E78 100%);
-  --card-grad:linear-gradient(165deg, rgba(255,255,255,.09), rgba(255,255,255,.035));
+  --card-grad:linear-gradient(165deg, #202024, #151517);
   --card-border:linear-gradient(160deg, rgba(255,255,255,.40), rgba(255,255,255,.05) 42%, rgba(0,0,0,.30));
   --feature-grad:linear-gradient(150deg,#33333a 0%,#232329 42%,#141417 78%,#0d0d10 100%);
   --app-bg:radial-gradient(90% 48% at 96% 108%, #17171a 0%, rgba(23,23,26,0) 60%), linear-gradient(180deg,#121214 0%, #0a0a0b 100%);
