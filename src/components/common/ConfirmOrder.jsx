@@ -93,7 +93,10 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
   // (converting a held amount to $ and back inflates it past what you own and the risk check
   // rejects it). So only buys use amount-mode.
   const amountMode = isCrypto && side === "BUY";
-  const effQty = amountMode ? (price ? +(amount / price).toFixed(6) : 0) : qty;
+  const _effQtyRaw = amountMode ? (price ? (amount / price) : 0) : qty;
+  // Real crypto (Delta) trades in WHOLE contracts — Delta rounds the size down, so showing 143.30914 then filling 143
+  // was misleading. Floor to an integer for real buys so the drawer, the Buy button, and the actual fill all match.
+  const effQty = amountMode ? (isReal ? Math.floor(_effQtyRaw) : +(_effQtyRaw).toFixed(6)) : qty;
   const units = amountMode ? effQty : (isCrypto ? qty : qty * (lot || 1));
   const total = amountMode ? (Number(amount) || 0) : (price != null ? price * units : null);
   const short = total != null && side === "BUY" && total > wallet;
