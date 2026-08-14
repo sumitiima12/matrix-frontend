@@ -106,7 +106,7 @@ function Stat({ k, v, c }) { return <div><div style={{ color: "var(--muted)" }}>
 
 /* ============================== WATCHLIST ============================== */
 
-function ManageHolding({ r, st, onBuy, onSell, onUpdate, onClose, real = false, onArmExit }) {
+function ManageHolding({ r, st, onBuy, onSell, onClosePosition, onUpdate, onClose, real = false, onArmExit }) {
   const [buyQty, setBuyQty] = useState(1);
   const [sellQty, setSellQty] = useState(r.qty || 1);   // default to selling the whole holding
   const [sl, setSl] = useState(r.sl ? String(r.sl) : "");
@@ -133,19 +133,28 @@ function ManageHolding({ r, st, onBuy, onSell, onUpdate, onClose, real = false, 
       <button onClick={() => setter((q) => Math.min(max || 9999, q + 1))} className="tap" style={{ ...qBtn, width: 30, height: 30, fontSize: 16 }}>+</button>
     </div>
   );
+  const isShort = !!(r.short || r.side === "SELL" || (Number(r.qty) < 0));
   return (
     <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-      {/* Buy more */}
+      {/* CLOSE POSITION — direction-aware reduce-only flatten (SELL closes a long, BUY covers a short).
+         Distinct from the plain Sell below, which OPENS/adds short exposure. */}
+      {onClosePosition && (
+        <button onClick={() => { onClosePosition(r); onClose && onClose(); }} className="tap disp"
+          style={{ width: "100%", background: "var(--ink)", color: "var(--surface)", border: "none", borderRadius: 10, padding: 12, fontWeight: 800, fontSize: 13, marginBottom: 10 }}>
+          Close position · flatten {qtyText(Math.abs(r.qty || 0), r.sym)} {isShort ? "short" : "long"}
+        </button>
+      )}
+      {/* Buy more (adds to a long / covers a short) */}
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         {stepper(buyQty, setBuyQty)}
-        <button onClick={() => { onBuy && onBuy(st, buyQty); }} className="tap disp" style={{ flex: 1, background: "linear-gradient(120deg,var(--up),#0EA968)", color: "#fff", border: "none", borderRadius: 10, padding: 11, fontWeight: 800, fontSize: 13 }}>Buy more · {buyQty}</button>
+        <button onClick={() => { onBuy && onBuy(st, buyQty); }} className="tap disp" style={{ flex: 1, background: "linear-gradient(120deg,var(--up),#0EA968)", color: "#fff", border: "none", borderRadius: 10, padding: 11, fontWeight: 800, fontSize: 13 }}>Buy · {buyQty}</button>
       </div>
-      {/* Sell */}
+      {/* Sell — opens / adds SHORT exposure (directional). To exit, use Close position above. */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 9 }}>
         {stepper(sellQty, setSellQty, r.qty)}
-        <button onClick={() => { onSell && onSell(st, sellQty, { market: r.market || r.m, product: r.product || r.productType || undefined }); onClose && onClose(); }} className="tap disp" style={{ flex: 1, background: "linear-gradient(120deg,var(--down),#D93A4E)", color: "#fff", border: "none", borderRadius: 10, padding: 11, fontWeight: 800, fontSize: 13 }}>{sellQty >= (r.qty || 0) ? `Close position · Sell ${sellQty}` : `Sell · ${sellQty}`}</button>
+        <button onClick={() => { onSell && onSell(st, sellQty, { market: r.market || r.m, product: r.product || r.productType || undefined }); onClose && onClose(); }} className="tap disp" style={{ flex: 1, background: "linear-gradient(120deg,var(--down),#D93A4E)", color: "#fff", border: "none", borderRadius: 10, padding: 11, fontWeight: 800, fontSize: 13 }}>Sell (short) · {sellQty}</button>
       </div>
-      <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 7 }}>Quantities are in units/contracts. You hold {qtyText(r.qty, r.sym)} · selling all {qtyText(r.qty, r.sym)} closes the position.</div>
+      <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 7 }}>Quantities are in units/contracts. <b>Close position</b> flattens your holding; <b>Sell</b> opens/adds a short. You hold {qtyText(r.qty, r.sym)}.</div>
       <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600, margin: "12px 0 6px" }}>{real ? "Stop / target (%) — armed with your broker" : "Risk orders (%)"}</div>
       <div style={{ display: "flex", gap: 8 }}>
         {[["Stop loss", sl, setSl], ["Trailing SL", tsl, setTsl], ["Take profit", tp, setTp]].map(([lbl, val, setter]) => (
@@ -216,7 +225,7 @@ function AnalyzeBlock({ onRun, loading, review }) {
   );
 }
 
-export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, onUpdate, onArmRealExit, onRemove, priceSnap = {}, onWhy, onOpen, mode = "virtual", realPortfolio = null, realErr = null, realLoading = false, onRefreshReal, brokerName, realAvailable = false, userId = null }) {
+export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, onClosePosition, onUpdate, onArmRealExit, onRemove, priceSnap = {}, onWhy, onOpen, mode = "virtual", realPortfolio = null, realErr = null, realLoading = false, onRefreshReal, brokerName, realAvailable = false, userId = null }) {
   // Crypto and US settle in USD; Indian/Commodity in INR. Used to format the real book.
   const ccy = (market === "Crypto" || market === "US") ? "$" : "₹";
   const loc = ccy === "$" ? "en-US" : "en-IN";
@@ -534,6 +543,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
                       st={uni || { sym: h.sym, price: h.ltp, market: mkt }}
                       onBuy={onBuy}
                       onSell={onSell}
+                      onClosePosition={onClosePosition}
                       onArmExit={onArmRealExit}
                       onClose={() => setExpand(null)}
                     />
@@ -719,7 +729,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
               <button onClick={() => setExpand(expand === r.sym ? null : r.sym)} className="tap disp" style={{ flex: 1, background: expand === r.sym ? "var(--primary)" : "var(--surface)", color: expand === r.sym ? "var(--on-primary)" : "var(--ink)", border: "1px solid var(--line)", borderRadius: 11, padding: 11, fontWeight: 800, fontSize: 12.5, display: "flex", gap: 5, alignItems: "center", justifyContent: "center" }}><SlidersHorizontal size={13} /> {expand === r.sym ? "Hide" : "Manage · Buy / Sell"}</button>
             </div>
-            {expand === r.sym && <ManageHolding r={r} st={st} onBuy={onBuy} onSell={onSell} onUpdate={onUpdate} onClose={() => setExpand(null)} />}
+            {expand === r.sym && <ManageHolding r={r} st={st} onBuy={onBuy} onSell={onSell} onClosePosition={onClosePosition} onUpdate={onUpdate} onClose={() => setExpand(null)} />}
           </div>
         );
       })}
