@@ -532,9 +532,10 @@ function AppInner() {
     if (!requireLogin()) return false;
     const mkt = marketOf(stock.sym) || market;
     if (virtualBlocked(mkt)) { setBuyToast({ t: (mkt === "IN" || mkt === "Commodity") ? "Paper trading isn't available for Indian markets. Connect your broker to trade for real." : "Virtual trading isn't enabled for this market.", e: true }); return false; }
+    setConfirmNote(null);   // clear any stale "outcome unknown" note from a PRIOR order when opening a fresh drawer
     setConfirmOrder({ s: stock, qty, side: "BUY",  opts, market: mkt, lot: opts.lot || 1, actionId: newActionId() }); return true;
   };
-  const sellStock = (stock, qty = 1, opts = {}) => { setConfirmOrder({ s: stock, qty, side: "SELL", opts, market: opts.market || marketOf(stock.sym) || market, lot: opts.lot || 1, actionId: newActionId() }); return true; };
+  const sellStock = (stock, qty = 1, opts = {}) => { setConfirmNote(null); setConfirmOrder({ s: stock, qty, side: "SELL", opts, market: opts.market || marketOf(stock.sym) || market, lot: opts.lot || 1, actionId: newActionId() }); return true; };
 
   /* AUTO-BUY places orders WITHOUT the per-trade confirm drawer. In Real mode the first
      time it's about to fire we show a single heads-up (see Dashboard), then never again.
