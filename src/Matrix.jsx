@@ -153,7 +153,7 @@ const CSS = `
   --card-grad:linear-gradient(165deg, rgba(255,255,255,.09), rgba(255,255,255,.035));
   --card-border:linear-gradient(160deg, rgba(255,255,255,.40), rgba(255,255,255,.05) 42%, rgba(0,0,0,.30));
   --feature-grad:linear-gradient(150deg,#33333a 0%,#232329 42%,#141417 78%,#0d0d10 100%);
-  --app-bg:radial-gradient(85% 42% at 22% -8%, #1f1f23 0%, rgba(31,31,35,0) 62%), radial-gradient(95% 52% at 97% 108%, #191a1e 0%, rgba(25,26,30,0) 62%), linear-gradient(180deg,#141416 0%, #0a0a0b 100%);
+  --app-bg:radial-gradient(90% 48% at 96% 108%, #17171a 0%, rgba(23,23,26,0) 60%), linear-gradient(180deg,#121214 0%, #0a0a0b 100%);
   --header-bg:#0B0B0D;
   --on-primary:#141416;
 }
@@ -307,6 +307,15 @@ function AppInner() {
   // Theme persists across sessions — it reset to light on every reload before.
   const [theme, setTheme] = useState(() => lsGet("mx_theme", "dark"));
   useEffect(() => { lsSet("mx_theme", theme); }, [theme]);
+  // Neo FAB auto-hides while scrolling so it never covers the card you're reading, and fades back ~500ms
+  // after you stop. A fixed button over full-width cards otherwise always occludes content (UI audit P0).
+  const [fabHide, setFabHide] = useState(false);
+  useEffect(() => {
+    let t;
+    const onScroll = () => { setFabHide(true); clearTimeout(t); t = setTimeout(() => setFabHide(false), 500); };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => { window.removeEventListener("scroll", onScroll); clearTimeout(t); };
+  }, []);
   const [onboardSkipped, setOnboardSkipped] = useState(false);
   const [profile, setProfile] = useState(null);
   /* Auto-Buy on/off PER MARKET. Lifted here (was local to the dashboard, so it reset on
@@ -1379,7 +1388,7 @@ function AppInner() {
             ) : (
               <span className="pill" style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".04em", padding: "3px 7px", display: "flex", alignItems: "center", gap: 4, background: "var(--elev)", color: "var(--muted)" }}>
                 <span style={{ width: 4, height: 4, borderRadius: 4, background: "var(--muted)" }} />
-                {marketOpen(market) ? "NO DATA" : "CLOSED"}
+                {marketOpen(market) ? "No live data" : "Market closed"}
               </span>
             )}
 
@@ -1542,7 +1551,7 @@ function AppInner() {
           tab. Sits inside a centered 460-wide track so it hugs the app's right edge, not the viewport. */}
       {!detail && !onboarding && !drawer && !confirmOrder && !walletOpen && !brokerOpen && !search && !showProfile && tab !== "ask" && (
         <div style={{ position: "fixed", left: 0, right: 0, bottom: "calc(env(safe-area-inset-bottom, 0px) + 108px)", maxWidth: 460, margin: "0 auto", zIndex: 105, display: "flex", justifyContent: "flex-end", paddingRight: 16, pointerEvents: "none" }}>
-          <button onClick={() => { setHistOpen(false); setTab("ask"); setTradePreset(null); }} aria-label="Ask Neo" className="tap" style={{ pointerEvents: "auto", width: 56, height: 56, borderRadius: "50%", border: "none", background: "linear-gradient(135deg, var(--primary), var(--primary-2))", boxShadow: "0 8px 24px rgba(40,10,80,.4)", display: "grid", placeItems: "center", color: "var(--on-primary)" }}>
+          <button onClick={() => { setHistOpen(false); setTab("ask"); setTradePreset(null); }} aria-label="Ask Neo" className="tap" style={{ pointerEvents: fabHide ? "none" : "auto", opacity: fabHide ? 0 : 1, transform: fabHide ? "translateY(14px) scale(.85)" : "none", transition: "opacity .2s ease, transform .2s ease", width: 56, height: 56, borderRadius: "50%", border: "none", background: "linear-gradient(135deg, var(--primary), var(--primary-2))", boxShadow: "0 8px 24px rgba(40,10,80,.4)", display: "grid", placeItems: "center", color: "var(--on-primary)" }}>
             <NeoIcon size={28} />
           </button>
         </div>
