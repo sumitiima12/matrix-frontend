@@ -143,17 +143,17 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
         {/* #2 — MODE is unmistakable. Real = red bar + broker + "real money" (never colour alone: text + icon);
             Virtual = neutral. This sits at the top of the point-of-no-return drawer so the user can never
             confuse a paper order for a live one. */}
+        {!isReal && (
         <div style={{
           display: "flex", alignItems: "center", gap: 8, marginTop: 12, padding: "8px 11px", borderRadius: 10,
-          background: isReal ? "rgba(239,68,68,.10)" : "var(--elev)",
-          border: `1px solid ${isReal ? "var(--down)" : "var(--line)"}`,
-          borderLeft: `3px solid ${isReal ? "var(--down)" : "var(--muted)"}`,
+          background: "var(--elev)", border: "1px solid var(--line)", borderLeft: "3px solid var(--muted)",
         }}>
-          {isReal ? <AlertTriangle size={14} color="var(--down)" style={{ flex: "0 0 auto" }} /> : <ShieldCheck size={14} color="var(--muted)" style={{ flex: "0 0 auto" }} />}
-          <span style={{ fontSize: 11.5, fontWeight: 800, color: isReal ? "var(--down)" : "var(--muted)", letterSpacing: ".02em" }}>
-            {isReal ? `REAL${brokerName ? " · " + brokerName : ""} · uses real money` : "VIRTUAL · paper money — no real funds"}
+          <ShieldCheck size={14} color="var(--muted)" style={{ flex: "0 0 auto" }} />
+          <span style={{ fontSize: 11.5, fontWeight: 800, color: "var(--muted)", letterSpacing: ".02em" }}>
+            Virtual · paper money — no real funds
           </span>
         </div>
+        )}
 
         <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 12 }}>
           <span className="disp" style={{ fontWeight: 800, fontSize: 16 }}>{s.sym}</span>
@@ -468,11 +468,11 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
         </>
         )}
 
-        <div style={{ fontSize: 10.5, color: isReal ? "var(--down)" : "var(--muted)", textAlign: "center", marginTop: 10, lineHeight: 1.45, fontWeight: isReal ? 700 : 400 }}>
-          {isReal
-            ? `REAL order — executes on ${brokerName || "your broker"} with real money. Not investment advice.`
-            : "Paper trade. Virtual capital, filled at the real live price."}
+        {!isReal && (
+        <div style={{ fontSize: 10.5, color: "var(--muted)", textAlign: "center", marginTop: 10, lineHeight: 1.45, fontWeight: 400 }}>
+          Paper trade. Virtual capital, filled at the real live price.
         </div>
+        )}
       </div>
     </>
   );
