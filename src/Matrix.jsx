@@ -153,7 +153,7 @@ const CSS = `
   --card-grad:linear-gradient(165deg, rgba(255,255,255,.09), rgba(255,255,255,.035));
   --card-border:linear-gradient(160deg, rgba(255,255,255,.40), rgba(255,255,255,.05) 42%, rgba(0,0,0,.30));
   --feature-grad:linear-gradient(150deg,#33333a 0%,#232329 42%,#141417 78%,#0d0d10 100%);
-  --app-bg:radial-gradient(120% 55% at 25% -5%, #2c2c31 0%, rgba(44,44,49,0) 55%), radial-gradient(120% 65% at 95% 105%, #202024 0%, rgba(32,32,36,0) 55%), linear-gradient(180deg,#161617 0%, #0b0b0c 100%);
+  --app-bg:radial-gradient(85% 42% at 22% -8%, #1f1f23 0%, rgba(31,31,35,0) 62%), radial-gradient(95% 52% at 97% 108%, #191a1e 0%, rgba(25,26,30,0) 62%), linear-gradient(180deg,#141416 0%, #0a0a0b 100%);
   --header-bg:#0B0B0D;
   --on-primary:#141416;
 }
@@ -209,7 +209,10 @@ const CSS = `
 /* Home cards use the mockup recipe verbatim: translucent glass fill + metallic border-box edge + big soft
    drop shadow (all from the theme vars via base .card) + a top-left specular sheen. We only add the glass
    blur + the ::before highlight here; we must NOT re-set border/box-shadow or it flattens the card. */
-.home-metal .card{position:relative;backdrop-filter:blur(26px) saturate(125%);-webkit-backdrop-filter:blur(26px) saturate(125%)}
+/* No backdrop-filter here: over the app's radial-graphite background the blur samples the bright top-left glow
+   and smears an uneven metallic streak across each card. The mockup's elegance is an EVEN translucent fill, so
+   we let --card-grad show flat. Just the specular ::before highlight + the base metallic hairline + shadow. */
+.home-metal .card{position:relative}
 .home-metal .card::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(130% 80% at 18% -12%, rgba(255,255,255,.07), rgba(255,255,255,0) 44%)}
 /* Matrix's Picks — soft light-grey cards (dark text), theme-aware. */
 .pickcard{background:#F1F1F3 !important;box-shadow:inset 0 1px 0 rgba(255,255,255,.75), 0 1px 2px rgba(20,20,30,.06), 0 14px 30px -14px rgba(20,20,30,.24) !important;border:1px solid #E7E7EA !important}
