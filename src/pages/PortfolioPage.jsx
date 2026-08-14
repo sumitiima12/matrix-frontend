@@ -338,7 +338,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
         score, biggest: biggest.sym, biggestPct, losers, total: priced.length,
         components: [
           { label: "Diversification", value: concentration, hint: `Largest position ${biggest.sym} is ${biggestPct}% of holdings` },
-          { label: "Drawdown pressure", value: drawdown, hint: `${losers} of ${priced.length} position${priced.length > 1 ? "s" : ""} underwater` },
+          { label: "Drawdown resilience", value: drawdown, hint: `${losers} of ${priced.length} position${priced.length > 1 ? "s" : ""} underwater` },
         ],
       };
     })();
@@ -391,6 +391,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
                 {realHealth.score}<span style={{ fontSize: 11, color: "var(--muted)" }}>/100</span>
               </div>
             </div>
+            <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 3 }}>Each score is 0–100 — higher is better.</div>
             {realHealth.components.map((c) => (
               <div key={c.label} style={{ marginTop: 11 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5 }}>
