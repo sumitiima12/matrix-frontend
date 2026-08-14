@@ -1317,7 +1317,7 @@ function AppInner() {
                   Hidden entirely when virtual trading is disabled for this market (non-admin):
                   there is no paper wallet to show, so the pill would only mislead. */}
               {!virtualBlocked(market) && (
-              <button onClick={() => setWalletOpen(true)} aria-label={mode === "real" ? "Real balance" : "Virtual wallet"} className="tap pill gold-border" style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 11px", whiteSpace: "nowrap", flexShrink: 0, background: "transparent", cursor: "pointer", borderColor: mode === "real" ? "var(--down)" : undefined }}>
+              <button onClick={() => (mode === "real" ? setBrokerOpen(true) : setWalletOpen(true))} aria-label={mode === "real" ? "Real balance" : "Virtual wallet"} className="tap pill gold-border" style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 11px", whiteSpace: "nowrap", flexShrink: 0, background: "transparent", cursor: "pointer", borderColor: mode === "real" ? "var(--down)" : undefined }}>
                 <Wallet size={15} color={mode === "real" ? "var(--down)" : "var(--gold)"} />
                 <span className="mono" style={{ fontSize: 11.5, fontWeight: 800, color: mode === "real" ? "var(--down)" : "var(--ink)" }}>
                   {mode === "real"

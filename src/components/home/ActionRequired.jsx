@@ -39,7 +39,7 @@ export default function ActionRequired({ items = [], defaultOpen = false }) {
         className="tap"
         style={{
           width: "100%", display: "flex", alignItems: "center", gap: 10, cursor: "pointer",
-          border: "none", background: t.bg, padding: "11px 14px", borderLeft: `3px solid ${t.dot}`,
+          border: "none", background: "var(--elev)", padding: "11px 14px", borderLeft: `3px solid ${t.dot}`,
         }}
       >
         <AlertTriangle size={16} color={t.fg} style={{ flex: "0 0 auto" }} />

@@ -2360,6 +2360,9 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     if (!rec) return;
     const label = s.name || (s.symbols && s.symbols[0]) || "this strategy";
     if (!(await confirmDialog(`Deactivate real trading for "${label}"?\n\nThe engine will stop placing new real orders for it. Any position that's already open keeps its SL/TP and is NOT closed here — use Stop in the Real Live section to close it.`, { title: "Deactivate real strategy", confirmLabel: "Deactivate" }))) return;
+    // Immediate feedback — cancelAutoBuy round-trips the broker/server and can take a few seconds; without this
+    // the button looks dead and users tap it again. The success/failure toast below replaces this one.
+    setToast(`Deactivating ${label}…`);
     try { await cancelAutoBuy(userId, rec.id); refreshArmed(); setToast(`Deactivated ${label} (real)`); }
     catch (e) { await alertDialog(String(e.message || e), { title: "Couldn't deactivate" }); }
   }
