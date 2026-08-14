@@ -143,9 +143,9 @@ function ManageHolding({ r, st, onBuy, onSell, onUpdate, onClose, real = false, 
       {/* Sell */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 9 }}>
         {stepper(sellQty, setSellQty, r.qty)}
-        <button onClick={() => { onSell && onSell(st, sellQty, { market: r.market || r.m, product: r.product || r.productType || undefined }); onClose && onClose(); }} className="tap disp" style={{ flex: 1, background: "linear-gradient(120deg,var(--down),#D93A4E)", color: "#fff", border: "none", borderRadius: 10, padding: 11, fontWeight: 800, fontSize: 13 }}>Sell · {sellQty}</button>
+        <button onClick={() => { onSell && onSell(st, sellQty, { market: r.market || r.m, product: r.product || r.productType || undefined }); onClose && onClose(); }} className="tap disp" style={{ flex: 1, background: "linear-gradient(120deg,var(--down),#D93A4E)", color: "#fff", border: "none", borderRadius: 10, padding: 11, fontWeight: 800, fontSize: 13 }}>{sellQty >= (r.qty || 0) ? `Close position · Sell ${sellQty}` : `Sell · ${sellQty}`}</button>
       </div>
-      <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 7 }}>You hold {qtyText(r.qty, r.sym)} units · sell up to {qtyText(r.qty, r.sym)}.</div>
+      <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 7 }}>Quantities are in units/contracts. You hold {qtyText(r.qty, r.sym)} · selling all {qtyText(r.qty, r.sym)} closes the position.</div>
       <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600, margin: "12px 0 6px" }}>{real ? "Stop / target (%) — armed with your broker" : "Risk orders (%)"}</div>
       <div style={{ display: "flex", gap: 8 }}>
         {[["Stop loss", sl, setSl], ["Trailing SL", tsl, setTsl], ["Take profit", tp, setTp]].map(([lbl, val, setter]) => (
@@ -525,7 +525,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
                     className="tap disp"
                     style={{ width: "100%", marginTop: 10, border: "1px solid var(--line)", background: expand === h.sym ? "var(--elev)" : "transparent", color: "var(--ink)", borderRadius: 10, padding: 10, fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}
                   >
-                    {expand === h.sym ? "Close" : "Manage — sell / set stop"}
+                    {expand === h.sym ? "Hide" : "Manage — sell / set stop"}
                   </button>
                   {expand === h.sym && (
                     <ManageHolding
@@ -717,7 +717,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
             {/* ---- AI COPILOT: per-holding recommendation (real data only) ---- */}
             {intel[r.sym] && <HoldingIntel a={intel[r.sym]} market={r.m} stock={ALL.find((x) => x.sym === r.sym)} onWhy={onWhy} />}
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              <button onClick={() => setExpand(expand === r.sym ? null : r.sym)} className="tap disp" style={{ flex: 1, background: expand === r.sym ? "var(--primary)" : "var(--surface)", color: expand === r.sym ? "var(--on-primary)" : "var(--ink)", border: "1px solid var(--line)", borderRadius: 11, padding: 11, fontWeight: 800, fontSize: 12.5, display: "flex", gap: 5, alignItems: "center", justifyContent: "center" }}><SlidersHorizontal size={13} /> {expand === r.sym ? "Close" : "Manage · Buy / Sell"}</button>
+              <button onClick={() => setExpand(expand === r.sym ? null : r.sym)} className="tap disp" style={{ flex: 1, background: expand === r.sym ? "var(--primary)" : "var(--surface)", color: expand === r.sym ? "var(--on-primary)" : "var(--ink)", border: "1px solid var(--line)", borderRadius: 11, padding: 11, fontWeight: 800, fontSize: 12.5, display: "flex", gap: 5, alignItems: "center", justifyContent: "center" }}><SlidersHorizontal size={13} /> {expand === r.sym ? "Hide" : "Manage · Buy / Sell"}</button>
             </div>
             {expand === r.sym && <ManageHolding r={r} st={st} onBuy={onBuy} onSell={onSell} onUpdate={onUpdate} onClose={() => setExpand(null)} />}
           </div>
