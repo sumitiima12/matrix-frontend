@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { currentIdeas } from "../domain/ideas";
 import { dailyPicks, techSignal } from "../domain/signals";
 import { Building2, ChevronDown, ChevronRight, Lightbulb, Newspaper, Pencil, Sparkles, TrendingUp, X, Zap } from "lucide-react";
-import { BACKEND_URL, RECONCILE_REAL_CLOSES } from "../config";
+import { BACKEND_URL } from "../config";
 import { CUR, DAY, chgColor, clamp, compact, fmt, fmtPnl, lsGet, lsSet, pct, timeAgo } from "../lib/format";
 import { confirmDialog } from "../lib/confirmDialog";   // in-app confirm (reliable in webviews/PWA)
 import { ALL, GLOBAL_MKTS, UNIVERSE, marketOf } from "../domain/universe";
@@ -985,20 +985,24 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     if (plPeriod === "month") { d.setDate(1); d.setHours(0, 0, 0, 0); return d.getTime(); }
     return 0;                                       // lifetime
   }, [plPeriod]);
-  // FLAG (default off): DISPLAY-only reconciliation of real closes. A real Auto-Buy position
-  // whose symbol is no longer in the live broker holdings has been closed (e.g. Delta's own
-  // bracket fired) — show it CLOSED (est. exit at last price) rather than a stale "OPEN". Never
-  // mutates the journal. Only trusts holdings once they've actually loaded.
-  const realHeld = (isReal && RECONCILE_REAL_CLOSES && realPortfolio && Array.isArray(realPortfolio.holdings))
-    ? new Set(realPortfolio.holdings.filter((h) => h.qty).map((h) => h.sym))
+  // DISPLAY-only reconciliation of real "open" positions against BROKER TRUTH. A real trade still journalled-open
+  // whose symbol the broker (Delta) no longer holds has actually been closed — outside the app, by a native bracket,
+  // or from an order that never really filled. Show it CLOSED, not a phantom OPEN, so the homepage count matches the
+  // broker. Never mutates the journal; only trusts holdings once they've actually LOADED (array present) so a failed
+  // read can never hide a genuine position. Symbols normalised (strip USD/USDT/INR/-EQ) so DOGE == DOGEUSD.
+  const _normSym = (s) => String(s || "").replace(/(USDT|USD|INR|PERP)$/i, "").replace(/-EQ$/i, "").toUpperCase();
+  const realHeld = (isReal && realPortfolio && Array.isArray(realPortfolio.holdings))
+    ? new Set(realPortfolio.holdings.filter((h) => Number(h.qty)).map((h) => _normSym(h.sym)))
     : null;
+  // A real journalled-open trade the broker doesn't actually hold → treat as closed (phantom open).
+  const isPhantomOpen = (t) => !!(realHeld && t && t.real && t.exitAt == null && t.status !== "rejected" && !realHeld.has(_normSym(t.sym)));
   const autoRows = useMemo(() => (trades || [])
     .filter((t) => (t.tradeType === "Auto Buy") && ((t.market || marketOf(t.sym) || "IN")) === market && (t.entryAt || 0) >= periodFrom)
     .map((t) => {
       const rejected = t.status === "rejected";
       const last = (ALL.find((a) => a.sym === t.sym) || {}).price;
       // Reconciled close: real, still-journalled-open, but no longer held → treat as closed (est).
-      const reconciledClosed = realHeld && !rejected && t.exitAt == null && t.real && !realHeld.has(t.sym);
+      const reconciledClosed = realHeld && !rejected && t.exitAt == null && t.real && !realHeld.has(_normSym(t.sym));
       const open = !rejected && t.exitAt == null && !reconciledClosed;
       const cur = open ? (last ?? t.entry) : (reconciledClosed ? (last ?? t.entry) : t.exit);
       const realPnl = rejected || t.entry == null ? 0 : +(positionPnl(t, cur, market)).toFixed(2);
@@ -1082,7 +1086,8 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
      not in a positions list). Powers the Total card's "Show positions". */
   const totalOpenRows = useMemo(() => (trades || [])
     .filter((t) => inMarket(t.sym, t.market) && (isReal ? !!t.real : !t.real)
-      && t.status !== "rejected" && t.entry != null && (t.exitAt == null || t.exit == null))
+      && t.status !== "rejected" && t.entry != null && (t.exitAt == null || t.exit == null)
+      && !isPhantomOpen(t))   // hide real positions the broker no longer holds (closed elsewhere / never filled)
     .map((t) => {
       const last = (ALL.find((a) => a.sym === t.sym) || {}).price;
       const cur = last != null ? last : t.entry;
@@ -1091,7 +1096,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     })
     .sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [trades, market, isReal]);
+    [trades, market, isReal, realHeld]);
 
   return (
     <div className="home-metal">
@@ -1099,7 +1104,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           Real mode gets a red accent so situational awareness is continuous, never buried. */}
       {(() => {
         const activeStrats = (strategies || []).filter((s) => s && s.active).length;
-        const openCount = (trades || []).filter((t) => (isReal ? !!t.real : !t.real) && t.exitAt == null && t.entry != null && t.status !== "rejected" && inMarket(t.sym, t.market)).length;
+        const openCount = (trades || []).filter((t) => (isReal ? !!t.real : !t.real) && t.exitAt == null && t.entry != null && t.status !== "rejected" && inMarket(t.sym, t.market) && !isPhantomOpen(t)).length;
         return (
           <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", padding: "7px 11px", borderRadius: 10, marginBottom: 10, background: "var(--elev)", border: "1px solid var(--line)", fontSize: 11, fontWeight: 700, color: "var(--muted)" }}>
             {/* Neutral STATUS strip (not an alert). Mode is a small badge; the rest is plain status text. */}
@@ -1573,7 +1578,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       {!hideDash && (() => {
         const priceOf = (sym) => { const st = ALL.find((x) => x.sym === sym); return st && st.price != null ? st.price : null; };
         const opens = (trades || [])
-          .filter((t) => (isReal ? !!t.real : !t.real) && t.exitAt == null && t.entry != null && t.status !== "rejected" && inMarket(t.sym, t.market))
+          .filter((t) => (isReal ? !!t.real : !t.real) && t.exitAt == null && t.entry != null && t.status !== "rejected" && inMarket(t.sym, t.market) && !isPhantomOpen(t))
           .map((t) => { const cur = priceOf(t.sym) ?? t.entry; const dir = (t.side === "SELL" || t.short) ? -1 : 1; return { ...t, cur, pl: (cur - Number(t.entry)) * (t.qty || 0) * dir }; })
           .sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
         const deployed = (strategies || []).filter((s) => s && s.active);

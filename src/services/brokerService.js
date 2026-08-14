@@ -472,9 +472,12 @@ export async function closeAutoBuy(userId, id) {
 }
 /** Reconcile the real journal against Delta — drops phantom OPEN real crypto records Delta doesn't hold.
     Returns { removed, heldSymbols, droppedSymbols }. Display-only; never touches real holdings. */
-export async function reconcileRealTrades(userId) {
+export async function reconcileRealTrades(userId, { apply = false, confirmIds = [] } = {}) {
   if (!BACKEND_URL) throw new Error("no-backend");
-  const r = await fetch(`${BACKEND_URL}/api/trades/reconcile-real`, { method: "POST", headers: { "Content-Type": "application/json", ...tokenHdr(), "X-User-Id": String(userId || "") }, body: JSON.stringify({}) });
+  // apply:false → PREVIEW (wouldClose / unknownBroker, no mutation). apply:true → persist: close Delta-proven
+  // phantoms, plus any broker-unknown rows the caller explicitly confirmed via confirmIds. The old call sent {} so
+  // it was always preview-only and never actually reconciled — that's why the phantom rows survived "reconcile".
+  const r = await fetch(`${BACKEND_URL}/api/trades/reconcile-real`, { method: "POST", headers: { "Content-Type": "application/json", ...tokenHdr(), "X-User-Id": String(userId || "") }, body: JSON.stringify({ apply: apply === true, confirmIds: Array.isArray(confirmIds) ? confirmIds : [] }) });
   const d = await r.json().catch(() => ({}));
   if (!r.ok || d.error) throw new Error(d.error || "Couldn't reconcile with Delta");
   return d;

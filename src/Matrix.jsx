@@ -852,10 +852,31 @@ function AppInner() {
      Delta doesn't actually hold (e.g. rejected/never-filled orders the client optimistically recorded),
      then reloads the journal from the server. Display-only — never touches real holdings. */
   const reconcileWithDelta = async () => {
-    const r = await reconcileRealTrades(userId);   // throws on error; callers surface it
+    // Stage 1 — PREVIEW (no mutation): what does Delta actually hold, and which journalled-open rows would close?
+    const preview = await reconcileRealTrades(userId, { apply: false });   // throws on error; callers surface it
+    const wouldClose = Array.isArray(preview.wouldClose) ? preview.wouldClose : [];
+    const unknownBroker = Array.isArray(preview.unknownBroker) ? preview.unknownBroker : [];
+    if (!wouldClose.length && !unknownBroker.length) {
+      setBuyToast({ t: "Reconciled — your open positions already match Delta." });
+      return preview;
+    }
+    // Stage 2 — APPLY the BROKER-PROVEN closes automatically (Delta-tagged rows Delta no longer holds). This
+    // preserves the historical row and marks it closed; it never hard-deletes financial history.
+    const applied = await reconcileRealTrades(userId, { apply: true });
+    // Stage 3 — rows WITHOUT broker attribution can't be auto-proven; ask before closing them.
+    let unknownClosed = 0;
+    if (unknownBroker.length) {
+      const ok = await confirmDialog(
+        `${unknownBroker.length} record${unknownBroker.length > 1 ? "s aren't" : " isn't"} attributable to a Delta order (${unknownBroker.slice(0, 4).map((t) => t.sym).join(", ")}${unknownBroker.length > 4 ? "…" : ""}). Delta can't confirm these either way. Close them as reconciled too?`,
+        { title: "Unverified records", confirmLabel: "Close them" });
+      if (ok) { const a2 = await reconcileRealTrades(userId, { apply: true, confirmIds: unknownBroker.map((t) => t.id) }); unknownClosed = (a2.removed || 0) - (applied.removed || 0); }
+    }
     if (BACKEND_URL) { try { const t = await fetchTrades(userId, 0, Date.now()); setTrades(t || []); } catch { /* keep current */ } }
-    setBuyToast({ t: r.removed ? `Reconciled with Delta — dropped ${r.removed} phantom record${r.removed > 1 ? "s" : ""} Delta doesn't hold.` : "Reconciled — your records already match Delta." });
-    return r;   // returned so the Profile drawer can show its own inline count
+    try { refreshPortfolio(market); } catch { /* best-effort */ }
+    const total = (applied.removed || 0) + (unknownClosed > 0 ? unknownClosed : 0);
+    const syms = (applied.closedSymbols || []).slice(0, 5).join(", ");
+    setBuyToast({ t: total ? `Reconciled with Delta — closed ${total} position${total > 1 ? "s" : ""} Delta doesn't hold${syms ? ` (${syms})` : ""}.` : "Reconciled — your open positions already match Delta." });
+    return applied;
   };
 
   /* Close (sell) every OPEN paper position for ONE strategy at the live price, then deactivate just
