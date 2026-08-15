@@ -1623,7 +1623,8 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           return { s, pl, open: ts.filter((t) => t.exitAt == null).length };
         }).sort((a, b) => b.pl - a.pl);
         const hasAct = (trades || []).some((t) => (isReal ? !!t.real : !t.real) && t.entry != null && t.entryAt != null);
-        if (!opens.length && !stratRows.length && !hasAct) return null;
+        const hasStrats = (strategies || []).length > 0;   // strategies exist but maybe none active → show an Activate prompt
+        if (!opens.length && !stratRows.length && !hasAct && !hasStrats) return null;
         const gcols = "1.1fr .9fr .9fr .8fr";
         return (
           <>
@@ -1645,6 +1646,15 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     Show all{stratRows.length > 3 ? ` (${stratRows.length})` : ""} <ChevronRight size={14} />
                   </button>
                 )}
+                </div>
+              </Section>
+            )}
+            {/* No active strategies but some exist → nudge to activate one, rather than showing nothing. */}
+            {stratRows.length === 0 && hasStrats && (
+              <Section title="Active Strategies" icon={<Zap size={17} color="var(--primary)" />}>
+                <div className="card" style={{ padding: 16, textAlign: "center", boxShadow: "0 10px 26px -14px rgba(0,0,0,.55)", borderRadius: 16 }}>
+                  <div style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 600, lineHeight: 1.5 }}>No strategies are active right now. Activate one to start getting signals{isReal ? " and real orders" : ""}.</div>
+                  {onGoDeployed && <button onClick={onGoDeployed} className="tap disp" style={{ marginTop: 12, border: "none", background: "var(--primary)", color: "var(--on-primary)", borderRadius: 11, padding: "10px 18px", fontWeight: 800, fontSize: 12.5, display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>Activate a strategy <ChevronRight size={14} /></button>}
                 </div>
               </Section>
             )}
