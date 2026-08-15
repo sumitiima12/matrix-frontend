@@ -926,9 +926,12 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const _scored = autoPicks.map((s) => {
     const auto = autoTargets(s);
     const ov = autoOverrides[s.sym];
-    // Precedence: a per-symbol edit wins; else (Custom mode) the one global SL/TP; else the pick's own.
-    const tpPct = ov ? ov.tp : (slMode === "custom" ? autoTP : auto.tp);
-    const slPct = ov ? ov.sl : (slMode === "custom" ? autoSL : auto.sl);
+    // Precedence: a per-symbol edit wins; else (Custom mode) the one global SL/TP; else the PICK'S OWN
+    // target/stop from Top Picks (what the card promises + what's displayed), falling back to autoTargets.
+    // Using the pick's own tp/sl here makes the R:R shown == the R:R the MIN R:R gate tests, so a pick that
+    // reads 1.7:1 can never slip through a 2:1 filter.
+    const tpPct = ov ? ov.tp : (slMode === "custom" ? autoTP : (s.pickTpPct != null ? s.pickTpPct : auto.tp));
+    const slPct = ov ? ov.sl : (slMode === "custom" ? autoSL : (s.pickSlPct != null ? s.pickSlPct : auto.sl));
     const rr = slPct > 0 ? +(tpPct / slPct).toFixed(2) : 0;   // reward:risk of this pick
     const q = Math.max(0.5, Number((techSignal(s) || {}).score) || 0.5);   // signal-quality floor
     const rrAdj = 0.75 + 0.25 * Math.max(1, Math.min(2, sabMinRR > 0 ? rr / sabMinRR : 1));
@@ -1241,16 +1244,18 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   const series = (trades || [])
                     .filter((t) => (isReal ? !!t.real : !t.real) && t.exitAt != null && t.exit != null && t.entry != null && inMarket(t.sym, t.market) && (t.exitAt || 0) >= periodFrom)
                     .sort((a, b) => (a.exitAt || 0) - (b.exitAt || 0));
-                  if (series.length < 2) return null;
+                  // Needs a few CLOSED trades to read as a trend — with only 1-2 points it's just a straight
+                  // diagonal (and can look like it contradicts the headline, which also counts OPEN positions).
+                  if (series.length < 4) return null;
                   let cum = 0;
                   const pts = series.map((t) => { const dir = (t.side === "SELL" || t.short) ? -1 : 1; cum += (Number(t.exit) - Number(t.entry)) * (t.qty || 0) * dir; return cum; });
                   const min = Math.min(0, ...pts), max = Math.max(0, ...pts), span = (max - min) || 1;
                   const W = 320, H = 40, step = W / (pts.length - 1);
                   const poly = pts.map((v, i) => `${(i * step).toFixed(1)},${(H - ((v - min) / span) * H).toFixed(1)}`).join(" ");
-                  const up = pts[pts.length - 1] >= 0;
                   return (
-                    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="38" preserveAspectRatio="none" style={{ margin: "12px 0 2px", display: "block" }} aria-hidden="true">
-                      <polyline points={poly} fill="none" stroke={up ? "var(--up)" : "var(--down)"} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="34" preserveAspectRatio="none" style={{ margin: "12px 0 2px", display: "block", opacity: .7 }} aria-hidden="true">
+                      {/* Neutral colour — this is a realised-P&L TREND line, not a green/red verdict (the headline number is the verdict). */}
+                      <polyline points={poly} fill="none" stroke="var(--muted)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   );
                 })()}

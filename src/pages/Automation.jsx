@@ -2773,7 +2773,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         {/* Only when strategies are active BEYOND this market's section — the one-tap "turn everything off" the
             homepage count reflects, so "I deactivated all but 91 still show" can't happen. */}
         {activeCountGlobal > onCount && (
-          <button onClick={deactivateAllStrategiesGlobal} className="tap disp" style={{ width: "100%", marginTop: 8, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11, border: "1px solid var(--line)", background: "transparent", color: "var(--muted)", cursor: "pointer" }}>Deactivate ALL {activeCountGlobal} strategies (every market)</button>
+          <button onClick={deactivateAllStrategiesGlobal} className="tap disp" style={{ width: "100%", marginTop: 8, borderRadius: 10, padding: "9px 6px", fontWeight: 800, fontSize: 11.5, border: "1px solid var(--down)", background: "var(--down-soft, rgba(232,72,85,.12))", color: "var(--down)", cursor: "pointer" }}>Deactivate ALL {activeCountGlobal} active strategies (every market)</button>
         )}
       </div>
     );
