@@ -488,7 +488,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
   if (!published && !isAdmin) return null;
 
   return (
-    <div className="card" style={{ marginTop: 12, padding: 12, background: "var(--elev)", opacity: published ? 1 : 0.75 }}>
+    <div className="card" style={{ marginTop: 12, padding: 12, opacity: published ? 1 : 0.75 }}>
       {/* Header — screener name (left), Auto-Buy toggle + admin edit (right) */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
         <div style={{ minWidth: 0 }}>
@@ -532,7 +532,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
       {(autoOn || hasScreenerTrades) && (
       <>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
-        <select aria-label="Date range" value={period} onChange={(e) => setPeriod(e.target.value)} style={{ flex: "0 0 auto", fontSize: 10.5, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 9, padding: "7px 8px", background: "var(--surface)", color: "var(--ink)" }}>
+        <select aria-label="Date range" value={period} onChange={(e) => setPeriod(e.target.value)} style={{ flex: "0 0 auto", fontSize: 10.5, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 9, padding: "7px 8px", background: "var(--elev)", color: "var(--ink)" }}>
           <option value="today">Today</option>
           <option value="7d">Last 7 days</option>
           <option value="30d">Last 30 days</option>
