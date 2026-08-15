@@ -75,6 +75,7 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
      midnight-at-the-start-of-the-14th it would return nothing, and the user would
      reasonably conclude the app had lost their trades. */
   const custom = range === "custom" && (dFrom || dTo);
+  const todayISO = new Date().toISOString().slice(0, 10);   // cap both date pickers at today (no future trades)
 
   const { from, to } = useMemo(() => {
     if (custom) {
@@ -247,37 +248,41 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
       </div>
 
       {range === "custom" && (
-        <div style={{ display: "flex", gap: 8, alignItems: "flex-end", padding: "8px 16px 2px", flexWrap: "wrap" }}>
-          <label style={{ flex: 1, minWidth: 128 }}>
-            <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4, letterSpacing: ".04em" }}>FROM</div>
-            <input
-              type="date"
-              value={dFrom}
-              max={dTo || undefined}                              // can't start after you end
-              onChange={(e) => setDFrom(e.target.value)}
-              className="no-ring mono"
-              style={{ width: "100%", border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: "9px 10px", fontSize: 12.5, fontWeight: 700 }}
-            />
-          </label>
-          <label style={{ flex: 1, minWidth: 128 }}>
-            <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4, letterSpacing: ".04em" }}>TO</div>
-            <input
-              type="date"
-              value={dTo}
-              min={dFrom || undefined}
-              max={new Date().toISOString().slice(0, 10)}         // no trades in the future
-              onChange={(e) => setDTo(e.target.value)}
-              className="no-ring mono"
-              style={{ width: "100%", border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: "9px 10px", fontSize: 12.5, fontWeight: 700 }}
-            />
-          </label>
+        <div style={{ padding: "8px 16px 2px" }}>
+          {/* A 2-col GRID (not flex) so the native date widgets can never overflow/overlap on a narrow phone —
+              grid tracks shrink; box-sizing keeps the inputs inside their track. */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <label style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4, letterSpacing: ".04em" }}>FROM</div>
+              <input
+                type="date"
+                value={dFrom}
+                max={dTo || todayISO}                               // can't start after you end
+                onChange={(e) => { const v = e.target.value; setDFrom(v); if (v && dTo && v > dTo) setDTo(v); }}   // clamp: To never earlier than From
+                className="no-ring mono"
+                style={{ width: "100%", boxSizing: "border-box", minWidth: 0, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: "9px 10px", fontSize: 12.5, fontWeight: 700 }}
+              />
+            </label>
+            <label style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, marginBottom: 4, letterSpacing: ".04em" }}>TO</div>
+              <input
+                type="date"
+                value={dTo}
+                min={dFrom || undefined}
+                max={todayISO}                                      // no trades in the future
+                onChange={(e) => { const v = e.target.value; if (v && dFrom && v < dFrom) { setDTo(dFrom); } else { setDTo(v); } }}   // clamp: never before From
+                className="no-ring mono"
+                style={{ width: "100%", boxSizing: "border-box", minWidth: 0, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: "9px 10px", fontSize: 12.5, fontWeight: 700 }}
+              />
+            </label>
+          </div>
           {(dFrom || dTo) && (
             <button
               onClick={() => { setDFrom(""); setDTo(""); }}
               className="pill tap disp"
-              style={{ flex: "0 0 auto", padding: "9px 12px", fontSize: 11.5, fontWeight: 700, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--muted)" }}
+              style={{ marginTop: 8, padding: "8px 14px", fontSize: 11.5, fontWeight: 700, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--muted)" }}
             >
-              Clear
+              Clear dates
             </button>
           )}
         </div>

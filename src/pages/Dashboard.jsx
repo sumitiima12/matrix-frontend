@@ -1559,9 +1559,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     </div>
                   );
                 })()}
-                {/* Buy with explicit quantity; the pick's REAL stop & target are armed with it. Sits right
-                    under the setup (no "auto" push) so there's no big empty gap above it. */}
-                <div style={{ marginTop: 12, paddingTop: 0 }} onClick={(e) => e.stopPropagation()}>
+                {/* Buy with explicit quantity; the pick's REAL stop & target are armed with it. Pushed to the
+                    BOTTOM of the card (marginTop:auto) so the action button lines up across every carousel card
+                    regardless of how much setup content each one has above it. */}
+                <div style={{ marginTop: "auto", paddingTop: 12 }} onClick={(e) => e.stopPropagation()}>
                   <BuyButton
                     s={s}
                     market={market}

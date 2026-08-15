@@ -725,10 +725,10 @@ function CardTradeLog({ tradeList, market = "IN", open = false }) {
         </select>
         {range === "custom" && (
           <>
-            <input type="date" aria-label="From" value={cFrom} onChange={(e) => setCFrom(e.target.value)} className="no-ring mono"
+            <input type="date" aria-label="From" value={cFrom} max={cTo || undefined} onChange={(e) => { const v = e.target.value; setCFrom(v); if (v && cTo && v > cTo) setCTo(v); }} className="no-ring mono"
               style={{ fontSize: 10.5, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 8, padding: "5px 8px", background: "var(--surface)", color: "var(--ink)", colorScheme: "light" }} />
             <span style={{ fontSize: 10, color: "var(--muted)" }}>to</span>
-            <input type="date" aria-label="To" value={cTo} onChange={(e) => setCTo(e.target.value)} className="no-ring mono"
+            <input type="date" aria-label="To" value={cTo} min={cFrom || undefined} onChange={(e) => { const v = e.target.value; if (v && cFrom && v < cFrom) setCTo(cFrom); else setCTo(v); }} className="no-ring mono"
               style={{ fontSize: 10.5, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 8, padding: "5px 8px", background: "var(--surface)", color: "var(--ink)", colorScheme: "light" }} />
           </>
         )}
@@ -2204,9 +2204,9 @@ function StrategyPnLView({ strats, trades, market, onDelete }) {
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           {isCustom && (
             <>
-              <input type="date" aria-label="From" value={cFrom} onChange={(e) => setCFrom(e.target.value)} className="no-ring mono" style={{ ...selStyle, width: "auto", fontSize: 11.5, padding: "6px 8px", colorScheme: "light" }} />
+              <input type="date" aria-label="From" value={cFrom} max={cTo || undefined} onChange={(e) => { const v = e.target.value; setCFrom(v); if (v && cTo && v > cTo) setCTo(v); }} className="no-ring mono" style={{ ...selStyle, width: "auto", fontSize: 11.5, padding: "6px 8px", colorScheme: "light" }} />
               <span style={{ fontSize: 11, color: "var(--muted)" }}>to</span>
-              <input type="date" aria-label="To" value={cTo} onChange={(e) => setCTo(e.target.value)} className="no-ring mono" style={{ ...selStyle, width: "auto", fontSize: 11.5, padding: "6px 8px", colorScheme: "light" }} />
+              <input type="date" aria-label="To" value={cTo} min={cFrom || undefined} onChange={(e) => { const v = e.target.value; if (v && cFrom && v < cFrom) setCTo(cFrom); else setCTo(v); }} className="no-ring mono" style={{ ...selStyle, width: "auto", fontSize: 11.5, padding: "6px 8px", colorScheme: "light" }} />
             </>
           )}
           <select aria-label="Date range" value={range} onChange={(e) => { const v = e.target.value; setRange(v === "custom" ? "custom" : +v); }} style={{ ...selStyle, flex: "0 0 auto", width: "auto", fontSize: 12 }}>{RANGES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
@@ -2332,7 +2332,13 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       `Product    ${liveProduct}\n` +
       `SL / TP    ${slTxt} / ${tpTxt}\n\n` +
       `This places REAL orders on your broker when the entry fires. You can Deactivate anytime.`;
-    if (!(await confirmDialog(summary, { title: "Go live with real money?", confirmLabel: "Go live" }))) return;
+    // One-time acknowledgement: show the real-money summary on the FIRST live activation only, then remember
+    // the ack so subsequent go-lives don't re-prompt (keeps one guardrail without repeated friction).
+    let realAcked = false; try { realAcked = localStorage.getItem("mx_real_activation_ack_v1") === "1"; } catch {}
+    if (!realAcked) {
+      if (!(await confirmDialog(summary, { title: "Go live with real money?", confirmLabel: "Go live" }))) return;
+      try { localStorage.setItem("mx_real_activation_ack_v1", "1"); } catch {}
+    }
     setLiveBusy(true);
     try {
       const cfg = s.cfg && s.cfg.entry ? { defs: s.cfg.defs || [], entry: s.cfg.entry, exit: s.cfg.exit || [] } : null;
@@ -3265,24 +3271,33 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             const passed = checks.filter((c) => c.ok).length;
             return (
               <>
-                <div style={{ marginTop: 12, border: "1px solid var(--line)", borderRadius: 12, background: "var(--elev)", padding: "10px 12px" }}>
-                  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".04em", color: "var(--muted)", marginBottom: 8, display: "flex", justifyContent: "space-between" }}>
-                    <span>GO-LIVE CHECKLIST</span>
-                    <span style={{ color: blocked ? "var(--down)" : "var(--up)" }}>{passed}/{checks.length} ready</span>
+                {/* #9 — the full go-live CHECKLIST is an admin/diagnostic view. Regular users don't see the
+                    itemised list; when something's missing they get one concise blocker line so the disabled
+                    Arm button still makes sense. */}
+                {isAdmin ? (
+                  <div style={{ marginTop: 12, border: "1px solid var(--line)", borderRadius: 12, background: "var(--elev)", padding: "10px 12px" }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".04em", color: "var(--muted)", marginBottom: 8, display: "flex", justifyContent: "space-between" }}>
+                      <span>GO-LIVE CHECKLIST</span>
+                      <span style={{ color: blocked ? "var(--down)" : "var(--up)" }}>{passed}/{checks.length} ready</span>
+                    </div>
+                    <div style={{ display: "grid", gap: 6 }}>
+                      {checks.map((c, ci) => {
+                        const tone = c.ok ? "var(--up)" : (c.req ? "var(--down)" : "var(--warn, #C77700)");
+                        const Icon = c.ok ? Check : (c.req ? X : AlertTriangle);
+                        return (
+                          <div key={ci} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, fontWeight: 600, color: c.ok ? "var(--ink)" : tone }}>
+                            <Icon size={13} style={{ color: tone, flex: "0 0 auto" }} />
+                            <span>{c.label}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div style={{ display: "grid", gap: 6 }}>
-                    {checks.map((c, ci) => {
-                      const tone = c.ok ? "var(--up)" : (c.req ? "var(--down)" : "var(--warn, #C77700)");
-                      const Icon = c.ok ? Check : (c.req ? X : AlertTriangle);
-                      return (
-                        <div key={ci} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, fontWeight: 600, color: c.ok ? "var(--ink)" : tone }}>
-                          <Icon size={13} style={{ color: tone, flex: "0 0 auto" }} />
-                          <span>{c.label}</span>
-                        </div>
-                      );
-                    })}
+                ) : (blocked ? (() => { const fb = checks.find((c) => c.req && !c.ok); return fb ? (
+                  <div style={{ marginTop: 12, fontSize: 11.5, fontWeight: 700, color: "var(--down)", background: "var(--down-soft)", borderRadius: 10, padding: "9px 11px", display: "flex", gap: 7, alignItems: "center" }}>
+                    <AlertTriangle size={13} style={{ flex: "0 0 auto" }} /><span>{fb.label}</span>
                   </div>
-                </div>
+                ) : null; })() : null)}
                 {liveMsg && <div style={{ fontSize: 11.5, marginTop: 8, fontWeight: 600, color: liveMsg.e ? "var(--down)" : "var(--up)" }}>{liveMsg.t}</div>}
                 <button onClick={() => armLive(s)} disabled={liveBusy || blocked} className="tap disp glow" style={{ width: "100%", marginTop: 10, background: blocked ? "var(--elev)" : "linear-gradient(120deg,var(--down),#E0455E)", color: blocked ? "var(--muted)" : "#fff", border: blocked ? "1px solid var(--line)" : "none", borderRadius: 11, padding: 11, fontWeight: 800, fontSize: 12.5, cursor: blocked ? "not-allowed" : "pointer", opacity: blocked ? 0.8 : 1 }}>{liveBusy ? "Arming…" : blocked ? "Complete checklist to go live" : "Arm real-money auto-buy"}</button>
               </>
