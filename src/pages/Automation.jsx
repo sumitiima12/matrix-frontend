@@ -4011,6 +4011,14 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
               </button>
             )}
           </div>
+          {/* Deactivate All — flips every ACTIVE deployed strategy in this market to inactive (stops new entries).
+              Unlike "Exit all", it does NOT close open positions — those keep their SL/TP under the exit engine. */}
+          {deployedActive.length > 0 && (
+            <button onClick={() => bulkSetActive(deployedActive, false)} className="tap disp"
+              style={{ width: "100%", marginBottom: 12, padding: "9px 12px", borderRadius: 10, border: "1px solid var(--down)", background: "var(--down-soft, rgba(232,72,85,.12))", color: "var(--down)", fontWeight: 800, fontSize: 11.5, cursor: "pointer", textAlign: "center" }}>
+              Deactivate All ({deployedActive.length}) — stops new entries, keeps open positions
+            </button>
+          )}
           {/* #2: filter tabs across the top — All / Long / Short / Live / Not Live — instead of stacked sections. */}
           {deployedAll.length > 0 && (
             <div style={{ display: "flex", gap: 6, marginBottom: 12, overflowX: "auto", WebkitOverflowScrolling: "touch" }}>

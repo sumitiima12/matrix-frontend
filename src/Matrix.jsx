@@ -763,7 +763,7 @@ function AppInner() {
     (async () => {
       const store = orderStoreRef.current;
       let warnedUnknown = false;
-      for (const { intentKey, reqId } of store.persisted()) {
+      for (const { intentKey, reqId, ts } of store.persisted()) {
         let resolved = false;
         for (const delay of DELAYS) {
           if (cancelled) return;
@@ -778,7 +778,12 @@ function AppInner() {
             refreshPortfolio(); resolved = true; break;
           }
           if (action === "clear-retryable") { store.settleTerminal(intentKey); resolved = true; break; }
-          // retain-blocked (in_flight / unknown / none) → keep polling with backoff
+          /* AGED ORPHAN cleanup: a RECENT "none" could be an in-flight order momentarily invisible, so we keep it
+             blocked — but once the intent is >3 days old AND the server still has NO record of it, it's a stale
+             orphan (the request died before the server recorded it, or its durable row was archived). Nothing
+             executed, so clear it — this stops the "an earlier outcome is still unknown" toast recurring forever. */
+          if (res.status === "none" && ts && (Date.now() - ts) > 3 * 864e5) { store.settleTerminal(intentKey); resolved = true; break; }
+          // retain-blocked (recent in_flight / unknown / none) → keep polling with backoff
         }
         if (!resolved && !warnedUnknown) {
           warnedUnknown = true;

@@ -201,6 +201,6 @@ export class OrderLifecycleStore {
   /* All persisted (UNKNOWN) intents for the current user — for reconcile-on-load. */
   persisted() {
     const obj = readJSON(this.storage, storeKeyFor(this.userKey));
-    return Object.keys(obj).map((k) => ({ intentKey: k, reqId: (obj[k] && obj[k].reqId) || obj[k], brokerId: obj[k] && obj[k].brokerId }));
+    return Object.keys(obj).map((k) => ({ intentKey: k, reqId: (obj[k] && obj[k].reqId) || obj[k], brokerId: obj[k] && obj[k].brokerId, ts: obj[k] && obj[k].ts }));
   }
 }
