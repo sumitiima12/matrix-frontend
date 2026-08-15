@@ -956,6 +956,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   // them at real market prices — no simulated win/loss.
   useEffect(() => {
     if (!autoOn || !onBuy || !BACKEND_URL) return;
+    // SAFETY: REAL money is NEVER auto-placed silently. In Real mode this once-a-day effect does nothing —
+    // the user must deliberately place today's picks via "Run auto-buy now", which shows a confirmation
+    // listing the exact symbols/amounts first. Virtual (paper) keeps the automatic daily fill (harmless).
+    if (isReal) return;
     // MARKET HOURS. Never place an auto-buy when the market is CLOSED (weekends, or outside session
     // hours) — placing an Indian trade at 8pm or on a Sunday is wrong. Crypto is 24/7.
     if (!marketOpen(market)) return;
@@ -982,9 +986,18 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   /* MANUAL "Run now" — place today's picks immediately instead of waiting for the once-a-day effect to
      catch the right moment. Respects market hours and needs the picks loaded; sets the daily guard so the
      effect won't then double-place. */
-  const runAutoBuyNow = () => {
+  const runAutoBuyNow = async () => {
     if (!marketOpen(market)) { setRunMsg(`${MKT_LABEL[market]} market is closed — auto-buy runs at the next open.`); return; }
     if (!autoTrades.length) { setRunMsg("Today's picks are still loading — try again in a moment."); return; }
+    // REAL money: require an explicit confirmation listing the EXACT symbols + amounts before placing.
+    if (isReal) {
+      const lines = autoTrades.map((t) => `• ${t.sym} — qty ${t.qty}${t.cap != null ? ` (~${fmt(t.cap, aggCur)})` : ""}`).join("\n");
+      const ok = await confirmDialog(
+        `Place ${autoTrades.length} REAL order${autoTrades.length === 1 ? "" : "s"} on your connected broker now?\n\n${lines}\n\nThis uses real money and executes immediately — it can't be undone from here.`,
+        { title: "Place real auto-buy orders?", confirmLabel: `Place ${autoTrades.length} real order${autoTrades.length === 1 ? "" : "s"}`, danger: true },
+      );
+      if (!ok) { setRunMsg("Cancelled — no orders placed."); return; }
+    }
     let placed = 0;
     autoTrades.forEach((t) => {
       const u = ALL.find((a) => a.sym === (t.under || t.sym));

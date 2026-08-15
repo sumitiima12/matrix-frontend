@@ -581,6 +581,10 @@ function AppInner() {
         tpPct: opts.tp > 0 ? opts.tp : undefined,
         tslPct: opts.tsl > 0 ? opts.tsl : undefined,
         autoExit: useEngine || opts.autoExit || undefined,
+        // Carry the order's TYPE to the server so the authoritative journal row is labelled correctly
+        // ("Auto Buy" / "Screener Auto Buy" / "Automate" / "Manual"). Without this the server fell back to
+        // "Manual", which hid that Smart Auto-Buy had placed the order.
+        tradeType: opts.tradeType || undefined,
         strategy: opts.strategy || undefined,
         // R27-P2-02: unambiguous strategy NAME (distinct from the exit-config `strategy` field) so the server
         // can stamp durable attribution on the authoritative fill — the Screener/Automate card matches on it.
@@ -1060,7 +1064,14 @@ function AppInner() {
       setProfile((s && s.profile) || null);
       // Fresh sign-ups skip onboarding; everyone else uses their saved flag.
       setOnboardSkipped(freshSignup ? true : !!(s && s.onboardSkipped));
-      setAutoOnMap((s && s.autoOnMap) || { IN: false, US: false, Crypto: false, Commodity: false, FNO: false });
+      // SAFETY: real-money Smart Auto-Buy must NEVER auto-resume from a saved session — the user has to
+      // deliberately turn it on each time. Restore the saved map but force every REAL key (`<market>:real`)
+      // OFF on hydrate. Virtual (paper) switches restore normally.
+      {
+        const restored = (s && s.autoOnMap) || { IN: false, US: false, Crypto: false, Commodity: false, FNO: false };
+        const safe = {}; for (const k of Object.keys(restored)) safe[k] = /:real$/.test(k) ? false : restored[k];
+        setAutoOnMap(safe);
+      }
       if (s && s.deployCapMap && typeof s.deployCapMap === "object") setDeployCapMap(s.deployCapMap);
     };
     const local = lsGet("mx_state_" + userId, null);
