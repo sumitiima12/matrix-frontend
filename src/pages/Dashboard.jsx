@@ -916,20 +916,38 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const autoPicksAll = useMemo(() => dailyPicks(UNIVERSE[market]).slice(0, 6), [market]);
   // SYMBOL SELECT — empty selection means "all of today's picks".
   const autoPicks = useMemo(() => autoPicksAll.filter((s) => sabSyms.length === 0 || sabSyms.includes(s.sym)), [autoPicksAll, sabSyms]);
-  const perCap = capNum / Math.max(1, autoPicks.length);
-  const autoTrades = autoPicks.map((s) => {
-    const m = marketOf(s.sym);
+  /* CONFIDENCE-WEIGHTED SIZING (real + virtual). Each pick's confidence = its signal-quality score
+     (techSignal: pattern strength + MACD + ADX + volume + 52-week range + RSI + day-change), floored so a
+     weak-but-qualifying pick isn't zero, and modestly boosted when its reward:risk clears the minimum by more.
+     Deployed capital is split IN PROPORTION to confidence — higher-conviction picks get more — but each share
+     is BOUNDED to [0.4×, 2×] the equal slice then renormalised, so on the real-money path no pick is starved
+     and none is over-concentrated. The MIN R:R gate is applied BEFORE the split, so the FULL deployed capital
+     is distributed only across picks that will actually be bought (not diluted by ones that won't). */
+  const _scored = autoPicks.map((s) => {
     const auto = autoTargets(s);
     const ov = autoOverrides[s.sym];
     // Precedence: a per-symbol edit wins; else (Custom mode) the one global SL/TP; else the pick's own.
     const tpPct = ov ? ov.tp : (slMode === "custom" ? autoTP : auto.tp);
     const slPct = ov ? ov.sl : (slMode === "custom" ? autoSL : auto.sl);
     const rr = slPct > 0 ? +(tpPct / slPct).toFixed(2) : 0;   // reward:risk of this pick
-    const entry = s.price;
+    const q = Math.max(0.5, Number((techSignal(s) || {}).score) || 0.5);   // signal-quality floor
+    const rrAdj = 0.75 + 0.25 * Math.max(1, Math.min(2, sabMinRR > 0 ? rr / sabMinRR : 1));
+    return { s, auto, tpPct, slPct, rr, conf: q * rrAdj };
+  }).filter((p) => p.rr >= sabMinRR);   // MIN R:R gate — only picks that meet the ratio share the capital
+  const _confSum = _scored.reduce((a, p) => a + p.conf, 0) || 1;
+  const _eq = capNum / Math.max(1, _scored.length);
+  // proportional cap → bound to [0.4×, 2×] the equal slice → renormalise once so the total still ≈ capNum
+  let _caps = _scored.map((p) => Math.max(0.4 * _eq, Math.min(2 * _eq, (capNum * p.conf) / _confSum)));
+  const _capSum = _caps.reduce((a, c) => a + c, 0) || 1;
+  _caps = _caps.map((c) => (c * capNum) / _capSum);
+  const _maxConf = _scored.length ? Math.max(..._scored.map((p) => p.conf)) : 1;
+  const autoTrades = _scored.map((p, i) => {
+    const s = p.s, m = marketOf(s.sym), entry = s.price, cap = _caps[i] || 0;
     // Crypto sizes by AMOUNT (fractional units); stocks by whole shares.
-    const qty = m === "Crypto" ? +(perCap / entry).toFixed(6) : Math.max(1, Math.floor(perCap / entry));
-    return { sym: s.sym, m, qty, entry, tpPct, slPct, rr, auto };   // planned entry; the exit engine closes it at real prices
-  }).filter((t) => t && t.rr >= sabMinRR);   // MIN R:R gate — only buy picks that meet the ratio (F&O with no lot size still dropped)
+    const qty = m === "Crypto" ? +(cap / entry).toFixed(6) : Math.max(1, Math.floor(cap / entry));
+    const confPct = Math.round(100 * p.conf / (_maxConf || 1));   // 0-100 relative to the strongest pick, for display
+    return { sym: s.sym, m, qty, entry, tpPct: p.tpPct, slPct: p.slPct, rr: p.rr, auto: p.auto, cap: +cap.toFixed(2), confPct };
+  });
   // When Auto-Buy is ON, actually place today's picks as REAL positions (once per
   // day per market) with their target/stop attached. The exit engine then closes
   // them at real market prices — no simulated win/loss.
@@ -1404,6 +1422,22 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   </div>
                 )}
                 <div style={{ fontSize: 10, opacity: .65, marginTop: 7 }}>Only picks whose target ÷ stop is at least {sabMinRR}:1 are bought. {autoTrades.length} of {autoPicksAll.length} qualify now.</div>
+                {/* Confidence-weighted capital split — each qualifying pick's signal-quality confidence and the
+                    capital it gets. Higher conviction → bigger slice (bounded), so the deployed capital is
+                    distributed by confidence rather than split equally. */}
+                {autoTrades.length > 0 && (
+                  <div style={{ marginTop: 9, display: "flex", flexDirection: "column", gap: 5 }}>
+                    <div style={{ fontSize: 9, opacity: .6, fontWeight: 800, letterSpacing: ".04em" }}>CONFIDENCE-WEIGHTED CAPITAL</div>
+                    {autoTrades.slice().sort((a, b) => b.confPct - a.confPct).map((t) => (
+                      <div key={t.sym} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+                        <span className="disp" style={{ fontWeight: 800, minWidth: 52, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.sym}</span>
+                        <div style={{ flex: 1, height: 5, background: "var(--surface)", borderRadius: 3, overflow: "hidden" }}><div style={{ width: `${t.confPct}%`, height: "100%", background: "var(--primary)" }} /></div>
+                        <span className="mono" style={{ opacity: .8, fontWeight: 700, minWidth: 30, textAlign: "right" }}>{t.confPct}%</span>
+                        <span className="mono" style={{ fontWeight: 800, minWidth: 58, textAlign: "right" }}>{(market === "Crypto" || market === "US") ? "$" : "₹"}{t.cap >= 1000 ? (t.cap / 1000).toFixed(1) + "k" : t.cap.toFixed(0)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* capital — type then Save */}
