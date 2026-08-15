@@ -1033,7 +1033,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     && !realHeld.has(_normSym(t.sym))
     && (t.entryAt == null || t.entryAt <= _heldAt));
   const autoRows = useMemo(() => (trades || [])
-    .filter((t) => (t.tradeType === "Auto Buy") && ((t.market || marketOf(t.sym) || "IN")) === market && (t.entryAt || 0) >= periodFrom)
+    // Must be scoped to the SAME real/virtual mode as the Total dashboard's Auto-Buy box — otherwise in
+    // Real mode this card would also count VIRTUAL auto-buy trades, showing a non-zero P&L (e.g. -0.06)
+    // while the Total box (real-only) shows 0. Match the mode so the two dashboards reconcile.
+    .filter((t) => (t.tradeType === "Auto Buy") && (isReal ? !!t.real : !t.real) && ((t.market || marketOf(t.sym) || "IN")) === market && (t.entryAt || 0) >= periodFrom)
     .map((t) => {
       const rejected = t.status === "rejected";
       const last = (ALL.find((a) => a.sym === t.sym) || {}).price;
@@ -1245,9 +1248,9 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     their recorded activity came from Manual vs Auto-Buy vs Automate vs Screener. */}
                 {(
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(58px, 1fr))", gap: 8, marginTop: 12 }}>
-                    {[["Manual", totalStats.byType.Manual], ["Auto-Buy", totalStats.byType["Auto Buy"]], ["Automate", automatePnl], ["Screener", totalStats.byType["Screener Auto Buy"]], ["Ideas", totalStats.byType.Ideas]].map(([label, v]) => (
+                    {[["Manual", totalStats.byType.Manual], ["Smart Auto-Buy", totalStats.byType["Auto Buy"]], ["Automate", automatePnl], ["Screener", totalStats.byType["Screener Auto Buy"]], ["Ideas", totalStats.byType.Ideas]].map(([label, v]) => (
                       <div key={label} style={{ background: "var(--elev)", borderRadius: 9, padding: "7px 8px", minWidth: 0 }}>
-                        <div style={{ fontSize: 9, opacity: .65, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
+                        <div style={{ fontSize: 9, opacity: .65, fontWeight: 700, lineHeight: 1.2, minHeight: 21, overflow: "hidden" }}>{label}</div>
                         <div className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: v >= 0 ? "var(--up)" : "var(--down)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(v >= 0 ? "+" : "") + (isReal ? money1(v) : fmtPnl(v, market))}</div>
                       </div>
                     ))}
