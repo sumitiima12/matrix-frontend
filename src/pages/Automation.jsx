@@ -2983,6 +2983,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const publicByOptions = useMemo(() => Array.from(new Set(publicList.map((s) => s.owner_name).filter(Boolean))), [publicList]);
   const publicSymOptions = useMemo(() => Array.from(new Set(publicList.flatMap((s) => s.symbols || []))), [publicList]);
   const [stratSymFilter, setStratSymFilter] = useState([]);   // symbol multi-select for the buckets ([] = All)
+  const [stratQuery, setStratQuery] = useState("");           // free-text search over strategy name / symbol
   const stratsRef = useRef(null);
   const sampleStrats = perf.filter(({ s }) => s.by === "Matrix" && !s.premium);
   // Premium strategies are shown in EVERY market (not market-filtered) and are locked:
@@ -3010,7 +3011,11 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   // Applied to every bucket below (Deployed / Samples / Premium / Mine / Copies) so the user can narrow
   // each list to one or more symbols. `symOk` accepts either a raw strategy or a { s } perf item.
   const availSyms = [...new Set(allBucketStrats.flatMap((s) => s.symbols || []))].filter((x) => marketOf(x) === market).sort();
-  const symOk = (x) => { const s = (x && x.s) ? x.s : x; return !stratSymFilter.length || (s.symbols || []).some((y) => stratSymFilter.includes(y)); };
+  // Free-text search: matches a strategy's NAME or any of its symbols. Composed into symOk so ONE query
+  // narrows every bucket (Deployed / Samples / Premium / Mine / Copies) at once.
+  const _stratQ = stratQuery.trim().toLowerCase();
+  const queryOk = (x) => { if (!_stratQ) return true; const s = (x && x.s) ? x.s : x; return String(s.name || "").toLowerCase().includes(_stratQ) || (s.symbols || []).some((y) => String(y).toLowerCase().includes(_stratQ)); };
+  const symOk = (x) => { const s = (x && x.s) ? x.s : x; return (!stratSymFilter.length || (s.symbols || []).some((y) => stratSymFilter.includes(y))) && queryOk(x); };
   // Long/Short groups per tab (symbol-filtered).
   const sampleLong = longOf(sampleStrats, perfSel).filter(symOk), sampleShort = shortOf(sampleStrats, perfSel).filter(symOk);
   const premiumLong = longOf(premiumStrats).filter(symOk), premiumShort = shortOf(premiumStrats).filter(symOk);
@@ -3872,6 +3877,16 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           </div>
         );
       })()}
+
+      {/* Free-text strategy search — filters EVERY bucket (Deployed / Samples / Premium / Mine / Copies) by
+         strategy name or symbol, via queryOk in symOk. */}
+      {stratTab !== "backtest" && stratTab !== "public" && (
+        <div style={{ marginBottom: 10, position: "relative" }}>
+          <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", fontSize: 12, opacity: .6, pointerEvents: "none" }}>🔍</span>
+          <input value={stratQuery} onChange={(e) => setStratQuery(e.target.value)} placeholder="Search strategies by name or symbol…" className="no-ring" style={{ width: "100%", boxSizing: "border-box", border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 11, padding: "9px 32px", fontSize: 12.5, fontWeight: 600 }} />
+          {stratQuery && <button onClick={() => setStratQuery("")} aria-label="Clear search" className="tap" style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", border: "none", background: "transparent", color: "var(--muted)", cursor: "pointer", padding: 4, display: "grid", placeItems: "center" }}><X size={14} /></button>}
+        </div>
+      )}
 
       {/* Symbol filter — narrows the visible cards in this bucket to one or more symbols (default All).
          Backtest has its own symbol control; Public has its own filter row, so skip both here. */}
