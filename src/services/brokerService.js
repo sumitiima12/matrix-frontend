@@ -159,6 +159,16 @@ export function brokerForMarket(market) {
     only the token. Never a broker token here. */
 /** Just the Bearer token header (or nothing) — for routes that only need identity, not a session. */
 function tokenHdr() { const t = (() => { try { return getAuthToken(); } catch { return null; } })(); return t ? { Authorization: `Bearer ${t}` } : {}; }
+
+/* User-facing "Resolve" for the account-wide unknown-order entry block. Triggers a SAFE server-side broker-probe
+   reconcile (never a blanket clear — an in-flight order stays blocked until the broker proves its outcome) and
+   returns { remaining, cleared }. Used by the "an earlier outcome is still unknown" toast's Resolve button. */
+export async function resolveUnknownOrders() {
+  if (!BACKEND_URL) throw new Error("no-backend");
+  const r = await fetch(`${BACKEND_URL}/api/order/resolve-unknown`, { method: "POST", headers: { "Content-Type": "application/json", ...tokenHdr() }, body: "{}" });
+  if (!r.ok) { let e = "Couldn't resolve right now."; try { e = (await r.json()).error || e; } catch { /* keep default */ } throw new Error(e); }
+  return r.json();
+}
 function authHeaders(session, userId) {
   const h = {};
   const tok = (() => { try { return getAuthToken(); } catch { return null; } })();

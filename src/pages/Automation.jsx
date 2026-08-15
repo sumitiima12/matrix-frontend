@@ -3276,33 +3276,14 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             const passed = checks.filter((c) => c.ok).length;
             return (
               <>
-                {/* #9 — the full go-live CHECKLIST is an admin/diagnostic view. Regular users don't see the
-                    itemised list; when something's missing they get one concise blocker line so the disabled
-                    Arm button still makes sense. */}
-                {isAdmin ? (
-                  <div style={{ marginTop: 12, border: "1px solid var(--line)", borderRadius: 12, background: "var(--elev)", padding: "10px 12px" }}>
-                    <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".04em", color: "var(--muted)", marginBottom: 8, display: "flex", justifyContent: "space-between" }}>
-                      <span>GO-LIVE CHECKLIST</span>
-                      <span style={{ color: blocked ? "var(--down)" : "var(--up)" }}>{passed}/{checks.length} ready</span>
-                    </div>
-                    <div style={{ display: "grid", gap: 6 }}>
-                      {checks.map((c, ci) => {
-                        const tone = c.ok ? "var(--up)" : (c.req ? "var(--down)" : "var(--warn, #C77700)");
-                        const Icon = c.ok ? Check : (c.req ? X : AlertTriangle);
-                        return (
-                          <div key={ci} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, fontWeight: 600, color: c.ok ? "var(--ink)" : tone }}>
-                            <Icon size={13} style={{ color: tone, flex: "0 0 auto" }} />
-                            <span>{c.label}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : (blocked ? (() => { const fb = checks.find((c) => c.req && !c.ok); return fb ? (
+                {/* Go-live CHECKLIST removed from the UI for everyone. Only a single concise blocker line shows
+                    when a REQUIRED prerequisite is still missing, so the disabled Arm button explains itself. */}
+                {void passed}
+                {blocked && (() => { const fb = checks.find((c) => c.req && !c.ok); return fb ? (
                   <div style={{ marginTop: 12, fontSize: 11.5, fontWeight: 700, color: "var(--down)", background: "var(--down-soft)", borderRadius: 10, padding: "9px 11px", display: "flex", gap: 7, alignItems: "center" }}>
                     <AlertTriangle size={13} style={{ flex: "0 0 auto" }} /><span>{fb.label}</span>
                   </div>
-                ) : null; })() : null)}
+                ) : null; })()}
                 {liveMsg && <div style={{ fontSize: 11.5, marginTop: 8, fontWeight: 600, color: liveMsg.e ? "var(--down)" : "var(--up)" }}>{liveMsg.t}</div>}
                 <button onClick={() => armLive(s)} disabled={liveBusy || blocked} className="tap disp glow" style={{ width: "100%", marginTop: 10, background: blocked ? "var(--elev)" : "linear-gradient(120deg,var(--down),#E0455E)", color: blocked ? "var(--muted)" : "#fff", border: blocked ? "1px solid var(--line)" : "none", borderRadius: 11, padding: 11, fontWeight: 800, fontSize: 12.5, cursor: blocked ? "not-allowed" : "pointer", opacity: blocked ? 0.8 : 1 }}>{liveBusy ? "Arming…" : blocked ? "Complete checklist to go live" : "Arm real-money auto-buy"}</button>
               </>

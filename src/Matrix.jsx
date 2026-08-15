@@ -62,7 +62,7 @@ import WalletSheet from "./components/common/WalletSheet";
 import ConfirmOrder from "./components/common/ConfirmOrder";
 import BrokerSheet from "./components/common/BrokerSheet";
 import { brokerSymbol } from "./domain/brokerSymbols";
-import { brokerPlaceOrder, brokerIntentStatus, registerAutoExit, reconcileRealTrades, updateAutoBuy, BROKER_MARKETS, loadBrokerCapabilities, orderTypesOf } from "./services/brokerService";
+import { brokerPlaceOrder, brokerIntentStatus, registerAutoExit, reconcileRealTrades, updateAutoBuy, BROKER_MARKETS, loadBrokerCapabilities, orderTypesOf, resolveUnknownOrders } from "./services/brokerService";
 import { OrderLifecycleStore, deriveIntentKey, interpretResult, classifyError, reconcileAction, ORDER_STATES, planClose } from "./services/orderLifecycle";
 import MatrixRain from "./components/common/MatrixRain";
 import MLogo from "./components/common/MLogo";
@@ -791,13 +791,32 @@ function AppInner() {
           // toast, but do NOT append it to the Activity log. Otherwise a single stuck intent stacks up a fresh
           // "still unknown" entry every session (the bug the user saw). The Activity log records ACTIONS, not
           // repeated status polls.
-          setBuyToast({ t: "An earlier order's outcome is still unknown — we're checking your broker. It won't be resubmitted automatically.", transient: true });
+          setBuyToast({ t: "An earlier order's outcome is still unknown — we're checking your broker. It won't be resubmitted automatically.", transient: true, action: { label: "Resolve", onClick: resolveUnknown } });
         }
       }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth, userId]);
+  /* USER-FACING "Resolve": ask the server to reconcile any unknown-outcome order against the broker (safe
+     probe — never a blanket clear) and report whether the account-wide new-entry block cleared. Also clears
+     resolved local intents so the "still unknown" toast stops. */
+  const [resolvingUnknown, setResolvingUnknown] = useState(false);
+  const resolveUnknown = async () => {
+    if (resolvingUnknown) return;
+    setResolvingUnknown(true);
+    setBuyToast({ t: "Checking your broker to resolve the pending order…" });
+    try {
+      const r = await resolveUnknownOrders();
+      if (r && r.cleared) {
+        try { const store = orderStoreRef.current; if (store) store.persisted().forEach((p) => store.settleTerminal(p.intentKey)); } catch { /* best-effort */ }
+        setBuyToast({ t: "Resolved — no unknown orders remain. You can place new orders now." });
+      } else {
+        setBuyToast({ t: `Still ${(r && r.remaining) || "some"} unresolved — your broker couldn't confirm the outcome yet. Check your broker; it won't be resubmitted.`, e: true });
+      }
+    } catch (e) { setBuyToast({ t: String((e && e.message) || "Couldn't resolve right now — retry in a moment."), e: true }); }
+    finally { setResolvingUnknown(false); }
+  };
   /* Arm a stop-loss / take-profit / trailing-stop on an EXISTING real holding (from My
      Portfolio in real mode). Resolves the broker symbol, then registers a server auto-exit so
      the engine sells reduce-only when a level is hit. Entry defaults to the holding's avg cost. */
@@ -1773,9 +1792,10 @@ function AppInner() {
       )}
       {buyToast && (
         <div style={{ position: "fixed", left: 0, right: 0, bottom: 96, display: "flex", justifyContent: "center", zIndex: 90, pointerEvents: "none" }}>
-          <div className="card glow" style={{ display: "flex", alignItems: "center", gap: 9, padding: "12px 16px", maxWidth: 380, border: "1px solid " + (buyToast.e ? "var(--down)" : "var(--up)") }}>
+          <div className="card glow" style={{ display: "flex", alignItems: "center", gap: 9, padding: "12px 16px", maxWidth: 380, border: "1px solid " + (buyToast.e ? "var(--down)" : "var(--up)"), pointerEvents: buyToast.action ? "auto" : "none" }}>
             {buyToast.e ? <X size={16} color="var(--down)" /> : <Check size={16} color="var(--up)" />}
             <span style={{ fontSize: 12.5, fontWeight: 600 }}>{buyToast.t}</span>
+            {buyToast.action && <button onClick={buyToast.action.onClick} disabled={resolvingUnknown} className="tap disp" style={{ flex: "0 0 auto", marginLeft: "auto", border: "none", borderRadius: 8, padding: "6px 12px", fontWeight: 800, fontSize: 11.5, background: "var(--primary)", color: "var(--on-primary)", cursor: "pointer" }}>{resolvingUnknown ? "…" : buyToast.action.label}</button>}
           </div>
         </div>
       )}
