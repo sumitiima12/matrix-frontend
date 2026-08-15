@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { currentIdeas, resolveIdea } from "../domain/ideas";
 import { BACKEND_URL } from "../config";
-import { fmt, fmtPnl } from "../lib/format";
-import { alertDialog } from "../lib/confirmDialog";   // in-app notice (reliable in webviews/PWA)
+import { fmt, fmtPnl, lsGet, lsSet } from "../lib/format";
+import { alertDialog, confirmDialog } from "../lib/confirmDialog";   // in-app notice/confirm (reliable in webviews/PWA)
 import { ALL, marketOf, UNIVERSE } from "../domain/universe";
-import { fetchHistory, apiListIdeas, apiPostIdea, apiDeleteIdea, apiReviewIdea } from "../domain/api";
+import { fetchHistory, apiListIdeas, apiPostIdea, apiDeleteIdea, apiReviewIdea, marketOpen } from "../domain/api";
 import { ChevronDown, ChevronUp, Plus, Sparkles, Trash2, X } from "lucide-react";
 import MiniCandles from "../components/charts/MiniCandles";
 import { selStyle } from "../components/common/styles";
@@ -274,7 +274,7 @@ function CommunityIdeas({ market, me, isAdmin, adminKey = "", onOpen }) {
   );
 }
 
-export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, isAdmin = false, adminKey = "", signupAt = null }) {
+export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, isAdmin = false, adminKey = "", signupAt = null, mode = "virtual" }) {
   const [dashOpen, setDashOpen] = useState(true);   // expanded by default — full stats like the Automate dashboard
   const [view, setView] = useState("all");   // "all" | "neo" | "community"
   // Recomputed from real data as it arrives, rather than frozen at import time.
@@ -299,7 +299,32 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
     })
     .sort((a, b) => b.left - a.left)
     .map((x) => x.i);
-;
+  /* AUTO-BUY IDEAS — like Smart Auto-Buy but for Neo's ideas: once a day (during market hours) it buys every
+     idea shown for this market, split across a default capital, each tagged "Ideas" so its P&L tracks
+     separately on the homepage. Per-market toggle; turning it ON in Real mode confirms the money moment. */
+  const ideaCapDefault = (market === "Crypto" || market === "US") ? 1000 : 100000;
+  const [autoIdeas, setAutoIdeas] = useState(() => lsGet("mx_ideas_autobuy_" + market, false));
+  useEffect(() => { setAutoIdeas(lsGet("mx_ideas_autobuy_" + market, false)); }, [market]);
+  const toggleAutoIdeas = async () => {
+    const v = !autoIdeas;
+    if (v && mode === "real" && !(await confirmDialog(`Auto-Buy Ideas · ${market}\nMode  Real\n\nWhile ON, this places REAL orders on every Neo idea for this market, once a day, each with its target/stop. Turn OFF anytime to stop new entries.`, { title: "Turn on real Auto-Buy Ideas?", confirmLabel: "Turn on" }))) return;
+    setAutoIdeas(v); lsSet("mx_ideas_autobuy_" + market, v);
+  };
+  useEffect(() => {
+    if (!autoIdeas || !onBuy || !shown.length || !marketOpen(market)) return;
+    const key = `mx_ideasbuy_${market}_${mode}_${Math.floor(Date.now() / 864e5)}`;   // once per day, per mode
+    if (lsGet(key, false)) return;
+    const per = ideaCapDefault / shown.length;
+    shown.forEach((idea) => {
+      const s = ALL.find((a) => a.sym === idea.sym); if (!s || s.price == null) return;
+      const short = idea.direction === "Short" || idea.side === "SELL" || idea.short;
+      const qty = market === "Crypto" ? +(per / s.price).toFixed(6) : Math.max(1, Math.floor(per / s.price));
+      const slPct = (idea.entry && idea.stop) ? +((Math.abs(idea.stop - idea.entry) / idea.entry) * 100).toFixed(2) : undefined;
+      onBuy(s, qty, { tp: idea.gain, sl: slPct, tradeType: "Ideas", ...(short ? { side: "SELL", short: true } : {}) });
+    });
+    lsSet(key, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoIdeas, market, mode, shown.length]);
   return (
     <div className="mx fade">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
@@ -312,6 +337,22 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
           <button key={k} onClick={() => setView(k)} className="pill tap disp" style={{ padding: "6px 16px", fontSize: 12, fontWeight: 800, border: "none", background: view === k ? "var(--primary)" : "transparent", color: view === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
         ))}
       </div>
+
+      {/* Auto-Buy Ideas — like Smart Auto-Buy, for Neo's daily ideas. Off by default. */}
+      {view !== "community" && (
+        <div className="card" style={{ marginTop: 12, padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ minWidth: 0 }}>
+            <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>Auto-Buy Ideas</div>
+            <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2, lineHeight: 1.4 }}>Buys every Neo idea for this market once a day{mode === "real" ? " with REAL orders" : " (paper)"}, split across {(market === "Crypto" || market === "US") ? "$1k" : "₹1L"}. Each carries its target/stop.</div>
+          </div>
+          <label className="tap" style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+            <span onClick={toggleAutoIdeas} style={{ width: 40, height: 23, borderRadius: 999, background: autoIdeas ? "#22C55E" : "var(--line)", position: "relative", transition: "background .2s", display: "inline-block" }}>
+              <span style={{ position: "absolute", top: 2, left: autoIdeas ? 19 : 2, width: 19, height: 19, borderRadius: 999, background: "#fff", transition: "left .2s" }} />
+            </span>
+            <span style={{ fontSize: 11, fontWeight: 800, color: autoIdeas ? "var(--up)" : "var(--muted)" }}>{autoIdeas ? "On" : "Off"}</span>
+          </label>
+        </div>
+      )}
 
       {view !== "community" && (!dashOpen ? (
         <IdeasDashboard ideas={shown} collapsed onExpand={() => setDashOpen(true)} signupAt={signupAt} market={market} />
@@ -350,7 +391,7 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
               <div style={{ marginTop: 12 }}>
                 <BuyButton s={s} market={market} onBuy={onBuy} lot={s.lot || 1} fullWidth
                   only={(idea.direction === "Short" || idea.side === "SELL" || idea.short) ? "sell" : "buy"}
-                  opts={{ tp: idea.gain, sl: (idea.entry && idea.stop) ? +((Math.abs(idea.stop - idea.entry) / idea.entry) * 100).toFixed(2) : undefined, tradeType: "Manual" }} />
+                  opts={{ tp: idea.gain, sl: (idea.entry && idea.stop) ? +((Math.abs(idea.stop - idea.entry) / idea.entry) * 100).toFixed(2) : undefined, tradeType: "Ideas" }} />
               </div>
             )}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, gap: 8 }}>

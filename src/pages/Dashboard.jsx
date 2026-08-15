@@ -1084,7 +1084,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       // entered before the window) — matching what the Smart Auto-Buy card shows. Closed trades
       // are still scoped to the selected date range.
       (t.exitAt == null || (stampT(t) >= totFrom && stampT(t) <= totTo)));
-    let pnl = 0, invested = 0, open = 0, closedN = 0, wins = 0, byType = { Manual: 0, "Auto Buy": 0, Automate: 0, "Screener Auto Buy": 0 };
+    let pnl = 0, invested = 0, open = 0, closedN = 0, wins = 0, byType = { Manual: 0, "Auto Buy": 0, Automate: 0, "Screener Auto Buy": 0, Ideas: 0 };
     for (const t of rows) {
       const closed = t.exitAt != null && t.exit != null;
       const st = ALL.find((a) => a.sym === t.sym) || {};
@@ -1098,7 +1098,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       const p = positionPnl(t, cur, marketOf(t.sym) || market);
       pnl += p; invested += Number(t.entry) * Number(t.qty || (market === "Crypto" ? 0 : 1));
       if (!closed) open++; else { closedN++; if (p > 0) wins++; }
-      const key = t.tradeType === "Auto Buy" ? "Auto Buy" : t.tradeType === "Automate" ? "Automate" : t.tradeType === "Screener Auto Buy" ? "Screener Auto Buy" : "Manual";
+      const key = t.tradeType === "Auto Buy" ? "Auto Buy" : t.tradeType === "Automate" ? "Automate" : t.tradeType === "Screener Auto Buy" ? "Screener Auto Buy" : t.tradeType === "Ideas" ? "Ideas" : "Manual";
       byType[key] += p;
     }
     // Win rate is over CLOSED trades only (an open position hasn't won or lost yet).
@@ -1222,7 +1222,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   // used totalStats.pnl instead, its Automate slice (byType.Automate) would differ from the tile
                   // and the boxes wouldn't reconcile. Leveraged-real crypto keeps the broker-wallet headline
                   // (dashNet), which is broker truth and intentionally separate from recorded per-type activity.
-                  const tileSum = totalStats.byType.Manual + totalStats.byType["Auto Buy"] + automatePnl + totalStats.byType["Screener Auto Buy"];
+                  const tileSum = totalStats.byType.Manual + totalStats.byType["Auto Buy"] + automatePnl + totalStats.byType["Screener Auto Buy"] + totalStats.byType.Ideas;
                   const hp = (isReal && isLeveraged) ? dashNet : tileSum;
                   const hr = (isReal && isLeveraged) ? dashRet : (totalStats.invested ? (tileSum / totalStats.invested) * 100 : totalStats.retPct);
                   // Suppress the % when the capital base is too small for it to mean anything: a few dollars of P&L
@@ -1265,8 +1265,8 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     headline P&L comes from the broker wallet, the user still wants to see how much of
                     their recorded activity came from Manual vs Auto-Buy vs Automate vs Screener. */}
                 {(
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginTop: 12 }}>
-                    {[["Manual", totalStats.byType.Manual], ["Auto-Buy", totalStats.byType["Auto Buy"]], ["Automate", automatePnl], ["Screener", totalStats.byType["Screener Auto Buy"]]].map(([label, v]) => (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(58px, 1fr))", gap: 8, marginTop: 12 }}>
+                    {[["Manual", totalStats.byType.Manual], ["Auto-Buy", totalStats.byType["Auto Buy"]], ["Automate", automatePnl], ["Screener", totalStats.byType["Screener Auto Buy"]], ["Ideas", totalStats.byType.Ideas]].map(([label, v]) => (
                       <div key={label} style={{ background: "var(--elev)", borderRadius: 9, padding: "7px 8px", minWidth: 0 }}>
                         <div style={{ fontSize: 9, opacity: .65, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
                         <div className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: v >= 0 ? "var(--up)" : "var(--down)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(v >= 0 ? "+" : "") + (isReal ? money1(v) : fmtPnl(v, market))}</div>
