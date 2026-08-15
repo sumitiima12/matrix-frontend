@@ -1217,6 +1217,25 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     </div>
                   );
                 })()}
+                {/* Sparkline — cumulative realised P&L over the selected period, matching the richer mockup hero
+                    card. Self-contained + guarded: renders only with ≥2 closed trades, never throws. */}
+                {(() => {
+                  const series = (trades || [])
+                    .filter((t) => (isReal ? !!t.real : !t.real) && t.exitAt != null && t.exit != null && t.entry != null && inMarket(t.sym, t.market) && (t.exitAt || 0) >= periodFrom)
+                    .sort((a, b) => (a.exitAt || 0) - (b.exitAt || 0));
+                  if (series.length < 2) return null;
+                  let cum = 0;
+                  const pts = series.map((t) => { const dir = (t.side === "SELL" || t.short) ? -1 : 1; cum += (Number(t.exit) - Number(t.entry)) * (t.qty || 0) * dir; return cum; });
+                  const min = Math.min(0, ...pts), max = Math.max(0, ...pts), span = (max - min) || 1;
+                  const W = 320, H = 40, step = W / (pts.length - 1);
+                  const poly = pts.map((v, i) => `${(i * step).toFixed(1)},${(H - ((v - min) / span) * H).toFixed(1)}`).join(" ");
+                  const up = pts[pts.length - 1] >= 0;
+                  return (
+                    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="38" preserveAspectRatio="none" style={{ margin: "12px 0 2px", display: "block" }} aria-hidden="true">
+                      <polyline points={poly} fill="none" stroke={up ? "var(--up)" : "var(--down)"} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  );
+                })()}
                 {isReal && realCash != null && <div style={{ marginTop: 8, fontSize: 11.5, opacity: .9 }}>Available cash <b style={{ fontWeight: 800, color: "var(--ink)" }}>{money1(realCash)}</b></div>}
                 {/* Per-type P&L breakdown — equal, subtle boxes so all four sources read at a glance.
                     Shown in BOTH virtual and real mode (including leveraged crypto): even when the
