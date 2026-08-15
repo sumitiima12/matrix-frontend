@@ -1171,7 +1171,12 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
     return (
       <Section title="Active Screeners" icon={<SlidersHorizontal size={17} color="var(--primary)" />}>
         {activeScreeners.length === 0
-          ? <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.5, padding: "4px 2px 10px" }}>No active screeners yet. Open the Screener tab to browse and activate them.</div>
+          ? (
+            <div className="card" style={{ padding: 16, textAlign: "center", boxShadow: "0 10px 26px -14px rgba(0,0,0,.55)", borderRadius: 16 }}>
+              <div style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 600, lineHeight: 1.5 }}>No screeners are active right now. Activate one to start scanning the market for signals{mode === "real" ? " and real auto-buys" : ""}.</div>
+              {onOpenScreener && <button onClick={onOpenScreener} className="tap disp" style={{ marginTop: 12, border: "none", background: "var(--primary)", color: "var(--on-primary)", borderRadius: 11, padding: "10px 18px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>Activate a screener ›</button>}
+            </div>
+          )
           : (<>
               {(showAllActive ? activeScreeners : activeScreeners.slice(0, 2)).map((s) => (
                 <ScreenerRow key={s.key} screener={s} market={market} mode={mode} trades={trades} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} onClosePosition={onClosePosition} liveTick={liveTick} side="BUY" />
