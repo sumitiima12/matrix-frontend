@@ -1060,7 +1060,12 @@ function AppInner() {
     } else {
       setRemoteHydrated(true);
     }
-    if (BACKEND_URL) fetchTrades(userId, 0, Date.now()).then((t) => { if (t && t.length) setTrades(t); }).catch(() => {});
+    /* With a backend, the server trade book is AUTHORITATIVE — trust its array even when it's EMPTY or smaller
+       than the local copy. The old `t && t.length` guard kept stale localStorage rows alive after an admin
+       "clear real data" (the server returned fewer/zero rows and we ignored it), so cleared/phantom trades like
+       synthetic-symbol test rows lingered in Recent Activity and the homepage count. A failed fetch returns
+       null/undefined (not an array) → we keep the local view rather than blanking it on a transient error. */
+    if (BACKEND_URL) fetchTrades(userId, 0, Date.now()).then((t) => { if (Array.isArray(t)) setTrades(t); }).catch(() => {});
     /* R16-P2-02/03: the risk policy is now HYDRATED FROM the server (authoritative) inside useOrders, keyed
        per user. We must NOT push local/default caps up on login — doing so overwrote the server policy and
        leaked one user's caps to the next on a shared browser. Saving happens only on an explicit edit. */
