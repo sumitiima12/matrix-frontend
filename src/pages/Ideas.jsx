@@ -4,6 +4,7 @@ import { BACKEND_URL } from "../config";
 import { fmt, fmtPnl, lsGet, lsSet } from "../lib/format";
 import { alertDialog, confirmDialog } from "../lib/confirmDialog";   // in-app notice/confirm (reliable in webviews/PWA)
 import { ALL, marketOf, UNIVERSE } from "../domain/universe";
+import { techSignal } from "../domain/signals";   // signal-quality score → confidence weighting for Auto-Buy Ideas
 import { fetchHistory, apiListIdeas, apiPostIdea, apiDeleteIdea, apiReviewIdea, marketOpen } from "../domain/api";
 import { ChevronDown, ChevronUp, Plus, Sparkles, Trash2, X } from "lucide-react";
 import MiniCandles from "../components/charts/MiniCandles";
@@ -300,31 +301,50 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
     .sort((a, b) => b.left - a.left)
     .map((x) => x.i);
   /* AUTO-BUY IDEAS — like Smart Auto-Buy but for Neo's ideas: once a day (during market hours) it buys every
-     idea shown for this market, split across a default capital, each tagged "Ideas" so its P&L tracks
-     separately on the homepage. Per-market toggle; turning it ON in Real mode confirms the money moment. */
+     idea shown for this market. Capital is user-editable and distributed by CONFIDENCE (each idea's signal-
+     quality score), bounded [0.4×,2×] the equal slice — same engine as Smart Auto-Buy. Each trade is tagged
+     "Ideas" so its P&L tracks separately on the homepage. Per-market toggle; ON in Real mode confirms first. */
   const ideaCapDefault = (market === "Crypto" || market === "US") ? 1000 : 100000;
   const [autoIdeas, setAutoIdeas] = useState(() => lsGet("mx_ideas_autobuy_" + market, false));
-  useEffect(() => { setAutoIdeas(lsGet("mx_ideas_autobuy_" + market, false)); }, [market]);
+  const [ideaCap, setIdeaCap] = useState(() => lsGet("mx_ideas_cap_" + market, ideaCapDefault));
+  const [ideaCapDraft, setIdeaCapDraft] = useState(ideaCap);
+  useEffect(() => {
+    setAutoIdeas(lsGet("mx_ideas_autobuy_" + market, false));
+    const c = lsGet("mx_ideas_cap_" + market, ideaCapDefault); setIdeaCap(c); setIdeaCapDraft(c);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [market]);
   const toggleAutoIdeas = async () => {
     const v = !autoIdeas;
-    if (v && mode === "real" && !(await confirmDialog(`Auto-Buy Ideas · ${market}\nMode  Real\n\nWhile ON, this places REAL orders on every Neo idea for this market, once a day, each with its target/stop. Turn OFF anytime to stop new entries.`, { title: "Turn on real Auto-Buy Ideas?", confirmLabel: "Turn on" }))) return;
+    if (v && mode === "real" && !(await confirmDialog(`Auto-Buy Ideas · ${market}\nMode  Real\n\nWhile ON, this places REAL orders on every Neo idea for this market, once a day, sized by confidence, each with its target/stop. Turn OFF anytime to stop new entries.`, { title: "Turn on real Auto-Buy Ideas?", confirmLabel: "Turn on" }))) return;
     setAutoIdeas(v); lsSet("mx_ideas_autobuy_" + market, v);
   };
+  // Confidence-weighted plan: capital split ∝ each idea's signal-quality score, bounded then renormalised.
+  const ideaPlan = useMemo(() => {
+    const cap = Math.max(1, Number(ideaCap) || ideaCapDefault);
+    const scored = shown.map((idea) => { const s = ALL.find((a) => a.sym === idea.sym); return { idea, s, conf: Math.max(0.5, Number((s ? techSignal(s) : {}).score) || 0.5) }; }).filter((p) => p.s && p.s.price != null);
+    if (!scored.length) return [];
+    const confSum = scored.reduce((a, p) => a + p.conf, 0) || 1;
+    const eq = cap / scored.length;
+    let caps = scored.map((p) => Math.max(0.4 * eq, Math.min(2 * eq, (cap * p.conf) / confSum)));
+    const capSum = caps.reduce((a, c) => a + c, 0) || 1;
+    caps = caps.map((c) => (c * cap) / capSum);
+    const maxConf = Math.max(...scored.map((p) => p.conf));
+    return scored.map((p, i) => {
+      const price = p.s.price, short = p.idea.direction === "Short" || p.idea.side === "SELL" || p.idea.short;
+      const qty = market === "Crypto" ? +(caps[i] / price).toFixed(6) : Math.max(1, Math.floor(caps[i] / price));
+      const slPct = (p.idea.entry && p.idea.stop) ? +((Math.abs(p.idea.stop - p.idea.entry) / p.idea.entry) * 100).toFixed(2) : undefined;
+      return { sym: p.idea.sym, s: p.s, short, qty, cap: +caps[i].toFixed(2), confPct: Math.round(100 * p.conf / (maxConf || 1)), slPct, gain: p.idea.gain };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shown, ideaCap, market]);
   useEffect(() => {
-    if (!autoIdeas || !onBuy || !shown.length || !marketOpen(market)) return;
+    if (!autoIdeas || !onBuy || !ideaPlan.length || !marketOpen(market)) return;
     const key = `mx_ideasbuy_${market}_${mode}_${Math.floor(Date.now() / 864e5)}`;   // once per day, per mode
     if (lsGet(key, false)) return;
-    const per = ideaCapDefault / shown.length;
-    shown.forEach((idea) => {
-      const s = ALL.find((a) => a.sym === idea.sym); if (!s || s.price == null) return;
-      const short = idea.direction === "Short" || idea.side === "SELL" || idea.short;
-      const qty = market === "Crypto" ? +(per / s.price).toFixed(6) : Math.max(1, Math.floor(per / s.price));
-      const slPct = (idea.entry && idea.stop) ? +((Math.abs(idea.stop - idea.entry) / idea.entry) * 100).toFixed(2) : undefined;
-      onBuy(s, qty, { tp: idea.gain, sl: slPct, tradeType: "Ideas", ...(short ? { side: "SELL", short: true } : {}) });
-    });
+    ideaPlan.forEach((p) => onBuy(p.s, p.qty, { tp: p.gain, sl: p.slPct, tradeType: "Ideas", ...(p.short ? { side: "SELL", short: true } : {}) }));
     lsSet(key, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoIdeas, market, mode, shown.length]);
+  }, [autoIdeas, market, mode, ideaPlan.length]);
   return (
     <div className="mx fade">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
@@ -338,19 +358,41 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
         ))}
       </div>
 
-      {/* Auto-Buy Ideas — like Smart Auto-Buy, for Neo's daily ideas. Off by default. */}
+      {/* Auto-Buy Ideas — like Smart Auto-Buy, for Neo's daily ideas: editable capital, confidence-weighted. Off by default. */}
       {view !== "community" && (
-        <div className="card" style={{ marginTop: 12, padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <div style={{ minWidth: 0 }}>
-            <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>Auto-Buy Ideas</div>
-            <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2, lineHeight: 1.4 }}>Buys every Neo idea for this market once a day{mode === "real" ? " with REAL orders" : " (paper)"}, split across {(market === "Crypto" || market === "US") ? "$1k" : "₹1L"}. Each carries its target/stop.</div>
+        <div className="card" style={{ marginTop: 12, padding: "12px 14px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <div style={{ minWidth: 0 }}>
+              <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>Auto-Buy Ideas</div>
+              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2, lineHeight: 1.4 }}>Buys every Neo idea for this market once a day{mode === "real" ? " with REAL orders" : " (paper)"}, capital split by confidence. Each carries its target/stop.</div>
+            </div>
+            <label className="tap" style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+              <span onClick={toggleAutoIdeas} style={{ width: 40, height: 23, borderRadius: 999, background: autoIdeas ? "#22C55E" : "var(--line)", position: "relative", transition: "background .2s", display: "inline-block" }}>
+                <span style={{ position: "absolute", top: 2, left: autoIdeas ? 19 : 2, width: 19, height: 19, borderRadius: 999, background: "#fff", transition: "left .2s" }} />
+              </span>
+              <span style={{ fontSize: 11, fontWeight: 800, color: autoIdeas ? "var(--up)" : "var(--muted)" }}>{autoIdeas ? "On" : "Off"}</span>
+            </label>
           </div>
-          <label className="tap" style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-            <span onClick={toggleAutoIdeas} style={{ width: 40, height: 23, borderRadius: 999, background: autoIdeas ? "#22C55E" : "var(--line)", position: "relative", transition: "background .2s", display: "inline-block" }}>
-              <span style={{ position: "absolute", top: 2, left: autoIdeas ? 19 : 2, width: 19, height: 19, borderRadius: 999, background: "#fff", transition: "left .2s" }} />
-            </span>
-            <span style={{ fontSize: 11, fontWeight: 800, color: autoIdeas ? "var(--up)" : "var(--muted)" }}>{autoIdeas ? "On" : "Off"}</span>
-          </label>
+          {/* Editable deployed capital + Save (a stray keystroke never resizes live auto-buys until saved). */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+            <span style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 700 }}>Capital {(market === "Crypto" || market === "US") ? "$" : "₹"}</span>
+            <input value={ideaCapDraft} onChange={(e) => setIdeaCapDraft(String(e.target.value).replace(/[^0-9]/g, ""))} inputMode="numeric" className="no-ring mono" style={{ flex: "1 1 0", minWidth: 0, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 9, padding: "7px 9px", fontWeight: 800, fontSize: 13 }} />
+            <button onClick={() => { const v = Math.max(1, parseInt(ideaCapDraft) || ideaCapDefault); setIdeaCap(v); setIdeaCapDraft(v); lsSet("mx_ideas_cap_" + market, v); }} disabled={String(ideaCapDraft) === String(ideaCap)} className="tap disp" style={{ flex: "0 0 auto", border: "none", borderRadius: 9, padding: "7px 14px", fontWeight: 800, fontSize: 12, cursor: String(ideaCapDraft) === String(ideaCap) ? "default" : "pointer", background: String(ideaCapDraft) === String(ideaCap) ? "var(--elev)" : "var(--primary)", color: String(ideaCapDraft) === String(ideaCap) ? "var(--muted)" : "var(--on-primary)" }}>Save</button>
+          </div>
+          {/* Confidence-weighted split — each idea's confidence and the capital it gets. */}
+          {ideaPlan.length > 0 && (
+            <div style={{ marginTop: 9, display: "flex", flexDirection: "column", gap: 5 }}>
+              <div style={{ fontSize: 9, opacity: .6, fontWeight: 800, letterSpacing: ".04em" }}>CONFIDENCE-WEIGHTED CAPITAL</div>
+              {ideaPlan.slice().sort((a, b) => b.confPct - a.confPct).map((p) => (
+                <div key={p.sym} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+                  <span className="disp" style={{ fontWeight: 800, minWidth: 52, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.sym}</span>
+                  <div style={{ flex: 1, height: 5, background: "var(--elev)", borderRadius: 3, overflow: "hidden" }}><div style={{ width: `${p.confPct}%`, height: "100%", background: "var(--primary)" }} /></div>
+                  <span className="mono" style={{ opacity: .8, fontWeight: 700, minWidth: 30, textAlign: "right" }}>{p.confPct}%</span>
+                  <span className="mono" style={{ fontWeight: 800, minWidth: 58, textAlign: "right" }}>{(market === "Crypto" || market === "US") ? "$" : "₹"}{p.cap >= 1000 ? (p.cap / 1000).toFixed(1) + "k" : p.cap.toFixed(0)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
