@@ -10,7 +10,7 @@ import { ALL, GLOBAL_MKTS, UNIVERSE, marketOf } from "../domain/universe";
 import { stratPerf } from "../domain/strategies";   // same P&L engine the Automate page uses, so the two agree
 import { positionPnl } from "../domain/leverage";   // Delta-parity crypto P&L (margin cap + fees), same for paper & real
 import { askMatrix, fetchNews, fetchNewsFeed, scanIdeas } from "../domain/api";
-import { getDeltaContractValues } from "../services/brokerService";
+import { getDeltaContractValues, getPortfolioAnalytics } from "../services/brokerService";
 import AddBtn from "../components/common/AddBtn";
 import SectorHeatmap from "../components/common/SectorHeatmap";
 import EarningsSection from "../components/common/EarningsSection";
@@ -1147,6 +1147,24 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   }, [trades, market, isReal, totFrom, totTo, totPeriod]);
   const totLabel = totPeriod === "today" ? "today" : totPeriod === "month" ? "this month" : totPeriod === "last12" ? "last 12 months" : totPeriod === "custom" ? "in range" : "all time";
 
+  /* CANONICAL analytics from the backend's ONE portfolio service — so the Total headline, the category boxes,
+     the win rate and the open count all come from the same server-owned computation and cannot disagree
+     (defects #1/#2/#5/#8). We send our live price snapshot (marks) so the numbers match what's on screen. If the
+     endpoint is unavailable it stays null and every consumer falls back to the local calc — the view never breaks. */
+  const [analytics, setAnalytics] = useState(null);
+  useEffect(() => {
+    if (!BACKEND_URL) { setAnalytics(null); return undefined; }
+    let ok = true;
+    const marks = {};
+    for (const s of ALL) { if (s && s.sym && s.price != null) marks[String(s.sym).replace(/(USDT|USD|INR|PERP)$/i, "").replace(/^NSE:/i, "").replace(/-EQ$/i, "").toUpperCase()] = s.price; }
+    getPortfolioAnalytics({ mode: isReal ? "REAL" : "VIRTUAL", market, from: Number.isFinite(totFrom) ? totFrom : null, to: Number.isFinite(totTo) ? totTo : null, timeframeLabel: totLabel, marks })
+      .then((r) => { if (ok) setAnalytics(r || null); }).catch(() => { if (ok) setAnalytics(null); });
+    return () => { ok = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReal, market, totFrom, totTo, trades]);
+  // Canonical category P&L (or the local byType fallback). One helper so every tile reads the same source.
+  const catPnl = (canonKey, localVal) => (analytics && analytics.categories && analytics.categories[canonKey] != null) ? analytics.categories[canonKey] : localVal;
+
   /* The "Automate" box uses the SAME P&L engine as the Automate page (stratPerf over the deployed strategies)
      so the two agree instead of diverging in sign. It sums each strategy's realised (closed-in-window) +
      unrealised (open, priced) P&L over the Total card's window, scoped to this mode + market. */
@@ -1263,7 +1281,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   // used totalStats.pnl instead, its Automate slice (byType.Automate) would differ from the tile
                   // and the boxes wouldn't reconcile. Leveraged-real crypto keeps the broker-wallet headline
                   // (dashNet), which is broker truth and intentionally separate from recorded per-type activity.
-                  const tileSum = totalStats.byType.Manual + totalStats.byType["Auto Buy"] + automatePnl + totalStats.byType["Screener Auto Buy"] + totalStats.byType.Ideas;
+                  // Prefer the CANONICAL server total (headline == Σ category boxes by construction). Fall back to
+                  // the local tile sum only if the analytics endpoint is unavailable, so the view never breaks.
+                  const localTileSum = totalStats.byType.Manual + totalStats.byType["Auto Buy"] + automatePnl + totalStats.byType["Screener Auto Buy"] + totalStats.byType.Ideas;
+                  const tileSum = (analytics && analytics.totalPnl != null) ? analytics.totalPnl : localTileSum;
                   const hp = (isReal && isLeveraged) ? dashNet : tileSum;
                   const hr = (isReal && isLeveraged) ? dashRet : (totalStats.invested ? (tileSum / totalStats.invested) * 100 : totalStats.retPct);
                   // Suppress the % when the capital base is too small for it to mean anything: a few dollars of P&L
@@ -1286,7 +1307,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     their recorded activity came from Manual vs Auto-Buy vs Automate vs Screener. */}
                 {(
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(58px, 1fr))", gap: 8, marginTop: 12 }}>
-                    {[["Manual", totalStats.byType.Manual], ["Smart Auto-Buy", totalStats.byType["Auto Buy"]], ["Automate", automatePnl], ["Screener", totalStats.byType["Screener Auto Buy"]], ["Ideas", totalStats.byType.Ideas]].map(([label, v]) => (
+                    {[["Manual", catPnl("Manual", totalStats.byType.Manual)], ["Smart Auto-Buy", catPnl("Smart Auto-Buy", totalStats.byType["Auto Buy"])], ["Automate", catPnl("Automate", automatePnl)], ["Screener", catPnl("Screener", totalStats.byType["Screener Auto Buy"])], ["Ideas", catPnl("Ideas", totalStats.byType.Ideas)],
+                      // Show the Unknown/Imported bucket ONLY when the canonical report has a non-zero amount there —
+                      // so nothing silently drops out of the total, but the box list stays clean when it's empty.
+                      ...((analytics && analytics.categories && Math.abs(analytics.categories["Unknown/Imported"] || 0) > 0.005) ? [["Unknown/Imported", analytics.categories["Unknown/Imported"]]] : [])].map(([label, v]) => (
                       <div key={label} style={{ background: "var(--elev)", borderRadius: 9, padding: "7px 8px", minWidth: 0 }}>
                         <div style={{ fontSize: 9, opacity: .65, fontWeight: 700, lineHeight: 1.2, minHeight: 21, overflow: "hidden" }}>{label}</div>
                         <div className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: v >= 0 ? "var(--up)" : "var(--down)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(v >= 0 ? "+" : "") + (isReal ? money1(v) : fmtPnl(v, market))}</div>
@@ -1294,16 +1318,30 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     ))}
                   </div>
                 )}
-                {isReal && isLeveraged && (
-                  <div style={{ marginTop: 7, fontSize: 10, lineHeight: 1.45, opacity: .6 }}>
-                    Headline is your live <b style={{ opacity: .85 }}>Delta wallet</b> P&amp;L (broker truth). The boxes are Matrix's recorded per-type activity, so they may not add up to it.
-                  </div>
-                )}
-                {/* At-a-glance counts — trades and OPEN positions for THIS market. */}
+                {isReal && isLeveraged && (() => {
+                  // The headline is the BROKER WALLET (broker truth); the boxes sum to MATRIX-ATTRIBUTED P&L. Rather
+                  // than say "these may not add up," we name each figure and show the unattributed difference so the
+                  // gap is explicit and honest (never two different numbers both labelled "Total P&L").
+                  const matrixAttrib = (analytics && analytics.totalPnl != null) ? analytics.totalPnl : null;
+                  return (
+                    <div style={{ marginTop: 7, fontSize: 10, lineHeight: 1.5, opacity: .7 }}>
+                      <div>Broker P&amp;L (Delta wallet): <b style={{ opacity: .9 }}>{money1(dashNet)}</b></div>
+                      {matrixAttrib != null && <div>Matrix-attributed P&amp;L (boxes): <b style={{ opacity: .9 }}>{money1(matrixAttrib)}</b></div>}
+                      {matrixAttrib != null && <div>Unattributed difference: <b style={{ opacity: .9 }}>{money1(dashNet - matrixAttrib)}</b></div>}
+                    </div>
+                  );
+                })()}
+                {/* At-a-glance counts — trades and OPEN positions for THIS market. Open count is canonical (same as
+                    Live Positions / Screener / Trade History) when the analytics endpoint is available. */}
                 <div style={{ display: "flex", gap: 14, marginTop: 10, fontSize: 12, opacity: .9, flexWrap: "wrap" }}>
                   <span><b style={{ fontWeight: 800 }}>{totalStats.count}</b> <span style={{ opacity: .7 }}>trades</span></span>
-                  <span><b style={{ fontWeight: 800 }}>{totalOpenRows.length}</b> <span style={{ opacity: .7 }}>open</span></span>
-                  {totalStats.winRate != null && <span><b style={{ fontWeight: 800 }}>{totalStats.winRate.toFixed(0)}%</b> <span style={{ opacity: .7 }}>win rate</span></span>}
+                  <span><b style={{ fontWeight: 800 }}>{(analytics && analytics.openCount != null) ? analytics.openCount : totalOpenRows.length}</b> <span style={{ opacity: .7 }}>open</span></span>
+                  {/* Win rate from the CANONICAL engine (eligible closed trades only, after fees; breakeven excluded).
+                      Show "—" when there are no eligible closed trades — never a misleading 0% (spec #8). */}
+                  {(() => {
+                    const wr = (analytics && "winRate" in analytics) ? analytics.winRate : totalStats.winRate;
+                    return <span><b style={{ fontWeight: 800 }}>{wr == null ? "—" : `${wr.toFixed(0)}%`}</b> <span style={{ opacity: .7 }}>win rate</span></span>;
+                  })()}
                 </div>
                 {totalStats.count === 0 && <div style={{ fontSize: 11.5, opacity: .8, marginTop: 10 }}>No {isReal ? "real" : "virtual"} trades {totLabel} in {MKT_LABEL[market]}.</div>}
 

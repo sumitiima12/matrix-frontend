@@ -181,6 +181,19 @@ export async function getDeltaContractValues() {
     return (d && d.contractValues) || {};
   } catch { return {}; }
 }
+/* Canonical portfolio analytics — the ONE source every dashboard widget reads so the headline, category boxes,
+   win rate and open count all reconcile. Server owns the aggregation + provenance; we pass our live price
+   snapshot (marks) so the prices shown and the totals use the same snapshot. Returns the report or null (the
+   caller then falls back to its local computation so the money view never breaks). */
+export async function getPortfolioAnalytics(filter) {
+  if (!BACKEND_URL) return null;
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/analytics/portfolio`, { method: "POST", headers: { "Content-Type": "application/json", ...tokenHdr() }, body: JSON.stringify(filter || {}) });
+    if (!r.ok) return null;
+    const d = await r.json();
+    return (d && d.report) || null;
+  } catch { return null; }
+}
 function authHeaders(session, userId) {
   const h = {};
   const tok = (() => { try { return getAuthToken(); } catch { return null; } })();

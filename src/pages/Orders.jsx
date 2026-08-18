@@ -153,8 +153,28 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
   const statMkt = mkt === "all" ? "IN" : mkt;
   const typeColor = (tt) => tt === "Auto Buy" ? "var(--primary)" : tt === "Automate" ? "#8B5CF6" : tt === "Screener Auto Buy" ? "#0EA5E9" : "var(--muted)";
   const exitColor = (et) => (et === "Stop loss" || et === "Trailing stop") ? "var(--down)" : et === "Exit trigger" ? "var(--up)" : et === "Open" ? "var(--primary)" : "var(--muted)";
-  /* "Strategy by" — the strategy's creator for automated trades, else Manual / Auto Buy. */
-  const stratBy = (t) => t.strategyBy || (t.tradeType === "Auto Buy" ? "Auto Buy" : t.tradeType === "Screener Auto Buy" ? "Screener Auto Buy" : "Manual");
+  /* SOURCE (order origin) and STRATEGY (the strategy/screener NAME) are INDEPENDENT — never conflated. This is
+     what kills "Strategy by: Manual" (Manual is an origin, not a strategy). Mirrors the backend provenance:
+     origin (if the row carries the canonical one) → label; else derived from tradeType + screener attribution.
+     A row that carries a screener attribution (screenerKey/screenerName) is Screener even if tradeType says
+     "Manual" — that internal inconsistency was the bug. */
+  const ORIGIN_LABEL = { MANUAL: "Manual", SCREENER: "Screener", SMART_AUTO_BUY: "Smart Auto-Buy", AUTOMATE: "Automation", IDEA: "Idea", BROKER_IMPORTED: "Imported", UNKNOWN: "Unknown" };
+  const sourceOf = (t) => {
+    if (t.origin && ORIGIN_LABEL[t.origin]) return ORIGIN_LABEL[t.origin];
+    const tt = String(t.tradeType || "").toLowerCase();
+    if (t.screenerKey || t.screenerName || tt === "screener auto buy") return "Screener";
+    if (tt === "auto buy") return "Smart Auto-Buy";
+    if (tt === "automate") return "Automation";
+    if (tt === "ideas" || tt === "idea") return "Idea";
+    if (tt === "manual") return "Manual";
+    return "Unknown";
+  };
+  const strategyOf = (t) => {
+    const src = sourceOf(t);
+    if (src === "Screener") return t.screenerName || t.strategy || "—";
+    if (src === "Automation") return t.strategyName || t.strategy || "—";
+    return "—";   // Manual / Smart Auto-Buy / Idea / Imported / Unknown have NO strategy name
+  };
 
   // Export the trades CURRENTLY shown (all active filters applied), so what you
   // see is what you get. Open positions carry their live price and unrealised P&L.
@@ -329,9 +349,9 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
               </div>
             </div>
             <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-              <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: typeColor(t.tradeType || "Manual") }}>{t.tradeType || "Manual"}</span>
+              <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: typeColor(t.tradeType || "") }}>Source: {sourceOf(t)}</span>
               <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: isRejected(t) ? "var(--down-soft)" : t.open ? "var(--primary-soft)" : "var(--elev)", color: isRejected(t) ? "var(--down)" : exitColor(exitOf(t)) }}>{isRejected(t) ? "Rejected" : `Exit: ${exitOf(t)}`}</span>
-              <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: "var(--muted)" }}>Strategy by: {stratBy(t)}</span>
+              {strategyOf(t) !== "—" && <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: "var(--muted)" }}>Strategy: {strategyOf(t)}</span>}
               {/* #9 — protection status is explicit on every OPEN position. Unprotected = visible warning. */}
               {t.open && !isRejected(t) && (
                 <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: t.sl != null ? "var(--up-soft)" : "var(--down-soft)", color: t.sl != null ? "var(--up)" : "var(--down)" }}>
