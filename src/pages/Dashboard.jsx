@@ -10,6 +10,7 @@ import { ALL, GLOBAL_MKTS, UNIVERSE, marketOf } from "../domain/universe";
 import { stratPerf } from "../domain/strategies";   // same P&L engine the Automate page uses, so the two agree
 import { positionPnl } from "../domain/leverage";   // Delta-parity crypto P&L (margin cap + fees), same for paper & real
 import { askMatrix, fetchNews, fetchNewsFeed, scanIdeas } from "../domain/api";
+import { getDeltaContractValues } from "../services/brokerService";
 import AddBtn from "../components/common/AddBtn";
 import SectorHeatmap from "../components/common/SectorHeatmap";
 import EarningsSection from "../components/common/EarningsSection";
@@ -944,12 +945,29 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const _capSum = _caps.reduce((a, c) => a + c, 0) || 1;
   _caps = _caps.map((c) => (c * capNum) / _capSum);
   const _maxConf = _scored.length ? Math.max(..._scored.map((p) => p.conf)) : 1;
+  // Delta contract sizes (coin units per contract) so the crypto preview can show the REAL amount that will
+  // deploy after the broker rounds to whole contracts — and flag picks whose slice is below one contract.
+  const [cvMap, setCvMap] = useState({});
+  useEffect(() => {
+    if (market !== "Crypto" || !isReal) return;
+    let ok = true;
+    getDeltaContractValues().then((m) => { if (ok && m && typeof m === "object") setCvMap(m); }).catch(() => {});
+    return () => { ok = false; };
+  }, [market, isReal]);
+  const cvFor = (sym) => { const k = String(sym || "").replace(/(USDT|USD|INR|PERP)$/i, "").replace(/-EQ$/i, "").toUpperCase(); return Number(cvMap[k] ?? cvMap[String(sym).toUpperCase()]) || 0; };
   const autoTrades = _scored.map((p, i) => {
     const s = p.s, m = marketOf(s.sym), entry = s.price, cap = _caps[i] || 0;
     // Crypto sizes by AMOUNT (fractional units); stocks by whole shares.
     const qty = m === "Crypto" ? +(cap / entry).toFixed(6) : Math.max(1, Math.floor(cap / entry));
     const confPct = Math.round(100 * p.conf / (_maxConf || 1));   // 0-100 relative to the strongest pick, for display
-    return { sym: s.sym, m, qty, entry, tpPct: p.tpPct, slPct: p.slPct, rr: p.rr, auto: p.auto, cap: +cap.toFixed(2), confPct };
+    // REAL-crypto only: mirror the broker's whole-contract ROUNDING so the preview shows the true $ deployed
+    // (contracts × contract_value × price). A slice below half a contract rounds to 0 → shown as SKIPPED
+    // (the server would reject it as "amount too small"). cv unknown (fetch not ready) ⇒ fall back to `cap`.
+    const cv = (m === "Crypto" && isReal) ? cvFor(s.sym) : 0;
+    const contracts = cv > 0 ? Math.max(0, Math.round((cap / entry) / cv)) : null;
+    const actualUsd = contracts != null ? +(contracts * cv * entry).toFixed(2) : +cap.toFixed(2);
+    const skipped = contracts != null && contracts < 1;
+    return { sym: s.sym, m, qty, entry, tpPct: p.tpPct, slPct: p.slPct, rr: p.rr, auto: p.auto, cap: +cap.toFixed(2), confPct, cv, contracts, actualUsd, skipped };
   });
   // When Auto-Buy is ON, actually place today's picks as REAL positions (once per
   // day per market) with their target/stop attached. The exit engine then closes
@@ -989,17 +1007,24 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const runAutoBuyNow = async () => {
     if (!marketOpen(market)) { setRunMsg(`${MKT_LABEL[market]} market is closed — auto-buy runs at the next open.`); return; }
     if (!autoTrades.length) { setRunMsg("Today's picks are still loading — try again in a moment."); return; }
-    // REAL money: require an explicit confirmation listing the EXACT symbols + amounts before placing.
+    // Picks whose slice is below one Delta contract are SKIPPED (the broker would reject them as "amount too
+    // small"). Only the placeable ones are confirmed + sent. The displayed amount is the REAL post-rounding $.
+    const place = autoTrades.filter((t) => !t.skipped);
+    const skipped = autoTrades.filter((t) => t.skipped);
+    if (!place.length) { setRunMsg(`Every pick's slice is below one contract at ${MKT_LABEL[market]} sizes — increase your capital.`); return; }
+    // REAL money: require an explicit confirmation listing the EXACT symbols + the amount that will DEPLOY.
     if (isReal) {
-      const lines = autoTrades.map((t) => `• ${t.sym} — qty ${t.qty}${t.cap != null ? ` (~${fmt(t.cap, aggCur)})` : ""}`).join("\n");
+      const lines = place.map((t) => `• ${t.sym} — ~${fmt(t.actualUsd, aggCur)}${t.contracts != null ? ` (${t.contracts} contract${t.contracts === 1 ? "" : "s"})` : ` · qty ${t.qty}`}`).join("\n");
+      const skipLine = skipped.length ? `\n\nSkipped (below one contract): ${skipped.map((t) => t.sym).join(", ")}` : "";
+      const total = place.reduce((a, t) => a + (t.actualUsd || 0), 0);
       const ok = await confirmDialog(
-        `Place ${autoTrades.length} REAL order${autoTrades.length === 1 ? "" : "s"} on your connected broker now?\n\n${lines}\n\nThis uses real money and executes immediately — it can't be undone from here.`,
-        { title: "Place real auto-buy orders?", confirmLabel: `Place ${autoTrades.length} real order${autoTrades.length === 1 ? "" : "s"}`, danger: true },
+        `Place ${place.length} REAL order${place.length === 1 ? "" : "s"} on your connected broker now — about ${fmt(+total.toFixed(2), aggCur)} total?\n\n${lines}${skipLine}\n\nThis uses real money and executes immediately — it can't be undone from here.`,
+        { title: "Place real auto-buy orders?", confirmLabel: `Place ${place.length} real order${place.length === 1 ? "" : "s"}`, danger: true },
       );
       if (!ok) { setRunMsg("Cancelled — no orders placed."); return; }
     }
     let placed = 0;
-    autoTrades.forEach((t) => {
+    place.forEach((t) => {
       const u = ALL.find((a) => a.sym === (t.under || t.sym));
       if (!u) return;
       (onAutoBuy || onBuy)(u, t.qty, { tp: t.tpPct, sl: t.slPct, tradeType: "Auto Buy", product: prodCode });
@@ -1428,15 +1453,23 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 {autoTrades.length > 0 && (
                   <div style={{ marginTop: 9, display: "flex", flexDirection: "column", gap: 5 }}>
                     <div style={{ fontSize: 9, opacity: .6, fontWeight: 800, letterSpacing: ".04em" }}>CONFIDENCE-WEIGHTED CAPITAL</div>
-                    {autoTrades.slice().sort((a, b) => b.confPct - a.confPct).map((t) => (
-                      <div key={t.sym} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+                    {autoTrades.slice().sort((a, b) => b.confPct - a.confPct).map((t) => {
+                      // Show the REAL amount that will deploy after the broker rounds to whole contracts (real crypto);
+                      // a pick below one contract is marked "skip" so it's clear it won't be placed.
+                      const amt = t.actualUsd != null ? t.actualUsd : t.cap;
+                      return (
+                      <div key={t.sym} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: t.skipped ? 0.5 : 1 }}>
                         <span className="disp" style={{ fontWeight: 800, minWidth: 52, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.sym}</span>
                         <div style={{ flex: 1, height: 5, background: "var(--surface)", borderRadius: 3, overflow: "hidden" }}><div style={{ width: `${t.confPct}%`, height: "100%", background: "var(--primary)" }} /></div>
                         <span className="mono" style={{ opacity: .8, fontWeight: 700, minWidth: 30, textAlign: "right" }}>{t.confPct}%</span>
-                        <span className="mono" style={{ fontWeight: 800, minWidth: 58, textAlign: "right" }}>{(market === "Crypto" || market === "US") ? "$" : "₹"}{t.cap >= 1000 ? (t.cap / 1000).toFixed(1) + "k" : t.cap.toFixed(0)}</span>
+                        <span className="mono" style={{ fontWeight: 800, minWidth: 58, textAlign: "right", color: t.skipped ? "var(--muted)" : undefined }}>{t.skipped ? "skip" : `${(market === "Crypto" || market === "US") ? "$" : "₹"}${amt >= 1000 ? (amt / 1000).toFixed(1) + "k" : amt.toFixed(0)}`}</span>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
+                )}
+                {isReal && market === "Crypto" && autoTrades.some((t) => t.contracts != null) && (
+                  <div style={{ fontSize: 9.5, opacity: .6, marginTop: 6, lineHeight: 1.4 }}>Amounts are the real deploy size after Delta rounds to whole contracts.</div>
                 )}
               </div>
 
@@ -1497,9 +1530,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
                   <div style={{ fontSize: 11, opacity: .8, lineHeight: 1.5 }}>Today's plan — these are the positions Smart Auto-Buy would enter at the live price, with the target/stop it would arm. Turn it on to place them for real.</div>
                   {autoTrades.map((t) => (
-                    <div key={t.sym} style={{ background: "var(--elev)", borderRadius: 12, padding: "10px 12px" }}>
+                    <div key={t.sym} style={{ background: "var(--elev)", borderRadius: 12, padding: "10px 12px", opacity: t.skipped ? 0.55 : 1 }}>
                       <div onClick={() => { const st = ALL.find((a) => a.sym === t.sym); st && onOpen(st); }} className="tap" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
-                        <span className="disp" style={{ fontWeight: 800, fontSize: 12.5 }}>{t.sym} <span style={{ fontSize: 10, opacity: .7, fontWeight: 600 }}>×{t.qty}</span></span>
+                        <span className="disp" style={{ fontWeight: 800, fontSize: 12.5 }}>{t.sym} <span style={{ fontSize: 10, opacity: .7, fontWeight: 600 }}>{t.contracts != null ? `${t.contracts} contract${t.contracts === 1 ? "" : "s"}` : `×${t.qty}`}</span>
+                          {" "}<span className="mono" style={{ fontSize: 10, fontWeight: 800, color: t.skipped ? "var(--down)" : "var(--muted)" }}>{t.skipped ? "· skipped (below 1 contract)" : `· ~${fmt(t.actualUsd, aggCur)}`}</span></span>
                         <span className="mono" style={{ fontWeight: 800, fontSize: 13 }}>{fmt(t.entry, t.m)}</span>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--line)" }}>

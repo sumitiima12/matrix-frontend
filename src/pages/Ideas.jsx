@@ -6,6 +6,7 @@ import { alertDialog, confirmDialog } from "../lib/confirmDialog";   // in-app n
 import { ALL, marketOf, UNIVERSE } from "../domain/universe";
 import { techSignal } from "../domain/signals";   // signal-quality score → confidence weighting for Auto-Buy Ideas
 import { fetchHistory, apiListIdeas, apiPostIdea, apiDeleteIdea, apiReviewIdea, marketOpen } from "../domain/api";
+import { getDeltaContractValues } from "../services/brokerService";
 import { ChevronDown, ChevronUp, Plus, Sparkles, Trash2, X } from "lucide-react";
 import MiniCandles from "../components/charts/MiniCandles";
 import { selStyle } from "../components/common/styles";
@@ -318,6 +319,15 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
     if (v && mode === "real" && !(await confirmDialog(`Auto-Buy Ideas · ${market}\nMode  Real\n\nWhile ON, this places REAL orders on every Neo idea for this market, once a day, sized by confidence, each with its target/stop. Turn OFF anytime to stop new entries.`, { title: "Turn on real Auto-Buy Ideas?", confirmLabel: "Turn on" }))) return;
     setAutoIdeas(v); lsSet("mx_ideas_autobuy_" + market, v);
   };
+  // Delta contract sizes so the real-crypto preview shows the true deploy size after whole-contract rounding.
+  const isRealIdeas = mode === "real";
+  const [ideaCvMap, setIdeaCvMap] = useState({});
+  useEffect(() => {
+    if (market !== "Crypto" || !isRealIdeas) return;
+    let ok = true;
+    getDeltaContractValues().then((m) => { if (ok && m && typeof m === "object") setIdeaCvMap(m); }).catch(() => {});
+    return () => { ok = false; };
+  }, [market, isRealIdeas]);
   // Confidence-weighted plan: capital split ∝ each idea's signal-quality score, bounded then renormalised.
   const ideaPlan = useMemo(() => {
     const cap = Math.max(1, Number(ideaCap) || ideaCapDefault);
@@ -329,19 +339,27 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
     const capSum = caps.reduce((a, c) => a + c, 0) || 1;
     caps = caps.map((c) => (c * cap) / capSum);
     const maxConf = Math.max(...scored.map((p) => p.conf));
+    const cvFor = (sym) => { const k = String(sym || "").replace(/(USDT|USD|INR|PERP)$/i, "").toUpperCase(); return Number(ideaCvMap[k] ?? ideaCvMap[String(sym).toUpperCase()]) || 0; };
     return scored.map((p, i) => {
       const price = p.s.price, short = p.idea.direction === "Short" || p.idea.side === "SELL" || p.idea.short;
       const qty = market === "Crypto" ? +(caps[i] / price).toFixed(6) : Math.max(1, Math.floor(caps[i] / price));
       const slPct = (p.idea.entry && p.idea.stop) ? +((Math.abs(p.idea.stop - p.idea.entry) / p.idea.entry) * 100).toFixed(2) : undefined;
-      return { sym: p.idea.sym, s: p.s, short, qty, cap: +caps[i].toFixed(2), confPct: Math.round(100 * p.conf / (maxConf || 1)), slPct, gain: p.idea.gain };
+      // REAL-crypto: mirror the broker's whole-contract ROUNDING for the displayed amount, and flag sub-contract
+      // picks as skipped (the server would reject them). cv unknown ⇒ fall back to the raw slice.
+      const cv = (market === "Crypto" && isRealIdeas) ? cvFor(p.idea.sym) : 0;
+      const contracts = cv > 0 ? Math.max(0, Math.round((caps[i] / price) / cv)) : null;
+      const actualUsd = contracts != null ? +(contracts * cv * price).toFixed(2) : +caps[i].toFixed(2);
+      const skipped = contracts != null && contracts < 1;
+      return { sym: p.idea.sym, s: p.s, short, qty, cap: +caps[i].toFixed(2), confPct: Math.round(100 * p.conf / (maxConf || 1)), slPct, gain: p.idea.gain, cv, contracts, actualUsd, skipped };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shown, ideaCap, market]);
+  }, [shown, ideaCap, market, ideaCvMap, isRealIdeas]);
   useEffect(() => {
     if (!autoIdeas || !onBuy || !ideaPlan.length || !marketOpen(market)) return;
     const key = `mx_ideasbuy_${market}_${mode}_${Math.floor(Date.now() / 864e5)}`;   // once per day, per mode
     if (lsGet(key, false)) return;
-    ideaPlan.forEach((p) => onBuy(p.s, p.qty, { tp: p.gain, sl: p.slPct, tradeType: "Ideas", ...(p.short ? { side: "SELL", short: true } : {}) }));
+    // Skip picks below one contract (real crypto) — the broker would reject them as "amount too small".
+    ideaPlan.filter((p) => !p.skipped).forEach((p) => onBuy(p.s, p.qty, { tp: p.gain, sl: p.slPct, tradeType: "Ideas", ...(p.short ? { side: "SELL", short: true } : {}) }));
     lsSet(key, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoIdeas, market, mode, ideaPlan.length]);
@@ -383,14 +401,20 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
           {ideaPlan.length > 0 && (
             <div style={{ marginTop: 9, display: "flex", flexDirection: "column", gap: 5 }}>
               <div style={{ fontSize: 9, opacity: .6, fontWeight: 800, letterSpacing: ".04em" }}>CONFIDENCE-WEIGHTED CAPITAL</div>
-              {ideaPlan.slice().sort((a, b) => b.confPct - a.confPct).map((p) => (
-                <div key={p.sym} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+              {ideaPlan.slice().sort((a, b) => b.confPct - a.confPct).map((p) => {
+                const amt = p.actualUsd != null ? p.actualUsd : p.cap;   // real post-rounding $ (crypto) else raw slice
+                return (
+                <div key={p.sym} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, opacity: p.skipped ? 0.5 : 1 }}>
                   <span className="disp" style={{ fontWeight: 800, minWidth: 52, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.sym}</span>
                   <div style={{ flex: 1, height: 5, background: "var(--elev)", borderRadius: 3, overflow: "hidden" }}><div style={{ width: `${p.confPct}%`, height: "100%", background: "var(--primary)" }} /></div>
                   <span className="mono" style={{ opacity: .8, fontWeight: 700, minWidth: 30, textAlign: "right" }}>{p.confPct}%</span>
-                  <span className="mono" style={{ fontWeight: 800, minWidth: 58, textAlign: "right" }}>{(market === "Crypto" || market === "US") ? "$" : "₹"}{p.cap >= 1000 ? (p.cap / 1000).toFixed(1) + "k" : p.cap.toFixed(0)}</span>
+                  <span className="mono" style={{ fontWeight: 800, minWidth: 58, textAlign: "right", color: p.skipped ? "var(--muted)" : undefined }}>{p.skipped ? "skip" : `${(market === "Crypto" || market === "US") ? "$" : "₹"}${amt >= 1000 ? (amt / 1000).toFixed(1) + "k" : amt.toFixed(0)}`}</span>
                 </div>
-              ))}
+                );
+              })}
+              {isRealIdeas && market === "Crypto" && ideaPlan.some((p) => p.contracts != null) && (
+                <div style={{ fontSize: 9.5, opacity: .6, marginTop: 4, lineHeight: 1.4 }}>Amounts are the real deploy size after Delta rounds to whole contracts.</div>
+              )}
             </div>
           )}
         </div>

@@ -169,6 +169,18 @@ export async function resolveUnknownOrders() {
   if (!r.ok) { let e = "Couldn't resolve right now."; try { e = (await r.json()).error || e; } catch { /* keep default */ } throw new Error(e); }
   return r.json();
 }
+/* Delta contract sizes (coin units per contract), keyed by full symbol AND bare base. Read-only, server-cached.
+   Used to PREVIEW the real amount a crypto auto-buy/screener/ideas order will deploy (contracts × cv × price)
+   and to skip picks below one contract. Best-effort: returns {} on any failure so callers degrade gracefully. */
+export async function getDeltaContractValues() {
+  if (!BACKEND_URL) return {};
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/delta/contract-values`, { headers: { ...tokenHdr() } });
+    if (!r.ok) return {};
+    const d = await r.json();
+    return (d && d.contractValues) || {};
+  } catch { return {}; }
+}
 function authHeaders(session, userId) {
   const h = {};
   const tok = (() => { try { return getAuthToken(); } catch { return null; } })();
