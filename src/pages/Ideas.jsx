@@ -5,6 +5,7 @@ import { fmt, fmtPnl, lsGet, lsSet } from "../lib/format";
 import { alertDialog, confirmDialog } from "../lib/confirmDialog";   // in-app notice/confirm (reliable in webviews/PWA)
 import { ALL, marketOf, UNIVERSE } from "../domain/universe";
 import { techSignal } from "../domain/signals";   // signal-quality score → confidence weighting for Auto-Buy Ideas
+import { computeCategories } from "../domain/portfolioPnl";   // actual Ideas-tagged P&L — the one that matches the Total dashboard
 import { fetchHistory, apiListIdeas, apiPostIdea, apiDeleteIdea, apiReviewIdea, marketOpen } from "../domain/api";
 import { getDeltaContractValues } from "../services/brokerService";
 import { ChevronDown, ChevronUp, Plus, Sparkles, Trash2, X } from "lucide-react";
@@ -18,10 +19,10 @@ import MultiSelect from "../components/common/MultiSelect";
  * Ideas — trade ideas published by Matrix, scored against real candles.
  */
 
-function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, market = "IN", auto = null }) {
+function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, market = "IN", auto = null, trades = [], mode = "virtual" }) {
   const capDefault = (m) => (m === "Crypto" || m === "US" ? 1000 : 100000);   // crypto/US in USD
   const [postedBy, setPostedBy] = useState("All");
-  const [preset, setPreset] = useState("365");   // "1"|"7"|"30"|"182"|"365"|"custom" — Automate-style date range
+  const [preset, setPreset] = useState("1");   // "1"|"7"|"30"|"182"|"365"|"custom" — Automate-style date range. Default: Today.
   const [cFrom, setCFrom] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; });   // default: 1st of current month
   const [cTo, setCTo] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });   // default: today
   const [cap, setCap] = useState(capDefault(market));
@@ -76,6 +77,14 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
   const total = (all.reduce((a, r) => a * (1 + r.o.ret / 100), 1) - 1) * 100;
   const netPnl = cap * (total / 100);
   const winRate = n ? (wins / n) * 100 : 0;
+  /* ACTUAL Ideas-tagged P&L — the trades you REALLY took from Ideas, computed by the SAME shared engine +
+     provenance + window as the Home Total's "Ideas" box, so this number matches it exactly. This is distinct
+     from netPnl above, which is the HYPOTHETICAL "if every idea was traded with $cap". */
+  const actFrom = preset === "custom" ? cFromT
+    : (preset === "1" ? new Date().setHours(0, 0, 0, 0) : Date.now() - Number(preset || 365) * DAY);
+  const actTo = preset === "custom" ? cToT : null;
+  const actPriceOf = (s) => { const a = ALL.find((x) => x.sym === s); return a && a.price != null ? a.price : null; };
+  const actualIdeasPnl = computeCategories(trades, { mode, market, from: actFrom, to: actTo, priceOf: actPriceOf }).categories.Ideas;
 
   /* Period label: for an account younger than 3 months we show "Since Jul'26"; once it's
      older, we show the selected range window ("last 3 months", etc.). */
@@ -100,7 +109,7 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
         </div>
         <div style={{ textAlign: "left" }}>
           <div style={{ fontSize: 10, opacity: .85, fontWeight: 700 }}>P&amp;L</div>
-          <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: netPnl >= 0 ? "var(--up)" : "var(--down)" }}>{netPnl >= 0 ? "+" : ""}{fmtPnl(netPnl, market)}</div>
+          <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: actualIdeasPnl >= 0 ? "var(--up)" : "var(--down)" }}>{actualIdeasPnl >= 0 ? "+" : ""}{fmtPnl(actualIdeasPnl, market)}</div>
         </div>
         <span style={{ marginLeft: "auto", display: "grid", placeItems: "center" }}><ChevronDown size={16} /></span>
       </button>
@@ -160,8 +169,20 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
       <div style={{ marginTop: 7 }}>
         <MultiSelect label="Symbols" options={symOptions} value={symFs} onChange={setSymFs} allLabel="All symbols" />
       </div>
-      <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 12, color: netPnl >= 0 ? "var(--up)" : "var(--down)" }}>{netPnl >= 0 ? "+" : ""}{fmtPnl(netPnl, market)}</div>
-      <div style={{ fontSize: 11, opacity: .85, marginTop: -2 }}>If every idea was traded with {fmt(cap, market)} · {openN} still open</div>
+      {/* TWO P&Ls. (1) Your actual Ideas trades — the SAME number as the Home Total's "Ideas" box for this
+          period. (2) The hypothetical "if every idea was traded". */}
+      <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 12, alignItems: "flex-end" }}>
+        <div>
+          <div style={{ fontSize: 9.5, opacity: .7, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".03em" }}>P&amp;L · your Ideas trades</div>
+          <div className="mono" style={{ fontWeight: 800, fontSize: 26, color: actualIdeasPnl >= 0 ? "var(--up)" : "var(--down)" }}>{actualIdeasPnl >= 0 ? "+" : ""}{fmtPnl(actualIdeasPnl, market)}</div>
+          <div style={{ fontSize: 9.5, opacity: .65 }}>Matches the Home Total's Ideas box.</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 9.5, opacity: .7, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".03em" }}>If every idea was traded</div>
+          <div className="mono" style={{ fontWeight: 800, fontSize: 20, color: netPnl >= 0 ? "var(--up)" : "var(--down)" }}>{netPnl >= 0 ? "+" : ""}{fmtPnl(netPnl, market)}</div>
+          <div style={{ fontSize: 9.5, opacity: .65 }}>Hypothetical · {fmt(cap, market)} each · {openN} still open</div>
+        </div>
+      </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
         <Stat k="Returns %" v={(avg >= 0 ? "+" : "") + avg.toFixed(2) + "%"} c={avg >= 0 ? "var(--up)" : "var(--down)"} />
         <Stat k="Win rate" v={n ? winRate.toFixed(0) + "%" : "—"} />
@@ -300,13 +321,19 @@ function CommunityIdeas({ market, me, isAdmin, adminKey = "", onOpen }) {
   );
 }
 
-export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, isAdmin = false, adminKey = "", signupAt = null, mode = "virtual" }) {
+export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, isAdmin = false, adminKey = "", signupAt = null, mode = "virtual", trades = [] }) {
   const [dashOpen, setDashOpen] = useState(true);   // expanded by default — full stats like the Automate dashboard
   const [view, setView] = useState("all");   // "all" | "neo" | "community"
   // Recomputed from real data as it arrives, rather than frozen at import time.
   const [ideas, setIdeas] = useState(currentIdeas);
   useEffect(() => {
-    const id = setInterval(() => setIdeas(currentIdeas()), 1800000);   // 30 min — ideas rarely change; frequent refresh is wasteful
+    // Poll every 20s but only re-set state when the idea SET actually changes (compared by symbol+direction),
+    // so a market whose data lands after mount — e.g. Crypto via Delta, a few seconds late — gets its ideas
+    // promptly instead of waiting up to 30 min, while a stable list never triggers a needless re-render.
+    const sig = (arr) => (arr || []).map((i) => i.sym + ":" + i.direction).join(",");
+    const tick = () => setIdeas((prev) => { const next = currentIdeas(); return sig(next) === sig(prev) ? prev : next; });
+    tick();   // catch data that arrived between the initial useState and this effect
+    const id = setInterval(tick, 20000);
     return () => clearInterval(id);
   }, []);
   const [open, setOpen] = useState(false);
@@ -406,10 +433,10 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
       </div>
 
       {view !== "community" && (!dashOpen ? (
-        <IdeasDashboard ideas={shown} collapsed onExpand={() => setDashOpen(true)} signupAt={signupAt} market={market} />
+        <IdeasDashboard ideas={shown} collapsed onExpand={() => setDashOpen(true)} signupAt={signupAt} market={market} trades={trades} mode={mode} />
       ) : (
         <div style={{ position: "relative" }}>
-          <IdeasDashboard ideas={shown} signupAt={signupAt} market={market} auto={{ enabled: autoIdeas, onToggle: toggleAutoIdeas, mode, capDraft: ideaCapDraft, setCapDraft: setIdeaCapDraft, cap: ideaCap, onSaveCap: saveIdeaCap, curSym: ideaCurSym }} />
+          <IdeasDashboard ideas={shown} signupAt={signupAt} market={market} trades={trades} mode={mode} auto={{ enabled: autoIdeas, onToggle: toggleAutoIdeas, mode, capDraft: ideaCapDraft, setCapDraft: setIdeaCapDraft, cap: ideaCap, onSaveCap: saveIdeaCap, curSym: ideaCurSym }} />
           <button onClick={() => setDashOpen(false)} className="tap" title="Collapse" style={{ position: "absolute", top: 14, right: 16, display: "grid", placeItems: "center", border: "1px solid rgba(255,255,255,.35)", background: "rgba(255,255,255,.18)", color: "#fff", borderRadius: 10, padding: "6px", fontWeight: 800 }}><ChevronUp size={14} /></button>
         </div>
       ))}

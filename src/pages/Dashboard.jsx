@@ -9,6 +9,7 @@ import { confirmDialog } from "../lib/confirmDialog";   // in-app confirm (relia
 import { ALL, GLOBAL_MKTS, UNIVERSE, marketOf } from "../domain/universe";
 import { stratPerf } from "../domain/strategies";   // same P&L engine the Automate page uses, so the two agree
 import { positionPnl } from "../domain/leverage";   // Delta-parity crypto P&L (margin cap + fees), same for paper & real
+import { computeCategories } from "../domain/portfolioPnl";   // the ONE per-category P&L fn every dashboard shares
 import { askMatrix, fetchNews, fetchNewsFeed, scanIdeas } from "../domain/api";
 import { getDeltaContractValues, getPortfolioAnalytics } from "../services/brokerService";
 import AddBtn from "../components/common/AddBtn";
@@ -1160,7 +1161,11 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       const p = positionPnl(t, cur, marketOf(t.sym) || market);
       pnl += p; invested += Number(t.entry) * Number(t.qty || (market === "Crypto" ? 0 : 1));
       if (!closed) open++; else { closedN++; if (p > 0) wins++; }
-      const key = t.tradeType === "Auto Buy" ? "Auto Buy" : t.tradeType === "Automate" ? "Automate" : t.tradeType === "Screener Auto Buy" ? "Screener Auto Buy" : t.tradeType === "Ideas" ? "Ideas" : "Manual";
+      // Bucket by CANONICAL source (same srcLabel provenance the position chips use), not the raw tradeType — so a
+      // trade the screener placed but that carries a screener name with a different/blank tradeType still lands in
+      // the Screener box (matching the Screener dashboard's isScreenerTrade filter) instead of leaking into Manual.
+      const sl = srcLabel(t);
+      const key = sl === "Screener" ? "Screener Auto Buy" : sl === "Smart Auto-Buy" ? "Auto Buy" : sl === "Automation" ? "Automate" : sl === "Idea" ? "Ideas" : "Manual";
       byType[key] += p;
     }
     // Win rate is over CLOSED trades only (an open position hasn't won or lost yet).
@@ -1183,8 +1188,23 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     return () => { ok = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReal, market, totFrom, totTo, trades]);
-  // Canonical category P&L (or the local byType fallback). One helper so every tile reads the same source.
-  const catPnl = (canonKey, localVal) => (analytics && analytics.categories && analytics.categories[canonKey] != null) ? analytics.categories[canonKey] : localVal;
+  /* THE single client-side P&L source. Every dashboard (this Total, Screener, Smart Auto-Buy, Ideas) calls the
+     same computeCategories() with its own window, so their category numbers are computed identically (same
+     positionPnl engine, same provenance bucketing, same open-counts-now window rule) and cannot disagree. We
+     DON'T read the backend analytics for these tiles: the server uses a plain (px−entry)×qty formula that differs
+     from the frontend's leverage-aware positionPnl, so mixing the two is exactly what made the boxes drift. */
+  const _priceOfSym = (s) => { const a = ALL.find((x) => x.sym === s); return a && a.price != null ? a.price : null; };
+  const shared = useMemo(() => computeCategories(trades, {
+    mode: isReal ? "real" : "virtual", market,
+    from: Number.isFinite(totFrom) ? totFrom : null, to: Number.isFinite(totTo) ? totTo : null,
+    priceOf: _priceOfSym, heldSet: realHeld, normSym: _normSym,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [trades, isReal, market, totFrom, totTo, realHeld]);
+  // Category tile source: shared for every bucket EXCEPT Automate, which keeps the stratPerf engine (automatePnl)
+  // so the Total's Automate box still equals the Automate page's own number. Automation trades live only in the
+  // shared "Automate" bucket (which we don't display), so nothing is double-counted.
+  const catPnl = (canonKey, localVal) => canonKey === "Automate" ? localVal : (shared.categories[canonKey] != null ? shared.categories[canonKey] : localVal);
+  // The headline is exactly the sum of the displayed tiles (so headline === Σ boxes, by construction).
 
   /* The "Automate" box uses the SAME P&L engine as the Automate page (stratPerf over the deployed strategies)
      so the two agree instead of diverging in sign. It sums each strategy's realised (closed-in-window) +
@@ -1196,6 +1216,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     const inMkt = (s) => !(s.symbols && s.symbols.length) || (s.symbols || []).some((x) => marketOf(x) === market);
     return (strategies || []).filter(inMkt).reduce((a, s) => a + (stratPerf(s, modeTrades, 365, priceOf, win).pnl || 0), 0);
   }, [strategies, trades, isReal, market, totFrom, totTo]);
+  /* The value the Total headline shows and the sum the category boxes add up to — identical BY CONSTRUCTION
+     (headline === Σ boxes). Automate uses stratPerf (automatePnl); every other bucket comes from the shared
+     computeCategories, so each box equals its feature dashboard for the same window. */
+  const boxesSum = +(shared.categories.Manual + shared.categories["Smart Auto-Buy"] + automatePnl + shared.categories.Screener + shared.categories.Ideas + shared.categories["Unknown/Imported"]).toFixed(2);
 
   /* The OPEN positions that make up the Total — every trade type (Manual / Auto-Buy / Automate /
      Screener), still open, for this market + mode. Rejected orders are excluded (they live in Orders,
@@ -1304,8 +1328,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   // (dashNet), which is broker truth and intentionally separate from recorded per-type activity.
                   // Prefer the CANONICAL server total (headline == Σ category boxes by construction). Fall back to
                   // the local tile sum only if the analytics endpoint is unavailable, so the view never breaks.
-                  const localTileSum = totalStats.byType.Manual + totalStats.byType["Auto Buy"] + automatePnl + totalStats.byType["Screener Auto Buy"] + totalStats.byType.Ideas;
-                  const tileSum = (analytics && analytics.totalPnl != null) ? analytics.totalPnl : localTileSum;
+                  const tileSum = boxesSum;   // headline === Σ category boxes (all client-side, one P&L engine)
                   const hp = (isReal && isLeveraged) ? dashNet : tileSum;
                   const hr = (isReal && isLeveraged) ? dashRet : (totalStats.invested ? (tileSum / totalStats.invested) * 100 : totalStats.retPct);
                   // Suppress the % when the capital base is too small for it to mean anything: a few dollars of P&L
@@ -1331,7 +1354,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     {[["Manual", catPnl("Manual", totalStats.byType.Manual)], ["Smart Auto-Buy", catPnl("Smart Auto-Buy", totalStats.byType["Auto Buy"])], ["Automate", catPnl("Automate", automatePnl)], ["Screener", catPnl("Screener", totalStats.byType["Screener Auto Buy"])], ["Ideas", catPnl("Ideas", totalStats.byType.Ideas)],
                       // Show the Unknown/Imported bucket ONLY when the canonical report has a non-zero amount there —
                       // so nothing silently drops out of the total, but the box list stays clean when it's empty.
-                      ...((analytics && analytics.categories && Math.abs(analytics.categories["Unknown/Imported"] || 0) > 0.005) ? [["Unknown/Imported", analytics.categories["Unknown/Imported"]]] : [])].map(([label, v]) => (
+                      ...((Math.abs(shared.categories["Unknown/Imported"] || 0) > 0.005) ? [["Unknown/Imported", shared.categories["Unknown/Imported"]]] : [])].map(([label, v]) => (
                       <div key={label} style={{ background: "var(--elev)", borderRadius: 9, padding: "7px 8px", minWidth: 0 }}>
                         <div style={{ fontSize: 9, opacity: .65, fontWeight: 700, lineHeight: 1.2, minHeight: 21, overflow: "hidden" }}>{label}</div>
                         <div className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: v >= 0 ? "var(--up)" : "var(--down)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(v >= 0 ? "+" : "") + (isReal ? money1(v) : fmtPnl(v, market))}</div>
@@ -1343,7 +1366,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   // The headline is the BROKER WALLET (broker truth); the boxes sum to MATRIX-ATTRIBUTED P&L. Rather
                   // than say "these may not add up," we name each figure and show the unattributed difference so the
                   // gap is explicit and honest (never two different numbers both labelled "Total P&L").
-                  const matrixAttrib = (analytics && analytics.totalPnl != null) ? analytics.totalPnl : null;
+                  const matrixAttrib = boxesSum;
                   return (
                     <div style={{ marginTop: 7, fontSize: 10, lineHeight: 1.5, opacity: .7 }}>
                       <div>Broker P&amp;L (Delta wallet): <b style={{ opacity: .9 }}>{money1(dashNet)}</b></div>
@@ -1356,11 +1379,11 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     Live Positions / Screener / Trade History) when the analytics endpoint is available. */}
                 <div style={{ display: "flex", gap: 14, marginTop: 10, fontSize: 12, opacity: .9, flexWrap: "wrap" }}>
                   <span><b style={{ fontWeight: 800 }}>{totalStats.count}</b> <span style={{ opacity: .7 }}>trades</span></span>
-                  <span><b style={{ fontWeight: 800 }}>{(analytics && analytics.openCount != null) ? analytics.openCount : totalOpenRows.length}</b> <span style={{ opacity: .7 }}>open</span></span>
+                  <span><b style={{ fontWeight: 800 }}>{totalOpenRows.length}</b> <span style={{ opacity: .7 }}>open</span></span>
                   {/* Win rate from the CANONICAL engine (eligible closed trades only, after fees; breakeven excluded).
                       Show "—" when there are no eligible closed trades — never a misleading 0% (spec #8). */}
                   {(() => {
-                    const wr = (analytics && "winRate" in analytics) ? analytics.winRate : totalStats.winRate;
+                    const wr = shared.winRate;
                     return <span><b style={{ fontWeight: 800 }}>{wr == null ? "—" : `${wr.toFixed(0)}%`}</b> <span style={{ opacity: .7 }}>win rate</span></span>;
                   })()}
                 </div>

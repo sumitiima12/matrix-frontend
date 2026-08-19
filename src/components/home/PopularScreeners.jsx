@@ -888,7 +888,7 @@ export function DashTradeTable({ rows = [], market, priceOf, onlyOpen = false, c
   );
 }
 
-function ScreenerDashboard({ trades = [], market }) {
+function ScreenerDashboard({ trades = [], market, mode = "virtual" }) {
   const [drill, setDrill] = useState(null);      // null | 'trades' | 'open'
   const [dOpen, setDOpen] = useState(true);      // expanded by default — full stats + collapse chevron (like Automate)
   const [rangeDays, setRangeDays] = useState(() => lsGet("mx_scr_dash_range", 0));   // 0 = Today; number of days; or "custom"
@@ -898,14 +898,18 @@ function ScreenerDashboard({ trades = [], market }) {
   const since = rangeDays === "custom" ? (Date.parse(scrFrom) || 0) : (rangeDays === 0 ? new Date().setHours(0, 0, 0, 0) : Date.now() - rangeDays * 864e5);
   const until = rangeDays === "custom" ? ((Date.parse(scrTo) || Date.now()) + 86399999) : Infinity;   // upper bound for the custom window
   const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a && a.price != null ? a.price : null; };
-  const pnlOf = (t, px) => {
-    const dir = (t.side === "SELL" || t.short) ? -1 : 1;
-    return ((Number(px) - Number(t.entry)) * Number(t.qty || 0)) * dir;
-  };
-  // Market + Screener order type + DATE RANGE. An OPEN position is always shown (it's live now); a closed trade is
-  // included only if its exit (or entry) falls inside the selected window.
+  // Use the SAME P&L engine as the Total dashboard / Automate / Portfolio (leverage-aware, margin cap + fees for
+  // crypto perps; plain spot elsewhere; direction handled inside). The old plain (px−entry)×qty diverged from the
+  // Total's number for the same crypto positions — this makes the Screener P&L reconcile with the Total's Screener box.
+  const pnlOf = (t, px) => positionPnl(t, px, marketOf(t.sym) || market);
+  // Market + Screener order type + DATE RANGE. Market match uses the SAME rule as the Total dashboard: the trade's
+  // own market OR the symbol's market (so a screener crypto trade with no explicit t.market isn't dropped here while
+  // the Total still counts it). An OPEN position is always shown (live now); a closed trade only if its exit (or
+  // entry) falls inside the selected window.
+  const _isReal = mode === "real";
   const mine = (trades || []).filter((t) =>
-    t && isScreenerTrade(t) && (t.market || "") === market && t.status !== "rejected" && Number(t.entry) > 0
+    t && isScreenerTrade(t) && (_isReal ? !!t.real : !t.real)   // scope to the active book — real & virtual never mix (matches the Total dashboard)
+    && ((t.market || marketOf(t.sym) || "") === market) && t.status !== "rejected" && Number(t.entry) > 0
     && ((t.exitAt == null || t.exit == null) || (Number(t.exitAt || t.entryAt || 0) >= since && Number(t.exitAt || t.entryAt || 0) <= until)));
   const closed = mine.filter((t) => t.exitAt != null && t.exit != null);
   const open = mine.filter((t) => t.exitAt == null || t.exit == null);
@@ -1205,7 +1209,7 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
   return (
     <Section title="Screener" tight icon={<SlidersHorizontal size={17} color="var(--primary)" />}>
       {/* Automate-style performance dashboard for Screener Auto-Buy trades in this market. */}
-      <ScreenerDashboard trades={trades} market={market} />
+      <ScreenerDashboard trades={trades} market={market} mode={mode} />
       {/* Live Positions — its OWN section below the dashboard (Screener column, editable SL/TP, Close). */}
       <ScreenerLivePositions trades={trades} market={market} onClosePosition={onClosePosition} onUpdatePosition={onUpdatePosition} />
       {/* Build a screener | Popular Screeners | My Screeners */}

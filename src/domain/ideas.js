@@ -91,12 +91,18 @@ export function buildDailyIdeas() {
  * and cached for the hour (they are daily ideas — recomputing them on every
  * render would make them flicker as quotes tick).
  */
-let _cache = { hour: null, ideas: [] };
+let _cache = { hour: null, ideas: [], ready: 0 };
 
 export function currentIdeas() {
   const hour = Math.floor(Date.now() / 3600000);
-  if (_cache.hour !== hour || !_cache.ideas.length) {
-    _cache = { hour, ideas: buildDailyIdeas() };
+  // How many symbols currently have REAL data (price + hasData). This climbs as each market's
+  // quotes stream in (Indian/US first, then Crypto via Delta, etc.) and then plateaus. We rebuild
+  // whenever it grows so a market whose data landed AFTER the first snapshot (e.g. Crypto) gets its
+  // ideas — instead of the hour-cache freezing an early, market-incomplete list for a whole hour.
+  // It's monotonic once loaded (price ticks don't change hasData), so this never flickers at rest.
+  const ready = ALL.reduce((n, s) => n + ((s && s.hasData && s.price != null) ? 1 : 0), 0);
+  if (_cache.hour !== hour || !_cache.ideas.length || ready > _cache.ready) {
+    _cache = { hour, ideas: buildDailyIdeas(), ready };
   }
   return _cache.ideas;
 }
