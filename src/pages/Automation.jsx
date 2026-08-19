@@ -2747,16 +2747,6 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     }));
     setToast(on ? `Activated ${targets.length} strateg${targets.length > 1 ? "ies" : "y"}` : `Deactivated ${targets.length} strateg${targets.length > 1 ? "ies" : "y"}`);
   };
-  /* Total strategies active across EVERY market (not just the current tab). The per-tab "Deactivate All" is
-     market-scoped, so strategies deployed on other markets stay active — that's why the homepage "Active
-     Strategies" count didn't drop to 0 after deactivating one tab. This global control flips them all off. */
-  const activeCountGlobal = (strats || []).filter((s) => s && s.active).length;
-  const deactivateAllStrategiesGlobal = async () => {
-    if (!activeCountGlobal) { setToast("No active strategies to deactivate."); return; }
-    if (!(await confirmDialog(`Deactivate ALL ${activeCountGlobal} active strateg${activeCountGlobal > 1 ? "ies" : "y"} across every market? Paper strategies stop running and any REAL-armed ones stop placing new orders (open positions keep their SL/TP).`, { title: "Deactivate all strategies", confirmLabel: "Deactivate all" }))) return;
-    setStrats((p) => (p || []).map((s) => (s && s.active) ? { ...s, active: false } : s));
-    setToast(`Deactivated all ${activeCountGlobal} strateg${activeCountGlobal > 1 ? "ies" : "y"} across every market.`);
-  };
   /* Two-button bar shown atop a strategy section. `items` is ALREADY scoped to the current market by
      the caller. Each button's count is the number it will actually change — inactive count for
      Activate, active count for Deactivate — so the numbers match what happens. */
@@ -2766,15 +2756,13 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     const onCount = rows.filter((s) => activeInMarket(s)).length;     // will be deactivated
     return (
       <div style={{ margin: "4px 0 6px" }}>
+        {/* Both buttons stay tappable regardless of count — bulkSetActive no-ops (with a toast) when there's
+            nothing to change, so "Deactivate All" is never a dead greyed-out control. Counts show only when
+            there's something to act on. The cross-market "every market" button was removed for consistency. */}
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => bulkSetActive(items, true)} disabled={!offCount} className="tap disp" style={{ flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11.5, border: "none", background: offCount ? "linear-gradient(120deg,var(--up),#0EA968)" : "var(--elev)", color: offCount ? "#fff" : "var(--muted)", cursor: offCount ? "pointer" : "not-allowed" }}>Activate All{offCount ? ` (${offCount})` : ""}</button>
-          <button onClick={() => bulkSetActive(items, false)} disabled={!onCount} className="tap disp" style={{ flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11.5, border: "1px solid var(--line)", background: onCount ? "var(--surface)" : "var(--elev)", color: onCount ? "var(--ink)" : "var(--muted)", cursor: onCount ? "pointer" : "not-allowed" }}>Deactivate All{onCount ? ` (${onCount})` : ""}</button>
+          <button onClick={() => bulkSetActive(items, true)} className="tap disp" style={{ flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11.5, border: "none", background: "linear-gradient(120deg,var(--up),#0EA968)", color: "#fff", cursor: "pointer" }}>Activate All{offCount ? ` (${offCount})` : ""}</button>
+          <button onClick={() => bulkSetActive(items, false)} className="tap disp" style={{ flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11.5, border: "1px solid var(--down)", background: "var(--surface)", color: "var(--down)", cursor: "pointer" }}>Deactivate All{onCount ? ` (${onCount})` : ""}</button>
         </div>
-        {/* Only when strategies are active BEYOND this market's section — the one-tap "turn everything off" the
-            homepage count reflects, so "I deactivated all but 91 still show" can't happen. */}
-        {activeCountGlobal > onCount && (
-          <button onClick={deactivateAllStrategiesGlobal} className="tap disp" style={{ width: "100%", marginTop: 8, borderRadius: 10, padding: "9px 6px", fontWeight: 800, fontSize: 11.5, border: "1px solid var(--down)", background: "var(--down-soft, rgba(232,72,85,.12))", color: "var(--down)", cursor: "pointer" }}>Deactivate ALL {activeCountGlobal} active strategies (every market)</button>
-        )}
       </div>
     );
   };
@@ -2933,8 +2921,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                 real 6-month BACKTEST on real candles, labelled as such.
        MINE    (created by the user): scored on their ACTUAL closed trades. A
                 strategy with no closed trades shows "—", not a made-up win rate. */
-  const [stratTab, setStratTab] = useState("active");   // sub-tab under "Strategies": active | inactive | sample | premium | public | mine | copies
-  const [deployTab, setDeployTab] = useState("all");      // Deployed filter tabs: all | long | short | live | notlive
+  const [stratTab, setStratTab] = useState("mine");   // sub-tab under "Strategies": mine | copies | sample | premium | public
   const [lsSide, setLsSide] = useState("long");           // Long / Short filter shown above Activate All in every strategy type
   const [lsStatus, setLsStatus] = useState("all");        // All / Active / Inactive filter (orthogonal to Long/Short), per strategy type
   /* Apply the Active/Inactive filter to a side-filtered list. "all" = no filter. */
@@ -3027,7 +3014,6 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
      Every active/armed strategy shows here (including a just-activated premium that hasn't
      traded yet); the "Live" section separately shows only those holding a position. */
   const deployedActive   = strats.filter((s) => s.active && stratInMarket(s) && symOk(s)).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
-  const deployedInactive = strats.filter((s) => !s.active && stratInMarket(s) && symOk(s)).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
   const byOptions = ["All", "Matrix", "You", "Community"];
   const dsel = { ...selStyle, flex: "1 1 0", minWidth: 0, padding: "8px 8px", fontSize: 11.5 };
   const fmtDate = (t) => new Date(t).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" });
@@ -3828,16 +3814,16 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
          create / publish deep-links (setStratTab("mine"/"copies"/"public")) still resolve and auto-select
          the correct group; only the tab chrome changed, not the list/filter/action logic. */}
       {(() => {
-        const YOURS = ["active", "inactive", "mine", "copies"];
+        const YOURS = ["mine", "copies"];
         const group = YOURS.includes(stratTab) ? "yours" : "library";
         const members = group === "yours"
-          ? [["active", "Active"], ["inactive", "Inactive"], ["mine", "My Strategies"], ["copies", "My Copies"]]
+          ? [["mine", "My Strategies"], ["copies", "My Copies"]]
           : [["sample", "Samples"], ["premium", "Premium"], ["public", "Public"]];
         return (
           <div ref={stratsRef} style={{ margin: "18px 0 14px", scrollMarginTop: 80 }}>
             <div style={{ display: "flex", gap: 7, marginBottom: 9 }}>
               {[["yours", "Yours"], ["library", "Library"]].map(([g, label]) => (
-                <button key={g} onClick={() => setStratTab(g === "yours" ? "active" : "sample")} className="tap disp"
+                <button key={g} onClick={() => setStratTab(g === "yours" ? "mine" : "sample")} className="tap disp"
                   style={{ flex: 1, borderRadius: 11, padding: "9px 2px", fontWeight: 800, fontSize: 12, cursor: "pointer", border: "1px solid " + (group === g ? "var(--primary)" : "var(--line)"), background: group === g ? "var(--primary)" : "var(--surface)", color: group === g ? "var(--on-primary)" : "var(--ink)" }}>{label}</button>
               ))}
             </div>
@@ -3850,7 +3836,25 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         );
       })()}
 
-      {/* Free-text strategy search — filters EVERY bucket (Deployed / Samples / Premium / Mine / Copies) by
+      {/* Global run controls for the Yours group — the kill switch (pause NEW real entries while open positions
+          stay protected) and Exit-all (close everything + stop active strategies). These lived on the old
+          "Deployed" tab; kept here so they're reachable now that Yours uses the same per-tab UI as Library. */}
+      {(stratTab === "mine" || stratTab === "copies") && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}><EntryKillSwitch compact /></div>
+          {deployedActive.length > 0 && (
+            <button
+              onClick={async () => { if (onExitAll && await confirmDialog("Exit all open positions and stop every active strategy?", { title: "Exit everything", confirmLabel: "Exit all" })) onExitAll(); }}
+              className="tap disp"
+              style={{ flex: 1, minWidth: 0, padding: "9px 12px", borderRadius: 10, border: "1px solid var(--down)", background: "transparent", color: "var(--down)", fontWeight: 800, fontSize: 11.5, cursor: "pointer", whiteSpace: "nowrap", textAlign: "center" }}
+            >
+              Exit all
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Free-text strategy search — filters EVERY bucket (Samples / Premium / Mine / Copies) by
          strategy name or symbol, via queryOk in symOk. */}
       {stratTab !== "backtest" && stratTab !== "public" && (
         <div style={{ marginBottom: 10, position: "relative" }}>
@@ -3965,83 +3969,6 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                 </div>
               ))}
         </>
-      ) : (stratTab === "active" || stratTab === "inactive") ? (
-        (() => {
-          /* ACTIVE / INACTIVE — split the old "Deployed" bucket into two tabs. Active lists strategies running
-             now (s.active); Inactive lists deactivated ones. Both group by direction (Long / Short). The
-             kill-switch, Exit-all and Deactivate-All controls belong only to the Active tab; the Inactive tab
-             offers an Activate-All. Only strategies whose active-state matches the tab appear — so a deactivated
-             strategy no longer clutters the running list. */
-          const isActiveTab = stratTab === "active";
-          const list = isActiveTab ? deployedActive : deployedInactive;
-          const groups = [
-            ["long", "▲ Long", "var(--up)", list.filter(({ s }) => !isShortStrat(s))],
-            ["short", "▼ Short", "var(--down)", list.filter(({ s }) => isShortStrat(s))],
-          ];
-          return (
-        <>
-          {isActiveTab && (
-            <>
-              {/* Kill switch: pause NEW real entries while open positions stay protected. Exit-all shares the row. */}
-              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
-                <div style={{ flex: 1, minWidth: 0 }}><EntryKillSwitch compact /></div>
-                {deployedActive.length > 0 && (
-                  <button
-                    onClick={async () => { if (onExitAll && await confirmDialog("Exit all open positions and stop every active strategy?", { title: "Exit everything", confirmLabel: "Exit all" })) onExitAll(); }}
-                    className="tap disp"
-                    style={{ flex: 1, minWidth: 0, padding: "9px 12px", borderRadius: 10, border: "1px solid var(--down)", background: "transparent", color: "var(--down)", fontWeight: 800, fontSize: 11.5, cursor: "pointer", whiteSpace: "nowrap", textAlign: "center" }}
-                  >
-                    Exit all
-                  </button>
-                )}
-              </div>
-              {/* Deactivate All — flips every ACTIVE strategy to inactive (stops new entries). Does NOT close open
-                  positions. Solid danger fill so it reads as a live, tappable action (not a disabled control). */}
-              {deployedActive.length > 0 && (
-                <button onClick={() => bulkSetActive(deployedActive, false)} className="tap disp"
-                  style={{ width: "100%", marginBottom: 12, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--down)", background: "var(--down)", color: "#fff", fontWeight: 800, fontSize: 11.5, cursor: "pointer", textAlign: "center" }}>
-                  Deactivate All ({deployedActive.length}) — stops new entries, keeps open positions
-                </button>
-              )}
-            </>
-          )}
-          {/* Inactive tab: one-tap Activate All. */}
-          {!isActiveTab && deployedInactive.length > 0 && (
-            <button onClick={() => bulkSetActive(deployedInactive, true)} className="tap disp"
-              style={{ width: "100%", marginBottom: 12, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--up)", background: "var(--up)", color: "#fff", fontWeight: 800, fontSize: 11.5, cursor: "pointer", textAlign: "center" }}>
-              Activate All ({deployedInactive.length})
-            </button>
-          )}
-          {/* Direction filter — All / Long / Short. */}
-          {list.length > 0 && (
-            <div style={{ display: "flex", gap: 6, marginBottom: 12, overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-              {[["all", "All"], ["long", "Long"], ["short", "Short"]].map(([k, lbl]) => (
-                <button key={k} type="button" onClick={() => setDeployTab(k)} className="tap disp"
-                  style={{ flex: "0 0 auto", padding: "7px 14px", borderRadius: 999, fontWeight: 800, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap", border: "1px solid " + (deployTab === k ? "var(--primary)" : "var(--line)"), background: deployTab === k ? "var(--primary)" : "transparent", color: deployTab === k ? "#fff" : "var(--muted)" }}>
-                  {lbl}
-                </button>
-              ))}
-            </div>
-          )}
-          {list.length === 0
-            ? <div style={{ fontSize: 12.5, color: "var(--muted)" }}>No {isActiveTab ? "active" : "inactive"} strategies for this market.</div>
-            : groups
-                .filter(([key]) => deployTab === "all" || deployTab === key)
-                .map(([key, label, col, arr]) => {
-                  if (!arr.length) return null;
-                  return (
-                    <div key={key} style={{ marginBottom: 16 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "2px 2px 8px", borderBottom: "2px solid var(--line)", paddingBottom: 6 }}>
-                        <span style={{ fontSize: 14, fontWeight: 800, color: col }}>{label}</span>
-                        <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--muted)" }}>· {arr.length}</span>
-                      </div>
-                      <CollapsibleList items={arr} render={({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p, deployed: true })}</React.Fragment>} />
-                    </div>
-                  );
-                })}
-        </>
-          );
-        })()
       ) : mineOwn.length === 0 ? (
         <div className="card" style={{ marginTop: 12, padding: 20, textAlign: "center", color: "var(--muted)", fontSize: 12.5, lineHeight: 1.6 }}>
           You haven't created a strategy yet. Tap <b style={{ color: "var(--ink)" }}>+ New strategy</b> above, or start from a sample.
