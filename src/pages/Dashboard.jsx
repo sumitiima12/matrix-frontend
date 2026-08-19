@@ -28,6 +28,21 @@ import PopularScreeners from "../components/home/PopularScreeners";
 import ActionRequired from "../components/home/ActionRequired";
 import ActivityTimeline from "../components/home/ActivityTimeline";
 
+/* Canonical Source label for a trade chip — mirrors the backend provenance resolver so a position that was
+   placed by a screener but mis-stamped "Manual" (it still carries screenerKey/screenerName as self-evidence)
+   reads "Screener", never "Manual". Never defaults to Manual: an unrecognised/empty tag reads "Unknown". */
+const srcLabel = (t) => {
+  const tt = String((t && t.tradeType) || "").toLowerCase();
+  const hasScreenerEvidence = !!(t && (t.screenerKey || t.screenerName));
+  if (tt === "screener auto buy") return "Screener";
+  if (tt === "auto buy") return "Smart Auto-Buy";
+  if (tt === "automate") return "Automation";
+  if (tt === "ideas" || tt === "idea") return "Idea";
+  if (tt === "manual") return hasScreenerEvidence ? "Screener" : "Manual";
+  if (hasScreenerEvidence) return "Screener";
+  return tt ? tt : "Unknown";
+};
+
 /**
  * Dashboard — the trading desk. Composes the market strips, Matrix's Picks, trending, gainers/losers, news and the auto-buy panel.
  */
@@ -686,7 +701,7 @@ function LiveActivityTabs({ opens = [], gcols, market, onGoPortfolio, trades = [
               </div>
               {opens.slice(0, 5).map((t, i) => (
                 <div key={t.id || i} style={{ display: "grid", gridTemplateColumns: gcols, fontSize: 10.5, padding: "7px 10px", borderTop: "1px solid var(--line)", alignItems: "center", gap: 6 }}>
-                  <span className="disp" style={{ fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.sym} <span style={{ fontSize: 8, fontWeight: 700, opacity: .55 }}>{t.tradeType || "Manual"}</span></span>
+                  <span className="disp" style={{ fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.sym} <span style={{ fontSize: 8, fontWeight: 700, opacity: .55 }}>{srcLabel(t)}</span></span>
                   <span className="mono" style={{ textAlign: "right" }}>{fmt(Number(t.entry), t.market || market)}</span>
                   <span className="mono" style={{ textAlign: "right" }}>{fmt(t.cur, t.market || market)}</span>
                   <span className="mono" style={{ textAlign: "right", fontWeight: 800, color: t.pl >= 0 ? "var(--up)" : "var(--down)" }}>{(t.pl >= 0 ? "+" : "") + fmtPnl(t.pl, t.market || market)}</span>
@@ -1074,7 +1089,13 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     // Must be scoped to the SAME real/virtual mode as the Total dashboard's Auto-Buy box — otherwise in
     // Real mode this card would also count VIRTUAL auto-buy trades, showing a non-zero P&L (e.g. -0.06)
     // while the Total box (real-only) shows 0. Match the mode so the two dashboards reconcile.
-    .filter((t) => (t.tradeType === "Auto Buy") && (isReal ? !!t.real : !t.real) && ((t.market || marketOf(t.sym) || "IN")) === market && (t.entryAt || 0) >= periodFrom)
+    // SAME period semantics as the Total box (totalStats) and the canonical analytics service: an OPEN
+    // position is live RIGHT NOW, so its unrealised P&L belongs in every window even if it was entered
+    // before the window started. Only CLOSED trades are scoped by their exit stamp. The old filter used
+    // `entryAt >= periodFrom`, which dropped carried-over open auto-buys — so a still-open Smart Auto-Buy
+    // position read -9.97 in the Total box but $0 here. Turning auto-buy OFF stops NEW entries; it does not
+    // close existing positions, so their live P&L must still show. This makes the two dashboards reconcile.
+    .filter((t) => (t.tradeType === "Auto Buy") && (isReal ? !!t.real : !t.real) && ((t.market || marketOf(t.sym) || "IN")) === market && (t.exitAt == null || ((t.exitAt || t.entryAt || 0) >= periodFrom)))
     .map((t) => {
       const rejected = t.status === "rejected";
       const last = (ALL.find((a) => a.sym === t.sym) || {}).price;
@@ -1356,7 +1377,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                         {totalOpenRows.map((t) => (
                           <div key={t.id || `${t.sym}-${t.entryAt}`} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--elev)", borderRadius: 9, padding: "8px 10px" }}>
                             <div style={{ flex: "1 1 0", minWidth: 0 }}>
-                              <div className="disp" style={{ fontWeight: 800, fontSize: 12.5, color: "var(--primary)" }}>{t.sym} <span style={{ fontSize: 9.5, fontWeight: 700, opacity: .6 }}>{t.tradeType || "Manual"}</span></div>
+                              <div className="disp" style={{ fontWeight: 800, fontSize: 12.5, color: "var(--primary)" }}>{t.sym} <span style={{ fontSize: 9.5, fontWeight: 700, opacity: .6 }}>{srcLabel(t)}</span></div>
                               <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>Entry {isReal ? money1(t.entry) : fmt(t.entry, market)} · now {isReal ? money1(t.cur) : fmt(t.cur, market)}</div>
                             </div>
                             <div className="mono" style={{ flex: "0 0 auto", fontWeight: 800, fontSize: 13, color: (t.livePnl || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{(t.livePnl || 0) >= 0 ? "+" : ""}{isReal ? money1(t.livePnl) : fmtPnl(t.livePnl, market)}</div>
@@ -1456,7 +1477,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     <span style={{ fontSize: 11, color: "var(--up)", fontWeight: 800 }}>% TP</span>
                   </div>
                 ) : (
-                  <div style={{ fontSize: 10, opacity: .65, marginTop: 6 }}>Each pick uses its own target &amp; stop from Matrix's Top Picks.</div>
+                  <div style={{ fontSize: 10, opacity: .65, marginTop: 6 }}>Each pick uses its own target &amp; stop from Matrix's Smart Picks.</div>
                 )}
               </div>
 
@@ -1602,7 +1623,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       )}
 
       {/* Matrix picks — Top Picks now ranks ABOVE Live Positions on the homepage. */}
-      <Section title="Top Picks" icon={<Sparkles size={17} color="var(--primary-2)" />}>
+      <Section title="Smart Picks" icon={<Sparkles size={17} color="var(--primary-2)" />}>
         {/* An empty carousel is a void the user has to interpret. Say what's happening:
             picks need real indicators (RSI, 50-DMA), and those arrive after the prices. */}
         {picks.length === 0 && (

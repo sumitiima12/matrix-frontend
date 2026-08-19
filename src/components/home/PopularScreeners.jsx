@@ -206,6 +206,18 @@ function ScreenerDirToggle({ dir, setDir }) {
 const capDefault = (m) => (m === "US" || m === "Crypto") ? "100" : "10000";   // US/Crypto: 100 (USD); Indian/Commodity: 10,000 (₹)
 // Per-symbol quantity default: crypto is a USD notional (100), everything else is 1 unit/share.
 const qtyDefaultFor = (m) => (m === "Crypto" ? 500 : 1);   // crypto = USD notional (default $500)
+/* Canonical "is this a SCREENER trade" test — mirrors the backend provenance resolver so the Screener dashboard,
+   Live Positions, P&L tab and per-card stats count the SAME set as the Total dashboard's Screener category. A row
+   is a screener trade if it's tagged "Screener Auto Buy" OR it carries a screener attribution (screenerKey/name)
+   while NOT being another trusted automated type — this catches screener orders that were mis-stamped "Manual"
+   (defect #2: SOXLB was placed by Swing Catcher but tagged Manual, so a tradeType-only filter dropped it). */
+const isScreenerTrade = (t) => {
+  if (!t) return false;
+  const tt = String(t.tradeType || "").toLowerCase();
+  if (tt === "screener auto buy") return true;
+  if (tt === "auto buy" || tt === "automate" || tt === "ideas" || tt === "idea") return false;   // trusted non-screener
+  return !!(t.screenerKey || t.screenerName);   // Manual/empty tradeType but carries a screener attribution
+};
 const GRAD = "radial-gradient(circle at 45% 34%, rgba(255,255,255,.5), transparent 55%), linear-gradient(135deg, #EDF3F4 0%, #E7EFF2 55%, #DFE8EC 100%)";
 
 function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin = false, onOpen, onBuy, onAutoBuy, onScreenerBuy, onClosePosition, liveTick = 0, side = "BUY" }) {
@@ -893,7 +905,7 @@ function ScreenerDashboard({ trades = [], market }) {
   // Market + Screener order type + DATE RANGE. An OPEN position is always shown (it's live now); a closed trade is
   // included only if its exit (or entry) falls inside the selected window.
   const mine = (trades || []).filter((t) =>
-    t && (t.tradeType === "Screener Auto Buy") && (t.market || "") === market && t.status !== "rejected" && Number(t.entry) > 0
+    t && isScreenerTrade(t) && (t.market || "") === market && t.status !== "rejected" && Number(t.entry) > 0
     && ((t.exitAt == null || t.exit == null) || (Number(t.exitAt || t.entryAt || 0) >= since && Number(t.exitAt || t.entryAt || 0) <= until)));
   const closed = mine.filter((t) => t.exitAt != null && t.exit != null);
   const open = mine.filter((t) => t.exitAt == null || t.exit == null);
@@ -1039,7 +1051,7 @@ function LivePosRow({ t, market, td, onClosePosition, onUpdatePosition }) {
 function ScreenerLivePositions({ trades = [], market, onClosePosition, onUpdatePosition }) {
   const [seeAll, setSeeAll] = useState(false);
   const open = useMemo(() => (trades || []).filter((t) =>
-    t && t.tradeType === "Screener Auto Buy" && (t.market || "") === market && t.status !== "rejected"
+    t && isScreenerTrade(t) && (t.market || "") === market && t.status !== "rejected"
     && Number(t.entry) > 0 && (t.exitAt == null || t.exit == null))
     .sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0)), [trades, market]);
   if (!open.length) return (
@@ -1094,7 +1106,7 @@ function ScreenerPnLTab({ trades = [], market, mode = "virtual", liveTick = 0 })
     const isReal = mode === "real";
     const byKey = new Map();   // key → { label, pnl, closed, wins }
     for (const t of (trades || [])) {
-      if (!t || t.tradeType !== "Screener Auto Buy") continue;
+      if (!t || !isScreenerTrade(t)) continue;
       if ((marketOf(t.sym) || t.market || "IN") !== market) continue;   // market hard-guard
       if (isReal ? !t.real : !!t.real) continue;                        // active mode only
       if (t.status === "rejected" || t.entry == null) continue;
