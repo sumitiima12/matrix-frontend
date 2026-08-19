@@ -11,6 +11,23 @@ import NeoIcon from "../components/common/NeoIcon";
  * this app — Neo never invents a number, and says so when the data is not there.
  */
 
+/* Lightweight markdown → clean React for Neo's replies. Renders **bold** as bold, turns "- "/"* " into a
+   real bullet, drops "#" heading markers, and strips stray asterisks — so responses read crisply instead of
+   showing raw "**Technical Read**" clutter. (No external markdown lib; only bold + bullets are supported.) */
+function renderNeo(text) {
+  return String(text || "").split("\n").map((raw, li) => {
+    let l = raw.replace(/^\s*#{1,6}\s*/, "");                 // heading marks → plain text
+    const bullet = /^\s*[-*]\s+/.test(l);
+    l = l.replace(/^\s*[-*]\s+/, "");
+    const parts = l.split(/(\*\*[^*]+\*\*)/g).filter((s) => s !== "").map((seg, si) => {
+      const b = seg.match(/^\*\*([^*]+)\*\*$/);
+      return b ? <strong key={si}>{b[1]}</strong> : <React.Fragment key={si}>{seg.replace(/\*\*/g, "")}</React.Fragment>;
+    });
+    if (l.trim() === "" && !bullet) return <div key={li} style={{ height: 6 }} />;
+    return <div key={li} style={{ display: "flex", gap: 6, marginBottom: 2 }}>{bullet && <span style={{ opacity: .55, flex: "0 0 auto" }}>•</span>}<span>{parts}</span></div>;
+  });
+}
+
 export default function ChatPanel({ context, suggestions, compactMode, stock }) {
   const { msgs, busy, send } = useMatrixChat(context, stock);
   const [text, setText] = useState("");
@@ -33,7 +50,7 @@ export default function ChatPanel({ context, suggestions, compactMode, stock }) 
               border: m.role === "user" ? "none" : "1px solid var(--line)",
               borderRadius: m.role === "user" ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
               padding: "10px 13px", fontSize: 13.5, lineHeight: 1.5, whiteSpace: "pre-wrap",
-            }}>{m.content}</div>
+            }}>{m.role === "user" ? m.content : renderNeo(m.content)}</div>
           </div>
         ))}
         {busy && <div style={{ color: "var(--muted)", fontSize: 12.5, paddingLeft: 4 }}>Neo is thinking…</div>}

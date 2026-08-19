@@ -94,9 +94,9 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
   const periodLabel = (signupAt && ageMonths < 3) ? `Since ${monthTag(signupAt)}` : rangeText;
   const sel = { ...selStyle, flex: "1 1 0", minWidth: 0, padding: "8px 6px", fontSize: 11.5 };
   const Stat = ({ k, v, c }) => (
-    <div style={{ flex: "1 1 30%", minWidth: 88, background: "rgba(0,0,0,.05)", borderRadius: 12, padding: "9px 11px" }}>
+    <div style={{ flex: "1 1 30%", minWidth: 88, background: "rgba(127,127,127,.14)", borderRadius: 12, padding: "9px 11px" }}>
       <div style={{ fontSize: 9.5, opacity: .85, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".03em" }}>{k}</div>
-      <div className="mono" style={{ fontWeight: 800, fontSize: 14.5, marginTop: 2, color: c || "#141416" }}>{v}</div>
+      <div className="mono" style={{ fontWeight: 800, fontSize: 14.5, marginTop: 2, color: c || "var(--ink)" }}>{v}</div>
     </div>
   );
   // Collapsed: just Win/Loss + P&L and an expand arrow.
@@ -140,23 +140,23 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
           weighted auto-buy of every Neo idea for this market; the per-idea confidence + allocated capital now
           show on each idea card below. */}
       {auto && (
-        <div style={{ marginTop: 12, padding: "11px 12px", background: "rgba(0,0,0,.05)", borderRadius: 14 }}>
+        <div style={{ marginTop: 12, padding: "11px 12px", background: "rgba(127,127,127,.14)", borderRadius: 14 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
             <div style={{ minWidth: 0 }}>
-              <div className="disp" style={{ fontWeight: 800, fontSize: 12.5, color: "#141416" }}>Auto-Buy Ideas</div>
-              <div style={{ fontSize: 10, color: "rgba(20,20,22,.7)", marginTop: 2, lineHeight: 1.4 }}>Buys every Neo idea once a day{auto.mode === "real" ? " with REAL orders" : " (paper)"}, capital split by confidence. Each carries its target/stop.</div>
+              <div className="disp" style={{ fontWeight: 800, fontSize: 12.5, color: "var(--ink)" }}>Auto-Buy Ideas</div>
+              <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2, lineHeight: 1.4 }}>Buys every Neo idea once a day{auto.mode === "real" ? " with REAL orders" : " (paper)"}, capital split by confidence. Each carries its target/stop.</div>
             </div>
             <label className="tap" style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-              <span onClick={auto.onToggle} style={{ width: 40, height: 23, borderRadius: 999, background: auto.enabled ? "#22C55E" : "rgba(20,20,22,.2)", position: "relative", transition: "background .2s", display: "inline-block" }}>
+              <span onClick={auto.onToggle} style={{ width: 40, height: 23, borderRadius: 999, background: auto.enabled ? "#22C55E" : "var(--line)", position: "relative", transition: "background .2s", display: "inline-block" }}>
                 <span style={{ position: "absolute", top: 2, left: auto.enabled ? 19 : 2, width: 19, height: 19, borderRadius: 999, background: "#fff", transition: "left .2s" }} />
               </span>
-              <span style={{ fontSize: 11, fontWeight: 800, color: auto.enabled ? "#16A34A" : "rgba(20,20,22,.7)" }}>{auto.enabled ? "On" : "Off"}</span>
+              <span style={{ fontSize: 11, fontWeight: 800, color: auto.enabled ? "var(--up)" : "var(--muted)" }}>{auto.enabled ? "On" : "Off"}</span>
             </label>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
-            <span style={{ fontSize: 10.5, color: "rgba(20,20,22,.7)", fontWeight: 700 }}>Capital {auto.curSym}</span>
-            <input value={auto.capDraft} onChange={(e) => auto.setCapDraft(String(e.target.value).replace(/[^0-9]/g, ""))} inputMode="numeric" className="no-ring mono" style={{ flex: "1 1 0", minWidth: 0, border: "1px solid rgba(20,20,22,.15)", background: "#fff", color: "#141416", borderRadius: 9, padding: "7px 9px", fontWeight: 800, fontSize: 13 }} />
-            <button onClick={auto.onSaveCap} disabled={String(auto.capDraft) === String(auto.cap)} className="tap disp" style={{ flex: "0 0 auto", border: "none", borderRadius: 9, padding: "7px 14px", fontWeight: 800, fontSize: 12, cursor: String(auto.capDraft) === String(auto.cap) ? "default" : "pointer", background: String(auto.capDraft) === String(auto.cap) ? "rgba(20,20,22,.1)" : "var(--primary)", color: String(auto.capDraft) === String(auto.cap) ? "rgba(20,20,22,.5)" : "var(--on-primary)" }}>Save</button>
+            <span style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 700 }}>Capital {auto.curSym}</span>
+            <input value={auto.capDraft} onChange={(e) => auto.setCapDraft(String(e.target.value).replace(/[^0-9]/g, ""))} inputMode="numeric" className="no-ring mono" style={{ flex: "1 1 0", minWidth: 0, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 9, padding: "7px 9px", fontWeight: 800, fontSize: 13 }} />
+            <button onClick={auto.onSaveCap} disabled={String(auto.capDraft) === String(auto.cap)} className="tap disp" style={{ flex: "0 0 auto", border: "none", borderRadius: 9, padding: "7px 14px", fontWeight: 800, fontSize: 12, cursor: String(auto.capDraft) === String(auto.cap) ? "default" : "pointer", background: String(auto.capDraft) === String(auto.cap) ? "var(--elev)" : "var(--primary)", color: String(auto.capDraft) === String(auto.cap) ? "var(--muted)" : "var(--on-primary)" }}>Save</button>
           </div>
         </div>
       )}

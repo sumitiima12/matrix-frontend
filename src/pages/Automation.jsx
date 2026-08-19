@@ -2756,12 +2756,13 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     const onCount = rows.filter((s) => activeInMarket(s)).length;     // will be deactivated
     return (
       <div style={{ margin: "4px 0 6px" }}>
-        {/* Both buttons stay tappable regardless of count — bulkSetActive no-ops (with a toast) when there's
-            nothing to change, so "Deactivate All" is never a dead greyed-out control. Counts show only when
-            there's something to act on. The cross-market "every market" button was removed for consistency. */}
+        {/* Each button is DISABLED when there's nothing for it to do (no inactive → Activate All off; no active →
+            Deactivate All off) and shows the exact count it will change. `offCount`/`onCount` are computed by the
+            SAME rule bulkSetActive acts on, so the number always matches the outcome. The cross-market "every
+            market" button was removed for consistency. */}
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => bulkSetActive(items, true)} className="tap disp" style={{ flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11.5, border: "none", background: "linear-gradient(120deg,var(--up),#0EA968)", color: "#fff", cursor: "pointer" }}>Activate All{offCount ? ` (${offCount})` : ""}</button>
-          <button onClick={() => bulkSetActive(items, false)} className="tap disp" style={{ flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11.5, border: "1px solid var(--down)", background: "var(--surface)", color: "var(--down)", cursor: "pointer" }}>Deactivate All{onCount ? ` (${onCount})` : ""}</button>
+          <button onClick={() => bulkSetActive(items, true)} disabled={!offCount} className="tap disp" style={{ flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11.5, border: "none", background: offCount ? "linear-gradient(120deg,var(--up),#0EA968)" : "var(--elev)", color: offCount ? "#fff" : "var(--muted)", cursor: offCount ? "pointer" : "not-allowed" }}>Activate All{offCount ? ` (${offCount})` : ""}</button>
+          <button onClick={() => bulkSetActive(items, false)} disabled={!onCount} className="tap disp" style={{ flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11.5, border: "1px solid " + (onCount ? "var(--down)" : "var(--line)"), background: onCount ? "var(--surface)" : "var(--elev)", color: onCount ? "var(--down)" : "var(--muted)", cursor: onCount ? "pointer" : "not-allowed" }}>Deactivate All{onCount ? ` (${onCount})` : ""}</button>
         </div>
       </div>
     );
@@ -3020,9 +3021,9 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
 
   const DStat = ({ k, v, c, onClick, active }) => (
     <button onClick={onClick} disabled={!onClick} className={onClick ? "tap" : undefined}
-      style={{ flex: "1 1 0", minWidth: 0, textAlign: "left", background: active ? "var(--primary-soft)" : "rgba(0,0,0,.05)", border: active ? "1px solid var(--primary)" : "1px solid transparent", borderRadius: 14, padding: "10px 8px", cursor: onClick ? "pointer" : "default" }}>
+      style={{ flex: "1 1 0", minWidth: 0, textAlign: "left", background: active ? "var(--primary-soft)" : "rgba(127,127,127,.12)", border: active ? "1px solid var(--primary)" : "1px solid transparent", borderRadius: 14, padding: "10px 8px", cursor: onClick ? "pointer" : "default" }}>
       <div style={{ fontSize: 9, opacity: .85, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".02em", whiteSpace: "nowrap" }}>{k}{onClick ? " ›" : ""}</div>
-      <div className="mono" style={{ fontWeight: 800, fontSize: 15, marginTop: 3, color: c || "#141416" }}>{v}</div>
+      <div className="mono" style={{ fontWeight: 800, fontSize: 15, marginTop: 3, color: c || "var(--ink)" }}>{v}</div>
     </button>
   );
   const MetricMini = ({ k, v, c }) => (
@@ -3393,7 +3394,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {/* Date range in the header (like the Screener dashboard) — Created-by + Symbol stay in Filters. */}
             <select aria-label="Date range" value={dashPreset} onChange={(e) => setDashPreset(e.target.value)} className="no-ring" style={{ fontSize: 11, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 9, padding: "5px 8px", background: "var(--surface)", color: "var(--ink)" }}>{DASH_PRESETS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-            <button onClick={() => setDashOpen(false)} className="tap" title="Collapse" style={{ flex: "0 0 auto", display: "grid", placeItems: "center", border: "1px solid rgba(0,0,0,.12)", background: "rgba(0,0,0,.06)", color: "#141416", borderRadius: 10, padding: "5px" }}><ChevronUp size={15} /></button>
+            <button onClick={() => setDashOpen(false)} className="tap" title="Collapse" style={{ flex: "0 0 auto", display: "grid", placeItems: "center", border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", borderRadius: 10, padding: "5px" }}><ChevronUp size={15} /></button>
           </div>
         </div>
         {/* Custom from/to appear directly under the date-range control, defaulting to this-month → today. */}

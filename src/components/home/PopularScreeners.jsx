@@ -983,7 +983,7 @@ function ScreenerDashboard({ trades = [], market, mode = "virtual" }) {
             <option value="3650">All time</option>
             <option value="custom">Custom range</option>
           </select>
-          <button onClick={() => setDOpen(false)} className="tap" title="Collapse" style={{ flex: "0 0 auto", display: "grid", placeItems: "center", border: "1px solid rgba(0,0,0,.12)", background: "rgba(0,0,0,.06)", color: "#141416", borderRadius: 10, padding: "5px" }}><ChevronUp size={15} /></button>
+          <button onClick={() => setDOpen(false)} className="tap" title="Collapse" style={{ flex: "0 0 auto", display: "grid", placeItems: "center", border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", borderRadius: 10, padding: "5px" }}><ChevronUp size={15} /></button>
         </div>
       </div>
       {/* Custom from/to appear directly under the date-range control, defaulting to this-month → today. */}
