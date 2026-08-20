@@ -32,9 +32,14 @@ import { registerAutoBuy, loadAutoBuys, pauseAutoBuy, cancelAutoBuy, closeAutoBu
    shows it open. We hide it from the live list. Guards: real mode only, holdings actually loaded
    (heldSet is a real Set), never hide a fill opened in the last 90s (broker snapshot may lag). */
 const _normHold = (s) => String(s || "").replace(/(USDT|USD|INR|PERP)$/i, "").replace(/-EQ$/i, "").toUpperCase();
-function heldSetFrom(portfolio) {
-  if (!Array.isArray(portfolio)) return null;
-  return new Set(portfolio.filter((h) => Number(h && h.qty)).map((h) => _normHold(h.sym)));
+/* BROKER-TRUTH held set for REAL mode — built from the actual Delta holdings (realPortfolio.holdings), not the
+   virtual book. Returns null until holdings load (never hide a legitimate real position on a missing snapshot);
+   an (even empty) Set once loaded, so positions the broker no longer holds ARE dropped. Mirrors Dashboard. */
+function realHeldSetFrom(realPortfolio) {
+  const holds = (realPortfolio && Array.isArray(realPortfolio.holdings)) ? realPortfolio.holdings
+    : (Array.isArray(realPortfolio) ? realPortfolio : null);
+  if (!Array.isArray(holds)) return null;
+  return new Set(holds.filter((h) => Number(h && h.qty)).map((h) => _normHold(h.sym)));
 }
 function isPhantomOpen(t, heldSet, isReal) {
   if (!isReal || !heldSet || !t || !t.real) return false;
@@ -2297,7 +2302,7 @@ function StrategyPnl({ s, trades = [], market, appMode = "virtual" }) {
   );
 }
 
-export default function Automation({ market = "IN", appMode = "virtual", onRecord, trades = [], strats = [], setStrats, onExitAll, onCloseStrategy = null, onClosePosition = null, onUpdatePosition = null, onReconcileDelta = null, me = null, isAdmin = false, userId = null, brokerFor = null, adminKey = "", onConnectBroker = null, portfolio = null }) {
+export default function Automation({ market = "IN", appMode = "virtual", onRecord, trades = [], strats = [], setStrats, onExitAll, onCloseStrategy = null, onClosePosition = null, onUpdatePosition = null, onReconcileDelta = null, me = null, isAdmin = false, userId = null, brokerFor = null, adminKey = "", onConnectBroker = null, portfolio = null, realPortfolio = null }) {
   /* Backtesting Indian stocks needs real history, which — for compliance — can only come from the
      user's OWN connected broker (or the owner's house feed). Crypto (Delta) and US (Yahoo) have
      usable public/delayed feeds, so those don't require a broker. */
@@ -2868,7 +2873,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     && (appMode === "real" ? !!t.real : !t.real) && t.status !== "rejected" && Number(t.entry) > 0
     && ((t.exitAt == null || t.exit == null) || (Number(t.exitAt || t.entryAt || 0) >= dashWinFrom)))
     .sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
-  const _dashHeld = heldSetFrom(portfolio);
+  const _dashHeld = appMode === "real" ? realHeldSetFrom(realPortfolio) : null;
   const dashOpenPos = dashTrades.filter((t) => (t.exitAt == null || t.exit == null) && !isPhantomOpen(t, _dashHeld, appMode === "real"));
   const dPriceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a && a.price != null ? a.price : null; };
   const dPnlOf = (t, px) => { const dir = (t.side === "SELL" || t.short) ? -1 : 1; return (Number(px) - Number(t.entry)) * Number(t.qty || 0) * dir; };
@@ -3080,7 +3085,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       [s.symbol, s.sym, ...(Array.isArray(s.symbols) ? s.symbols : [])]
         .filter(Boolean).map((x) => String(x).toUpperCase().replace(/^NSE:/, "").replace(/-EQ$/, "")),
     );
-    const _cardHeld = heldSetFrom(portfolio);
+    const _cardHeld = appMode === "real" ? realHeldSetFrom(realPortfolio) : null;
     const openTrades = (trades || []).filter((t) => {
       if (t.entryAt == null || t.exitAt != null) return false;
       // Broker-truth: drop a real position Delta no longer holds (phantom) so it can't linger on the card.

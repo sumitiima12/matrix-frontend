@@ -888,7 +888,7 @@ export function DashTradeTable({ rows = [], market, priceOf, onlyOpen = false, c
   );
 }
 
-function ScreenerDashboard({ trades = [], market, mode = "virtual", portfolio = null }) {
+function ScreenerDashboard({ trades = [], market, mode = "virtual", portfolio = null, realPortfolio = null }) {
   const [drill, setDrill] = useState(null);      // null | 'trades' | 'open'
   const [dOpen, setDOpen] = useState(true);      // expanded by default — full stats + collapse chevron (like Automate)
   const [rangeDays, setRangeDays] = useState(() => lsGet("mx_scr_dash_range", 0));   // 0 = Today; number of days; or "custom"
@@ -907,7 +907,9 @@ function ScreenerDashboard({ trades = [], market, mode = "virtual", portfolio = 
   // the Total still counts it). An OPEN position is always shown (live now); a closed trade only if its exit (or
   // entry) falls inside the selected window.
   const _isReal = mode === "real";
-  const _heldSet = heldSetFrom(portfolio);
+  // Broker truth: in REAL mode the phantom guard must compare against the ACTUAL Delta holdings, not the virtual
+  // book. In virtual mode there is no phantom concept, so heldSet is irrelevant (isPhantomOpen no-ops on !t.real).
+  const _heldSet = _isReal ? realHeldSetFrom(realPortfolio) : null;
   const mine = (trades || []).filter((t) =>
     t && isScreenerTrade(t) && (_isReal ? !!t.real : !t.real)   // scope to the active book — real & virtual never mix (matches the Total dashboard)
     && ((t.market || marketOf(t.sym) || "") === market) && t.status !== "rejected" && Number(t.entry) > 0
@@ -1065,21 +1067,31 @@ function heldSetFrom(portfolio) {
   if (!Array.isArray(portfolio)) return null;
   return new Set(portfolio.filter((h) => Number(h && h.qty)).map((h) => _normHold(h.sym)));
 }
+/* BROKER-TRUTH held set for REAL mode. Uses the actual Delta holdings (realPortfolio.holdings), NOT the virtual
+   book — otherwise a real position the broker no longer holds can't be recognised as a phantom. Returns null when
+   holdings aren't loaded yet (so we never hide a legitimate real position just because the snapshot is missing);
+   returns an (even empty) Set once loaded, so genuinely-gone positions ARE dropped. Mirrors Dashboard._liveHeld. */
+function realHeldSetFrom(realPortfolio) {
+  const holds = (realPortfolio && Array.isArray(realPortfolio.holdings)) ? realPortfolio.holdings
+    : (Array.isArray(realPortfolio) ? realPortfolio : null);
+  if (!Array.isArray(holds)) return null;
+  return new Set(holds.filter((h) => Number(h && h.qty)).map((h) => _normHold(h.sym)));
+}
 function isPhantomOpen(t, heldSet, isReal) {
   if (!isReal || !heldSet || !t || !t.real) return false;
   if (heldSet.has(_normHold(t.sym))) return false;
   return (t.entryAt == null) || (t.entryAt <= Date.now() - 90000);
 }
 
-function ScreenerLivePositions({ trades = [], market, mode = "virtual", portfolio = null, onClosePosition, onUpdatePosition }) {
+function ScreenerLivePositions({ trades = [], market, mode = "virtual", portfolio = null, realPortfolio = null, onClosePosition, onUpdatePosition }) {
   const [seeAll, setSeeAll] = useState(false);
   const isReal = mode === "real";
-  const heldSet = heldSetFrom(portfolio);
+  const heldSet = isReal ? realHeldSetFrom(realPortfolio) : null;
   const open = useMemo(() => (trades || []).filter((t) =>
     t && isScreenerTrade(t) && (t.market || "") === market && t.status !== "rejected"
     && Number(t.entry) > 0 && (t.exitAt == null || t.exit == null)
     && !isPhantomOpen(t, heldSet, isReal))   // hide positions the broker no longer holds
-    .sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0)), [trades, market, portfolio, mode]);
+    .sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0)), [trades, market, portfolio, realPortfolio, mode]);
   if (!open.length) return (
     <div className="card" style={{ padding: 12, marginBottom: 10 }}>
       <div className="disp" style={{ fontWeight: 800, fontSize: 12.5 }}>Live Positions <span style={{ color: "var(--muted)" }}>· 0</span></div>
@@ -1193,7 +1205,7 @@ function ScreenerPnLTab({ trades = [], market, mode = "virtual", liveTick = 0 })
   );
 }
 
-export default function PopularScreeners({ market, mode = "virtual", list = [], isAdmin = false, onOpen, onBuy, onAutoBuy, onScreenerBuy, onClosePosition, onUpdatePosition, liveTick = 0, trades = [], variant = "full", onOpenScreener, portfolio = null }) {
+export default function PopularScreeners({ market, mode = "virtual", list = [], isAdmin = false, onOpen, onBuy, onAutoBuy, onScreenerBuy, onClosePosition, onUpdatePosition, liveTick = 0, trades = [], variant = "full", onOpenScreener, portfolio = null, realPortfolio = null }) {
   const [tab, setTab] = useState(variant === "active" ? "popular" : "active");   // full page defaults to Active Screeners
   const [dir, setDir] = useState("buy");   // Buy (long) | Sell (short) for Popular Screeners
   const [editing, setEditing] = useState(null);   // a saved screener loaded into the builder for editing
@@ -1231,9 +1243,9 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
   return (
     <Section title="Screener" tight icon={<SlidersHorizontal size={17} color="var(--primary)" />}>
       {/* Automate-style performance dashboard for Screener Auto-Buy trades in this market. */}
-      <ScreenerDashboard trades={trades} market={market} mode={mode} portfolio={portfolio} />
+      <ScreenerDashboard trades={trades} market={market} mode={mode} portfolio={portfolio} realPortfolio={realPortfolio} />
       {/* Live Positions — its OWN section below the dashboard (Screener column, editable SL/TP, Close). */}
-      <ScreenerLivePositions trades={trades} market={market} mode={mode} portfolio={portfolio} onClosePosition={onClosePosition} onUpdatePosition={onUpdatePosition} />
+      <ScreenerLivePositions trades={trades} market={market} mode={mode} portfolio={portfolio} realPortfolio={realPortfolio} onClosePosition={onClosePosition} onUpdatePosition={onUpdatePosition} />
       {/* Build a screener | Popular Screeners | My Screeners */}
       <div className="hide-scroll" style={{ display: "flex", marginBottom: 4, overflowX: "auto" }}>
         <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3 }}>

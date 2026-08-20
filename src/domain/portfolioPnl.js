@@ -59,17 +59,18 @@ export function computeCategories(trades, opts = {}) {
     if (market && (String(t.market || marketOf(t.sym) || "")) !== market) continue;
     if (t.entry == null || !(Number(t.entry) > 0)) continue;
 
-    // Phantom-open reconciliation (real): a still-journalled-open row the broker no longer holds is CLOSED-at-mark.
-    let reconciledClosed = false;
-    if (isReal && heldSet && normSym && t.exitAt == null && !heldSet.has(normSym(t.sym))) reconciledClosed = true;
+    // Phantom-open reconciliation (real): a still-journalled-open row the broker no longer holds is a phantom.
+    // We have NO verified exit for it, so we must not fabricate a mark-to-market P&L (that inflated Smart Auto-Buy
+    // and pushed the gap into Unknown/Imported). Exclude it entirely — it contributes $0 and is not counted open.
+    if (isReal && heldSet && normSym && t.exitAt == null && !heldSet.has(normSym(t.sym))) continue;
 
-    const isO = (t.exitAt == null || t.exit == null) && !reconciledClosed;
-    if (!isO && !reconciledClosed) {
+    const isO = (t.exitAt == null || t.exit == null);
+    if (!isO) {
       // closed by the book: scope by exit (fallback entry) time into the window
       const st = Number(t.exitAt || t.entryAt || 0);
       if (!(st >= lo && st <= hi)) continue;
     }
-    const px = isO || reconciledClosed ? (priceOf ? priceOf(t.sym) : null) : Number(t.exit);
+    const px = isO ? (priceOf ? priceOf(t.sym) : null) : Number(t.exit);
     if (px == null) continue;                                               // no mark yet ⇒ can't value; skip
 
     const p = positionPnl(t, px, marketOf(t.sym) || market);
