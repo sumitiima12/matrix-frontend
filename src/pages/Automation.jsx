@@ -27,6 +27,21 @@ import { btPeriodStr, creatorOf, statCells } from "./automationHelpers";   // PE
 import { brokerSymbol } from "../domain/brokerSymbols";
 import { registerAutoBuy, loadAutoBuys, pauseAutoBuy, cancelAutoBuy, closeAutoBuy, updateAutoBuy, setAutoBuyLive, loadBrokerCapabilities, brokerCapOf } from "../services/brokerService";
 
+/* Broker-truth phantom guard (mirrors Screener/home). A REAL journalled-open row that the broker
+   (Delta) no longer holds is a phantom — the position was closed on the broker but our journal still
+   shows it open. We hide it from the live list. Guards: real mode only, holdings actually loaded
+   (heldSet is a real Set), never hide a fill opened in the last 90s (broker snapshot may lag). */
+const _normHold = (s) => String(s || "").replace(/(USDT|USD|INR|PERP)$/i, "").replace(/-EQ$/i, "").toUpperCase();
+function heldSetFrom(portfolio) {
+  if (!Array.isArray(portfolio)) return null;
+  return new Set(portfolio.filter((h) => Number(h && h.qty)).map((h) => _normHold(h.sym)));
+}
+function isPhantomOpen(t, heldSet, isReal) {
+  if (!isReal || !heldSet || !t || !t.real) return false;
+  if (heldSet.has(_normHold(t.sym))) return false;
+  return (t.entryAt == null) || (t.entryAt <= Date.now() - 90000);
+}
+
 /**
  * Automation — visual strategy builder, plain-English rules, and backtesting on REAL candles.
  */
@@ -2282,7 +2297,7 @@ function StrategyPnl({ s, trades = [], market, appMode = "virtual" }) {
   );
 }
 
-export default function Automation({ market = "IN", appMode = "virtual", onRecord, trades = [], strats = [], setStrats, onExitAll, onCloseStrategy = null, onClosePosition = null, onUpdatePosition = null, onReconcileDelta = null, me = null, isAdmin = false, userId = null, brokerFor = null, adminKey = "", onConnectBroker = null }) {
+export default function Automation({ market = "IN", appMode = "virtual", onRecord, trades = [], strats = [], setStrats, onExitAll, onCloseStrategy = null, onClosePosition = null, onUpdatePosition = null, onReconcileDelta = null, me = null, isAdmin = false, userId = null, brokerFor = null, adminKey = "", onConnectBroker = null, portfolio = null }) {
   /* Backtesting Indian stocks needs real history, which — for compliance — can only come from the
      user's OWN connected broker (or the owner's house feed). Crypto (Delta) and US (Yahoo) have
      usable public/delayed feeds, so those don't require a broker. */
@@ -2853,7 +2868,8 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     && (appMode === "real" ? !!t.real : !t.real) && t.status !== "rejected" && Number(t.entry) > 0
     && ((t.exitAt == null || t.exit == null) || (Number(t.exitAt || t.entryAt || 0) >= dashWinFrom)))
     .sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
-  const dashOpenPos = dashTrades.filter((t) => t.exitAt == null || t.exit == null);
+  const _dashHeld = heldSetFrom(portfolio);
+  const dashOpenPos = dashTrades.filter((t) => (t.exitAt == null || t.exit == null) && !isPhantomOpen(t, _dashHeld, appMode === "real"));
   const dPriceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a && a.price != null ? a.price : null; };
   const dPnlOf = (t, px) => { const dir = (t.side === "SELL" || t.short) ? -1 : 1; return (Number(px) - Number(t.entry)) * Number(t.qty || 0) * dir; };
 
@@ -3064,8 +3080,11 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       [s.symbol, s.sym, ...(Array.isArray(s.symbols) ? s.symbols : [])]
         .filter(Boolean).map((x) => String(x).toUpperCase().replace(/^NSE:/, "").replace(/-EQ$/, "")),
     );
+    const _cardHeld = heldSetFrom(portfolio);
     const openTrades = (trades || []).filter((t) => {
       if (t.entryAt == null || t.exitAt != null) return false;
+      // Broker-truth: drop a real position Delta no longer holds (phantom) so it can't linger on the card.
+      if (isPhantomOpen(t, _cardHeld, appMode === "real")) return false;
       // R35-P2-04 note→R35-P3-02: strategyId is AUTHORITATIVE. If a trade carries a strategyId it must EXACTLY equal
       // this strategy's id — a trade tagged to a DIFFERENT strategy that merely shares this display name is NOT ours,
       // and we never fall back to a name match for it. Name+market+symbol matching is used ONLY for legacy rows that
