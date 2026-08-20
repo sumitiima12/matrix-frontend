@@ -1364,7 +1364,7 @@ function AppInner() {
         />
       )}
 
-      <div style={{ maxWidth: 460, margin: "0 auto", minHeight: "100vh", position: "relative", zIndex: 1, paddingBottom: 86 }}>
+      <div style={{ maxWidth: 460, margin: "0 auto", minHeight: "100vh", position: "relative", zIndex: 1, paddingBottom: 98 }}>
         {/* ambient glow */}
         <div style={{ position: "absolute", top: -80, left: "50%", transform: "translateX(-50%)", width: 420, height: 320, background: "radial-gradient(circle, rgba(150,150,160,.12), transparent 70%)", pointerEvents: "none", zIndex: 0 }} />
         {/* HEADER */}
@@ -1595,7 +1595,7 @@ function AppInner() {
           controls, so a thumb reaching for "Buy" can land on "Watch". */}
       {!detail && !onboarding && !drawer && !confirmOrder && !walletOpen && !brokerOpen && !search && !showProfile && (
         <Portal theme={theme}>
-          <nav aria-label="Main navigation" className="glass" style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--header-bg)", borderTop: "1px solid var(--line)", borderRadius: "22px 22px 0 0", boxShadow: "0 -10px 34px rgba(40,10,80,.3)", display: "flex", padding: "8px 2px calc(13px + env(safe-area-inset-bottom, 0px))", zIndex: 100 }}>
+          <nav aria-label="Main navigation" className="glass" style={{ position: "fixed", bottom: "calc(env(safe-area-inset-bottom, 0px) + 14px)", left: 12, right: 12, maxWidth: 436, margin: "0 auto", background: "var(--header-bg)", border: "1px solid var(--line)", borderRadius: 26, boxShadow: "0 12px 34px rgba(40,10,80,.32), 0 2px 8px rgba(0,0,0,.14)", display: "flex", padding: "9px 6px", overflow: "hidden", zIndex: 100 }}>
             {nav.map(([k, Icon, label]) => {
               const current = k === "orders" ? histOpen : (tab === k && !histOpen);
               return (

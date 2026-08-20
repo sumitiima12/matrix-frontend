@@ -1349,29 +1349,36 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     Shown in BOTH virtual and real mode (including leveraged crypto): even when the
                     headline P&L comes from the broker wallet, the user still wants to see how much of
                     their recorded activity came from Manual vs Auto-Buy vs Automate vs Screener. */}
-                {(
+                {(() => {
+                  // The 5 tracked categories. In REAL LEVERAGED mode the headline is the BROKER WALLET P&L, which
+                  // can exceed what Matrix attributes to trades (positions opened outside the app, funding, fees).
+                  // Rather than let the boxes silently fail to add up, the Unknown/Imported box ABSORBS that gap
+                  // (broker P&L − the 5 tracked boxes), so the boxes ALWAYS sum to the headline. In virtual / spot
+                  // real mode there's no wallet gap, so it's just the tracked Unknown/Imported bucket.
+                  const known5 = catPnl("Manual", totalStats.byType.Manual) + catPnl("Smart Auto-Buy", totalStats.byType["Auto Buy"]) + automatePnl + catPnl("Screener", totalStats.byType["Screener Auto Buy"]) + catPnl("Ideas", totalStats.byType.Ideas);
+                  const unknownBox = (isReal && isLeveraged) ? +((dashNet - known5)).toFixed(2) : shared.categories["Unknown/Imported"];
+                  return (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(58px, 1fr))", gap: 8, marginTop: 12 }}>
                     {[["Manual", catPnl("Manual", totalStats.byType.Manual)], ["Smart Auto-Buy", catPnl("Smart Auto-Buy", totalStats.byType["Auto Buy"])], ["Automate", catPnl("Automate", automatePnl)], ["Screener", catPnl("Screener", totalStats.byType["Screener Auto Buy"])], ["Ideas", catPnl("Ideas", totalStats.byType.Ideas)],
-                      // Show the Unknown/Imported bucket ONLY when the canonical report has a non-zero amount there —
-                      // so nothing silently drops out of the total, but the box list stays clean when it's empty.
-                      ...((Math.abs(shared.categories["Unknown/Imported"] || 0) > 0.005) ? [["Unknown/Imported", shared.categories["Unknown/Imported"]]] : [])].map(([label, v]) => (
+                      // Unknown/Imported absorbs the broker-vs-Matrix gap so the boxes reconcile to the headline.
+                      ...((Math.abs(unknownBox || 0) > 0.005) ? [["Unknown / Imported", unknownBox]] : [])].map(([label, v]) => (
                       <div key={label} style={{ background: "var(--elev)", borderRadius: 9, padding: "7px 8px", minWidth: 0 }}>
                         <div style={{ fontSize: 9, opacity: .65, fontWeight: 700, lineHeight: 1.2, minHeight: 21, overflow: "hidden" }}>{label}</div>
                         <div className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: v >= 0 ? "var(--up)" : "var(--down)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(v >= 0 ? "+" : "") + (isReal ? money1(v) : fmtPnl(v, market))}</div>
                       </div>
                     ))}
                   </div>
-                )}
+                  ); })()}
                 {isReal && isLeveraged && (() => {
-                  // The headline is the BROKER WALLET (broker truth); the boxes sum to MATRIX-ATTRIBUTED P&L. Rather
-                  // than say "these may not add up," we name each figure and show the unattributed difference so the
-                  // gap is explicit and honest (never two different numbers both labelled "Total P&L").
+                  // The headline is the BROKER WALLET P&L (broker truth) and the boxes now SUM TO IT — the
+                  // Unknown/Imported box carries the part not tied to a tracked Matrix trade (positions opened
+                  // outside the app, funding, fees). One short line explains what that box is.
                   const matrixAttrib = boxesSum;
                   return (
                     <div style={{ marginTop: 7, fontSize: 10, lineHeight: 1.5, opacity: .7 }}>
-                      <div>Broker P&amp;L (Delta wallet): <b style={{ opacity: .9 }}>{money1(dashNet)}</b></div>
-                      {matrixAttrib != null && <div>Matrix-attributed P&amp;L (boxes): <b style={{ opacity: .9 }}>{money1(matrixAttrib)}</b></div>}
-                      {matrixAttrib != null && <div>Unattributed difference: <b style={{ opacity: .9 }}>{money1(dashNet - matrixAttrib)}</b></div>}
+                      <div>Headline is your <b style={{ opacity: .9 }}>Delta wallet</b> P&amp;L; boxes add up to it. <b style={{ opacity: .9 }}>Unknown/Imported</b> is wallet P&amp;L not tied to a tracked trade (external positions, funding, fees).</div>
+                      {false && <div>Matrix-attributed P&amp;L (boxes): <b style={{ opacity: .9 }}>{money1(matrixAttrib)}</b></div>}
+                      {false && <div>Unattributed difference: <b style={{ opacity: .9 }}>{money1(dashNet - matrixAttrib)}</b></div>}
                     </div>
                   );
                 })()}
