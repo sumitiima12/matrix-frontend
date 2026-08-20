@@ -888,7 +888,7 @@ export function DashTradeTable({ rows = [], market, priceOf, onlyOpen = false, c
   );
 }
 
-function ScreenerDashboard({ trades = [], market, mode = "virtual" }) {
+function ScreenerDashboard({ trades = [], market, mode = "virtual", portfolio = null }) {
   const [drill, setDrill] = useState(null);      // null | 'trades' | 'open'
   const [dOpen, setDOpen] = useState(true);      // expanded by default — full stats + collapse chevron (like Automate)
   const [rangeDays, setRangeDays] = useState(() => lsGet("mx_scr_dash_range", 0));   // 0 = Today; number of days; or "custom"
@@ -907,12 +907,15 @@ function ScreenerDashboard({ trades = [], market, mode = "virtual" }) {
   // the Total still counts it). An OPEN position is always shown (live now); a closed trade only if its exit (or
   // entry) falls inside the selected window.
   const _isReal = mode === "real";
+  const _heldSet = heldSetFrom(portfolio);
   const mine = (trades || []).filter((t) =>
     t && isScreenerTrade(t) && (_isReal ? !!t.real : !t.real)   // scope to the active book — real & virtual never mix (matches the Total dashboard)
     && ((t.market || marketOf(t.sym) || "") === market) && t.status !== "rejected" && Number(t.entry) > 0
     && ((t.exitAt == null || t.exit == null) || (Number(t.exitAt || t.entryAt || 0) >= since && Number(t.exitAt || t.entryAt || 0) <= until)));
   const closed = mine.filter((t) => t.exitAt != null && t.exit != null);
-  const open = mine.filter((t) => t.exitAt == null || t.exit == null);
+  // A real journalled-open position the broker no longer holds is a phantom — exclude it from the live set and
+  // its unrealised P&L, so the Screener's "N live positions" and P&L match the broker (mirrors Home).
+  const open = mine.filter((t) => (t.exitAt == null || t.exit == null) && !isPhantomOpen(t, _heldSet, _isReal));
   const realised = closed.reduce((a, t) => a + pnlOf(t, t.exit), 0);
   const unreal = open.reduce((a, t) => { const px = priceOf(t.sym); return a + (px != null ? pnlOf(t, px) : 0); }, 0);
   const pnl = realised + unreal;
@@ -1052,12 +1055,31 @@ function LivePosRow({ t, market, td, onClosePosition, onUpdatePosition }) {
 /* SEPARATE Live Positions section — sits BELOW the dashboard. One row per open Screener Auto-Buy position
    with a Screener-name column, editable SL/TP and a Close button; no Exit px / Exit / Exit-type columns.
    Up to 5 shown, then See all. */
-function ScreenerLivePositions({ trades = [], market, onClosePosition, onUpdatePosition }) {
+/* Broker-truth reconciliation (real mode). A real journalled-open screener position the broker (Delta) no
+   longer holds has actually been closed elsewhere — show it CLOSED, not a phantom OPEN, mirroring the Home
+   dashboard so the Screener's live count matches the broker. Guards: only in real mode, only when holdings
+   have actually LOADED (array present, so a failed read can't hide a real position), and never hide a
+   position opened in the last 90s (a just-placed order the holdings read may not have caught yet). */
+const _normHold = (s) => String(s || "").replace(/(USDT|USD|INR|PERP)$/i, "").replace(/-EQ$/i, "").toUpperCase();
+function heldSetFrom(portfolio) {
+  if (!Array.isArray(portfolio)) return null;
+  return new Set(portfolio.filter((h) => Number(h && h.qty)).map((h) => _normHold(h.sym)));
+}
+function isPhantomOpen(t, heldSet, isReal) {
+  if (!isReal || !heldSet || !t || !t.real) return false;
+  if (heldSet.has(_normHold(t.sym))) return false;
+  return (t.entryAt == null) || (t.entryAt <= Date.now() - 90000);
+}
+
+function ScreenerLivePositions({ trades = [], market, mode = "virtual", portfolio = null, onClosePosition, onUpdatePosition }) {
   const [seeAll, setSeeAll] = useState(false);
+  const isReal = mode === "real";
+  const heldSet = heldSetFrom(portfolio);
   const open = useMemo(() => (trades || []).filter((t) =>
     t && isScreenerTrade(t) && (t.market || "") === market && t.status !== "rejected"
-    && Number(t.entry) > 0 && (t.exitAt == null || t.exit == null))
-    .sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0)), [trades, market]);
+    && Number(t.entry) > 0 && (t.exitAt == null || t.exit == null)
+    && !isPhantomOpen(t, heldSet, isReal))   // hide positions the broker no longer holds
+    .sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0)), [trades, market, portfolio, mode]);
   if (!open.length) return (
     <div className="card" style={{ padding: 12, marginBottom: 10 }}>
       <div className="disp" style={{ fontWeight: 800, fontSize: 12.5 }}>Live Positions <span style={{ color: "var(--muted)" }}>· 0</span></div>
@@ -1171,7 +1193,7 @@ function ScreenerPnLTab({ trades = [], market, mode = "virtual", liveTick = 0 })
   );
 }
 
-export default function PopularScreeners({ market, mode = "virtual", list = [], isAdmin = false, onOpen, onBuy, onAutoBuy, onScreenerBuy, onClosePosition, onUpdatePosition, liveTick = 0, trades = [], variant = "full", onOpenScreener }) {
+export default function PopularScreeners({ market, mode = "virtual", list = [], isAdmin = false, onOpen, onBuy, onAutoBuy, onScreenerBuy, onClosePosition, onUpdatePosition, liveTick = 0, trades = [], variant = "full", onOpenScreener, portfolio = null }) {
   const [tab, setTab] = useState(variant === "active" ? "popular" : "active");   // full page defaults to Active Screeners
   const [dir, setDir] = useState("buy");   // Buy (long) | Sell (short) for Popular Screeners
   const [editing, setEditing] = useState(null);   // a saved screener loaded into the builder for editing
@@ -1209,9 +1231,9 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
   return (
     <Section title="Screener" tight icon={<SlidersHorizontal size={17} color="var(--primary)" />}>
       {/* Automate-style performance dashboard for Screener Auto-Buy trades in this market. */}
-      <ScreenerDashboard trades={trades} market={market} mode={mode} />
+      <ScreenerDashboard trades={trades} market={market} mode={mode} portfolio={portfolio} />
       {/* Live Positions — its OWN section below the dashboard (Screener column, editable SL/TP, Close). */}
-      <ScreenerLivePositions trades={trades} market={market} onClosePosition={onClosePosition} onUpdatePosition={onUpdatePosition} />
+      <ScreenerLivePositions trades={trades} market={market} mode={mode} portfolio={portfolio} onClosePosition={onClosePosition} onUpdatePosition={onUpdatePosition} />
       {/* Build a screener | Popular Screeners | My Screeners */}
       <div className="hide-scroll" style={{ display: "flex", marginBottom: 4, overflowX: "auto" }}>
         <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3 }}>
