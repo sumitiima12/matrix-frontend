@@ -907,6 +907,36 @@ function AppInner() {
     return applied;
   };
 
+  /* AUTO-RECONCILE ON LOAD — so a phantom (a real crypto row Delta already closed) doesn't linger for days and
+     keep the "N positions without a stop-loss" alert / Unknown-Imported gap lit until the user taps Reconcile.
+     SAFETY: this only closes BROKER-PROVEN phantoms (apply:true with NO confirmIds → the server's Delta-tagged
+     subset). It never touches unknown-broker rows (those still require the user's explicit confirm in the manual
+     flow), never places a broker order (it's a display/journal reconciliation with an audit note), and never runs
+     when holdings aren't loaded (fail-safe). It fires at most ONCE per phantom set — no loop, no spam. */
+  const _autoReconRef = useRef({ sig: null, running: false });
+  useEffect(() => {
+    if (mode !== "real" || market !== "Crypto" || !userId || !BACKEND_URL) return;
+    const holds = (realPortfolio && Array.isArray(realPortfolio.holdings)) ? realPortfolio.holdings : null;
+    if (!holds) return;                                            // holdings not loaded → never auto-close
+    const norm = (s) => String(s || "").replace(/(USDT|USD|INR|PERP)$/i, "").replace(/-EQ$/i, "").toUpperCase();
+    const held = new Set(holds.filter((h) => Number(h && h.qty)).map((h) => norm(h.sym)));
+    const now = Date.now();
+    const phantoms = (trades || []).filter((t) => t && t.real === true && (t.market || "") === "Crypto"
+      && t.entryAt != null && (t.exitAt == null || t.exit == null) && t.status !== "rejected"
+      && !held.has(norm(t.sym)) && (t.entryAt <= now - 90000));   // 90s grace: broker snapshot may lag a fresh fill
+    if (!phantoms.length) return;
+    const sig = phantoms.map((t) => t.id).sort().join(",") + "|" + [...held].sort().join(",");
+    if (_autoReconRef.current.sig === sig || _autoReconRef.current.running) return;   // handled / in flight
+    _autoReconRef.current = { sig, running: true };
+    (async () => {
+      try {
+        const applied = await reconcileRealTrades(userId, { apply: true });          // Delta-proven only (no confirmIds)
+        if ((applied.removed || 0) > 0) { try { const t = await fetchTrades(userId, 0, Date.now()); setTrades(t || []); } catch { /* keep current */ } }
+      } catch { /* leave it for the manual Reconcile button; don't retry-spam this phantom set */ }
+      finally { _autoReconRef.current.running = false; }
+    })();
+  }, [mode, market, userId, realPortfolio, trades]);
+
   /* Close (sell) every OPEN paper position for ONE strategy at the live price, then deactivate just
      that strategy. Powers the Virtual Live "Stop & sell" button. */
   const exitStrategyPositions = (stratId) => {
