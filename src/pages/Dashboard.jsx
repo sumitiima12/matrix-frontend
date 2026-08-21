@@ -1272,9 +1272,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
         const it = [...(actionItems || [])];
         if (isReal) {
           // Only GENUINELY OPEN filled positions count — exclude rejected / never-filled / unentered journal rows
-          // (same predicate the Total's open-position list uses), else the "without a stop-loss" tally is inflated
-          // by stale non-positions.
-          const openReal = (trades || []).filter((t) => t.real && t.exitAt == null && t.entry != null && t.status !== "rejected" && inMarket(t.sym, t.market));
+          // (same predicate the Total's open-position list uses), AND exclude phantoms: a journalled-open row the
+          // broker no longer holds (isPhantomOpen = broker-truth) must not be counted, else "N positions without a
+          // stop-loss" / "awaiting confirmation" stay lit for positions Delta already closed.
+          const openReal = (trades || []).filter((t) => t.real && t.exitAt == null && t.entry != null && t.status !== "rejected" && inMarket(t.sym, t.market) && !isPhantomOpen(t));
           const noSL = openReal.filter((t) => t.sl == null).length;
           if (noSL) it.push({ key: "nosl", tone: "warn", label: `${noSL} position${noSL > 1 ? "s" : ""} without a stop-loss`, detail: "Unprotected — a move against you has no automatic exit.", action: { label: "Review", onClick: onGoPortfolio } });
           const unresolved = openReal.filter((t) => ["pending", "unknown", "submitted"].includes(String(t.status || "").toLowerCase())).length;
