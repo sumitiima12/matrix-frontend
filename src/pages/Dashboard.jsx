@@ -1103,7 +1103,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       // Reconciled close: real, still-journalled-open, but no longer held → treat as closed (est).
       const reconciledClosed = realHeld && !rejected && t.exitAt == null && t.real && !realHeld.has(_normSym(t.sym));
       const open = !rejected && t.exitAt == null && !reconciledClosed;
-      const cur = open ? (last ?? t.entry) : (reconciledClosed ? (last ?? t.entry) : t.exit);
+      // A phantom (broker no longer holds it) has NO verified exit — mark it at ENTRY so it contributes $0, never a
+      // fabricated live-price gain. This matches the canonical P&L engine (computeCategories) so this dashboard and
+      // the Total dashboard's Smart Auto-Buy box read the SAME number.
+      const cur = open ? (last ?? t.entry) : (reconciledClosed ? t.entry : t.exit);
       const realPnl = rejected || t.entry == null ? 0 : +(positionPnl(t, cur, market)).toFixed(2);
       return { ...t, rejected, open, cur, realPnl, reconciledClosed, exitType: reconciledClosed ? "Closed (est.)" : t.exitType };
     }), [trades, market, periodFrom, realHeld]);
@@ -1460,7 +1463,12 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 Buys Matrix's top {MKT_LABEL[market]} picks once a day at the live price{autoOn ? ", and auto-exits at your target/stop" : ""}. {isReal ? "Real orders — needs a connected broker + enough balance." : "Paper preview until you switch to Real."}
               </div>
               <div style={{ fontSize: 10, opacity: .7, marginTop: 4 }}>P&amp;L · {periodLabel} {autoOn ? "· live positions (real exits)" : "· simulated preview"}</div>
-              <div className="mono" style={{ fontWeight: 800, fontSize: 27, marginTop: 3, color: autoPnl >= 0 ? "var(--up)" : "var(--down)" }}>{(autoPnl >= 0 ? "+" : "") + fmt(autoPnl, aggCur)}</div>
+              {/* CANONICAL: read the SAME Smart Auto-Buy figure the Total dashboard's box shows (shared P&L engine),
+                  so the two dashboards can never disagree. Falls back to the local period sum only if the shared
+                  engine hasn't a value. */}
+              {(() => { const sabPnl = catPnl("Smart Auto-Buy", autoPnl); return (
+              <div className="mono" style={{ fontWeight: 800, fontSize: 27, marginTop: 3, color: sabPnl >= 0 ? "var(--up)" : "var(--down)" }}>{(sabPnl >= 0 ? "+" : "") + fmt(sabPnl, aggCur)}</div>
+              ); })()}
               <div style={{ fontSize: 11, opacity: .85 }}>{`${periodStats.trades} trades · ${autoWinRate.toFixed(0)}% win rate · ${CUR[aggCur]}${(capNum / 1000).toFixed(0)}k capital`}</div>
               {/* Why "0 trades today" on a closed market (e.g. US during Indian daytime): auto-buy
                   only fires during that market's hours. Say so instead of leaving a bare zero. */}

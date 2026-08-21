@@ -36,3 +36,33 @@ assert.ok(r.categories["Smart Auto-Buy"] !== 0, "auto-buy should be non-zero (ET
 assert.ok(r.categories["Automate"] !== 0, "automate should be non-zero (SOL win)");
 
 console.log("portfolioPnl invariants OK:", JSON.stringify(r));
+
+/* ---- Part 1 regression: Smart Auto-Buy phantom must contribute $0, not a fabricated live mark. This is what
+   made the Total dashboard's Smart Auto-Buy box disagree with the Smart Auto-Buy dashboard. Both now read this
+   same canonical value, so proving the value is correct proves the two dashboards reconcile. ---- */
+const normSym = (s) => String(s || "").replace(/(USDT|USD|INR|PERP)$/i, "").replace(/-EQ$/i, "").toUpperCase();
+const sabTrades = [
+  // a REAL Smart Auto-Buy position the broker NO LONGER holds (phantom) — live price is way up, but no verified exit
+  { sym: "RAVEUSD", market: "Crypto", tradeType: "Auto Buy", entry: 100, qty: 1, exitAt: null, exit: null, real: true },
+];
+const sabPrice = (s) => ({ RAVEUSD: 130 }[s] ?? null);   // +30 if (wrongly) marked to live
+
+// heldSet loaded but EMPTY (broker holds nothing) → phantom must be excluded, SAB P&L = 0, not +30
+const held = new Set();
+const rPhantom = computeCategories(sabTrades, { mode: "real", market: "Crypto", priceOf: sabPrice, heldSet: held, normSym });
+assert.equal(rPhantom.categories["Smart Auto-Buy"], 0, `phantom SAB must be $0, got ${rPhantom.categories["Smart Auto-Buy"]}`);
+assert.equal(rPhantom.open, 0, "phantom must not count as an open position");
+assert.equal(rPhantom.total, 0, "phantom must not contribute to total");
+
+// same position, but the broker DOES hold it → legitimately marked to live price (+30)
+const held2 = new Set([normSym("RAVEUSD")]);
+const rHeld = computeCategories(sabTrades, { mode: "real", market: "Crypto", priceOf: sabPrice, heldSet: held2, normSym });
+// ~+30 (a small crypto fee is deducted by the leverage-aware engine, so allow a tolerance — the point is it's marked to live)
+assert.ok(rHeld.categories["Smart Auto-Buy"] > 25, `held SAB should mark to live (~+30), got ${rHeld.categories["Smart Auto-Buy"]}`);
+assert.equal(rHeld.open, 1, "held position counts as open");
+
+// no heldSet at all (holdings not loaded) → do NOT hide; mark to live so a legit position isn't dropped
+const rNoHeld = computeCategories(sabTrades, { mode: "real", market: "Crypto", priceOf: sabPrice });
+assert.ok(rNoHeld.categories["Smart Auto-Buy"] > 25, "with no holdings snapshot, don't hide (mark to live)");
+
+console.log("Part1 SAB phantom reconciliation OK:", JSON.stringify({ phantom: rPhantom.categories["Smart Auto-Buy"], held: rHeld.categories["Smart Auto-Buy"] }));
