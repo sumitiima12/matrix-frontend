@@ -224,6 +224,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
   const short = side === "SELL";
   const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a ? a.price : null; };
   const [matches, setMatches] = useState([]);
+  const [showAllMatches, setShowAllMatches] = useState(false);   // cap the matched-symbol list at 3, expand on demand
   const autoKey = autoKeyFor(screener.key, market, short);
   const [autoOn, setAutoOn] = useState(() => lsGet(autoKey, DEFAULT_ACTIVE_KEYS.includes(screener.key)));
   const [period, setPeriod] = useState("today");
@@ -776,7 +777,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
       {/* Matched symbols — vertical list, one below the other. Empty → a note. */}
       {matches.length > 0 ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
-          {matches.map((m) => {
+          {(showAllMatches ? matches : matches.slice(0, 3)).map((m) => {
             const st = ALL.find((a) => a.sym === m.sym);
             const price = st ? st.price : m.entryPrice;
             return (
@@ -797,6 +798,11 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
               </div>
             );
           })}
+          {matches.length > 3 && (
+            <button onClick={() => setShowAllMatches((v) => !v)} className="tap disp" style={{ alignSelf: "center", marginTop: 2, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--primary)", borderRadius: 9, padding: "6px 14px", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>
+              {showAllMatches ? "Show less" : `Show all (${matches.length})`}
+            </button>
+          )}
         </div>
       ) : (
         <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 10 }}>No symbols currently matching the entry criteria.</div>
