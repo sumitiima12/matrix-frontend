@@ -1,0 +1,26 @@
+import "node:module";
+import { defineConfig } from "vite";
+/**
+* Vite build config — bundle-size hygiene (ENG-3).
+*
+* The app already route-splits its heavy pages via React.lazy (StockDetail, Portfolio, Automation,
+* Screener, …). The remaining large item in the MAIN chunk is the charting stack (recharts + d3),
+* which is imported eagerly by the shell. Splitting those — and React itself — into their own vendor
+* chunks shrinks the initial app chunk and, because their content-hash only changes when the library
+* changes (not on every app edit), lets the browser keep them cached across deploys.
+*
+* Chunking ONLY — no plugin/transform change — so it cannot alter app behaviour, only how the output
+* is partitioned. Validate locally with `npm run build` before deploying.
+*/
+var vite_config_default = defineConfig({ build: {
+	chunkSizeWarningLimit: 900,
+	rollupOptions: { output: { manualChunks(id) {
+		if (!id.includes("node_modules")) return;
+		if (id.includes("/recharts/") || id.includes("/d3-") || id.includes("/victory-vendor/")) return "charts";
+		if (id.includes("/react/") || id.includes("/react-dom/") || id.includes("/scheduler/")) return "react-vendor";
+	} } }
+} });
+//#endregion
+export { vite_config_default as default };
+
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoidml0ZS5jb25maWcuanMiLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiL3Nlc3Npb25zL2RhenpsaW5nLWFmZmVjdGlvbmF0ZS13b3puaWFrL21udC9tYXRyaXgtZnJvbnRlbmQvdml0ZS5jb25maWcuanMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgZGVmaW5lQ29uZmlnIH0gZnJvbSBcInZpdGVcIjtcblxuLyoqXG4gKiBWaXRlIGJ1aWxkIGNvbmZpZyDigJQgYnVuZGxlLXNpemUgaHlnaWVuZSAoRU5HLTMpLlxuICpcbiAqIFRoZSBhcHAgYWxyZWFkeSByb3V0ZS1zcGxpdHMgaXRzIGhlYXZ5IHBhZ2VzIHZpYSBSZWFjdC5sYXp5IChTdG9ja0RldGFpbCwgUG9ydGZvbGlvLCBBdXRvbWF0aW9uLFxuICogU2NyZWVuZXIsIOKApikuIFRoZSByZW1haW5pbmcgbGFyZ2UgaXRlbSBpbiB0aGUgTUFJTiBjaHVuayBpcyB0aGUgY2hhcnRpbmcgc3RhY2sgKHJlY2hhcnRzICsgZDMpLFxuICogd2hpY2ggaXMgaW1wb3J0ZWQgZWFnZXJseSBieSB0aGUgc2hlbGwuIFNwbGl0dGluZyB0aG9zZSDigJQgYW5kIFJlYWN0IGl0c2VsZiDigJQgaW50byB0aGVpciBvd24gdmVuZG9yXG4gKiBjaHVua3Mgc2hyaW5rcyB0aGUgaW5pdGlhbCBhcHAgY2h1bmsgYW5kLCBiZWNhdXNlIHRoZWlyIGNvbnRlbnQtaGFzaCBvbmx5IGNoYW5nZXMgd2hlbiB0aGUgbGlicmFyeVxuICogY2hhbmdlcyAobm90IG9uIGV2ZXJ5IGFwcCBlZGl0KSwgbGV0cyB0aGUgYnJvd3NlciBrZWVwIHRoZW0gY2FjaGVkIGFjcm9zcyBkZXBsb3lzLlxuICpcbiAqIENodW5raW5nIE9OTFkg4oCUIG5vIHBsdWdpbi90cmFuc2Zvcm0gY2hhbmdlIOKAlCBzbyBpdCBjYW5ub3QgYWx0ZXIgYXBwIGJlaGF2aW91ciwgb25seSBob3cgdGhlIG91dHB1dFxuICogaXMgcGFydGl0aW9uZWQuIFZhbGlkYXRlIGxvY2FsbHkgd2l0aCBgbnBtIHJ1biBidWlsZGAgYmVmb3JlIGRlcGxveWluZy5cbiAqL1xuZXhwb3J0IGRlZmF1bHQgZGVmaW5lQ29uZmlnKHtcbiAgYnVpbGQ6IHtcbiAgICBjaHVua1NpemVXYXJuaW5nTGltaXQ6IDkwMCxcbiAgICByb2xsdXBPcHRpb25zOiB7XG4gICAgICBvdXRwdXQ6IHtcbiAgICAgICAgbWFudWFsQ2h1bmtzKGlkKSB7XG4gICAgICAgICAgaWYgKCFpZC5pbmNsdWRlcyhcIm5vZGVfbW9kdWxlc1wiKSkgcmV0dXJuO1xuICAgICAgICAgIGlmIChpZC5pbmNsdWRlcyhcIi9yZWNoYXJ0cy9cIikgfHwgaWQuaW5jbHVkZXMoXCIvZDMtXCIpIHx8IGlkLmluY2x1ZGVzKFwiL3ZpY3RvcnktdmVuZG9yL1wiKSkgcmV0dXJuIFwiY2hhcnRzXCI7XG4gICAgICAgICAgaWYgKGlkLmluY2x1ZGVzKFwiL3JlYWN0L1wiKSB8fCBpZC5pbmNsdWRlcyhcIi9yZWFjdC1kb20vXCIpIHx8IGlkLmluY2x1ZGVzKFwiL3NjaGVkdWxlci9cIikpIHJldHVybiBcInJlYWN0LXZlbmRvclwiO1xuICAgICAgICB9LFxuICAgICAgfSxcbiAgICB9LFxuICB9LFxufSk7XG4iXSwibWFwcGluZ3MiOiI7Ozs7Ozs7Ozs7Ozs7O0FBY0EsSUFBQSxzQkFBZSxhQUFhLEVBQzFCLE9BQU87Q0FDTCx1QkFBdUI7Q0FDdkIsZUFBZSxFQUNiLFFBQVEsRUFDTixhQUFhLElBQUk7RUFDZixJQUFJLENBQUMsR0FBRyxTQUFTLGNBQWMsR0FBRztFQUNsQyxJQUFJLEdBQUcsU0FBUyxZQUFZLEtBQUssR0FBRyxTQUFTLE1BQU0sS0FBSyxHQUFHLFNBQVMsa0JBQWtCLEdBQUcsT0FBTztFQUNoRyxJQUFJLEdBQUcsU0FBUyxTQUFTLEtBQUssR0FBRyxTQUFTLGFBQWEsS0FBSyxHQUFHLFNBQVMsYUFBYSxHQUFHLE9BQU87Q0FDakcsRUFDRixFQUNGO0FBQ0YsRUFDRixDQUFDIn0=

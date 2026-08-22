@@ -169,6 +169,14 @@ export async function resolveUnknownOrders() {
   if (!r.ok) { let e = "Couldn't resolve right now."; try { e = (await r.json()).error || e; } catch { /* keep default */ } throw new Error(e); }
   return r.json();
 }
+/* Lock #4 (banner): durable safety-lock status for THIS account. { halted, riskLocked, unknownCount, safety }.
+   `safety` true ⇒ new entries are paused pending an unknown-order reconcile → show the "Trading paused" banner. */
+export async function getEntryHaltStatus() {
+  if (!BACKEND_URL) return { safety: false, riskLocked: false, unknownCount: 0, halted: false };
+  const r = await fetch(`${BACKEND_URL}/api/automation/entry-halt`, { headers: { ...tokenHdr() } });
+  if (!r.ok) throw new Error("halt-status");
+  return r.json();
+}
 /* Delta contract sizes (coin units per contract), keyed by full symbol AND bare base. Read-only, server-cached.
    Used to PREVIEW the real amount a crypto auto-buy/screener/ideas order will deploy (contracts × cv × price)
    and to skip picks below one contract. Best-effort: returns {} on any failure so callers degrade gracefully. */

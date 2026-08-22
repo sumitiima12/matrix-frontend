@@ -811,7 +811,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     if (a > 0 && a < 0.005) return n < 0 ? "> -" + sym + "0.01" : "<" + sym + "0.01";
     return sym + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
-  const inMarket = (sym, m) => (m || marketOf(sym) || "IN") === market;
+  /* Prefer the trade's OWN stored market (broker-authoritative); else classify from the symbol. Do NOT default an
+     unclassifiable symbol to "IN" — that made obscure Delta crypto (RAVE, PIPPIN, BILL…) show under the Indian tab.
+     An unknown-market row simply matches no specific market tab rather than polluting Indian. */
+  const inMarket = (sym, m) => { const mk = m || marketOf(sym); return mk ? mk === market : false; };
   // Real broker holdings arrive as an OBJECT { holdings:[...], cash } — not an array — with
   // each holding shaped { sym, qty, avg, value, pnl }. Normalise to the paper-holding shape
   // (buy = avg cost, price = current unit value) so the same math works for both modes.

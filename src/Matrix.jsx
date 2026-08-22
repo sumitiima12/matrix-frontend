@@ -62,7 +62,7 @@ import WalletSheet from "./components/common/WalletSheet";
 import ConfirmOrder from "./components/common/ConfirmOrder";
 import BrokerSheet from "./components/common/BrokerSheet";
 import { brokerSymbol } from "./domain/brokerSymbols";
-import { brokerPlaceOrder, brokerIntentStatus, registerAutoExit, reconcileRealTrades, updateAutoBuy, BROKER_MARKETS, loadBrokerCapabilities, orderTypesOf, resolveUnknownOrders } from "./services/brokerService";
+import { brokerPlaceOrder, brokerIntentStatus, registerAutoExit, reconcileRealTrades, updateAutoBuy, BROKER_MARKETS, loadBrokerCapabilities, orderTypesOf, resolveUnknownOrders, getEntryHaltStatus } from "./services/brokerService";
 import { OrderLifecycleStore, deriveIntentKey, interpretResult, classifyError, reconcileAction, ORDER_STATES, planClose } from "./services/orderLifecycle";
 import MatrixRain from "./components/common/MatrixRain";
 import MLogo from "./components/common/MLogo";
@@ -821,6 +821,18 @@ function AppInner() {
     } catch (e) { setBuyToast({ t: String((e && e.message) || "Couldn't resolve right now — retry in a moment."), e: true }); }
     finally { setResolvingUnknown(false); }
   };
+  /* Lock #4 (visible banner): poll the durable safety-lock status in real mode so a "Trading paused — an order needs
+     reconciling" banner appears even on a fresh load (not just when a live order attempt left a toast). Re-polls after
+     a resolve completes (resolvingUnknown falling back to false) so the banner clears itself the moment it's unlocked. */
+  const [haltStatus, setHaltStatus] = useState(null);
+  useEffect(() => {
+    if (mode !== "real" || !userId) { setHaltStatus(null); return; }
+    let alive = true;
+    const poll = async () => { try { const s = await getEntryHaltStatus(); if (alive) setHaltStatus(s); } catch { /* transient — keep last */ } };
+    poll();
+    const id = setInterval(poll, 30000);
+    return () => { alive = false; clearInterval(id); };
+  }, [mode, userId, resolvingUnknown]);
   /* Arm a stop-loss / take-profit / trailing-stop on an EXISTING real holding (from My
      Portfolio in real mode). Resolves the broker symbol, then registers a server auto-exit so
      the engine sells reduce-only when a level is hit. Entry defaults to the holding's avg cost. */
@@ -1625,7 +1637,7 @@ function AppInner() {
           controls, so a thumb reaching for "Buy" can land on "Watch". */}
       {!detail && !onboarding && !drawer && !confirmOrder && !walletOpen && !brokerOpen && !search && !showProfile && (
         <Portal theme={theme}>
-          <nav aria-label="Main navigation" className="glass" style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--header-bg)", borderTop: "1px solid var(--line)", borderRadius: "22px 22px 0 0", boxShadow: "0 -10px 34px rgba(40,10,80,.3)", display: "flex", padding: "8px 2px calc(13px + env(safe-area-inset-bottom, 0px))", zIndex: 100 }}>
+          <nav aria-label="Main navigation" className="glass" style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--header-bg)", borderTop: "1px solid var(--line)", borderRadius: "22px 22px 0 0", boxShadow: "0 -10px 34px rgba(40,10,80,.3)", display: "flex", padding: "8px 2px calc(4px + env(safe-area-inset-bottom, 0px))", zIndex: 100 }}>
             {nav.map(([k, Icon, label]) => {
               const current = k === "orders" ? histOpen : (tab === k && !histOpen);
               return (
@@ -1830,6 +1842,14 @@ function AppInner() {
         <Suspense fallback={<div style={{ position: "fixed", inset: 0, zIndex: 150, display: "grid", placeItems: "center", background: "rgba(0,0,0,.4)", color: "#fff", fontSize: 13 }}>Loading…</div>}>
           <TradeHistory userId={userId} trades={trades} market={market} mode={mode} heldSyms={(portfolio || []).map((h) => h.sym)} onClose={() => setHistOpen(false)} />
         </Suspense>
+      )}
+      {mode === "real" && haltStatus && haltStatus.safety && (
+        <div style={{ position: "fixed", left: 0, right: 0, bottom: 150, display: "flex", justifyContent: "center", zIndex: 92, padding: "0 12px", pointerEvents: "none" }}>
+          <div className="card" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", maxWidth: 460, width: "100%", border: "1px solid var(--down)", pointerEvents: "auto" }}>
+            <span style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.35 }}>Trading paused — an earlier order needs reconciling{haltStatus.unknownCount ? ` (${haltStatus.unknownCount})` : ""}. New entries are on hold until it clears.</span>
+            <button onClick={resolveUnknown} disabled={resolvingUnknown} className="tap disp" style={{ marginLeft: "auto", flex: "0 0 auto", border: "none", borderRadius: 8, padding: "6px 13px", fontWeight: 800, fontSize: 11.5, background: "var(--primary)", color: "var(--on-primary)", cursor: resolvingUnknown ? "default" : "pointer", opacity: resolvingUnknown ? 0.6 : 1 }}>{resolvingUnknown ? "…" : "Resolve"}</button>
+          </div>
+        </div>
       )}
       {buyToast && (
         <div style={{ position: "fixed", left: 0, right: 0, bottom: 96, display: "flex", justifyContent: "center", zIndex: 90, pointerEvents: "none" }}>

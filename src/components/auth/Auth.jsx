@@ -13,6 +13,7 @@ import splashLockup from "../../assets/brand/splash-m.png";
 import Wordmark from "../common/Wordmark";
 import { LegalOverlay } from "../common/LegalPages";
 import { brokerById, BROKERS } from "../../domain/brokers";
+import { resolveUnknownOrders } from "../../services/brokerService";
 
 /**
  * Auth & profile — login, onboarding and the profile sheet.
@@ -879,6 +880,23 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
      series, and we do not have one — a blended "net worth" line would be invented. */
   const [curveMkt, setCurveMkt] = useState(market || "IN");
   const [showBrokerHelp, setShowBrokerHelp] = useState(false);
+  /* Account-wide "an earlier order outcome is still unknown" resolver. Runs the SAME safe broker-probe reconcile as
+     the toast's Resolve button — never a blanket clear; an in-flight order stays blocked until the broker proves its
+     outcome. Surfaced here (above Broker connections) so the user can unblock entries without digging into admin. */
+  const [resolveBusy, setResolveBusy] = useState(false);
+  const [resolveMsg, setResolveMsg] = useState(null);
+  const doResolve = async () => {
+    setResolveBusy(true); setResolveMsg(null);
+    try {
+      const r = await resolveUnknownOrders();
+      const remaining = Number(r && r.remaining) || 0;
+      const cleared = Number(r && r.cleared) || 0;
+      setResolveMsg(remaining > 0
+        ? { e: true, t: `${cleared} cleared · ${remaining} still unresolved — the broker can't confirm ${remaining === 1 ? "it" : "them"} yet. Try again shortly.` }
+        : { e: false, t: cleared > 0 ? `Resolved ${cleared} order${cleared === 1 ? "" : "s"} — entries can resume.` : "Nothing to resolve — no orders are blocking entries." });
+    } catch (e) { setResolveMsg({ e: true, t: String((e && e.message) || "Couldn't resolve right now.") }); }
+    setResolveBusy(false);
+  };
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(10,10,20,.4)", zIndex: 60, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
       <div onClick={(e) => e.stopPropagation()} className="sheet card" style={{ width: "100%", maxWidth: 460, borderRadius: "24px 24px 0 0", padding: 20, height: "80vh", maxHeight: "80vh", overflowY: "auto" }}>
@@ -890,6 +908,19 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
             <div className="disp" style={{ fontWeight: 700, fontSize: 17 }}>{auth && (auth.name || auth.username) ? (auth.name || auth.username) : "My Profile"}</div>
             <div style={{ fontSize: 12.5, color: "var(--muted)" }}>{auth ? `Logged in · ${auth.phone}` : "Guest session"}</div>
           </div>
+        </div>
+
+        {/* RESOLVE — unblock entries when an earlier order outcome is still unknown (account-wide risk lock). Sits
+            directly above Broker connections so it's easy to reach without going into the admin console. */}
+        <div className="card" style={{ marginTop: 14, padding: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+            <div style={{ minWidth: 0 }}>
+              <div className="disp" style={{ fontWeight: 800, fontSize: 13.5 }}>Resolve stuck orders</div>
+              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 3, lineHeight: 1.45 }}>If an earlier order couldn’t be confirmed, new entries are paused for safety. This re-checks your broker and resumes trading once it’s clear.</div>
+            </div>
+            <button onClick={doResolve} disabled={resolveBusy} className="tap disp" style={{ border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 10, padding: "6px 13px", fontWeight: 800, fontSize: 11.5, whiteSpace: "nowrap", opacity: resolveBusy ? 0.6 : 1, cursor: resolveBusy ? "default" : "pointer" }}>{resolveBusy ? "Resolving…" : "Resolve"}</button>
+          </div>
+          {resolveMsg && <div style={{ fontSize: 10.5, marginTop: 8, lineHeight: 1.45, color: resolveMsg.e ? "var(--danger)" : "var(--success)" }}>{resolveMsg.t}</div>}
         </div>
 
         {/* BROKER — where the prices come from */}
