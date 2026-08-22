@@ -1004,22 +1004,21 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     // toggling ON early (while UNIVERSE prices are still null → autoTrades empty) marks the day
     // "done" and buys nothing, leaving 0 positions until tomorrow. Wait for real picks first.
     if (!autoTrades.length) return;
-    // Fresh day index (NOT the module-load `DAY` const, which never rolls in a session left open across
-    // midnight — that would keep blocking the next day's first auto-buy until a reload, esp. 24/7 crypto).
-    const key = `mx_autobuy_${market}_${mode}_${Math.floor(Date.now() / 864e5)}`;   // scoped by mode so virtual & real each fire once/day
-    if (lsGet(key, false)) return;
-    autoTrades.forEach((t) => {
+    // NO once-a-day cap: buy NEW picks as they appear through the day, but never re-buy a symbol already placed
+    // today or already held. A per-symbol placed-set (per market+mode+day) replaces the old daily boolean, so a
+    // pick that surfaces in the afternoon still gets bought while morning picks aren't duplicated.
+    const key = `mx_autobuy_placed_${market}_${mode}_${Math.floor(Date.now() / 864e5)}`;
+    const placedSet = new Set(lsGet(key, []));
+    const held = new Set((portfolio || []).map((h) => h.sym));
+    const fresh = autoTrades.filter((t) => !placedSet.has(t.sym) && !held.has(t.under || t.sym));
+    if (!fresh.length) return;
+    fresh.forEach((t) => {
       const u = ALL.find((a) => a.sym === (t.under || t.sym));
       if (!u) return;
-      // F&O: buy the futures contract (priced off the underlying, qty = 1 lot).
-      const inst = u;   // no futures: auto-buy trades the stock itself
-      (onAutoBuy || onBuy)(inst, t.qty, { tp: t.tpPct, sl: t.slPct, tradeType: "Auto Buy", product: prodCode });
+      (onAutoBuy || onBuy)(u, t.qty, { tp: t.tpPct, sl: t.slPct, tradeType: "Auto Buy", product: prodCode });
     });
-    lsSet(key, true);
-    // `autoTrades.length` is in the deps so this fires the moment the day's picks finish loading —
-    // without it, turning Auto-Buy on before prices arrived left the effect never re-running, so
-    // nothing was ever placed (0 trades). The once-per-day key still prevents a second placement.
-  }, [autoOn, market, mode, autoTrades.length]);
+    lsSet(key, [...placedSet, ...fresh.map((t) => t.sym)]);
+  }, [autoOn, market, mode, autoTrades.length, portfolio]);
   /* MANUAL "Run now" — place today's picks immediately instead of waiting for the once-a-day effect to
      catch the right moment. Respects market hours and needs the picks loaded; sets the daily guard so the
      effect won't then double-place. */
@@ -1028,9 +1027,18 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     if (!autoTrades.length) { setRunMsg("Today's picks are still loading — try again in a moment."); return; }
     // Picks whose slice is below one Delta contract are SKIPPED (the broker would reject them as "amount too
     // small"). Only the placeable ones are confirmed + sent. The displayed amount is the REAL post-rounding $.
-    const place = autoTrades.filter((t) => !t.skipped);
+    // No daily cap: only exclude picks you already hold or already placed today (so morning + afternoon runs add
+    // only NEW symbols, never a duplicate of one you're already in).
+    const _placedKey = `mx_autobuy_placed_${market}_${mode}_${Math.floor(Date.now() / 864e5)}`;
+    const _placed = new Set(lsGet(_placedKey, []));
+    const _held = new Set((portfolio || []).map((h) => h.sym));
+    const place = autoTrades.filter((t) => !t.skipped && !_placed.has(t.sym) && !_held.has(t.under || t.sym));
     const skipped = autoTrades.filter((t) => t.skipped);
-    if (!place.length) { setRunMsg(`Every pick's slice is below one contract at ${MKT_LABEL[market]} sizes — increase your capital.`); return; }
+    if (!place.length) {
+      const allSkipped = autoTrades.length && autoTrades.every((t) => t.skipped);
+      setRunMsg(allSkipped ? `Every pick's slice is below one contract at ${MKT_LABEL[market]} sizes — increase your capital.` : "You're already in all of today's picks — nothing new to buy right now.");
+      return;
+    }
     // REAL money: require an explicit confirmation listing the EXACT symbols + the amount that will DEPLOY.
     if (isReal) {
       const lines = place.map((t) => `• ${t.sym} — ~${fmt(t.actualUsd, aggCur)}${t.contracts != null ? ` (${t.contracts} contract${t.contracts === 1 ? "" : "s"})` : ` · qty ${t.qty}`}`).join("\n");
@@ -1049,8 +1057,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       (onAutoBuy || onBuy)(u, t.qty, { tp: t.tpPct, sl: t.slPct, tradeType: "Auto Buy", product: prodCode });
       placed += 1;
     });
-    lsSet(`mx_autobuy_${market}_${mode}_${Math.floor(Date.now() / 864e5)}`, true);
-    setRunMsg(`Placed ${placed} ${MKT_LABEL[market]} auto-buy position${placed === 1 ? "" : "s"} at live prices.`);
+    // Record what we placed (per symbol, per day) so re-running later only adds NEW picks — no once-a-day cap,
+    // but no duplicate of a symbol already bought today either.
+    lsSet(_placedKey, [..._placed, ...place.map((t) => t.sym)]);
+    setRunMsg(`Placed ${placed} ${MKT_LABEL[market]} auto-buy position${placed === 1 ? "" : "s"} at live prices.${isReal ? " Run it again anytime — new picks through the day get added." : ""}`);
   };
   const setOv = (t, field, val) => setAutoOverrides((o) => { const cur = o[t.sym] || { tp: t.tpPct, sl: t.slPct }; return { ...o, [t.sym]: { ...cur, [field]: val === "" ? cur[field] : +val } }; });
   // period stats (shown regardless of on/off)
