@@ -13,6 +13,7 @@ import { detectPattern, patternLine } from "../domain/patterns";
 import { strengthFromCandles, STRENGTH_TFS } from "../domain/strength";
 import { fetchHistory, fetchNews, fetchFundamentals } from "../domain/api";
 import { analyzeStock } from "../services/aiService";
+import OptionSelector from "../components/common/OptionSelector";
 import BarBlock from "../components/common/BarBlock";
 import Change from "../components/common/Change";
 import ChartCard from "../components/common/ChartCard";
@@ -108,6 +109,7 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
   const [active, setActive] = useState("overview");
   const [chartType, setChartType] = useState("candles");
   const [deepBusy, setDeepBusy] = useState(false);
+  const [showOpts, setShowOpts] = useState(false);
   const [analysis, setAnalysis] = useState(null);   // structured research verdict
   const [strengthTf, setStrengthTf] = useState("1d");
   const [tfStrength, setTfStrength] = useState(null);
@@ -302,6 +304,31 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
           {showBuy && (market === "Crypto" || s.isOpt) && <button onClick={() => onBuy && onBuy(s, 1, { side: "SELL", short: true })} className="tap disp" style={{ flex: 1, background: "var(--down)", color: "#fff", border: "none", borderRadius: 16, padding: 14, fontWeight: 800, fontSize: 14.5, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}>Sell</button>}
           <button onClick={() => onTrade(s)} className="tap disp" style={{ flex: 1, background: "var(--elev)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 16, padding: 14, fontWeight: 700, fontSize: 14.5 }}>Trade…</button>
         </div>
+
+        {/* TRADE OPTIONS — market-aware derivative picker (resolve/preview only; no order path here yet). */}
+        {(() => {
+          if (s.isOpt) return null;                                    // already an option
+          const optUnder = (() => {
+            if (market === "Crypto") return String(s.sym || "").toUpperCase().replace(/(USDT?|INR|PERP)$/i, "");
+            return String(s.sym || "").toUpperCase();
+          })();
+          const cryptoOK = market === "Crypto" && (optUnder === "BTC" || optUnder === "ETH");
+          const derivOK = market === "IN" || market === "US" || market === "Commodity" || cryptoOK;
+          if (!derivOK) return null;
+          return (
+            <div style={{ marginTop: 12 }}>
+              <button onClick={() => setShowOpts((v) => !v)} className="tap disp" style={{ width: "100%", background: "var(--elev)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 14, padding: "12px 14px", fontWeight: 800, fontSize: 13.5, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span>Trade options</span>
+                <span style={{ color: "var(--muted)", fontWeight: 700 }}>{showOpts ? "Hide" : "Open"}</span>
+              </button>
+              {showOpts && (
+                <div style={{ marginTop: 10 }}>
+                  <OptionSelector market={market} underlying={optUnder} spot={s.price} mode="virtual" />
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* FUNDAMENTALS — real Yahoo quoteSummary. Only for equities; crypto has none. */}
         {market !== "Crypto" && (
