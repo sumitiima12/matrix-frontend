@@ -169,6 +169,16 @@ export async function resolveUnknownOrders() {
   if (!r.ok) { let e = "Couldn't resolve right now."; try { e = (await r.json()).error || e; } catch { /* keep default */ } throw new Error(e); }
   return r.json();
 }
+/* Resolve a derivative (Future/Option) to its exact tradable contract via the server. `body` carries market,
+   underlying, productType, optionType, moneyness OR strike, expiryIntent OR expiry, side, spot, lots, mode.
+   Returns { ok, resolved, realExecution } or throws with the fail-closed detail. Never places an order. */
+export async function resolveDerivative(body) {
+  if (!BACKEND_URL) throw new Error("no-backend");
+  const r = await fetch(`${BACKEND_URL}/api/derivatives/resolve`, { method: "POST", headers: { "Content-Type": "application/json", ...tokenHdr() }, body: JSON.stringify(body || {}) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.ok === false) throw new Error((j && (j.detail || j.error)) || "Couldn't resolve this contract.");
+  return j;
+}
 /* Lock #4 (banner): durable safety-lock status for THIS account. { halted, riskLocked, unknownCount, safety }.
    `safety` true ⇒ new entries are paused pending an unknown-order reconcile → show the "Trading paused" banner. */
 export async function getEntryHaltStatus() {

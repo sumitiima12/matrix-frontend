@@ -933,7 +933,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     if (marketOf(s.sym) === "Crypto") { tp = clamp(tp * 2, 2, 16); sl = clamp(sl * 1.6, 1, 9); }
     return { tp: +tp.toFixed(1), sl: +sl.toFixed(1) };
   };
-  const autoPicksAll = useMemo(() => dailyPicks(UNIVERSE[market]).slice(0, 6), [market]);
+  // Deps MUST include the live-data signals (list / liveTick / pickHour), exactly like the Smart Picks carousel —
+  // otherwise this computes ONCE before prices load, comes back empty, and never refreshes, leaving Smart Auto-Buy
+  // stuck at "0 of 0 qualify" (nothing to buy) even though the carousel below is full of picks.
+  const autoPicksAll = useMemo(() => dailyPicks(UNIVERSE[market]).slice(0, 6), [market, list, liveTick, pickHour]);
   // SYMBOL SELECT — empty selection means "all of today's picks".
   const autoPicks = useMemo(() => autoPicksAll.filter((s) => sabSyms.length === 0 || sabSyms.includes(s.sym)), [autoPicksAll, sabSyms]);
   /* CONFIDENCE-WEIGHTED SIZING (real + virtual). Each pick's confidence = its signal-quality score

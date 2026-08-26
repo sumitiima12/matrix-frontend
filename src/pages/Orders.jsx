@@ -130,13 +130,27 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
     .map(withPnl);
   const allSyms = [...new Set(src.map((t) => t.sym))].sort();
   const TYPES = ["Manual", "Automate", "Auto Buy", "Screener Auto Buy"];
-  const EXITS = ["Manual", "Auto exit", "Exit trigger", "Stop loss", "Trailing stop", "Open"];
+  const EXITS = ["Manual", "Auto exit", "Exit trigger", "Stop loss", "Trailing stop", "Square-off", "Open"];
   /* Exit classification. Trust an explicit exitType. If it's MISSING, don't default to "Manual" — a deliberate
      manual close stamps the type, so a missing type on an automation-sourced position (Automate / Screener / Smart
      Auto-Buy / Ideas) means it was an AUTOMATED exit that lost its label (the BTC "Exit: Manual" mislabel), not a
      user close. Only a genuinely manual-source trade with no type falls back to "Manual". */
   const isAutoSourced = (t) => !!(t.strategy || t.strategyName || t.strategyId || (t.tradeType && /auto|screener|automat|idea/i.test(String(t.tradeType))));
-  const exitOf = (t) => (isRejected(t) ? "Rejected" : t.open ? "Open" : t.reconciled ? "Closed" : (t.exitType || (isAutoSourced(t) ? "Auto exit" : "Manual")));
+  /* When exitType is missing, the backend still records the REAL reason in exitReason ("Stop loss", "Exit trigger",
+     "Trailing stop", "Square-off", "Manual close…", "reconciled…"). Map that to the display label so an automated
+     close shows its actual reason instead of a wrong "Manual". Only a true manual close (or unknown) falls back. */
+  const fromReason = (r) => {
+    const s = String(r || "").toLowerCase();
+    if (!s) return null;
+    if (/trail/.test(s)) return "Trailing stop";
+    if (/stop|sl\b/.test(s)) return "Stop loss";
+    if (/trigger|target|take.?profit|\btp\b/.test(s)) return "Exit trigger";
+    if (/square/.test(s)) return "Square-off";
+    if (/manual/.test(s)) return "Manual";
+    if (/reconcil|flat|closed on/.test(s)) return "Closed";
+    return null;
+  };
+  const exitOf = (t) => (isRejected(t) ? "Rejected" : t.open ? "Open" : t.reconciled ? "Closed" : (t.exitType || fromReason(t.exitReason) || (isAutoSourced(t) ? "Auto exit" : "Manual")));
   const rows = src
     .filter((t) => (mkt === "all" ? true : (t.market || "IN") === mkt))
     .filter((t) => (realF === "all" ? true : realF === "real" ? !!t.real : !t.real))
