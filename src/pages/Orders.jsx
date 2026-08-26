@@ -130,8 +130,13 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
     .map(withPnl);
   const allSyms = [...new Set(src.map((t) => t.sym))].sort();
   const TYPES = ["Manual", "Automate", "Auto Buy", "Screener Auto Buy"];
-  const EXITS = ["Manual", "Exit trigger", "Stop loss", "Trailing stop", "Open"];
-  const exitOf = (t) => (isRejected(t) ? "Rejected" : t.open ? "Open" : t.reconciled ? "Closed" : (t.exitType || "Manual"));
+  const EXITS = ["Manual", "Auto exit", "Exit trigger", "Stop loss", "Trailing stop", "Open"];
+  /* Exit classification. Trust an explicit exitType. If it's MISSING, don't default to "Manual" — a deliberate
+     manual close stamps the type, so a missing type on an automation-sourced position (Automate / Screener / Smart
+     Auto-Buy / Ideas) means it was an AUTOMATED exit that lost its label (the BTC "Exit: Manual" mislabel), not a
+     user close. Only a genuinely manual-source trade with no type falls back to "Manual". */
+  const isAutoSourced = (t) => !!(t.strategy || t.strategyName || t.strategyId || (t.tradeType && /auto|screener|automat|idea/i.test(String(t.tradeType))));
+  const exitOf = (t) => (isRejected(t) ? "Rejected" : t.open ? "Open" : t.reconciled ? "Closed" : (t.exitType || (isAutoSourced(t) ? "Auto exit" : "Manual")));
   const rows = src
     .filter((t) => (mkt === "all" ? true : (t.market || "IN") === mkt))
     .filter((t) => (realF === "all" ? true : realF === "real" ? !!t.real : !t.real))
