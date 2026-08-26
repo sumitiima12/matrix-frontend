@@ -1015,13 +1015,19 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     const held = new Set((portfolio || []).map((h) => h.sym));
     const fresh = autoTrades.filter((t) => !placedSet.has(t.sym) && !held.has(t.under || t.sym));
     if (!fresh.length) return;
-    fresh.forEach((t) => {
+    // Only DISPATCH — and only RECORD as placed — a pick that is actually placeable right now: its underlying is in
+    // the universe, it has a live entry price and a positive qty, and it isn't sized below one contract. A pick whose
+    // price hasn't loaded yet must NOT be marked placed: doing so silently blocked it for the whole day (the "auto-buy
+    // On but 0 trades" symptom). It stays eligible and is bought on a later tick once its price arrives (hence liveTick
+    // in the deps below, so this effect re-runs as prices fill in instead of only when the pick count changes).
+    const placeable = fresh.filter((t) => ALL.find((a) => a.sym === (t.under || t.sym)) && Number(t.entry) > 0 && Number(t.qty) > 0 && !t.skipped);
+    if (!placeable.length) return;
+    placeable.forEach((t) => {
       const u = ALL.find((a) => a.sym === (t.under || t.sym));
-      if (!u) return;
       (onAutoBuy || onBuy)(u, t.qty, { tp: t.tpPct, sl: t.slPct, tradeType: "Auto Buy", product: prodCode });
     });
-    lsSet(key, [...placedSet, ...fresh.map((t) => t.sym)]);
-  }, [autoOn, market, mode, autoTrades.length, portfolio]);
+    lsSet(key, [...placedSet, ...placeable.map((t) => t.sym)]);
+  }, [autoOn, market, mode, autoTrades.length, portfolio, liveTick]);
   /* MANUAL "Run now" — place today's picks immediately instead of waiting for the once-a-day effect to
      catch the right moment. Respects market hours and needs the picks loaded; sets the daily guard so the
      effect won't then double-place. */
@@ -1053,17 +1059,19 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       );
       if (!ok) { setRunMsg("Cancelled — no orders placed."); return; }
     }
-    let placed = 0;
+    const dispatched = [];
     place.forEach((t) => {
       const u = ALL.find((a) => a.sym === (t.under || t.sym));
-      if (!u) return;
+      if (!u || !(Number(t.entry) > 0) || !(Number(t.qty) > 0)) return;   // no live price/qty yet → leave eligible, don't mark placed
       (onAutoBuy || onBuy)(u, t.qty, { tp: t.tpPct, sl: t.slPct, tradeType: "Auto Buy", product: prodCode });
-      placed += 1;
+      dispatched.push(t.sym);
     });
-    // Record what we placed (per symbol, per day) so re-running later only adds NEW picks — no once-a-day cap,
-    // but no duplicate of a symbol already bought today either.
-    lsSet(_placedKey, [..._placed, ...place.map((t) => t.sym)]);
-    setRunMsg(`Placed ${placed} ${MKT_LABEL[market]} auto-buy position${placed === 1 ? "" : "s"} at live prices.${isReal ? " Run it again anytime — new picks through the day get added." : ""}`);
+    // Record ONLY what we actually sent (per symbol, per day) so re-running later adds NEW picks without duplicating —
+    // and, critically, a pick still waiting on its live price isn't silently marked placed and blocked for the day.
+    if (dispatched.length) lsSet(_placedKey, [..._placed, ...dispatched]);
+    setRunMsg(dispatched.length
+      ? `Placed ${dispatched.length} ${MKT_LABEL[market]} auto-buy position${dispatched.length === 1 ? "" : "s"} at live prices.${isReal ? " Run it again anytime — new picks through the day get added." : ""}`
+      : "Waiting on live prices for today's picks — try again in a moment.");
   };
   const setOv = (t, field, val) => setAutoOverrides((o) => { const cur = o[t.sym] || { tp: t.tpPct, sl: t.slPct }; return { ...o, [t.sym]: { ...cur, [field]: val === "" ? cur[field] : +val } }; });
   // period stats (shown regardless of on/off)
