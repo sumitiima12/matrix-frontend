@@ -352,12 +352,19 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
               <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: typeColor(t.tradeType || "") }}>Source: {sourceOf(t)}</span>
               <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: isRejected(t) ? "var(--down-soft)" : t.open ? "var(--primary-soft)" : "var(--elev)", color: isRejected(t) ? "var(--down)" : exitColor(exitOf(t)) }}>{isRejected(t) ? "Rejected" : `Exit: ${exitOf(t)}`}</span>
               {strategyOf(t) !== "—" && <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: "var(--muted)" }}>Strategy: {strategyOf(t)}</span>}
-              {/* #9 — protection status is explicit on every OPEN position. Unprotected = visible warning. */}
-              {t.open && !isRejected(t) && (
-                <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: t.sl != null ? "var(--up-soft)" : "var(--down-soft)", color: t.sl != null ? "var(--up)" : "var(--down)" }}>
-                  {t.sl != null ? "🛡 Protected" : "⚠ Unprotected"}
-                </span>
-              )}
+              {/* #9 — protection status is explicit on every OPEN position. Unprotected = visible warning.
+                  A position is protected if it carries a stop/target/trailing on the row OR it's an automation
+                  position (Automate/Screener/Smart Auto-Buy) — those register a server-side managed exit with the
+                  strategy's stop, so they're protected even when the journal row didn't copy the SL onto itself
+                  (which is why NIFTY automation positions were wrongly flagged "Unprotected"). */}
+              {t.open && !isRejected(t) && (() => {
+                const prot = t.sl != null || t.tp != null || t.tsl != null || strategyOf(t) !== "—";
+                return (
+                  <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: prot ? "var(--up-soft)" : "var(--down-soft)", color: prot ? "var(--up)" : "var(--down)" }}>
+                    {prot ? "🛡 Protected" : "⚠ Unprotected"}
+                  </span>
+                );
+              })()}
             </div>
             {/* #7 — a real order still working at the broker reads in plain language ("Order sent · waiting for
                 broker confirmation", "Confirmation delayed · Matrix will not retry"), never a raw status code. */}

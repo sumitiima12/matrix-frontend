@@ -1289,7 +1289,9 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           // broker no longer holds (isPhantomOpen = broker-truth) must not be counted, else "N positions without a
           // stop-loss" / "awaiting confirmation" stay lit for positions Delta already closed.
           const openReal = (trades || []).filter((t) => t.real && t.exitAt == null && t.entry != null && t.status !== "rejected" && inMarket(t.sym, t.market) && !isPhantomOpen(t));
-          const noSL = openReal.filter((t) => t.sl == null).length;
+          // Truly unprotected = no stop/target/trailing on the row AND not an automation-managed position (those
+          // have a server-side managed exit). Prevents falsely flagging NIFTY/automation positions as "no stop-loss".
+          const noSL = openReal.filter((t) => t.sl == null && t.tp == null && t.tsl == null && !t.strategy && !t.strategyName && !t.strategyId).length;
           if (noSL) it.push({ key: "nosl", tone: "warn", label: `${noSL} position${noSL > 1 ? "s" : ""} without a stop-loss`, detail: "Unprotected — a move against you has no automatic exit.", action: { label: "Review", onClick: onGoPortfolio } });
           const unresolved = openReal.filter((t) => ["pending", "unknown", "submitted"].includes(String(t.status || "").toLowerCase())).length;
           if (unresolved) it.push({ key: "unresolved", tone: "crit", label: `${unresolved} order${unresolved > 1 ? "s" : ""} awaiting broker confirmation`, detail: "Matrix won't retry these — check them with your broker.", action: { label: "Orders", onClick: onGoPortfolio } });
