@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { resolveDerivative } from "../../services/brokerService";
+import { resolveDerivative, getOptionPremium } from "../../services/brokerService";
 
 /**
  * OptionSelector — shared, market-aware Future/Option contract picker.
@@ -99,7 +99,17 @@ export default function OptionSelector({ market = "IN", underlying = "", spot = 
         ...(expiryMode === "EXPLICIT" ? { expiry } : { expiryIntent: safeIntent }),
       };
       const r = await resolveDerivative(body);
-      setResolved(r.resolved ? { ...r.resolved, realExecution: r.realExecution } : null);
+      const rc = r.resolved ? { ...r.resolved, realExecution: r.realExecution } : null;
+      // For an OPTION, also fetch the LIVE premium (Delta/Yahoo) so the user sees a real price — this is what
+      // paper option P&L and real limit pricing need. Fail-open: a missing premium just isn't shown.
+      if (rc && rc.productType === "OPTION") {
+        try {
+          const pq = await getOptionPremium({ market, underlying: effUnderlying, optionType, strike: rc.strike, expiry: rc.expiry });
+          if (pq && pq.premium != null) { rc.premium = pq.premium; rc.premiumBid = pq.bid; rc.premiumAsk = pq.ask; rc.premiumSource = pq.source; }
+          else rc.premiumReason = (pq && pq.reason) || "unavailable";
+        } catch { rc.premiumReason = "fetch_failed"; }
+      }
+      setResolved(rc);
     } catch (e) { setErr(String(e.message || e)); }
     setBusy(false);
   };
@@ -193,6 +203,13 @@ export default function OptionSelector({ market = "IN", underlying = "", spot = 
             {resolved.contractMultiplier ? ` · ×${resolved.contractMultiplier}` : ""}
             {resolved.quantity != null ? ` · qty ${resolved.quantity}` : ""}
           </div>
+          {resolved.productType === "OPTION" && (
+            <div style={{ fontSize: 11.5, marginTop: 4, fontWeight: 800, color: resolved.premium != null ? "var(--ink)" : "var(--muted)" }}>
+              {resolved.premium != null
+                ? <>Live premium <span className="mono">{Number(resolved.premium).toLocaleString()}</span>{resolved.premiumBid != null && resolved.premiumAsk != null ? <span style={{ fontWeight: 600, color: "var(--muted)" }}> · bid {resolved.premiumBid} / ask {resolved.premiumAsk}</span> : null}{resolved.premiumSource ? <span style={{ fontWeight: 600, color: "var(--muted)" }}> · {resolved.premiumSource}</span> : null}</>
+                : <span style={{ fontWeight: 600 }}>Live premium unavailable{resolved.premiumReason ? ` (${resolved.premiumReason})` : ""} — pricing not shown.</span>}
+            </div>
+          )}
           <div style={{ fontSize: 10, color: resolved.realExecution ? "var(--up)" : "var(--muted)", marginTop: 4, fontWeight: 700 }}>
             {mode === "real" ? (resolved.realExecution ? "Real execution enabled for this market." : "Preview only — real execution for this market isn’t validated yet.") : "Paper (virtual) — no real order."}
           </div>

@@ -179,6 +179,17 @@ export async function resolveDerivative(body) {
   if (!r.ok || j.ok === false) throw new Error((j && (j.detail || j.error)) || "Couldn't resolve this contract.");
   return j;
 }
+/* Live option premium for a resolved contract → { premium, bid, ask, source, asOf } or { premium:null, reason }.
+   Crypto (Delta public ticker) + US (Yahoo option chain); IN via the FYERS chain, Commodity has no public feed yet. */
+export async function getOptionPremium({ market, underlying, optionType, strike, expiry }) {
+  if (!BACKEND_URL) return { premium: null, reason: "no-backend" };
+  const qs = new URLSearchParams({ market: market || "", underlying: underlying || "", optionType: optionType || "", strike: String(strike ?? ""), expiry: expiry || "" });
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/derivatives/quote?${qs.toString()}`, { headers: { ...tokenHdr() } });
+    const j = await r.json().catch(() => ({}));
+    return r.ok ? j : { premium: null, reason: "http_" + r.status };
+  } catch (e) { return { premium: null, reason: String(e && e.message) }; }
+}
 /* Lock #4 (banner): durable safety-lock status for THIS account. { halted, riskLocked, unknownCount, safety }.
    `safety` true ⇒ new entries are paused pending an unknown-order reconcile → show the "Trading paused" banner. */
 export async function getEntryHaltStatus() {
