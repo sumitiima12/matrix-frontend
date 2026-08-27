@@ -9,6 +9,8 @@
  * missing it says so instead of guessing.
  */
 
+import { derivativePnl, derivativeNotional } from "../domain/derivativePnl";
+
 export const ACTIONS = ["Add", "Hold", "Reduce", "Exit", "Take profit"];   // M-07: "Take profit" is a real emitted action
 
 const pct = (a, b) => (b ? ((a - b) / b) * 100 : 0);
@@ -23,9 +25,11 @@ const pct = (a, b) => (b ? ((a - b) / b) * 100 : 0);
 export function analyzeHolding(h, s, signal) {
   const price = s?.price ?? h.buy;
   const dir = (h.side === "SELL" || h.short) ? -1 : 1;   // a short profits when price falls
-  const pnlPct = pct(price, h.buy) * dir;
-  const pnl = (price - h.buy) * (h.qty || 0) * dir;
-  const value = price * (h.qty || 0);
+  const pnlPct = pct(price, h.buy) * dir;   // percentage is multiplier-invariant
+  // Contract-aware: spot rows (no contractMultiplier) behave exactly as before (multiplier 1); a derivative row
+  // carries its contractMultiplier so 1 lot of a 100 g / 0.001 BTC / 100-share contract values and P&Ls correctly.
+  const pnl = derivativePnl({ entry: h.buy, price, quantity: h.qty || 0, contractMultiplier: h.contractMultiplier, side: dir < 0 ? "SELL" : "BUY" });
+  const value = derivativeNotional({ price, quantity: h.qty || 0, contractMultiplier: h.contractMultiplier });
 
   // No real data -> refuse to advise.
   if (!s || !s.hasData || s.rsi == null) {

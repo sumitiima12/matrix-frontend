@@ -39,7 +39,7 @@ const seg = { border: "1px solid var(--line)", borderRadius: 10, padding: "7px 1
 const on = { background: "var(--primary)", color: "var(--on-primary)", borderColor: "var(--primary)" };
 const off = { background: "var(--surface)", color: "var(--muted)" };
 
-export default function OptionSelector({ market = "IN", underlying = "", spot = null, mode = "virtual", onResolved, onClose }) {
+export default function OptionSelector({ market = "IN", underlying = "", spot = null, mode = "virtual", onResolved, canPlace, onClose }) {
   const [productType, setProductType] = useState("STOCK");  // default STOCK per spec; user opts into FUTURE/OPTION
   const [optionType, setOptionType] = useState("CALL");
   const [side, setSide] = useState("BUY");                 // futures direction
@@ -196,9 +196,11 @@ export default function OptionSelector({ market = "IN", underlying = "", spot = 
           <div style={{ fontSize: 10, color: resolved.realExecution ? "var(--up)" : "var(--muted)", marginTop: 4, fontWeight: 700 }}>
             {mode === "real" ? (resolved.realExecution ? "Real execution enabled for this market." : "Preview only — real execution for this market isn’t validated yet.") : "Paper (virtual) — no real order."}
           </div>
-          {onResolved && (
+          {onResolved && (!canPlace || canPlace(resolved.productType)) ? (
             <button onClick={() => onResolved(resolved)} className="tap disp" style={{ marginTop: 10, width: "100%", border: "none", borderRadius: 10, padding: "10px 12px", fontWeight: 800, fontSize: 12.5, background: "var(--up)", color: "#fff", cursor: "pointer" }}>Use this contract</button>
-          )}
+          ) : onResolved ? (
+            <div style={{ marginTop: 10, fontSize: 10.5, color: "var(--muted)", lineHeight: 1.5 }}>Placement for this product isn’t available yet — options need a live premium feed. Futures can be placed in paper.</div>
+          ) : null}
         </div>
       )}
     </div>

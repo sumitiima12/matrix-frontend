@@ -11,6 +11,8 @@
  * and nothing fires until there is enough evidence to justify it.
  */
 
+import { derivativePnl } from "../domain/derivativePnl";
+
 const DAY_MS = 86_400_000;
 
 /** Enrich a raw trade with the things a journal needs. */
@@ -18,7 +20,8 @@ export function journalEntry(t) {
   const closed = t.exitAt != null && t.exit != null;
   const qty = t.qty || 1;
   const dir = (t.side === "SELL" || t.short) ? -1 : 1;   // a short profits when price falls
-  const pnl = closed ? (t.exit - t.entry) * qty * dir : null;
+  // Contract-aware realized P&L (spot rows keep multiplier 1 → identical to before).
+  const pnl = closed ? derivativePnl({ entry: t.entry, price: t.exit, quantity: qty, contractMultiplier: t.contractMultiplier, side: dir < 0 ? "SELL" : "BUY" }) : null;
   const retPct = closed && t.entry ? ((t.exit - t.entry) / t.entry) * 100 * dir : null;
   const holdMs = closed ? t.exitAt - t.entryAt : Date.now() - (t.entryAt || Date.now());
   const holdDays = holdMs / DAY_MS;

@@ -3,6 +3,7 @@ import { defOperands, chainCode, IND_CATALOG, TEMPLATES, detectTf, detectAllTfs,
 import { backtest, parseRules, getBtCosts, setBtCosts } from "../domain/backtest";
 import { stratPerf } from "../domain/strategies";
 import { positionPnl } from "../domain/leverage";   // Delta-parity crypto P&L (margin cap + fees), same for paper & real
+import { derivativePnl } from "../domain/derivativePnl";   // contract-aware P&L (multiplier 1 for spot)
 import { Activity, AlertTriangle, Bell, Bolt, Check, ChevronDown, ChevronLeft, ChevronUp, Copy, Globe, ListChecks, Pause, Pencil, Play, Plus, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
 import { Area, AreaChart, Bar, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { BACKEND_URL } from "../config";
@@ -2876,7 +2877,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const _dashHeld = appMode === "real" ? realHeldSetFrom(realPortfolio) : null;
   const dashOpenPos = dashTrades.filter((t) => (t.exitAt == null || t.exit == null) && !isPhantomOpen(t, _dashHeld, appMode === "real"));
   const dPriceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a && a.price != null ? a.price : null; };
-  const dPnlOf = (t, px) => { const dir = (t.side === "SELL" || t.short) ? -1 : 1; return (Number(px) - Number(t.entry)) * Number(t.qty || 0) * dir; };
+  const dPnlOf = (t, px) => { const dir = (t.side === "SELL" || t.short) ? -1 : 1; return derivativePnl({ entry: t.entry, price: px, quantity: t.qty || 0, contractMultiplier: t.contractMultiplier, side: dir < 0 ? "SELL" : "BUY" }); };
 
   /* VIRTUAL PAPER AUTO-EXECUTION — the paper twin of the server's real-money auto-buy engine.
      In Virtual mode nothing else opens trades for a deployed Automate strategy, so 80 active

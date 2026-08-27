@@ -7,6 +7,7 @@ import { BACKEND_URL } from "../config";
 import { CUR, DAY, chgColor, clamp, compact, fmt, fmtPnl, lsGet, lsSet, pct, timeAgo } from "../lib/format";
 import { confirmDialog } from "../lib/confirmDialog";   // in-app confirm (reliable in webviews/PWA)
 import { ALL, GLOBAL_MKTS, UNIVERSE, marketOf } from "../domain/universe";
+import { derivativePnl } from "../domain/derivativePnl";   // contract-aware P&L (multiplier 1 for spot)
 import { stratPerf } from "../domain/strategies";   // same P&L engine the Automate page uses, so the two agree
 import { positionPnl } from "../domain/leverage";   // Delta-parity crypto P&L (margin cap + fees), same for paper & real
 import { computeCategories } from "../domain/portfolioPnl";   // the ONE per-category P&L fn every dashboard shares
@@ -1806,12 +1807,12 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
         const priceOf = (sym) => { const st = ALL.find((x) => x.sym === sym); return st && st.price != null ? st.price : null; };
         const opens = (trades || [])
           .filter((t) => (isReal ? !!t.real : !t.real) && t.exitAt == null && t.entry != null && t.status !== "rejected" && inMarket(t.sym, t.market) && !isPhantomOpen(t))
-          .map((t) => { const cur = priceOf(t.sym) ?? t.entry; const dir = (t.side === "SELL" || t.short) ? -1 : 1; return { ...t, cur, pl: (cur - Number(t.entry)) * (t.qty || 0) * dir }; })
+          .map((t) => { const cur = priceOf(t.sym) ?? t.entry; const dir = (t.side === "SELL" || t.short) ? -1 : 1; return { ...t, cur, pl: derivativePnl({ entry: t.entry, price: cur, quantity: t.qty || 0, contractMultiplier: t.contractMultiplier, side: dir < 0 ? "SELL" : "BUY" }) }; })
           .sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
         const deployed = (strategies || []).filter((s) => s && s.active);
         const stratRows = deployed.map((s) => {
           const ts = (trades || []).filter((t) => (isReal ? !!t.real : !t.real) && (t.strategyId != null ? String(t.strategyId) === String(s.id) : t.strategy === s.name));
-          const pl = ts.reduce((a, t) => { const closed = t.exitAt != null && t.exit != null; const cur = closed ? t.exit : (priceOf(t.sym) ?? t.entry); const dir = (t.side === "SELL" || t.short) ? -1 : 1; return a + (cur - Number(t.entry)) * (t.qty || 0) * dir; }, 0);
+          const pl = ts.reduce((a, t) => { const closed = t.exitAt != null && t.exit != null; const cur = closed ? t.exit : (priceOf(t.sym) ?? t.entry); const dir = (t.side === "SELL" || t.short) ? -1 : 1; return a + derivativePnl({ entry: t.entry, price: cur, quantity: t.qty || 0, contractMultiplier: t.contractMultiplier, side: dir < 0 ? "SELL" : "BUY" }); }, 0);
           return { s, pl, open: ts.filter((t) => t.exitAt == null).length };
         }).sort((a, b) => b.pl - a.pl);
         const hasAct = (trades || []).some((t) => (isReal ? !!t.real : !t.real) && t.entry != null && t.entryAt != null);

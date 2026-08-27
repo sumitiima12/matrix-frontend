@@ -323,7 +323,24 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
               </button>
               {showOpts && (
                 <div style={{ marginTop: 10 }}>
-                  <OptionSelector market={market} underlying={optUnder} spot={s.price} mode="virtual" />
+                  <OptionSelector
+                    market={market}
+                    underlying={optUnder}
+                    spot={s.price}
+                    mode="virtual"
+                    canPlace={(pt) => pt === "FUTURE"}   // options need a live premium feed → preview only for now
+                    onResolved={(r) => {
+                      // Paper FUTURE: place a position on the underlying carrying its contract size, so P&L is
+                      // contract-aware. Buy or Sell (short) both route through the confirm drawer. Options are not
+                      // placeable yet (no premium), so canPlace hides their button.
+                      if (r.productType !== "FUTURE") return;
+                      onBuy && onBuy({ ...s, contractMultiplier: r.contractMultiplier, productType: "FUTURE", under: optUnder }, r.quantity || 1, {
+                        productType: "FUTURE", derivMarket: r.market, contractMultiplier: r.contractMultiplier,
+                        brokerSymbolOverride: r.tradingSymbol, side: r.side || "BUY", short: r.side === "SELL", market,
+                      });
+                      setShowOpts(false);
+                    }}
+                  />
                 </div>
               )}
             </div>

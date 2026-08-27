@@ -533,7 +533,8 @@ function AppInner() {
     const mkt = marketOf(stock.sym) || market;
     if (virtualBlocked(mkt)) { setBuyToast({ t: (mkt === "IN" || mkt === "Commodity") ? "Paper trading isn't available for Indian markets. Connect your broker to trade for real." : "Virtual trading isn't enabled for this market.", e: true }); return false; }
     setConfirmNote(null);   // clear any stale "outcome unknown" note from a PRIOR order when opening a fresh drawer
-    setConfirmOrder({ s: stock, qty, side: "BUY",  opts, market: mkt, lot: opts.lot || 1, actionId: newActionId() }); return true;
+    // Honour an explicit SELL direction (short-open, or a Sell/short-future from the option selector); default BUY.
+    setConfirmOrder({ s: stock, qty, side: opts.side === "SELL" ? "SELL" : "BUY", opts, market: mkt, lot: opts.lot || 1, actionId: newActionId() }); return true;
   };
   const sellStock = (stock, qty = 1, opts = {}) => { setConfirmNote(null); setConfirmOrder({ s: stock, qty, side: "SELL", opts, market: opts.market || marketOf(stock.sym) || market, lot: opts.lot || 1, actionId: newActionId() }); return true; };
 

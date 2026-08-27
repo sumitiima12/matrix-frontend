@@ -4,6 +4,7 @@ import { ALL, marketOf } from "../domain/universe";
 import { postTrade, resolveExitFromCandles } from "../domain/api";
 import { validateOrder, DEFAULT_LIMITS } from "../services/riskService";
 import { fmt, lsGet, lsSet } from "../lib/format";
+import { derivativePnl } from "../domain/derivativePnl";
 import { saveRiskPolicy as saveRiskPolicyApi, getRiskPolicy as getRiskPolicyApi } from "../services/tradeService";
 
 /**
@@ -81,7 +82,8 @@ export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, us
     if (!trade || !trade.id || trade.exitAt != null) return null;
     const px = Number(exitPx != null ? exitPx : trade.entry);
     const dir = (trade.side === "SELL" || trade.short) ? -1 : 1;   // shorts profit when price falls
-    const pnl = +(((px - Number(trade.entry)) * Number(trade.qty || 0)) * dir).toFixed(2);
+    // Contract-aware realized P&L (spot rows keep multiplier 1 → identical to before; derivatives use their multiplier).
+    const pnl = +derivativePnl({ entry: trade.entry, price: px, quantity: trade.qty || 0, contractMultiplier: trade.contractMultiplier, side: dir < 0 ? "SELL" : "BUY" }).toFixed(2);
     const updated = { ...trade, exit: px, exitAt: Date.now(), pnl, closed: true, exitType };
     setTrades((p) => p.map((t) => (t.id === trade.id ? updated : t)));
     try { postTrade(userId, updated); } catch { /* best-effort persist */ }
@@ -156,12 +158,18 @@ export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, us
     //   SELL → close a long you hold (books P&L), else open/add a short.
     const matchMkt = (h) => h.sym === stock.sym && (h.market || marketOf(h.sym)) === market;
     const isShort = (h) => h.side === "SELL" || h.short;
+    // Contract size (underlying units per contract) for a derivative position — persisted so P&L, notional and
+    // realized-on-close all use it. Absent for spot (equity/crypto), where it stays undefined ⇒ treated as 1.
+    const posMult = Number(stock.contractMultiplier) > 0 ? Number(stock.contractMultiplier) : (Number(opts.contractMultiplier) > 0 ? Number(opts.contractMultiplier) : undefined);
     const newLong = (q, price0) => ({
       sym: stock.sym, qty: q, buy: price0, date: Date.now(), market: opts.market || market || "IN",
       isOpt: Boolean(stock.isOpt), under: stock.under || null,
+      productType: opts.productType || stock.productType || undefined,   // OPTION | FUTURE (spot rows leave undefined)
+      contractMultiplier: posMult,
       product: opts.product === "MIS" ? "MIS" : "CNC", boughtAt: Date.now(),
       tradeType: opts.tradeType || "Manual", sl: opts.sl ?? null, tp: opts.tp ?? null, tsl: opts.tsl ?? null,
     });
+    const cmOf = (row) => (Number(row?.contractMultiplier) > 0 ? Number(row.contractMultiplier) : 1);
     let realized = null;                 // P&L booked by this order (only when it CLOSES a position)
     let openEntry = fill;                // entry price to journal (the position's original entry on a close)
     const existing = portfolio.find(matchMkt);
@@ -170,7 +178,7 @@ export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, us
       if (existing && isShort(existing)) {
         // Cover a short: profit when the cover price is BELOW the short entry.
         const coverQty = Math.min(qty, existing.qty || 0);
-        realized = (existing.buy - fill) * coverQty; openEntry = existing.buy;
+        realized = (existing.buy - fill) * coverQty * cmOf(existing); openEntry = existing.buy;
         adjustWallet(market, realized);
         setPortfolio((p) => p.map((h) => (matchMkt(h) && isShort(h)) ? { ...h, qty: (Number(h.qty) || 0) - coverQty } : h).filter((h) => (Number(h.qty) || 0) > 1e-9));
       } else {
@@ -189,7 +197,7 @@ export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, us
       if (existing && !isShort(existing)) {
         // Close a long: proceeds + P&L (profit when the sell price is ABOVE the buy).
         const closeQty = Math.min(qty, existing.qty || 0);
-        realized = (fill - existing.buy) * closeQty; openEntry = existing.buy;
+        realized = (fill - existing.buy) * closeQty * cmOf(existing); openEntry = existing.buy;
         adjustWallet(market, fill * closeQty);
         setPortfolio((p) => p.map((h) => (matchMkt(h) && !isShort(h)) ? { ...h, qty: (Number(h.qty) || 0) - closeQty } : h).filter((h) => (Number(h.qty) || 0) > 1e-9));
       } else {
@@ -213,6 +221,9 @@ export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, us
     const order = recordTrade({
       sym: stock.sym, market, qty, side,
       entry: openEntry, entryAt: Date.now(),
+      // Carry the contract multiplier so the journal's own P&L math is contract-aware (spot ⇒ undefined ⇒ 1).
+      contractMultiplier: (closing ? cmOf(existing) : posMult) || undefined,
+      productType: opts.productType || stock.productType || undefined,
       ...(closing ? { exit: fill, exitAt: Date.now(), pnl: +realized.toFixed(2), closed: true } : {}),
       ...(openedShort ? { short: true } : {}),
       ...(closing && existing && isShort(existing) ? { short: true, coversShort: true } : {}),
@@ -268,7 +279,7 @@ export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, us
           const dir = (t.side === "SELL" || t.short) ? -1 : 1;   // short profits when price falls
           const closed = {
             ...t, ...hit,
-            pnl: +((hit.exit - t.entry) * qty * dir).toFixed(2),
+            pnl: +derivativePnl({ entry: t.entry, price: hit.exit, quantity: qty, contractMultiplier: t.contractMultiplier, side: dir < 0 ? "SELL" : "BUY" }).toFixed(2),
           };
           applyClose(t, closed);
           postTrade(userId, closed);
