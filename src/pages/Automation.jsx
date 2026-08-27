@@ -4,6 +4,7 @@ import { backtest, parseRules, getBtCosts, setBtCosts } from "../domain/backtest
 import { stratPerf } from "../domain/strategies";
 import { positionPnl } from "../domain/leverage";   // Delta-parity crypto P&L (margin cap + fees), same for paper & real
 import { derivativePnl } from "../domain/derivativePnl";   // contract-aware P&L (multiplier 1 for spot)
+import InstrumentTypePicker from "../components/common/InstrumentTypePicker";   // Stock/Future/Option choice (gated preview)
 import { Activity, AlertTriangle, Bell, Bolt, Check, ChevronDown, ChevronLeft, ChevronUp, Copy, Globe, ListChecks, Pause, Pencil, Play, Plus, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
 import { Area, AreaChart, Bar, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { BACKEND_URL } from "../config";
@@ -3298,6 +3299,8 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
           <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Symbols</div>
           <MultiSelect label="Symbols" options={DEPLOY_OPTIONS} value={s.symbols || []} onChange={(v) => updateStrat(s.id, { symbols: v })} allLabel="Select…" />
+          <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, margin: "12px 0 6px" }}>Instrument</div>
+          <InstrumentTypePicker value={s.instrument || "STOCK"} onChange={(v) => updateStrat(s.id, { instrument: v })} />
           <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, margin: "12px 0 6px" }}>{market === "Crypto" ? "Amount to be deployed (per trade)" : "Capital deployed (quantity per trade)"}</div>
           <input
             value={String(s.qty ?? s.cap ?? 1)}

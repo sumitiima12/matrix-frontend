@@ -8,6 +8,7 @@ import { CUR, DAY, chgColor, clamp, compact, fmt, fmtPnl, lsGet, lsSet, pct, tim
 import { confirmDialog } from "../lib/confirmDialog";   // in-app confirm (reliable in webviews/PWA)
 import { ALL, GLOBAL_MKTS, UNIVERSE, marketOf } from "../domain/universe";
 import { derivativePnl } from "../domain/derivativePnl";   // contract-aware P&L (multiplier 1 for spot)
+import InstrumentTypePicker from "../components/common/InstrumentTypePicker";   // Stock/Future/Option choice (gated preview)
 import { stratPerf } from "../domain/strategies";   // same P&L engine the Automate page uses, so the two agree
 import { positionPnl } from "../domain/leverage";   // Delta-parity crypto P&L (margin cap + fees), same for paper & real
 import { computeCategories } from "../domain/portfolioPnl";   // the ONE per-category P&L fn every dashboard shares
@@ -895,6 +896,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const [prodMap, setProdMap] = useState(() => { const v = lsGet("mx_autobuy_product", {}); return (v && typeof v === "object") ? v : {}; });
   const product = prodMap[market] || "NRML";                       // "NRML" | "INTRADAY"
   const setProduct = (v) => setProdMap((prev) => { const next = { ...prev, [market]: v }; lsSet("mx_autobuy_product", next); return next; });
+  // Instrument type (Stock/Future/Option) — captured per market; PREVIEW for derivatives (engine still runs on stock).
+  const [instrMap, setInstrMap] = useState(() => { const v = lsGet("mx_autobuy_instrument", {}); return (v && typeof v === "object") ? v : {}; });
+  const instrument = instrMap[market] || "STOCK";
+  const setInstrument = (v) => setInstrMap((prev) => { const next = { ...prev, [market]: v }; lsSet("mx_autobuy_instrument", next); return next; });
   const prodCode = product === "INTRADAY" ? "MIS" : "CNC";         // what the broker order body expects
   const showProduct = market === "IN" || market === "FNO";         // concept only applies to Indian equity/F&O
   const [autoOverrides, setAutoOverrides] = useState({});   // sym -> {tp, sl}
@@ -1486,6 +1491,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   <span style={{ fontSize: 9.5, opacity: .6 }}>{product === "INTRADAY" ? "auto-squared off same day" : "carried forward"}</span>
                 </div>
               )}
+              <div style={{ marginTop: 8 }}>
+                <span style={{ fontSize: 10.5, opacity: .8, fontWeight: 700, display: "block", marginBottom: 5 }}>Instrument</span>
+                <InstrumentTypePicker value={instrument} onChange={setInstrument} compact />
+              </div>
               {/* Plain-English "how this works" so the behaviour and requirements are obvious. */}
               <div style={{ fontSize: 9.5, opacity: .6, marginTop: 3, lineHeight: 1.45 }}>
                 Buys Matrix's top {MKT_LABEL[market]} picks once a day at the live price{autoOn ? ", and auto-exits at your target/stop" : ""}. {isReal ? "Real orders — needs a connected broker + enough balance." : "Paper preview until you switch to Real."}

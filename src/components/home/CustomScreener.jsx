@@ -3,6 +3,7 @@ import { ALL, UNIVERSE } from "../../domain/universe";
 import { CUR, chgColor, fmt, lsGet, lsSet } from "../../lib/format";
 import { METRICS, OPS, indValue, parseScreen } from "../../domain/screener";
 import { marketOpen, aiInterpretScreen, scanMomentum, optimizeExits } from "../../domain/api";
+import InstrumentTypePicker from "../common/InstrumentTypePicker";   // Stock/Future/Option choice (gated preview)
 
 /* Screener metrics = the daily-snapshot set PLUS "Price change %", which is evaluated on real candles
    over a chosen window (3m … 1d) via the momentum scan rather than the daily snapshot. */
@@ -192,6 +193,9 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
   const [selSyms, setSelSyms] = useState([]);
   const [ov, setOv] = useState({});
   const [autoOn, setAutoOn] = useState(false);
+  // Instrument type (Stock/Future/Option) — captured per market; PREVIEW for derivatives (screener runs on stock).
+  const [instr, setInstrRaw] = useState(() => lsGet(`mx_screener_instrument_${market}`, "STOCK"));
+  const setInstr = (v) => { setInstrRaw(v); try { lsSet(`mx_screener_instrument_${market}`, v); } catch { /* best-effort */ } };
   const [period, setPeriod] = useState("today");
   const [selRec, setSelRec] = useState(null);
   const [pickOpen, setPickOpen] = useState(false);
@@ -343,6 +347,10 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
             <div className="mono" style={{ fontWeight: 800, fontSize: 16, color: chgColor(livePnl) }}>{(livePnl >= 0 ? "+" : "") + fmt(livePnl, market)}</div>
           </div>
         )}
+      </div>
+      <div style={{ marginTop: 10 }}>
+        <span style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 700, display: "block", marginBottom: 5 }}>Instrument</span>
+        <InstrumentTypePicker value={instr} onChange={setInstr} compact />
       </div>
       {autoOn && (
         <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 6, lineHeight: 1.5, background: "var(--elev)", borderRadius: 9, padding: "7px 9px" }}>
