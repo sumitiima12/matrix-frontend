@@ -553,7 +553,11 @@ function AppInner() {
     const mkt = marketOf(s.sym) || s.market || market;
     const route = brokerFor(mkt);
     if (!route) { setBuyToast({ t: `No broker connected for ${MKT_LABEL[mkt] || mkt} — cannot place a real order`, e: true }); return { ok: false, state: ORDER_STATES.REJECTED, reason: "no broker" }; }
-    const bsym = brokerSymbol(s.sym, route.id);
+    /* A resolved DERIVATIVE (future/option) carries its own broker-native contract symbol from the resolver
+       (OCC / Delta option / NFO / MCX) — we must send THAT, never rebuild it from the underlying. When present it
+       overrides the equity symbol mapping; productType + derivMarket ride along so the server's fail-closed
+       derivative gate applies (real option/future execution stays blocked until that market is certified). */
+    const bsym = opts.brokerSymbolOverride || brokerSymbol(s.sym, route.id);
     if (!bsym) { setBuyToast({ t: `${route.meta.name} can't trade ${s.sym} — no symbol mapping`, e: true }); return { ok: false, state: ORDER_STATES.REJECTED, reason: "no symbol mapping" }; }
     const brokerName = route.meta.name;   // the ACTUALLY-ROUTED broker for this market — never liveBroker.name
     /* P3-05: the ONE durable intent state machine. deriveIntentKey folds in product + every protection leg so
@@ -572,6 +576,9 @@ function AppInner() {
       const r = await brokerPlaceOrder(route.session, userId, {
         symbol: bsym, side, qty: q, orderType: opts.orderType || "MARKET", product: prod || "CNC",
         entryPrice: s.price ?? undefined,
+        // Derivative tags — let the server's fail-closed per-market gate apply. Absent for equities.
+        productType: opts.productType || undefined,          // OPTION | FUTURE
+        derivMarket: opts.derivMarket || undefined,          // IN | US | Crypto | Commodity
         // Advanced order-type params (from the manual order-options panel). Undefined ⇒ a plain Market order.
         limitPrice: opts.limitPrice > 0 ? opts.limitPrice : undefined,
         triggerPrice: opts.triggerPrice > 0 ? opts.triggerPrice : undefined,
