@@ -62,7 +62,7 @@ import WalletSheet from "./components/common/WalletSheet";
 import ConfirmOrder from "./components/common/ConfirmOrder";
 import BrokerSheet from "./components/common/BrokerSheet";
 import { brokerSymbol } from "./domain/brokerSymbols";
-import { brokerPlaceOrder, brokerIntentStatus, registerAutoExit, reconcileRealTrades, updateAutoBuy, BROKER_MARKETS, loadBrokerCapabilities, orderTypesOf, resolveUnknownOrders, getEntryHaltStatus } from "./services/brokerService";
+import { brokerPlaceOrder, brokerIntentStatus, registerAutoExit, reconcileRealTrades, updateAutoBuy, BROKER_MARKETS, loadBrokerCapabilities, orderTypesOf, resolveUnknownOrders, getEntryHaltStatus, getOptionPremium } from "./services/brokerService";
 import { OrderLifecycleStore, deriveIntentKey, interpretResult, classifyError, reconcileAction, ORDER_STATES, planClose } from "./services/orderLifecycle";
 import MatrixRain from "./components/common/MatrixRain";
 import MLogo from "./components/common/MLogo";
@@ -1099,6 +1099,24 @@ function AppInner() {
   useEffect(() => {
     setPriceSnap((prev) => { const m = { ...prev }; portfolio.forEach((h) => { const s = ALL.find((a) => a.sym === h.sym); m[h.sym] = s ? s.price : (prev[h.sym] ?? h.buy); }); return m; });
   }, [portfolio]);
+  // OPTION positions have no entry in ALL, so their live P&L would sit at the entry premium. Re-fetch each held
+  // option's live premium (Delta/Yahoo) on an interval and feed it into priceSnap so its P&L moves with the market.
+  useEffect(() => {
+    const optPositions = () => (portfolio || []).filter((h) => h.isOpt && h.optType && h.strike != null && h.expiry && h.derivMarket);
+    let cancelled = false;
+    const refresh = async () => {
+      const list = optPositions();
+      if (!list.length) return;
+      const results = await Promise.all(list.map((h) =>
+        getOptionPremium({ market: h.derivMarket, underlying: h.under || h.sym, optionType: h.optType, strike: h.strike, expiry: h.expiry })
+          .then((q) => [h.sym, q && q.premium]).catch(() => [h.sym, null])));
+      if (cancelled) return;
+      setPriceSnap((prev) => { const m = { ...prev }; for (const [sym, px] of results) if (px != null) m[sym] = px; return m; });
+    };
+    refresh();
+    const id = setInterval(refresh, 20_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [portfolio]);
   const [watchlists, setWatchlists] = useState([{ id: "w1", name: "My Watchlist", syms: ["RELIANCE", "TCS"] }]);
   const [activeWl, setActiveWl] = useState("w1");
   // Load this user's saved data whenever the user changes (login / logout).
@@ -1114,13 +1132,13 @@ function AppInner() {
       setProfile((s && s.profile) || null);
       // Fresh sign-ups skip onboarding; everyone else uses their saved flag.
       setOnboardSkipped(freshSignup ? true : !!(s && s.onboardSkipped));
-      // SAFETY: real-money Smart Auto-Buy must NEVER auto-resume from a saved session — the user has to
-      // deliberately turn it on each time. Restore the saved map but force every REAL key (`<market>:real`)
-      // OFF on hydrate. Virtual (paper) switches restore normally.
+      // Smart Auto-Buy switches persist across sessions EXACTLY as the user left them — including real-money
+      // keys (`<market>:real`). Per the user's explicit choice, an ON switch stays ON on hydrate (no per-session
+      // force-off). Every REAL fire is still individually gated by the risk engine + the one-time acknowledgement,
+      // and the per-user kill switch / "Stop New Entries" halts it immediately.
       {
         const restored = (s && s.autoOnMap) || { IN: false, US: false, Crypto: false, Commodity: false, FNO: false };
-        const safe = {}; for (const k of Object.keys(restored)) safe[k] = /:real$/.test(k) ? false : restored[k];
-        setAutoOnMap(safe);
+        setAutoOnMap(restored && typeof restored === "object" ? restored : {});
       }
       if (s && s.deployCapMap && typeof s.deployCapMap === "object") setDeployCapMap(s.deployCapMap);
     };

@@ -1341,7 +1341,7 @@ function CopyStrategyCard({ s, active, onToggle, onPersist, onDelete, market = "
           <Activity size={14} /> Backtest
         </button>
         <button onClick={() => onToggle(symSel, size, { sl, tp, tf: tfSel })} className="tap disp" style={{ flex: "1 1 120px", minWidth: 110, border: "1px solid " + (active ? "var(--up)" : "var(--primary)"), background: active ? "var(--up-soft)" : "var(--primary)", color: active ? "var(--up)" : "var(--on-primary)", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, whiteSpace: "nowrap" }}>
-          {active ? "✓ Deployed" : "Deploy"}
+          {active ? "✓ Activated" : "Activate"}
         </button>
       </div>
 
@@ -2948,8 +2948,14 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const [stratTab, setStratTab] = useState("mine");   // sub-tab under "Strategies": mine | copies | sample | premium | public
   const [lsSide, setLsSide] = useState("long");           // Long / Short filter shown above Activate All in every strategy type
   const [lsStatus, setLsStatus] = useState("all");        // All / Active / Inactive filter (orthogonal to Long/Short), per strategy type
+  /* SINGLE source of truth for "is this row active", used by the status tabs, their counts, AND the
+     BulkBar — so the three can never disagree. Rows come in two shapes: a raw strategy, or a { s, p }
+     wrapper (myCopies/premium/mine are wrapped). Unwrap either, then apply the SAME `activeInMarket`
+     rule BulkBar acts on (bug fix: the copies/premium tabs were reading `.active` off the {s,p} wrapper,
+     which is always undefined — so every row counted as inactive while BulkBar saw them as active). */
+  const stIsActive = (x) => activeInMarket((x && x.s) ? x.s : x);
   /* Apply the Active/Inactive filter to a side-filtered list. "all" = no filter. */
-  const byStatus = (arr) => (lsStatus === "all" ? arr : arr.filter((s) => (lsStatus === "active" ? !!s.active : !s.active)));
+  const byStatus = (arr) => (lsStatus === "all" ? arr : arr.filter((x) => (lsStatus === "active" ? stIsActive(x) : !stIsActive(x))));
   const [topTab, setTopTab] = useState("strategies");   // default to Strategies ▸ Deployed (stratTab defaults to "deployed")
   const [compareOpen, setCompareOpen] = useState(false);   // premium "Compare all" backtest table
 
@@ -3912,7 +3918,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           return (<>
             <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
               <div style={{ flex: "1 1 150px", minWidth: 0 }}><LongShortToggle side={lsSide} setSide={setLsSide} longCount={sampleLong.length} shortCount={sampleShort.length} /></div>
-              <div style={{ flex: "1 1 180px", minWidth: 0 }}><StatusToggle status={lsStatus} setStatus={setLsStatus} activeCount={sideList.filter((s) => s.active).length} inactiveCount={sideList.filter((s) => !s.active).length} /></div>
+              <div style={{ flex: "1 1 180px", minWidth: 0 }}><StatusToggle status={lsStatus} setStatus={setLsStatus} activeCount={sideList.filter(stIsActive).length} inactiveCount={sideList.filter((x) => !stIsActive(x)).length} /></div>
             </div>
             <BulkBar items={sel} />
             {sel.length ? sel.map(renderS) : <div style={emptyNote}>No {lsSide}{lsStatus !== "all" ? " " + lsStatus : ""} samples.</div>}
@@ -3952,7 +3958,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           return (<>
             <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
               <div style={{ flex: "1 1 150px", minWidth: 0 }}><LongShortToggle side={lsSide} setSide={setLsSide} longCount={copiesLong.length} shortCount={copiesShort.length} /></div>
-              <div style={{ flex: "1 1 180px", minWidth: 0 }}><StatusToggle status={lsStatus} setStatus={setLsStatus} activeCount={sideList.filter((s) => s.active).length} inactiveCount={sideList.filter((s) => !s.active).length} /></div>
+              <div style={{ flex: "1 1 180px", minWidth: 0 }}><StatusToggle status={lsStatus} setStatus={setLsStatus} activeCount={sideList.filter(stIsActive).length} inactiveCount={sideList.filter((x) => !stIsActive(x)).length} /></div>
             </div>
             <BulkBar items={sel} />
             {sel.length ? sel.map(renderC) : <div style={emptyNote}>No {lsSide}{lsStatus !== "all" ? " " + lsStatus : ""} copies.</div>}
@@ -4011,7 +4017,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           return (<>
             <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
               <div style={{ flex: "1 1 150px", minWidth: 0 }}><LongShortToggle side={lsSide} setSide={setLsSide} longCount={mineLong.length} shortCount={mineShort.length} /></div>
-              <div style={{ flex: "1 1 180px", minWidth: 0 }}><StatusToggle status={lsStatus} setStatus={setLsStatus} activeCount={sideList.filter((s) => s.active).length} inactiveCount={sideList.filter((s) => !s.active).length} /></div>
+              <div style={{ flex: "1 1 180px", minWidth: 0 }}><StatusToggle status={lsStatus} setStatus={setLsStatus} activeCount={sideList.filter(stIsActive).length} inactiveCount={sideList.filter((x) => !stIsActive(x)).length} /></div>
             </div>
             <BulkBar items={sel} />
             {sel.length ? <CollapsibleList items={sel} render={({ s, p }) => <React.Fragment key={s.id}>{StrategyCard({ s, p })}</React.Fragment>} /> : <div style={emptyNote}>No {lsSide}{lsStatus !== "all" ? " " + lsStatus : ""} strategies.</div>}

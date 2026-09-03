@@ -173,7 +173,16 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
     setErr(null);
     setBusy(b.id);
     try { await onConnect(b.id, null, { house: true }); setBusy(null); onClose && onClose(); }
-    catch (e) { setErr(String(e.message || e)); setBusy(null); }
+    catch (e) {
+      const raw = String(e.message || e);
+      // The one-tap "server session" needs the house TOTP env vars set on the server. When they're not,
+      // don't dump the raw env-var list at the user — point them to the two self-serve buttons below, which
+      // link their OWN FYERS account and don't need any server-side session.
+      setErr(/isn't configured|server session/i.test(raw)
+        ? `One-tap connect isn't set up on the server yet. Use “Log in with ${b.name}” or “Connect with App ID & Secret” below to link your own ${b.name} account.`
+        : raw);
+      setBusy(null);
+    }
   };
 
   const start = async (b) => {
