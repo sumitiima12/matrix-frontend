@@ -1499,7 +1499,15 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
               <div style={{ fontSize: 9.5, opacity: .6, marginTop: 3, lineHeight: 1.45 }}>
                 Buys Matrix's top {MKT_LABEL[market]} picks once a day at the live price{autoOn ? ", and auto-exits at your target/stop" : ""}. {isReal ? "Real orders — needs a connected broker + enough balance." : "Paper preview until you switch to Real."}
               </div>
-              <div style={{ fontSize: 10, opacity: .7, marginTop: 4 }}>P&amp;L · {periodLabel} {autoOn ? "· live positions (real exits)" : "· simulated preview"}</div>
+              {/* Honest state label. In REAL mode the numbers below come ONLY from real Auto-Buy trades
+                  (autoRows filters t.real), so it must NEVER say "simulated preview" — even when the toggle is
+                  off, any positions shown are real (turning off pauses NEW entries; existing real positions stay
+                  managed). "simulated preview" is a VIRTUAL-mode paper concept only. */}
+              <div style={{ fontSize: 10, opacity: .7, marginTop: 4 }}>P&amp;L · {periodLabel} {isReal
+                ? (autoOn ? "· live positions (real exits)"
+                   : periodStats.trades ? "· real positions · new entries paused"
+                   : "· not running — turn on to place real orders")
+                : (autoOn ? "· live positions" : "· simulated preview")}</div>
               {/* CANONICAL: read the SAME Smart Auto-Buy figure the Total dashboard's box shows (shared P&L engine),
                   so the two dashboards can never disagree. Falls back to the local period sum only if the shared
                   engine hasn't a value. */}
