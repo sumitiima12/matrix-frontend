@@ -256,7 +256,10 @@ export function LoginModal({ onClose, onAuthed }) {
     if (tab === "login") res = await apiLogin(phone, pin);
     else res = await apiRegister(phone, pin, name, secQ, secA, userId);
     setBusy(false);
-    if (res && res.ok) onAuthed({ phone: res.userId, name: res.name || name || "" });
+    // Carry the account's username (+ email/createdAt) into auth state. Without it, auth.username is undefined
+    // on every login and the "Choose your user ID" mandate modal re-shows for accounts that already have one —
+    // it must only appear for legacy accounts that genuinely lack a username, not on normal re-login.
+    if (res && res.ok) onAuthed({ phone: res.userId, name: res.name || name || "", username: res.username || null, email: res.email || null, createdAt: res.createdAt || null });
     else setErr((res && res.error) || "Something went wrong.");
   };
 
@@ -271,7 +274,7 @@ export function LoginModal({ onClose, onAuthed }) {
     setErr(null); setBusy(true);
     const res = await apiForgotReset(phone, fAnswer, fNewPin);
     setBusy(false);
-    if (res && res.ok) onAuthed({ phone: res.userId, name: res.name || "" });
+    if (res && res.ok) onAuthed({ phone: res.userId, name: res.name || "", username: res.username || null, email: res.email || null, createdAt: res.createdAt || null });
     else setErr((res && res.error) || "That answer doesn't match.");
   };
 
