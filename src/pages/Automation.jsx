@@ -2202,7 +2202,10 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators,
 /* P&L TAB — every strategy (active + inactive) for this market with its total P&L over a chosen
    window; tap one to see its trades (entry/exit time + per-trade P&L). Crypto P&L uses the USD-notional
    formula (qty is an amount, not a coin count), matching the fixed stratPerf. */
-function StrategyPnLView({ strats, trades, market, onDelete }) {
+function StrategyPnLView({ strats, trades, market, onDelete, isActive }) {
+  // Use the SAME market-aware "active" test the Deployed/Strategies tab uses, so a strategy can never read
+  // "active" in one tab and "· inactive" in the other. Falls back to the plain flag only if no predicate is passed.
+  const isActiveHere = (s) => (isActive ? isActive(s) : !!s.active);
   const [range, setRange] = useState(1);
   const [cFrom, setCFrom] = useState("");   // #610 custom from/to
   const [cTo, setCTo] = useState("");
@@ -2239,7 +2242,7 @@ function StrategyPnLView({ strats, trades, market, onDelete }) {
         <div key={s.id} className="card" style={{ padding: 12, marginTop: 10 }}>
           <div onClick={() => setOpenId(openId === s.id ? null : s.id)} className="tap" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
             <div style={{ minWidth: 0 }}>
-              <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{s.name || "Strategy"}{!s.active && <span style={{ color: "var(--muted)", fontWeight: 700 }}> · inactive</span>}</div>
+              <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{s.name || "Strategy"}{!isActiveHere(s) && <span style={{ color: "var(--muted)", fontWeight: 700 }}> · inactive</span>}</div>
               <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600, marginTop: 1 }}>{(s.symbols || []).join(", ") || "—"} · {p.trades || 0} trades{p.winRate != null ? ` · ${p.winRate.toFixed(0)}% win` : ""}</div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -3835,7 +3838,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         </button>
       )}
 
-      {topTab === "pnl" && <StrategyPnLView strats={strats} trades={trades} market={market} onDelete={deleteStrategy} />}
+      {topTab === "pnl" && <StrategyPnLView strats={strats} trades={trades} market={market} isActive={activeInMarket} onDelete={deleteStrategy} />}
 
       {topTab === "backtest" && (
         <div style={{ marginTop: 16 }}>
