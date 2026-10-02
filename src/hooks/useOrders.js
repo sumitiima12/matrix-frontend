@@ -166,6 +166,11 @@ export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, us
       isOpt: Boolean(stock.isOpt), under: stock.under || null,
       productType: opts.productType || stock.productType || undefined,   // OPTION | FUTURE (spot rows leave undefined)
       contractMultiplier: posMult,
+      // Option contract identity — persisted so the live-quote refresh can re-fetch this option's premium (P&L update).
+      optType: opts.optType || stock.optType || undefined,
+      strike: opts.strike != null ? opts.strike : (stock.strike != null ? stock.strike : undefined),
+      expiry: opts.expiry || stock.expiry || undefined,
+      derivMarket: opts.derivMarket || stock.derivMarket || undefined,
       product: opts.product === "MIS" ? "MIS" : "CNC", boughtAt: Date.now(),
       tradeType: opts.tradeType || "Manual", sl: opts.sl ?? null, tp: opts.tp ?? null, tsl: opts.tsl ?? null,
     });

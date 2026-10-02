@@ -328,17 +328,29 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
                     underlying={optUnder}
                     spot={s.price}
                     mode="virtual"
-                    canPlace={(pt) => pt === "FUTURE"}   // options need a live premium feed → preview only for now
+                    canPlace={(pt, r) => pt === "FUTURE" || (pt === "OPTION" && r && r.premium != null)}   // options placeable once a live premium is available
                     onResolved={(r) => {
-                      // Paper FUTURE: place a position on the underlying carrying its contract size, so P&L is
-                      // contract-aware. Buy or Sell (short) both route through the confirm drawer. Options are not
-                      // placeable yet (no premium), so canPlace hides their button.
-                      if (r.productType !== "FUTURE") return;
-                      onBuy && onBuy({ ...s, contractMultiplier: r.contractMultiplier, productType: "FUTURE", under: optUnder }, r.quantity || 1, {
-                        productType: "FUTURE", derivMarket: r.market, contractMultiplier: r.contractMultiplier,
-                        brokerSymbolOverride: r.tradingSymbol, side: r.side || "BUY", short: r.side === "SELL", market,
-                      });
-                      setShowOpts(false);
+                      if (r.productType === "FUTURE") {
+                        // Paper FUTURE: position on the underlying carrying its contract size, so P&L is contract-aware.
+                        onBuy && onBuy({ ...s, contractMultiplier: r.contractMultiplier, productType: "FUTURE", under: optUnder }, r.quantity || 1, {
+                          productType: "FUTURE", derivMarket: r.market, contractMultiplier: r.contractMultiplier,
+                          brokerSymbolOverride: r.tradingSymbol, side: r.side || "BUY", short: r.side === "SELL", market,
+                        });
+                        setShowOpts(false);
+                      } else if (r.productType === "OPTION" && r.premium != null) {
+                        // Paper OPTION: the position is the option contract itself, priced at its live PREMIUM. Its
+                        // contract multiplier (shares/coins per contract) makes P&L = qty × mult × Δpremium.
+                        onBuy && onBuy({
+                          ...s, sym: r.tradingSymbol, under: optUnder, isOpt: true, price: r.premium,
+                          contractMultiplier: r.contractMultiplier, productType: "OPTION",
+                          optType: r.optionType, strike: r.strike, expiry: r.expiry, derivMarket: r.market,
+                        }, r.quantity || 1, {
+                          productType: "OPTION", derivMarket: r.market, contractMultiplier: r.contractMultiplier,
+                          brokerSymbolOverride: r.tradingSymbol, side: "BUY", market, entryPrice: r.premium,
+                          optType: r.optionType, strike: r.strike, expiry: r.expiry, under: optUnder,
+                        });
+                        setShowOpts(false);
+                      }
                     }}
                   />
                 </div>
