@@ -918,7 +918,7 @@ function ScreenerDashboard({ trades = [], market, mode = "virtual", portfolio = 
   const _heldSet = _isReal ? realHeldSetFrom(realPortfolio) : null;
   const mine = (trades || []).filter((t) =>
     t && isScreenerTrade(t) && (_isReal ? !!t.real : !t.real)   // scope to the active book — real & virtual never mix (matches the Total dashboard)
-    && ((t.market || marketOf(t.sym) || "") === market) && t.status !== "rejected" && Number(t.entry) > 0
+    && ((marketOf(t.sym) || t.market || "") === market) && t.status !== "rejected" && Number(t.entry) > 0
     && ((t.exitAt == null || t.exit == null) || (Number(t.exitAt || t.entryAt || 0) >= since && Number(t.exitAt || t.entryAt || 0) <= until)));
   const closed = mine.filter((t) => t.exitAt != null && t.exit != null);
   // A real journalled-open position the broker no longer holds is a phantom — exclude it from the live set and
@@ -1094,7 +1094,7 @@ function ScreenerLivePositions({ trades = [], market, mode = "virtual", portfoli
   const isReal = mode === "real";
   const heldSet = isReal ? realHeldSetFrom(realPortfolio) : null;
   const open = useMemo(() => (trades || []).filter((t) =>
-    t && isScreenerTrade(t) && (t.market || "") === market && t.status !== "rejected"
+    t && isScreenerTrade(t) && (marketOf(t.sym) || t.market || "") === market && t.status !== "rejected"
     && Number(t.entry) > 0 && (t.exitAt == null || t.exit == null)
     && !isPhantomOpen(t, heldSet, isReal))   // hide positions the broker no longer holds
     .sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0)), [trades, market, portfolio, realPortfolio, mode]);
