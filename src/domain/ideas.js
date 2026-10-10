@@ -31,6 +31,8 @@ export function buildDailyIdeas() {
     const isCrypto = m === "Crypto";
     for (const { s, t } of byMarket[m].slice(0, isCrypto ? 4 : 5)) {
       out.push({
+        // Stable per-day identity so trades taken from this card can be attributed back to it (see Ideas dashboard).
+        id: `neo:${m}:${s.sym}:${today}:L`,
         by: "Neo",
         publishedAt: today,
         sym: s.sym,
@@ -58,6 +60,7 @@ export function buildDailyIdeas() {
         .slice(0, 2);
       for (const { s, t } of shorts) {
         out.push({
+          id: `neo:${m}:${s.sym}:${today}:S`,
           by: "Neo",
           publishedAt: today,
           sym: s.sym,

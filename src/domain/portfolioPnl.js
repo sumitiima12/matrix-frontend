@@ -51,6 +51,7 @@ export function computeCategories(trades, opts = {}) {
   const isReal = String(mode || "").toLowerCase() === "real";
   const lo = _lo(from), hi = _hi(to);
   const cats = CATEGORIES.reduce((m, c) => (m[c] = 0, m), {});
+  const byIdea = {};   // per-Idea attribution keyed on t.ideaId (only trades that carry one) → { pnl, trades, open, closed, wins }
   let total = 0, open = 0, closed = 0, wins = 0, tradesN = 0;
 
   for (const t of Array.isArray(trades) ? trades : []) {
@@ -77,9 +78,19 @@ export function computeCategories(trades, opts = {}) {
     const cat = sourceCategory(t);
     cats[cat] += p; total += p; tradesN += 1;
     if (isO) open += 1; else { closed += 1; if (p > 0) wins += 1; }
+
+    // Per-idea attribution: group every trade that carries an ideaId so the Ideas dashboard can show the real
+    // trades taken from each specific idea card (count, P&L, open/closed, wins).
+    if (t.ideaId != null) {
+      const k = String(t.ideaId);
+      const g = byIdea[k] || (byIdea[k] = { pnl: 0, trades: 0, open: 0, closed: 0, wins: 0 });
+      g.pnl += p; g.trades += 1;
+      if (isO) g.open += 1; else { g.closed += 1; if (p > 0) g.wins += 1; }
+    }
   }
 
   const round = (n) => +Number(n).toFixed(2);
   const categories = {}; for (const c of CATEGORIES) categories[c] = round(cats[c]);
-  return { total: round(total), categories, open, closed, trades: tradesN, wins, winRate: closed ? +((wins / closed) * 100).toFixed(1) : null };
+  for (const k of Object.keys(byIdea)) byIdea[k].pnl = round(byIdea[k].pnl);
+  return { total: round(total), categories, byIdea, open, closed, trades: tradesN, wins, winRate: closed ? +((wins / closed) * 100).toFixed(1) : null };
 }

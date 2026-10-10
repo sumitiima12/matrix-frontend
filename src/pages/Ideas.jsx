@@ -22,7 +22,7 @@ import MultiSelect from "../components/common/MultiSelect";
 function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, market = "IN", auto = null, trades = [], mode = "virtual" }) {
   const capDefault = (m) => (m === "Crypto" || m === "US" ? 1000 : 100000);   // crypto/US in USD
   const [postedBy, setPostedBy] = useState("All");
-  const [preset, setPreset] = useState("1");   // "1"|"7"|"30"|"182"|"365"|"custom" — Automate-style date range. Default: Today.
+  const [preset, setPreset] = useState("30");   // "1"|"7"|"30"|"182"|"365"|"custom" — Automate-style date range. Default: last 30 days (a "Today" default showed 0 trades for anyone who traded ideas on a prior day).
   const [cFrom, setCFrom] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; });   // default: 1st of current month
   const [cTo, setCTo] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });   // default: today
   const [cap, setCap] = useState(capDefault(market));
@@ -84,7 +84,9 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
     : (preset === "1" ? new Date().setHours(0, 0, 0, 0) : Date.now() - Number(preset || 365) * DAY);
   const actTo = preset === "custom" ? cToT : null;
   const actPriceOf = (s) => { const a = ALL.find((x) => x.sym === s); return a && a.price != null ? a.price : null; };
-  const actualIdeasPnl = computeCategories(trades, { mode, market, from: actFrom, to: actTo, priceOf: actPriceOf }).categories.Ideas;
+  const actualCats = computeCategories(trades, { mode, market, from: actFrom, to: actTo, priceOf: actPriceOf });
+  const actualIdeasPnl = actualCats.categories.Ideas;
+  const ideaStats = actualCats.byIdea || {};   // per-idea real-trade attribution keyed on the idea's id
 
   /* Period label: for an account younger than 3 months we show "Since Jul'26"; once it's
      older, we show the selected range window ("last 3 months", etc.). */
@@ -415,7 +417,7 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
     const key = `mx_ideasbuy_${market}_${mode}_${Math.floor(Date.now() / 864e5)}`;   // once per day, per mode
     if (lsGet(key, false)) return;
     // Skip picks below one contract (real crypto) — the broker would reject them as "amount too small".
-    ideaPlan.filter((p) => !p.skipped).forEach((p) => onBuy(p.s, p.qty, { tp: p.gain, sl: p.slPct, tradeType: "Ideas", ...(p.short ? { side: "SELL", short: true } : {}) }));
+    ideaPlan.filter((p) => !p.skipped).forEach((p) => onBuy(p.s, p.qty, { tp: p.gain, sl: p.slPct, tradeType: "Ideas", ideaId: p.idea && p.idea.id, ...(p.short ? { side: "SELL", short: true } : {}) }));
     lsSet(key, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoIdeas, market, mode, ideaPlan.length]);
@@ -453,6 +455,17 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
               </div>
               {(() => { const short = idea.direction === "Short" || idea.side === "SELL" || idea.short; const c = short ? "var(--down)" : "var(--up)"; const cs = short ? "var(--down-soft)" : "var(--up-soft)"; return <span className="pill disp" title="Estimated move to the idea's target — an outlook, not a guarantee." style={{ background: cs, color: c, fontWeight: 700, fontSize: 12.5, padding: "4px 11px" }}>{short ? "↓" : "+"}{idea.gain}% potential</span>; })()}
             </div>
+            {/* Real trades actually taken FROM this specific idea card (ideaId-linked), with their P&L. Shows nothing
+                until the user has bought this idea at least once. */}
+            {idea.id && ideaStats[idea.id] && ideaStats[idea.id].trades > 0 && (() => {
+              const g = ideaStats[idea.id];
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 11, fontWeight: 700 }}>
+                  <span className="pill" style={{ background: "var(--elev)", color: "var(--muted)", padding: "3px 9px" }}>{g.trades} trade{g.trades === 1 ? "" : "s"} taken{g.open ? ` · ${g.open} open` : ""}</span>
+                  <span className="mono" style={{ color: g.pnl >= 0 ? "var(--up)" : "var(--down)" }}>{g.pnl >= 0 ? "+" : ""}{fmtPnl(g.pnl, market)}</span>
+                </div>
+              );
+            })()}
             {/* Confidence score (signal quality) for this idea — and, when Auto-Buy Ideas is ON, the capital this
                 pick gets under the confidence-weighted split. Moved here from the removed Auto-Buy card. */}
             {planBySym[idea.sym] && (() => {
@@ -482,7 +495,7 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
               <div style={{ marginTop: 12 }}>
                 <BuyButton s={s} market={market} onBuy={onBuy} lot={s.lot || 1} fullWidth
                   only={(idea.direction === "Short" || idea.side === "SELL" || idea.short) ? "sell" : "buy"}
-                  opts={{ tp: idea.gain, sl: (idea.entry && idea.stop) ? +((Math.abs(idea.stop - idea.entry) / idea.entry) * 100).toFixed(2) : undefined, tradeType: "Ideas" }} />
+                  opts={{ tp: idea.gain, sl: (idea.entry && idea.stop) ? +((Math.abs(idea.stop - idea.entry) / idea.entry) * 100).toFixed(2) : undefined, tradeType: "Ideas", ideaId: idea.id }} />
               </div>
             )}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, gap: 8 }}>

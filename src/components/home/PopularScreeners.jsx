@@ -448,9 +448,13 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
       ownsTrade(t) && (isReal ? !!t.real : !t.real)
       && t.status !== "rejected" && t.entry != null
       && (t.exitAt == null || t.exit == null || (t.exitAt || t.entryAt || 0) >= periodFrom));
-    const closed = mine.filter((t) => t.exitAt != null && t.exit != null);
+    const closed = mine.filter((t) => t.exitAt != null && t.exit != null && Number(t.exit) > 0);
     let wins = 0, losses = 0;
     for (const t of closed) {
+      // A trade whose exit was booked AT its entry is an unreconciled break-even placeholder (broker-side close
+      // not yet reconstructed). Its gross is 0, so after round-trip fees positionPnl goes slightly NEGATIVE and it
+      // was being counted as a loss — that's what dragged these trades' win-rate to 0%. Treat it as undecided.
+      if (Number(t.exit) === Number(t.entry)) continue;
       const p = positionPnl(t, t.exit, marketOf(t.sym));
       if (p > 0) wins++; else if (p < 0) losses++;
     }
@@ -1235,7 +1239,7 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
           )
           : (<>
               {(showAllActive ? activeScreeners : activeScreeners.slice(0, 2)).map((s) => (
-                <ScreenerRow key={s.key} screener={s} market={market} mode={mode} trades={trades} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} onClosePosition={onClosePosition} liveTick={liveTick} side="BUY" />
+                <ScreenerRow key={s.key + "|" + market} screener={s} market={market} mode={mode} trades={trades} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} onClosePosition={onClosePosition} liveTick={liveTick} side="BUY" />
               ))}
               {(onOpenScreener || activeScreeners.length > 2) && (
                 <button onClick={() => { if (onOpenScreener) onOpenScreener(); else setShowAllActive((v) => !v); }} className="tap disp" style={{ marginTop: 4, width: "100%", border: "none", background: "transparent", color: "var(--primary)", fontWeight: 800, fontSize: 12, padding: "6px", cursor: "pointer" }}>
@@ -1273,14 +1277,14 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
           </div>
         );
         return activeRows.map(({ s, side }) => (
-          <ScreenerRow key={s.key + side} screener={s} market={market} mode={mode} trades={trades} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} onClosePosition={onClosePosition} liveTick={liveTick} side={side} />
+          <ScreenerRow key={s.key + side + "|" + market} screener={s} market={market} mode={mode} trades={trades} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} onClosePosition={onClosePosition} liveTick={liveTick} side={side} />
         ));
       })()}
       {tab === "popular" && <>
         <ScreenerDirToggle dir={dir} setDir={setDir} />
         {dir === "sell" && <div style={{ fontSize: 10.5, color: "var(--muted)", lineHeight: 1.5, margin: "0 2px 8px" }}>Sell mode shorts each match instead of buying it. Shorting executes on crypto and Indian options; elsewhere it runs in paper.</div>}
         {SCREENERS.map((s) => (
-          <ScreenerRow key={s.key + dir} screener={s} market={market} mode={mode} trades={trades} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} onClosePosition={onClosePosition} liveTick={liveTick} side={dir === "sell" ? "SELL" : "BUY"} />
+          <ScreenerRow key={s.key + dir + "|" + market} screener={s} market={market} mode={mode} trades={trades} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} onClosePosition={onClosePosition} liveTick={liveTick} side={dir === "sell" ? "SELL" : "BUY"} />
         ))}
       </>}
       {tab === "custom" && <CustomScreener market={market} mode={mode} list={list} onOpen={onOpen} onScreenerBuy={onScreenerBuy} liveTick={liveTick} editing={editing} onDoneEditing={() => setEditing(null)} />}

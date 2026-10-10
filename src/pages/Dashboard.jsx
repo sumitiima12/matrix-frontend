@@ -1193,7 +1193,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       // different numbers than the Screener / Automate pages for the same open position.)
       const p = positionPnl(t, cur, marketOf(t.sym) || market);
       pnl += p; invested += Number(t.entry) * Number(t.qty || (market === "Crypto" ? 0 : 1));
-      if (!closed) open++; else { closedN++; if (p > 0) wins++; }
+      // Exit booked AT entry = unreconciled break-even placeholder (broker-side close not yet reconstructed) — its
+      // gross is 0 and fees push it slightly negative, so it was counted as a decided loss and dragged win-rate to
+      // 0%. Treat it as undecided: don't add it to the win/loss denominator.
+      if (!closed) open++; else if (Number(t.exit) === Number(t.entry)) { /* undecided placeholder */ } else { closedN++; if (p > 0) wins++; }
       // Bucket by CANONICAL source (same srcLabel provenance the position chips use), not the raw tradeType — so a
       // trade the screener placed but that carries a screener name with a different/blank tradeType still lands in
       // the Screener box (matching the Screener dashboard's isScreenerTrade filter) instead of leaking into Manual.

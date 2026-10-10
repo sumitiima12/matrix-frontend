@@ -236,6 +236,7 @@ export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, us
       tradeType: opts.tradeType || "Manual",
       strategy: opts.strategy || null,
       strategyId: opts.strategyId || null,
+      ...(opts.ideaId ? { ideaId: opts.ideaId } : {}),   // durable link back to the Idea card this trade came from
       brokerOrderId: res.orderId,
       broker: res.broker,
     });

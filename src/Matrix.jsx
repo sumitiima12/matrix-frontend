@@ -593,6 +593,9 @@ function AppInner() {
         // ("Auto Buy" / "Screener Auto Buy" / "Automate" / "Manual"). Without this the server fell back to
         // "Manual", which hid that Smart Auto-Buy had placed the order.
         tradeType: opts.tradeType || undefined,
+        // Durable link back to the Idea card this real order came from, so the server stamps it on the
+        // authoritative row and the Ideas dashboard can attribute the trade to its specific idea.
+        ideaId: opts.ideaId || undefined,
         strategy: opts.strategy || undefined,
         // R27-P2-02: unambiguous strategy NAME (distinct from the exit-config `strategy` field) so the server
         // can stamp durable attribution on the authoritative fill — the Screener/Automate card matches on it.
@@ -648,6 +651,7 @@ function AppInner() {
             // R27-P2-02: carry the strategy attribution so a real Screener/Automate fill stays tied to its card
             // (card P&L + Live Positions match on t.strategy). strategyId is preferred (immutable) when present.
             ...(opts.strategy ? { strategy: opts.strategy } : {}), ...(opts.strategyId ? { strategyId: opts.strategyId } : {}),
+            ...(opts.ideaId ? { ideaId: opts.ideaId } : {}),
             real: true, status, orderId: r.orderId || null, tp: opts.tp || undefined, sl: opts.sl || undefined,
             // R31-P3-03: mark this as a CLIENT-authored display projection, not authoritative truth. The server
             // writes the authoritative real row (canonicalised by orderId); this local row exists only for instant
