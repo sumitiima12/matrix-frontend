@@ -86,7 +86,6 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
   const actPriceOf = (s) => { const a = ALL.find((x) => x.sym === s); return a && a.price != null ? a.price : null; };
   const actualCats = computeCategories(trades, { mode, market, from: actFrom, to: actTo, priceOf: actPriceOf });
   const actualIdeasPnl = actualCats.categories.Ideas;
-  const ideaStats = actualCats.byIdea || {};   // per-idea real-trade attribution keyed on the idea's id
 
   /* Period label: for an account younger than 3 months we show "Since Jul'26"; once it's
      older, we show the selected range window ("last 3 months", etc.). */
@@ -410,6 +409,9 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
   // Per-symbol lookup so each idea card can show its own confidence score + allocated capital (the split list
   // moved out of the standalone Auto-Buy card and onto the cards themselves).
   const planBySym = useMemo(() => Object.fromEntries(ideaPlan.map((p) => [p.sym, p])), [ideaPlan]);
+  // Per-idea real-trade attribution (keyed on the idea's id) for the "N trades taken" line on each card. Computed
+  // here in the card-rendering component (not in IdeasDashboard) so it's in scope where the cards render.
+  const ideaStats = useMemo(() => computeCategories(trades, { mode, market }).byIdea || {}, [trades, mode, market]);
   const ideaCurSym = (market === "Crypto" || market === "US") ? "$" : "₹";
   const saveIdeaCap = () => { const v = Math.max(1, parseInt(ideaCapDraft) || ideaCapDefault); setIdeaCap(v); setIdeaCapDraft(v); lsSet("mx_ideas_cap_" + market, v); };
   useEffect(() => {

@@ -1126,7 +1126,14 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     // `entryAt >= periodFrom`, which dropped carried-over open auto-buys — so a still-open Smart Auto-Buy
     // position read -9.97 in the Total box but $0 here. Turning auto-buy OFF stops NEW entries; it does not
     // close existing positions, so their live P&L must still show. This makes the two dashboards reconcile.
-    .filter((t) => (t.tradeType === "Auto Buy") && (isReal ? !!t.real : !t.real) && ((t.market || marketOf(t.sym) || "IN")) === market && (t.exitAt == null || ((t.exitAt || t.entryAt || 0) >= periodFrom)))
+    // A REJECTED row has exitAt==null too, so the old `exitAt == null` free-pass counted rejects ALL-TIME while the
+    // Orders list scopes them by the selected window — that's why the card could show "1 order rejected" but Orders
+    // (Today) showed none. Scope rejects by their entry/created stamp so the two views agree; open positions still
+    // always show (live now), closed stay scoped by exit.
+    .filter((t) => (t.tradeType === "Auto Buy") && (isReal ? !!t.real : !t.real) && ((t.market || marketOf(t.sym) || "IN")) === market && (
+      t.status === "rejected"
+        ? ((t.entryAt || t.ts || t.entryTs || 0) >= periodFrom)
+        : (t.exitAt == null || ((t.exitAt || t.entryAt || 0) >= periodFrom))))
     .map((t) => {
       const rejected = t.status === "rejected";
       const last = (ALL.find((a) => a.sym === t.sym) || {}).price;
