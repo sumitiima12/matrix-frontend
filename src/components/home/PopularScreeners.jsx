@@ -481,9 +481,17 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
     if (!marketOpen(market)) return;
     const key = `mx_scrbuy_${screener.key}_${market}_${mode}${short ? "_sell" : ""}_${Math.floor(Date.now() / 864e5)}`;   // fresh day index (module `DAY` never rolls in a long session)
     if (lsGet(key, false)) return;
+    const dayIdx = Math.floor(Date.now() / 864e5);
     matches.forEach((m) => {
       const inst = ALL.find((a) => a.sym === m.sym);
       if (!inst) return;
+      // Per-SYMBOL once-per-day guard SHARED across all screeners (reserve-before-fire). The per-screener `key`
+      // above only dedupes within one screener — when the SAME symbol matches two different active screeners, each
+      // card fired its own buy ~1s apart (the duplicate "H" entries). This stops a symbol being auto-bought twice
+      // the same day regardless of how many screeners flag it.
+      const symKey = `mx_scrbuy_sym_${market}_${mode}${short ? "_sell" : ""}_${String(m.sym).toUpperCase()}_${dayIdx}`;
+      if (lsGet(symKey, false)) return;
+      lsSet(symKey, true);
       const price = priceOf(m.sym) || m.entryPrice;
       // Curated basket → the admin's explicit per-symbol qty (crypto qty is a USD notional → coins).
       // Otherwise fall back to the capital-split behaviour.

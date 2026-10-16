@@ -70,19 +70,33 @@ const MARKET_LABEL = { IN: "Indian", US: "US", Crypto: "Crypto", Commodity: "Com
  * P&L cell is left empty — it is never guessed.
  */
 export function tradeColumns(livePriceOf = () => null) {
-  const isOpen = (t) => t.exitAt == null || t.exit == null || t.exitType === "Open";
+  // Trust the open/closed decision the Orders page already computed (t.open). A "closed on broker" (reconciled)
+  // trade has exitAt/exit == null but is NOT open — the old check inferred open-ness from exitAt/exit alone, so
+  // every reconciled-closed row was exported mislabeled as "Open" with no exit data (they looked missing from the
+  // CSV). Only fall back to field-inference when the page didn't stamp a flag.
+  const isOpen = (t) => (t.open === true) || (t.open == null && (t.exitAt == null || t.exit == null || t.exitType === "Open"));
 
-  const exitPrice = (t) => (isOpen(t) ? livePriceOf(t.sym) : t.exit);
+  // A closed row's realized P&L, as the page computed it (t.pnl is the booked value; t.livePnl is the page's render).
+  const realizedOf = (t) => (t.pnl != null ? Number(t.pnl) : (t.livePnl != null ? Number(t.livePnl) : null));
+
+  const exitPrice = (t) => (isOpen(t) ? livePriceOf(t.sym) : (t.exit != null ? t.exit : null));
 
   const dirOf = (t) => (t.side === "SELL" || t.short) ? -1 : 1;   // short profits when price falls
 
   const pnl = (t) => {
+    // Closed rows (incl. reconciled "closed on broker" with no exit price) export their REALIZED P&L, not a
+    // live-price guess — so the number matches what's shown on screen.
+    if (!isOpen(t)) { const r = realizedOf(t); if (r != null) return r; }
     const px = exitPrice(t);
     if (px == null || t.entry == null) return null;
     return (px - t.entry) * (t.qty || 1) * dirOf(t);
   };
 
   const pnlPct = (t) => {
+    if (!isOpen(t)) {
+      const r = realizedOf(t);
+      if (r != null && t.entry) { const notl = Math.abs(Number(t.entry) * (t.qty || 1)); return notl ? (r / notl) * 100 : null; }
+    }
     const px = exitPrice(t);
     if (px == null || !t.entry) return null;
     return ((px - t.entry) / t.entry) * 100 * dirOf(t);
