@@ -1155,7 +1155,9 @@ function AppInner() {
     const freshSignup = freshSignupRef.current;
     const apply = (s) => {
       setPortfolio((s && s.portfolio) || []);
-      setWalletMap((s && s.walletMap) || { IN: 1000000, US: 1000000, Crypto: 1000000, USStockTokens: 1000000, Commodity: 1000000 });
+      // Merge saved balances OVER the defaults so a newly-added market absent from an older saved map still gets its
+      // 1,000,000 paper wallet (instead of undefined→0, which rejects every buy as "insufficient funds").
+      setWalletMap({ IN: 1000000, US: 1000000, Crypto: 1000000, USStockTokens: 1000000, Commodity: 1000000, ...((s && s.walletMap) || {}) });
       setDeposits((s && s.deposits) || []);
       setStrats(seededStrats(s && s.strats));
       const wl = (s && s.watchlists) || [{ id: "w1", name: "My Watchlist", syms: ["RELIANCE", "TCS"] }];

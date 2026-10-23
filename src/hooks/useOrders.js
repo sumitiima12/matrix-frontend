@@ -113,7 +113,10 @@ export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, us
     const verdict = validateOrder(
       { sym: stock.sym, side, qty, price, market },
       {
-        wallet: walletMap[market] ?? 0,
+        // Paper wallet for this market. Fall back to the standard 1,000,000 paper balance (same as the header) when a
+        // market has no saved entry yet — otherwise a newly-added market (e.g. US Tokens, missing from an older saved
+        // walletMap) reads 0 and EVERY buy is wrongly rejected as "Insufficient funds".
+        wallet: walletMap[market] ?? 1000000,
         portfolio: portfolio.filter((h) => marketOf(h.sym) === market),
         trades,
         limits: riskLimits,

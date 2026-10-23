@@ -1151,6 +1151,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const filledRows = autoRows.filter((t) => !t.rejected);
   const periodStats = { pnl: filledRows.reduce((a, t) => a + t.realPnl, 0), trades: filledRows.length, wins: closedRows.filter((t) => t.realPnl > 0).length };
   const autoPnl = periodStats.pnl;
+  const [showRejects, setShowRejects] = useState(false);   // inline reject-reason disclosure on the Smart Auto-Buy card
   const autoWinRate = closedRows.length ? closedRows.filter((t) => t.realPnl > 0).length / closedRows.length * 100 : 0;
   const periodLabel = plPeriod === "today" ? "today" : plPeriod === "month" ? "this month" : "last 12 months";
 
@@ -1522,9 +1523,27 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   {MKT_LABEL[market]} market is closed now — auto-buy runs at the next open ({marketOpenLabelIST(market)}). Today's plan is below.
                 </div>
               )}
-              {autoRows.some((r) => r.rejected) && (
-                <div style={{ fontSize: 10, color: "var(--down)", fontWeight: 700, marginTop: 3 }}>⚠ {autoRows.filter((r) => r.rejected).length} order(s) rejected — see the reason under Orders</div>
-              )}
+              {autoRows.some((r) => r.rejected) && (() => {
+                const rej = autoRows.filter((r) => r.rejected);
+                const byReason = {};
+                for (const r of rej) { const k = (r.rejectReason && String(r.rejectReason).trim()) || "Rejected (broker/risk gave no reason)"; byReason[k] = (byReason[k] || 0) + 1; }
+                return (
+                  <div style={{ marginTop: 3 }}>
+                    <button onClick={() => setShowRejects((v) => !v)} className="tap disp" style={{ border: "none", background: "transparent", color: "var(--down)", fontWeight: 700, fontSize: 10, cursor: "pointer", padding: 0, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      ⚠ {rej.length} order(s) rejected — tap to {showRejects ? "hide" : "see why"} {showRejects ? "▲" : "▼"}
+                    </button>
+                    {showRejects && (
+                      <div style={{ marginTop: 5, display: "flex", flexDirection: "column", gap: 4 }}>
+                        {Object.entries(byReason).map(([reason, n]) => (
+                          <div key={reason} style={{ fontSize: 10.5, color: "var(--ink-soft)", lineHeight: 1.45, background: "rgba(232,72,85,.08)", border: "1px solid rgba(232,72,85,.25)", borderRadius: 8, padding: "6px 9px" }}>
+                            <b style={{ color: "var(--down)" }}>{n}×</b> {reason}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               {/* RUN NOW — place today's picks on demand instead of waiting for the once-a-day auto-fire. */}
               {autoOn && marketOpen(market) && (
                 <div style={{ marginTop: 8 }}>
