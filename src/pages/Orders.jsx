@@ -53,14 +53,14 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
   const RANGES = [["today", "Today"], ["7", "7d"], ["30", "30d"], ["90", "90d"], ["365", "1y"], ["all", "All"]];
   const MKTS = [["all", "All markets"], ["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["USStockTokens", "📈 US Tokens"], ["Commodity", "🪙 Commodity"]];
   const REALS = [["all", "All"], ["real", "Real"], ["virtual", "Virtual"]];
-  const STATUSES = [["all", "All status"], ["open", "Open"], ["closed", "Closed"], ["rejected", "Rejected"]];
+  const STATUSES = [["confirmed", "Confirmed"], ["all", "All status"], ["open", "Open"], ["closed", "Closed"], ["rejected", "Rejected"]];
   const [range, setRange] = useState("today");   // default to Today
   const [dFrom, setDFrom] = useState("");     // yyyy-mm-dd, custom range
   const [dTo, setDTo] = useState("");
   // Default to Crypto (where most activity is) and the current mode; still switchable via the chips.
   const [mkt, setMkt] = useState("Crypto");
   const [realF, setRealF] = useState(mode === "real" ? "real" : mode === "virtual" ? "virtual" : "all");
-  const [fStatus, setFStatus] = useState("all");   // all | open | closed | rejected
+  const [fStatus, setFStatus] = useState("confirmed");   // confirmed (open+closed, default) | all | open | closed | rejected
   const [remote, setRemote] = useState(null);
   const [fSym, setFSym] = useState([]);
   const [fType, setFType] = useState([]);
@@ -154,7 +154,7 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
   const rows = src
     .filter((t) => (mkt === "all" ? true : (t.market || "IN") === mkt))
     .filter((t) => (realF === "all" ? true : realF === "real" ? !!t.real : !t.real))
-    .filter((t) => (fStatus === "all" ? true : fStatus === "rejected" ? isRejected(t) : fStatus === "open" ? !!t.open : (!t.open && !isRejected(t))))
+    .filter((t) => (fStatus === "all" ? true : fStatus === "confirmed" ? !isRejected(t) : fStatus === "rejected" ? isRejected(t) : fStatus === "open" ? (!!t.open && !isRejected(t)) : (!t.open && !isRejected(t))))
     .filter((t) => (fSym.length ? fSym.includes(t.sym) : true))
     .filter((t) => (fType.length ? fType.includes(t.tradeType || "Manual") : true))
     .filter((t) => (fExit.length ? fExit.includes(exitOf(t)) : true))

@@ -1864,7 +1864,7 @@ function AppInner() {
         <ErrorBoundary name="Order confirmation">
           <ConfirmOrder
             order={confirmOrder}
-            wallet={walletMap[confirmOrder.market] ?? 0}
+            wallet={walletMap[confirmOrder.market] ?? 1000000}
             mode={mode}
             brokerName={(brokerFor(confirmOrder.market) && brokerFor(confirmOrder.market).meta ? brokerFor(confirmOrder.market).meta.name : (liveBroker ? liveBroker.name : null))}
             supportedOrderTypes={mode === "real" ? orderTypesOf(brokerCaps, (brokerFor(confirmOrder.market) && brokerFor(confirmOrder.market).id) || (liveBroker && liveBroker.id)) : null}
