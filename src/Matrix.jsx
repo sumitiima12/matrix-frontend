@@ -1273,7 +1273,9 @@ function AppInner() {
     // market is connected. Order placement still needs a live routed session, so nothing fires without one.
     return Boolean((brokerFor && brokerFor(m)) || (serverBrokerFor && serverBrokerFor(m)));
   }, [market, brokerFor, serverBrokerFor]);
-  const canConnectMarket = useCallback((mkt) => effAdmin || Boolean(appSettings && appSettings.allowBrokerConnect && appSettings.allowBrokerConnect[mkt]), [effAdmin, appSettings]);
+  // US Tokens ride on the Crypto (Delta) connection — they have no separate broker, so their connect permission
+  // inherits Crypto's.
+  const canConnectMarket = useCallback((mkt) => { const m = mkt === "USStockTokens" ? "Crypto" : mkt; return effAdmin || Boolean(appSettings && appSettings.allowBrokerConnect && appSettings.allowBrokerConnect[m]); }, [effAdmin, appSettings]);
   /* The Indian market is shown to a non-admin only if they've connected an Indian broker (their
      own live NSE feed) OR the admin has enabled "show Indian without broker" (delayed BSE feed). */
   const indianVisible = effAdmin || Boolean(brokerFor && brokerFor("IN")) || Boolean(appSettings && appSettings.showIndianWithoutBroker);
