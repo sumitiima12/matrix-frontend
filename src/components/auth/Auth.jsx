@@ -13,7 +13,7 @@ import splashLockup from "../../assets/brand/splash-m.png";
 import Wordmark from "../common/Wordmark";
 import { LegalOverlay } from "../common/LegalPages";
 import { brokerById, BROKERS } from "../../domain/brokers";
-import { resolveUnknownOrders } from "../../services/brokerService";
+import { resolveUnknownOrders, getEntryHaltStatus } from "../../services/brokerService";
 
 /**
  * Auth & profile — login, onboarding and the profile sheet.
@@ -888,6 +888,14 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
      outcome. Surfaced here (above Broker connections) so the user can unblock entries without digging into admin. */
   const [resolveBusy, setResolveBusy] = useState(false);
   const [resolveMsg, setResolveMsg] = useState(null);
+  // Only show the "Resolve stuck orders" card when the account-wide entry lock is ACTUALLY engaged. With the lock
+  // disabled (default) the backend reports safety:false, so the card stays hidden and never implies entries are paused.
+  const [safetyOn, setSafetyOn] = useState(false);
+  useEffect(() => {
+    let stop = false;
+    getEntryHaltStatus().then((s) => { if (!stop) setSafetyOn(!!(s && s.safety)); }).catch(() => {});
+    return () => { stop = true; };
+  }, []);
   const doResolve = async () => {
     setResolveBusy(true); setResolveMsg(null);
     try {
@@ -913,8 +921,9 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
           </div>
         </div>
 
-        {/* RESOLVE — unblock entries when an earlier order outcome is still unknown (account-wide risk lock). Sits
-            directly above Broker connections so it's easy to reach without going into the admin console. */}
+        {/* RESOLVE — shown ONLY when the account-wide entry lock is actually engaged (safetyOn). With the lock
+            disabled (default) this card stays hidden so it never implies entries are paused when they aren't. */}
+        {safetyOn && (
         <div className="card" style={{ marginTop: 14, padding: 14 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
             <div style={{ minWidth: 0 }}>
@@ -925,6 +934,7 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
           </div>
           {resolveMsg && <div style={{ fontSize: 10.5, marginTop: 8, lineHeight: 1.45, color: resolveMsg.e ? "var(--danger)" : "var(--success)" }}>{resolveMsg.t}</div>}
         </div>
+        )}
 
         {/* BROKER — where the prices come from */}
         {onBroker && (

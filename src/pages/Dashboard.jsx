@@ -9,7 +9,6 @@ import { confirmDialog } from "../lib/confirmDialog";   // in-app confirm (relia
 import { ALL, GLOBAL_MKTS, UNIVERSE, marketOf } from "../domain/universe";
 import { derivativePnl } from "../domain/derivativePnl";   // contract-aware P&L (multiplier 1 for spot)
 import InstrumentTypePicker from "../components/common/InstrumentTypePicker";   // Stock/Future/Option choice (gated preview)
-import { stratPerf } from "../domain/strategies";   // same P&L engine the Automate page uses, so the two agree
 import { positionPnl } from "../domain/leverage";   // Delta-parity crypto P&L (margin cap + fees), same for paper & real
 import { computeCategories } from "../domain/portfolioPnl";   // the ONE per-category P&L fn every dashboard shares
 import { askMatrix, fetchNews, fetchNewsFeed, scanIdeas } from "../domain/api";
@@ -1243,22 +1242,13 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     priceOf: _priceOfSym, heldSet: realHeld, normSym: _normSym,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [trades, isReal, market, totFrom, totTo, realHeld]);
-  // Category tile source: shared for every bucket EXCEPT Automate, which keeps the stratPerf engine (automatePnl)
-  // so the Total's Automate box still equals the Automate page's own number. Automation trades live only in the
-  // shared "Automate" bucket (which we don't display), so nothing is double-counted.
-  const catPnl = (canonKey, localVal) => canonKey === "Automate" ? localVal : (shared.categories[canonKey] != null ? shared.categories[canonKey] : localVal);
-  // The headline is exactly the sum of the displayed tiles (so headline === Σ boxes, by construction).
-
-  /* The "Automate" box uses the SAME P&L engine as the Automate page (stratPerf over the deployed strategies)
-     so the two agree instead of diverging in sign. It sums each strategy's realised (closed-in-window) +
-     unrealised (open, priced) P&L over the Total card's window, scoped to this mode + market. */
-  const automatePnl = useMemo(() => {
-    const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a && a.price != null ? a.price : null; };
-    const modeTrades = (trades || []).filter((t) => (isReal ? !!t.real : !t.real));
-    const win = { from: totFrom, to: totTo === Infinity ? undefined : totTo };
-    const inMkt = (s) => !(s.symbols && s.symbols.length) || (s.symbols || []).some((x) => marketOf(x) === market);
-    return (strategies || []).filter(inMkt).reduce((a, s) => a + (stratPerf(s, modeTrades, 365, priceOf, win).pnl || 0), 0);
-  }, [strategies, trades, isReal, market, totFrom, totTo]);
+  // Every category tile — INCLUDING Automate — now comes from the SINGLE `shared` computeCategories engine, so the
+  // Total is a clean one-trade-one-count partition (headline === Σ boxes) that matches the Orders/Trade-history
+  // total. Previously Automate used a separate stratPerf (strategy-ownership) engine that re-counted Screener/Smart
+  // trades it "owned" AND added live unrealised mark-to-market, inflating the Total far above the journal
+  // (e.g. ~$5.6k here vs the journal's ~$1.3k). The Automate PAGE can still use stratPerf; the Home Total must not.
+  const catPnl = (canonKey, localVal) => (shared.categories[canonKey] != null ? shared.categories[canonKey] : localVal);
+  const automatePnl = shared.categories.Automate != null ? shared.categories.Automate : 0;
   /* The value the Total headline shows and the sum the category boxes add up to — identical BY CONSTRUCTION
      (headline === Σ boxes). Automate uses stratPerf (automatePnl); every other bucket comes from the shared
      computeCategories, so each box equals its feature dashboard for the same window. */

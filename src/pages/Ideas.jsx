@@ -322,7 +322,7 @@ function CommunityIdeas({ market, me, isAdmin, adminKey = "", onOpen }) {
   );
 }
 
-export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, isAdmin = false, adminKey = "", signupAt = null, mode = "virtual", trades = [] }) {
+export default function Ideas({ onOpen, onBuy, onAutoBuy = null, market = "IN", onWhy, me = null, isAdmin = false, adminKey = "", signupAt = null, mode = "virtual", trades = [] }) {
   const [dashOpen, setDashOpen] = useState(true);   // expanded by default — full stats like the Automate dashboard
   const [view, setView] = useState("all");   // "all" | "neo" | "community"
   // Recomputed from real data as it arrives, rather than frozen at import time.
@@ -415,11 +415,16 @@ export default function Ideas({ onOpen, onBuy, market = "IN", onWhy, me = null, 
   const ideaCurSym = (market === "Crypto" || market === "US") ? "$" : "₹";
   const saveIdeaCap = () => { const v = Math.max(1, parseInt(ideaCapDraft) || ideaCapDefault); setIdeaCap(v); setIdeaCapDraft(v); lsSet("mx_ideas_cap_" + market, v); };
   useEffect(() => {
-    if (!autoIdeas || !onBuy || !ideaPlan.length || !marketOpen(market)) return;
+    // Use the NON-INTERACTIVE placer (onAutoBuy) so auto-buy actually places orders without the confirm drawer.
+    // (onBuy opens the per-trade confirm sheet — routing auto-buy through it placed nothing, so Ideas read 0 trades.)
+    const place = onAutoBuy || onBuy;
+    if (!autoIdeas || !place || !ideaPlan.length || !marketOpen(market)) return;
     const key = `mx_ideasbuy_${market}_${mode}_${Math.floor(Date.now() / 864e5)}`;   // once per day, per mode
     if (lsGet(key, false)) return;
     // Skip picks below one contract (real crypto) — the broker would reject them as "amount too small".
-    ideaPlan.filter((p) => !p.skipped).forEach((p) => onBuy(p.s, p.qty, { tp: p.gain, sl: p.slPct, tradeType: "Ideas", ideaId: p.idea && p.idea.id, ...(p.short ? { side: "SELL", short: true } : {}) }));
+    const picks = ideaPlan.filter((p) => !p.skipped);
+    if (!picks.length) return;   // nothing to place today → don't burn the once-per-day guard on a no-op
+    picks.forEach((p) => place(p.s, p.qty, { tp: p.gain, sl: p.slPct, tradeType: "Ideas", ideaId: p.idea && p.idea.id, ...(p.short ? { side: "SELL", short: true } : {}) }));
     lsSet(key, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoIdeas, market, mode, ideaPlan.length]);
