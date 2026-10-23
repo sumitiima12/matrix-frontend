@@ -42,6 +42,7 @@ function gateMarketsFor(b) {
     if (m === "IN" || m === "FNO") out.add("IN");
     else if (m === "US") out.add("US");
     else if (m === "Crypto") out.add("Crypto");
+    else if (m === "USStockTokens") out.add("USStockTokens");
     else if (m === "Commodity") out.add("Commodity");
   });
   return [...out];
@@ -243,7 +244,7 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
         {/* WHICH MARKET IS COVERED BY WHAT. This is the whole point of multi-broker: you can
             see at a glance that Indian is live on FYERS while US has nothing connected. */}
         <div style={{ display: "flex", gap: 7, marginTop: 12 }}>
-          {[["IN", "Indian"], ["US", "US"], ["Crypto", "Crypto"]].filter(([m]) => isAdmin || canConnectMarket(m)).map(([m, label]) => {
+          {[["IN", "Indian"], ["US", "US"], ["Crypto", "Crypto"], ["USStockTokens", "US Tokens"]].filter(([m]) => isAdmin || canConnectMarket(m)).map(([m, label]) => {
             const bid = marketMap[m];
             const meta = bid ? BROKERS.find((x) => x.id === bid) : null;
             return (

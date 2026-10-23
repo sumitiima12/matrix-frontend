@@ -112,12 +112,12 @@ function GlobalStrip({ market = "IN" }) {
 function MarketPulseStrip({ market, list, onOpen, liveTick = 0 }) {
   // Crypto has no volatility index, so it leads with ETH. US no longer lists VIX, so it leads with
   // NASDAQ (a normal asset). Indian/Commodity lead with India VIX.
-  const vixSym = market === "Crypto" ? "ETH" : market === "US" ? "NDX" : "INDIAVIX";
-  const idxSym = market === "US" ? "SPX" : market === "Crypto" ? "BTC" : market === "Commodity" ? "GOLD" : "NIFTY50";
+  const vixSym = market === "Crypto" ? "ETH" : (market === "US" || market === "USStockTokens") ? "NDX" : "INDIAVIX";
+  const idxSym = (market === "US" || market === "USStockTokens") ? "SPX" : market === "Crypto" ? "BTC" : market === "Commodity" ? "GOLD" : "NIFTY50";
   const vix = ALL.find((a) => a.sym === vixSym) || ALL.find((a) => a.sym === "INDIAVIX");
   const idx = ALL.find((a) => a.sym === idxSym) || ALL[0];
-  const idxLabel = market === "US" ? "S&P 500" : market === "Crypto" ? "BTC" : market === "Commodity" ? "GOLD" : "NIFTY 50";
-  const vixLabel = market === "Crypto" ? "ETH" : market === "US" ? "NASDAQ" : "INDIA VIX";
+  const idxLabel = (market === "US" || market === "USStockTokens") ? "S&P 500" : market === "Crypto" ? "BTC" : market === "Commodity" ? "GOLD" : "NIFTY 50";
+  const vixLabel = market === "Crypto" ? "ETH" : (market === "US" || market === "USStockTokens") ? "NASDAQ" : "INDIA VIX";
   // India VIX is inverted (up = fear = bad); ETH and NASDAQ are normal assets (up = green).
   const vixInverted = market !== "Crypto" && market !== "US";
   /**
@@ -663,7 +663,7 @@ function TrendingRow({ s, market, onOpen, onBuy, onWhy }) {
      IN/FNO 9:15–15:30 Mon–Fri · Commodity 9:00–23:30 Mon–Fri · US 7:00pm–1:30am IST Mon–Fri
      (the after-midnight tail belongs to the previous weekday's session) · Crypto 24/7. */
 export function marketOpen(market) {
-  if (market === "Crypto") return true;
+  if (market === "Crypto" || market === "USStockTokens") return true;   // Delta USD perps trade 24×7
   const ist = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
   const day = ist.getDay();                       // 0 Sun … 6 Sat
   const mins = ist.getHours() * 60 + ist.getMinutes();
@@ -740,7 +740,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
        a pick that has already run to its target is the least useful one to show first. */
     // Crypto also gets SHORT picks; every other market stays long-only.
     // Scan the WHOLE market universe (not the profile-sorted `list`) so no symbol is ever excluded.
-    const base = dailyPicks(UNIVERSE[market], { allowShorts: market === "Crypto" })
+    const base = dailyPicks(UNIVERSE[market], { allowShorts: market === "Crypto" || market === "USStockTokens" })
       .map((s) => ({
         s,
         // Rank by the favourable move LEFT to target: upside for longs, downside for shorts.
@@ -805,7 +805,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   // Real-mode money: 1 decimal for values ≥ $1 (a Delta balance like $162.20473968 is noise),
   // but ADAPTIVE precision under $1 so tiny crypto P&L like $0.0062 stays legible instead of $0.0.
   const money1 = (v) => {
-    const n = Number(v || 0), a = Math.abs(n), sym = (market === "Crypto" || market === "US") ? "$" : "₹";
+    const n = Number(v || 0), a = Math.abs(n), sym = (market === "Crypto" || market === "US" || market === "USStockTokens") ? "$" : "₹";
     // MAX 2 decimals everywhere. A genuinely non-zero amount smaller than a cent shows a bounded value instead of a
     // misleading rounded "0.00", so we never overstate precision nor hide a tiny real P&L. R34-P4-02: a tiny LOSS reads
     // "> -$0.01" (mathematically unambiguous: the value is between −$0.01 and 0), a tiny gain reads "<$0.01".
@@ -877,7 +877,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const [deployCapMapLocal, setDeployCapMapLocal] = useState(() => { const v = lsGet("mx_deploy_capital", {}); return (v && typeof v === "object") ? v : {}; });
   const deployCapMap = deployCapMapProp || deployCapMapLocal;
   const setDeployCapRaw = setDeployCapMapProp || setDeployCapMapLocal;
-  const capDefault = (m) => (m === "US" || m === "Crypto") ? "1000" : "100000";
+  const capDefault = (m) => (m === "US" || m === "Crypto" || m === "USStockTokens") ? "1000" : "100000";
   const deployCapital = deployCapMap[market] != null ? deployCapMap[market] : capDefault(market);
   const setDeployCapital = (v) => setDeployCapRaw((prev) => { const next = { ...(prev || {}), [market]: v }; lsSet("mx_deploy_capital", next); return next; });
   /* An explicit Save: you type into a draft, then tap Save to commit (and persist) it. The
@@ -923,7 +923,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const autoKey = mode === "real" ? `${market}:real` : `${market}:virtual`;
   const autoOn = !!autoOnMap[autoKey];                      // on/off for this market AND this mode
   // Minimum is small for $-markets (US/Crypto) so you can deploy e.g. $100; ₹ markets keep a higher floor.
-  const capMin = (market === "US" || market === "Crypto") ? 10 : 1000;
+  const capMin = (market === "US" || market === "Crypto" || market === "USStockTokens") ? 10 : 1000;
   const capNum = Math.max(capMin, parseInt(deployCapital) || Number(capDefault(market)));
   const aggCur = market;          // currency of the selected market
   const dayStr = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
@@ -935,7 +935,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     if (t.pattern === "breakout") tp = clamp(tp * 1.3 + 1, 1.5, 8);
     else if (t.pattern === "flag") tp = clamp(tp + 0.6, 1.2, 6.5);
     else if (t.pattern === "doubleBottom" || t.pattern === "cup") tp = clamp(tp + 0.4, 1.5, 7);
-    if (marketOf(s.sym) === "Crypto") { tp = clamp(tp * 2, 2, 16); sl = clamp(sl * 1.6, 1, 9); }
+    if (marketOf(s.sym) === "Crypto" || marketOf(s.sym) === "USStockTokens") { tp = clamp(tp * 2, 2, 16); sl = clamp(sl * 1.6, 1, 9); }
     return { tp: +tp.toFixed(1), sl: +sl.toFixed(1) };
   };
   // Deps MUST include the live-data signals (list / liveTick / pickHour), exactly like the Smart Picks carousel —
@@ -985,12 +985,12 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const autoTrades = _scored.map((p, i) => {
     const s = p.s, m = marketOf(s.sym), entry = s.price, cap = _caps[i] || 0;
     // Crypto sizes by AMOUNT (fractional units); stocks by whole shares.
-    const qty = m === "Crypto" ? +(cap / entry).toFixed(6) : Math.max(1, Math.floor(cap / entry));
+    const qty = (m === "Crypto" || m === "USStockTokens") ? +(cap / entry).toFixed(6) : Math.max(1, Math.floor(cap / entry));
     const confPct = Math.round(100 * p.conf / (_maxConf || 1));   // 0-100 relative to the strongest pick, for display
     // REAL-crypto only: mirror the broker's whole-contract ROUNDING so the preview shows the true $ deployed
     // (contracts × contract_value × price). A slice below half a contract rounds to 0 → shown as SKIPPED
     // (the server would reject it as "amount too small"). cv unknown (fetch not ready) ⇒ fall back to `cap`.
-    const cv = (m === "Crypto" && isReal) ? cvFor(s.sym) : 0;
+    const cv = ((m === "Crypto" || m === "USStockTokens") && isReal) ? cvFor(s.sym) : 0;
     const contracts = cv > 0 ? Math.max(0, Math.round((cap / entry) / cv)) : null;
     const actualUsd = contracts != null ? +(contracts * cv * entry).toFixed(2) : +cap.toFixed(2);
     const skipped = contracts != null && contracts < 1;
@@ -1198,7 +1198,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       // carried-over open positions and the crypto-qty→0 fallback, both of which made the Home boxes read
       // different numbers than the Screener / Automate pages for the same open position.)
       const p = positionPnl(t, cur, marketOf(t.sym) || market);
-      pnl += p; invested += Number(t.entry) * Number(t.qty || (market === "Crypto" ? 0 : 1));
+      pnl += p; invested += Number(t.entry) * Number(t.qty || ((market === "Crypto" || market === "USStockTokens") ? 0 : 1));
       // Exit booked AT entry = unreconciled break-even placeholder (broker-side close not yet reconstructed) — its
       // gross is 0 and fees push it slightly negative, so it was counted as a decided loss and dragged win-rate to
       // 0%. Treat it as undecided: don't add it to the win/loss denominator.
@@ -1371,7 +1371,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   // on a tiny deployed base produces absurd triple-digit percentages (e.g. "+214%") that overstate
                   // performance — misleading on a real-money app. Below the floor we show just the absolute P&L.
                   const pctBase = (isReal && isLeveraged) ? dashInv : totalStats.invested;
-                  const pctFloor = (market === "Crypto" || market === "US") ? 25 : 2000;
+                  const pctFloor = (market === "Crypto" || market === "US" || market === "USStockTokens") ? 25 : 2000;
                   const showPct = pctBase >= pctFloor && isFinite(hr);
                   return (
                     <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
@@ -1604,13 +1604,13 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                         <span className="disp" style={{ fontWeight: 800, minWidth: 52, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.sym}</span>
                         <div style={{ flex: 1, height: 5, background: "var(--surface)", borderRadius: 3, overflow: "hidden" }}><div style={{ width: `${t.confPct}%`, height: "100%", background: "var(--primary)" }} /></div>
                         <span className="mono" style={{ opacity: .8, fontWeight: 700, minWidth: 30, textAlign: "right" }}>{t.confPct}%</span>
-                        <span className="mono" style={{ fontWeight: 800, minWidth: 58, textAlign: "right", color: t.skipped ? "var(--muted)" : undefined }}>{t.skipped ? "skip" : `${(market === "Crypto" || market === "US") ? "$" : "₹"}${amt >= 1000 ? (amt / 1000).toFixed(1) + "k" : amt.toFixed(0)}`}</span>
+                        <span className="mono" style={{ fontWeight: 800, minWidth: 58, textAlign: "right", color: t.skipped ? "var(--muted)" : undefined }}>{t.skipped ? "skip" : `${(market === "Crypto" || market === "US" || market === "USStockTokens") ? "$" : "₹"}${amt >= 1000 ? (amt / 1000).toFixed(1) + "k" : amt.toFixed(0)}`}</span>
                       </div>
                       );
                     })}
                   </div>
                 )}
-                {isReal && market === "Crypto" && autoTrades.some((t) => t.contracts != null) && (
+                {isReal && (market === "Crypto" || market === "USStockTokens") && autoTrades.some((t) => t.contracts != null) && (
                   <div style={{ fontSize: 9.5, opacity: .6, marginTop: 6, lineHeight: 1.4 }}>Amounts are the real deploy size after Delta rounds to whole contracts.</div>
                 )}
               </div>

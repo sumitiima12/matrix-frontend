@@ -20,6 +20,7 @@ const PRESETS = {
   IN:        [50000, 100000, 500000, 1000000],
   US:        [1000, 5000, 10000, 50000],
   Crypto:    [1000, 5000, 10000, 50000],
+  USStockTokens: [1000, 5000, 10000, 50000],
   Commodity: [1000, 5000, 10000, 50000],
 };
 
@@ -27,11 +28,12 @@ const LABEL = {
   IN: "🇮🇳 Indian equity",
   US: "🇺🇸 US equity",
   Crypto: "₿ Crypto",
+  USStockTokens: "📈 US Tokens",
   Commodity: "🪙 Commodity",
 };
 
 /** F&O and Indian equity settle in rupees; the rest in dollars. */
-const CCY = { IN: "IN", US: "US", Crypto: "Crypto", Commodity: "Commodity" };
+const CCY = { IN: "IN", US: "US", Crypto: "Crypto", Commodity: "Commodity", USStockTokens: "US" };
 
 export default function WalletSheet({ walletMap = {}, onAdd, onReset, onClose }) {
   const [custom, setCustom] = useState({});

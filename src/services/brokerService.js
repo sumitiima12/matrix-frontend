@@ -142,7 +142,7 @@ export function brokersNeedingReconnect(activeIds = []) {
 export const BROKER_MARKETS = {
   fyers: ["IN", "Commodity"], zerodha: ["IN", "Commodity"], dhan: ["IN", "Commodity"], angelone: ["IN", "Commodity"], groww: ["IN", "Commodity"],
   indmoney: ["IN", "FNO"],   // IND Money (INDstocks API) trades Indian NSE stocks; US is prices-only
-  delta: ["Crypto"], coindcx: ["Crypto"], coinswitch: ["Crypto"], binance: ["Crypto"],
+  delta: ["Crypto", "USStockTokens"], coindcx: ["Crypto"], coinswitch: ["Crypto"], binance: ["Crypto"],
   schwab: ["US"],
 };
 
@@ -544,6 +544,15 @@ export async function reconcileRealTrades(userId, { apply = false, confirmIds = 
   const r = await fetch(`${BACKEND_URL}/api/trades/reconcile-real`, { method: "POST", headers: { "Content-Type": "application/json", ...tokenHdr(), "X-User-Id": String(userId || "") }, body: JSON.stringify({ apply: apply === true, confirmIds: Array.isArray(confirmIds) ? confirmIds : [] }) });
   const d = await r.json().catch(() => ({}));
   if (!r.ok || d.error) throw new Error(d.error || "Couldn't reconcile with Delta");
+  return d;
+}
+/** Reconstruct real exit price/P&L for CLOSED real crypto rows booked at break-even ($0) from Delta's own fills.
+    apply:false previews the count; apply:true writes the reconstructed exits. Returns the server's summary. */
+export async function backfillExits({ apply = false } = {}) {
+  if (!BACKEND_URL) throw new Error("no-backend");
+  const r = await fetch(`${BACKEND_URL}/api/trades/backfill-exits`, { method: "POST", headers: { "Content-Type": "application/json", ...tokenHdr() }, body: JSON.stringify({ apply: apply === true }) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || d.error) throw new Error(d.error || "Couldn't rebuild exits from Delta");
   return d;
 }
 /** Update a live strategy's SL/TP — persisted to the strategy and its open managed position. */

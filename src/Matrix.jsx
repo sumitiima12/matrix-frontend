@@ -62,7 +62,7 @@ import WalletSheet from "./components/common/WalletSheet";
 import ConfirmOrder from "./components/common/ConfirmOrder";
 import BrokerSheet from "./components/common/BrokerSheet";
 import { brokerSymbol } from "./domain/brokerSymbols";
-import { brokerPlaceOrder, brokerIntentStatus, registerAutoExit, reconcileRealTrades, updateAutoBuy, BROKER_MARKETS, loadBrokerCapabilities, orderTypesOf, resolveUnknownOrders, getEntryHaltStatus, getOptionPremium } from "./services/brokerService";
+import { brokerPlaceOrder, brokerIntentStatus, registerAutoExit, reconcileRealTrades, backfillExits, updateAutoBuy, BROKER_MARKETS, loadBrokerCapabilities, orderTypesOf, resolveUnknownOrders, getEntryHaltStatus, getOptionPremium } from "./services/brokerService";
 import { OrderLifecycleStore, deriveIntentKey, interpretResult, classifyError, reconcileAction, ORDER_STATES, planClose } from "./services/orderLifecycle";
 import MatrixRain from "./components/common/MatrixRain";
 import MLogo from "./components/common/MLogo";
@@ -321,7 +321,7 @@ function AppInner() {
   /* Auto-Buy on/off PER MARKET. Lifted here (was local to the dashboard, so it reset on
      every reload) and persisted with the rest of the app state — server-side for logged-in
      users, so it survives closing the app. */
-  const [autoOnMap, setAutoOnMap] = useState({ IN: false, US: false, Crypto: false, Commodity: false, FNO: false });
+  const [autoOnMap, setAutoOnMap] = useState({ IN: false, US: false, Crypto: false, USStockTokens: false, Commodity: false, FNO: false });
   /* Per-market Smart Auto-Buy capital — lifted here and persisted with the app state (server-side
      for logged-in users) so it survives reloads and other devices, instead of quietly reverting
      to the default. Seeded from the old localStorage key for a smooth migration. */
@@ -580,6 +580,8 @@ function AppInner() {
       const useEngine = wantExit && (!isDelta || opts.tsl > 0 || !!opts.strategy);
       const r = await brokerPlaceOrder(route.session, userId, {
         symbol: bsym, side, qty: q, orderType: opts.orderType || "MARKET", product: prod || "CNC",
+        market: mkt,   // so the server journals Delta US-stock-token trades under the "US Tokens" tab, not Crypto
+
         entryPrice: s.price ?? undefined,
         // Derivative tags — let the server's fail-closed per-market gate apply. Absent for equities.
         productType: opts.productType || undefined,          // OPTION | FUTURE
@@ -927,6 +929,9 @@ function AppInner() {
         { title: "Unverified records", confirmLabel: "Close them" });
       if (ok) { const a2 = await reconcileRealTrades(userId, { apply: true, confirmIds: unknownBroker.map((t) => t.id) }); unknownClosed = (a2.removed || 0) - (applied.removed || 0); }
     }
+    // Also rebuild REAL exit price/P&L for any closed crypto rows still booked at break-even ($0) from Delta fills,
+    // so "Reconcile with Delta" fixes the $0 placeholders in the same tap (no manual backfill needed).
+    try { await backfillExits({ apply: true }); } catch { /* best-effort — reconcile still succeeds */ }
     if (BACKEND_URL) { try { const t = await fetchTrades(userId, 0, Date.now()); setTrades(t || []); } catch { /* keep current */ } }
     try { refreshPortfolio(market); } catch { /* best-effort */ }
     const total = (applied.removed || 0) + (unknownClosed > 0 ? unknownClosed : 0);
@@ -964,6 +969,24 @@ function AppInner() {
       finally { _autoReconRef.current.running = false; }
     })();
   }, [mode, market, userId, realPortfolio, trades]);
+
+  /* AUTO-BACKFILL $0 EXITS ON LOAD — real crypto rows that were closed broker-side but booked at break-even
+     (exit≈entry, $0) get their true exit price/P&L reconstructed from Delta fills, so the journal/P&L self-heal
+     without the user having to tap Reconcile or run the backfill endpoint. Runs at most ONCE per session when such
+     rows exist (ref-guarded), best-effort, display-only. */
+  const _backfillRef = useRef(false);
+  useEffect(() => {
+    if (mode !== "real" || market !== "Crypto" || !userId || !BACKEND_URL || _backfillRef.current) return;
+    const stale = (trades || []).some((t) => t && t.real === true && (t.market || "") === "Crypto"
+      && t.status !== "rejected" && (t.exitAt != null || t.status === "closed")
+      && Number(t.entry) > 0 && (Number(t.exit) === Number(t.entry) || !(Number(t.pnl) !== 0)));
+    if (!stale) return;
+    _backfillRef.current = true;
+    (async () => {
+      try { const r = await backfillExits({ apply: true }); if (r && r.updated > 0) { const t = await fetchTrades(userId, 0, Date.now()); setTrades(t || []); } }
+      catch { /* best-effort; the manual Reconcile tap still backfills */ }
+    })();
+  }, [mode, market, userId, trades]);
 
   /* Close (sell) every OPEN paper position for ONE strategy at the live price, then deactivate just
      that strategy. Powers the Virtual Live "Stop & sell" button. */
@@ -1132,7 +1155,7 @@ function AppInner() {
     const freshSignup = freshSignupRef.current;
     const apply = (s) => {
       setPortfolio((s && s.portfolio) || []);
-      setWalletMap((s && s.walletMap) || { IN: 1000000, US: 1000000, Crypto: 1000000, Commodity: 1000000 });
+      setWalletMap((s && s.walletMap) || { IN: 1000000, US: 1000000, Crypto: 1000000, USStockTokens: 1000000, Commodity: 1000000 });
       setDeposits((s && s.deposits) || []);
       setStrats(seededStrats(s && s.strats));
       const wl = (s && s.watchlists) || [{ id: "w1", name: "My Watchlist", syms: ["RELIANCE", "TCS"] }];
@@ -1145,7 +1168,7 @@ function AppInner() {
       // force-off). Every REAL fire is still individually gated by the risk engine + the one-time acknowledgement,
       // and the per-user kill switch / "Stop New Entries" halts it immediately.
       {
-        const restored = (s && s.autoOnMap) || { IN: false, US: false, Crypto: false, Commodity: false, FNO: false };
+        const restored = (s && s.autoOnMap) || { IN: false, US: false, Crypto: false, USStockTokens: false, Commodity: false, FNO: false };
         setAutoOnMap(restored && typeof restored === "object" ? restored : {});
       }
       if (s && s.deployCapMap && typeof s.deployCapMap === "object") setDeployCapMap(s.deployCapMap);
@@ -1258,7 +1281,7 @@ function AppInner() {
      with Indian visibility — when Indian is hidden, Commodity hides too. Crypto is always visible. */
   const usVisible = effAdmin || Boolean(appSettings && appSettings.showUSMarket);
   const commodityVisible = indianVisible;
-  const marketVisible = useCallback((m) => ({ IN: indianVisible, US: usVisible, Crypto: true, Commodity: commodityVisible }[m] ?? true), [indianVisible, usVisible, commodityVisible]);
+  const marketVisible = useCallback((m) => ({ IN: indianVisible, US: usVisible, Crypto: true, USStockTokens: true, Commodity: commodityVisible }[m] ?? true), [indianVisible, usVisible, commodityVisible]);
   // If the user is sitting on a market they can no longer see, snap them to a visible one.
   // Wait for app-settings before bouncing off a market: on first paint appSettings is null, so indianVisible is
   // briefly false and a returning Indian user would be flipped to Crypto (which is always visible, so it never
@@ -1460,7 +1483,7 @@ function AppInner() {
                 <span className="mono" style={{ fontSize: 11.5, fontWeight: 800, color: mode === "real" ? "var(--down)" : "var(--ink)" }}>
                   {mode === "real"
                     ? ((brokerFor(market) && realPortfolio && realPortfolio.cash != null)
-                        ? ((market === "Crypto" || market === "US") ? "$" : "₹") + Number(realPortfolio.cash).toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: Math.abs(Number(realPortfolio.cash)) < 1 ? 4 : 1 })
+                        ? ((market === "Crypto" || market === "US" || market === "USStockTokens") ? "$" : "₹") + Number(realPortfolio.cash).toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: Math.abs(Number(realPortfolio.cash)) < 1 ? 4 : 1 })
                         : "—")   /* no broker for THIS market -> no real cash; never fall back to the paper/other-market balance */
                     : compact(wallet, market)}
                 </span>
@@ -1551,7 +1574,7 @@ function AppInner() {
                   // across devices a moment after login). Order placement still requires a live routed session.
                   const hasHere = (m) => brokerFor(m) || (serverBrokerFor && serverBrokerFor(m));
                   if (hasHere(market)) { setConfirmReal(true); return; }
-                  const covered = ["IN", "US", "Crypto", "Commodity"].find((m) => hasHere(m));
+                  const covered = ["IN", "US", "Crypto", "USStockTokens", "Commodity"].find((m) => hasHere(m));
                   if (covered) {
                     setMarket(covered);
                     setBuyToast({ t: `Switched to ${MKT_LABEL[covered] || covered} — the market your connected broker covers.` });
@@ -1610,7 +1633,7 @@ function AppInner() {
           </div>
           {!detail && ["home", "ideas", "automation", "portfolio", "screener", "watchlist"].includes(tab) && (
             <div className="hide-scroll" style={{ display: "flex", gap: 8, overflowX: "auto", padding: "0 18px 12px" }}>
-              {[["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["Commodity", "🪙 Commodity"]].filter(([k]) => marketVisible(k)).map(([k, l]) => (
+              {[["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["USStockTokens", "📈 US Tokens"], ["Commodity", "🪙 Commodity"]].filter(([k]) => marketVisible(k)).map(([k, l]) => (
                 <button key={k} onClick={() => { setMarket(k); if (tab === "watchlist") { setHistOpen(false); setTab("home"); } }} className="pill tap disp" style={{ flex: "0 0 auto", padding: "8px 14px", fontWeight: 700, fontSize: 12.5, border: "1px solid " + (market === k ? "var(--primary)" : "var(--line)"), background: market === k ? "var(--primary)" : "var(--surface)", color: market === k ? "var(--on-primary)" : "var(--ink)" }}>{l}</button>
               ))}
             </div>
@@ -1857,7 +1880,7 @@ function AppInner() {
             setBuyToast({ t: `Added ${fmt(amt, mkt)} to your ${MKT_LABEL[mkt] || mkt} wallet` });
           }}
           onReset={() => {
-            setWalletMap({ IN: 1000000, US: 1000000, Crypto: 1000000, Commodity: 1000000 });
+            setWalletMap({ IN: 1000000, US: 1000000, Crypto: 1000000, USStockTokens: 1000000, Commodity: 1000000 });
             setDeposits([]);   // the ledger describes the wallets; reset both or neither
             setBuyToast({ t: "All wallets reset to their starting balance" });
           }}

@@ -20,7 +20,7 @@ import MultiSelect from "../components/common/MultiSelect";
  */
 
 function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, market = "IN", auto = null, trades = [], mode = "virtual" }) {
-  const capDefault = (m) => (m === "Crypto" || m === "US" ? 1000 : 100000);   // crypto/US in USD
+  const capDefault = (m) => (m === "Crypto" || m === "US" || m === "USStockTokens" ? 1000 : 100000);   // crypto/US in USD
   const [postedBy, setPostedBy] = useState("All");
   const [preset, setPreset] = useState("30");   // "1"|"7"|"30"|"182"|"365"|"custom" — Automate-style date range. Default: last 30 days (a "Today" default showed 0 trades for anyone who traded ideas on a prior day).
   const [cFrom, setCFrom] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; });   // default: 1st of current month
@@ -357,7 +357,7 @@ export default function Ideas({ onOpen, onBuy, onAutoBuy = null, market = "IN", 
      idea shown for this market. Capital is user-editable and distributed by CONFIDENCE (each idea's signal-
      quality score), bounded [0.4×,2×] the equal slice — same engine as Smart Auto-Buy. Each trade is tagged
      "Ideas" so its P&L tracks separately on the homepage. Per-market toggle; ON in Real mode confirms first. */
-  const ideaCapDefault = (market === "Crypto" || market === "US") ? 1000 : 100000;
+  const ideaCapDefault = (market === "Crypto" || market === "US" || market === "USStockTokens") ? 1000 : 100000;
   const [autoIdeas, setAutoIdeas] = useState(() => lsGet("mx_ideas_autobuy_" + market, false));
   const [ideaCap, setIdeaCap] = useState(() => lsGet("mx_ideas_cap_" + market, ideaCapDefault));
   const [ideaCapDraft, setIdeaCapDraft] = useState(ideaCap);
@@ -394,11 +394,11 @@ export default function Ideas({ onOpen, onBuy, onAutoBuy = null, market = "IN", 
     const cvFor = (sym) => { const k = String(sym || "").replace(/(USDT|USD|INR|PERP)$/i, "").toUpperCase(); return Number(ideaCvMap[k] ?? ideaCvMap[String(sym).toUpperCase()]) || 0; };
     return scored.map((p, i) => {
       const price = p.s.price, short = p.idea.direction === "Short" || p.idea.side === "SELL" || p.idea.short;
-      const qty = market === "Crypto" ? +(caps[i] / price).toFixed(6) : Math.max(1, Math.floor(caps[i] / price));
+      const qty = (market === "Crypto" || market === "USStockTokens") ? +(caps[i] / price).toFixed(6) : Math.max(1, Math.floor(caps[i] / price));
       const slPct = (p.idea.entry && p.idea.stop) ? +((Math.abs(p.idea.stop - p.idea.entry) / p.idea.entry) * 100).toFixed(2) : undefined;
       // REAL-crypto: mirror the broker's whole-contract ROUNDING for the displayed amount, and flag sub-contract
       // picks as skipped (the server would reject them). cv unknown ⇒ fall back to the raw slice.
-      const cv = (market === "Crypto" && isRealIdeas) ? cvFor(p.idea.sym) : 0;
+      const cv = ((market === "Crypto" || market === "USStockTokens") && isRealIdeas) ? cvFor(p.idea.sym) : 0;
       const contracts = cv > 0 ? Math.max(0, Math.round((caps[i] / price) / cv)) : null;
       const actualUsd = contracts != null ? +(contracts * cv * price).toFixed(2) : +caps[i].toFixed(2);
       const skipped = contracts != null && contracts < 1;
@@ -412,7 +412,7 @@ export default function Ideas({ onOpen, onBuy, onAutoBuy = null, market = "IN", 
   // Per-idea real-trade attribution (keyed on the idea's id) for the "N trades taken" line on each card. Computed
   // here in the card-rendering component (not in IdeasDashboard) so it's in scope where the cards render.
   const ideaStats = useMemo(() => computeCategories(trades, { mode, market }).byIdea || {}, [trades, mode, market]);
-  const ideaCurSym = (market === "Crypto" || market === "US") ? "$" : "₹";
+  const ideaCurSym = (market === "Crypto" || market === "US" || market === "USStockTokens") ? "$" : "₹";
   const saveIdeaCap = () => { const v = Math.max(1, parseInt(ideaCapDraft) || ideaCapDefault); setIdeaCap(v); setIdeaCapDraft(v); lsSet("mx_ideas_cap_" + market, v); };
   useEffect(() => {
     // Use the NON-INTERACTIVE placer (onAutoBuy) so auto-buy actually places orders without the confirm drawer.
@@ -491,7 +491,7 @@ export default function Ideas({ onOpen, onBuy, onAutoBuy = null, market = "IN", 
                 <TagRow s={s} max={3} onWhy={null} />
               </div>
             )}
-            <div style={{ marginTop: 10 }}><MiniCandles sym={idea.sym} price={s ? s.price : idea.entry} chg={s ? s.chg : 0} height={120} staticChart defaultTf={m === "Crypto" ? "1h" : "1d"} pattern={idea.pattern} /></div>
+            <div style={{ marginTop: 10 }}><MiniCandles sym={idea.sym} price={s ? s.price : idea.entry} chg={s ? s.chg : 0} height={120} staticChart defaultTf={(m === "Crypto" || m === "USStockTokens") ? "1h" : "1d"} pattern={idea.pattern} /></div>
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, gap: 8 }}>
               <div><div style={{ fontSize: 10, color: "var(--muted)" }}>Entry</div><div className="mono" style={{ fontWeight: 700, fontSize: 13 }}>{fmt(idea.entry, m)}</div></div>
               <div><div style={{ fontSize: 10, color: "var(--muted)" }}>Current</div><div className="mono" style={{ fontWeight: 800, fontSize: 13 }}>{fmt(s ? s.price : idea.entry, m)}</div></div>

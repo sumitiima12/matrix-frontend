@@ -601,7 +601,7 @@ function TradesSection({ trades = [], cardStyle }) {
 
   const stamp = (t) => t.exitAt || t.entryAt || t.at || t.ts || 0;
   const TYPES = ["All", "Manual", "Automate", "Auto Buy"];
-  const MKTS = ["All", "IN", "US", "Crypto", "Commodity"];
+  const MKTS = ["All", "IN", "US", "Crypto", "USStockTokens", "Commodity"];
   // Real orders are journalled with real:true; paper ones aren't — that's the real/virtual split.
   const REALS = ["All", "Real", "Virtual"];
 

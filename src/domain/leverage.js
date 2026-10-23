@@ -11,8 +11,11 @@
  * falls back to plain (exit − entry) × qty.
  */
 
+import { isDeltaUsd, marketOf } from "./universe";
+
 export const CRYPTO_LEV_DEFAULT = 20;                 // Delta default for non-major crypto
 export const CRYPTO_LEV_MAJORS = 25;                  // BTC / ETH / SOL
+export const US_TOKEN_LEV = 25;                       // US Stock Tokens — 25x across the board
 export const DELTA_TAKER_FEE = 0.0005;                // 0.05% per side (taker)
 
 const MAJORS = new Set(["BTC", "ETH", "SOL"]);
@@ -28,7 +31,9 @@ function coinOf(sym) {
 
 /* Per-symbol leverage. `market` (optional) short-circuits to 1 for non-crypto. */
 export function leverageFor(sym, market) {
-  if (market && market !== "Crypto") return 1;
+  const m = market || marketOf(sym);               // fall back to the symbol's market when caller omits it
+  if (m && !isDeltaUsd(m)) return 1;               // non-Delta markets are spot (1x)
+  if (m === "USStockTokens") return US_TOKEN_LEV;  // US stock tokens: 25x across the board
   return MAJORS.has(coinOf(sym)) ? CRYPTO_LEV_MAJORS : CRYPTO_LEV_DEFAULT;
 }
 
@@ -47,12 +52,12 @@ export function marginFor(t, market) {
 export function positionPnl(t, exitPx, market) {
   if (t == null || t.entry == null || exitPx == null) return 0;
   const dir = (t.side === "SELL" || t.short) ? -1 : 1;
-  const isCrypto = market === "Crypto";
+  const isCrypto = isDeltaUsd(market);              // Crypto AND US Stock Tokens use the leveraged Delta-perp path
   const qty = Number(t.qty) || (isCrypto ? 0 : 1);
   const gross = (Number(exitPx) - Number(t.entry)) * qty * dir;
   if (!isCrypto || !qty) return gross;              // unleveraged spot markets keep the plain formula
   const notional = Math.abs(Number(t.entry) * qty);
-  const margin = notional / leverageFor(t.sym);
+  const margin = notional / leverageFor(t.sym, market);
   const fees = notional * DELTA_TAKER_FEE * 2;       // entry + exit legs
   const net = gross - fees;
   return Math.max(net, -margin);                     // isolated margin: loss can't exceed the margin

@@ -72,7 +72,7 @@ export function brokerSymbol(sym, broker) {
          hand-list — and the server double-checks the product exists before placing an order,
          so an unlisted coin fails honestly ("Delta does not list …") instead of silently
          hitting the wrong instrument. INDEX_MAP-style exceptions can be added if any surface. */
-      return mkt === "Crypto" ? (DELTA_MAP[sym] || `${sym}USD`) : null;
+      return (mkt === "Crypto" || mkt === "USStockTokens") ? (DELTA_MAP[sym] || `${sym}USD`) : null;
 
     /* Per-user crypto exchanges. We pass the bare coin (e.g. "BTC"); the server formats the
        trading pair per exchange (CoinDCX -> BTCINR, Binance -> BTCUSDT). */
@@ -122,7 +122,7 @@ export const BROKER_COVERAGE = {
   angelone:  { markets: ["IN", "FNO"], name: "Angel One",      realtime: false, orders: true },
   groww:     { markets: ["IN"],        name: "Groww",          realtime: false, orders: true },
   indmoney:  { markets: ["IN", "US"],  name: "IND Money",      realtime: false, orders: true },
-  delta:     { markets: ["Crypto"],    name: "Delta Exchange", realtime: true,  orders: true },
+  delta:     { markets: ["Crypto", "USStockTokens"], name: "Delta Exchange", realtime: true,  orders: true },
   coindcx:   { markets: ["Crypto"],    name: "CoinDCX",        realtime: false, orders: true },
   binance:   { markets: ["Crypto"],    name: "Binance",        realtime: false, orders: true },
   coinswitch:{ markets: ["Crypto"],    name: "CoinSwitch",     realtime: false, orders: true },

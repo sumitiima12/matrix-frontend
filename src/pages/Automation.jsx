@@ -498,7 +498,7 @@ const CRYPTO_LEV = 25;
 /* Deploy-size control shown on every strategy card — "Amount per trade ($)" for crypto
    (default 10, ±10), "Quantity per trade" for other markets (default 1, ±1). */
 function DeploySizeField({ market, value, onChange }) {
-  const isC = market === "Crypto";
+  const isC = market === "Crypto" || market === "USStockTokens";
   const step = isC ? 10 : 1;
   const val = value != null ? value : (isC ? 10 : 1);   // crypto default: $10 NOTIONAL/trade (~$0.40 margin at 25×)
   const set = (n) => onChange(Math.max(1, n));
@@ -639,7 +639,7 @@ function StratSLTP({ sl, tp, setSl, setTp, market = "IN" }) {
   const box = { width: 54, textAlign: "center", border: "1px solid var(--line)", borderRadius: 8, padding: "5px 4px", fontWeight: 800, fontSize: 12.5, background: "var(--elev)", color: "var(--ink)" };
   // SL/TP are PRICE moves. On leveraged crypto (Delta ~25×) a 1% price move is ~25% of the margin, so
   // we show the margin-equivalent as a hint — the value sent to the broker stays the price %.
-  const marginHint = market === "Crypto" ? (() => {
+  const marginHint = (market === "Crypto" || market === "USStockTokens") ? (() => {
     const s = parseFloat(sl), t = parseFloat(tp);
     const parts = [];
     if (Number.isFinite(s) && s > 0) parts.push(`SL ${s}% ≈ ${(s * CRYPTO_LEV).toFixed(0)}% of margin`);
@@ -812,7 +812,7 @@ function CardTradeLog({ tradeList, market = "IN", open = false }) {
 function SampleStrategyCard({ s, onActivate, onClone, onEdit, onPersist, market = "IN", canBacktest = true, onConnect }) {
   const { loading, stats } = useBacktestStats(s);
   const [bt, setBt] = useState(false);
-  const [size, setSize] = useState(((s.symbols && marketOf(s.symbols[0])) === "Crypto" || market === "Crypto") ? 200 : 1);
+  const [size, setSize] = useState(((s.symbols && (marketOf(s.symbols[0]) === "Crypto" || marketOf(s.symbols[0]) === "USStockTokens")) || market === "Crypto" || market === "USStockTokens") ? 200 : 1);
   const [sl, setSl] = useState(String((s.cfg && s.cfg.sl) || "0.5"));
   const [tp, setTp] = useState(String((s.cfg && s.cfg.tp) || "1.5"));
   const relSym0 = (s.symbols || []).find((x) => marketOf(x) === market) || ((UNIVERSE[market] || [])[0] || {}).sym || (s.symbols && s.symbols[0]) || null;
@@ -931,7 +931,7 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, onPersist, market 
 function PremiumStrategyCard({ s, active, onToggle, onEdit, onPersist, onClone, market = "IN", canBacktest = true, onConnect }) {
   const { loading, stats } = useBacktestStats(s);
   const [bt, setBt] = useState(false);
-  const [size, setSize] = useState(((s.symbols && marketOf(s.symbols[0])) === "Crypto" || market === "Crypto") ? 200 : 1);
+  const [size, setSize] = useState(((s.symbols && (marketOf(s.symbols[0]) === "Crypto" || marketOf(s.symbols[0]) === "USStockTokens")) || market === "Crypto" || market === "USStockTokens") ? 200 : 1);
   const [sl, setSl] = useState(String((s.cfg && s.cfg.sl) || "0.5"));
   const [tp, setTp] = useState(String((s.cfg && s.cfg.tp) || "1.5"));
   /* Show a symbol relevant to the CURRENT market. Premium strategies are shared across
@@ -1143,7 +1143,7 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
     await setAutoBuyLive(adminKey, !data.engineLive);
     setBusy(false); refresh();
   };
-  const ccy = market === "Crypto" || market === "US" ? "$" : "₹";
+  const ccy = market === "Crypto" || market === "US" || market === "USStockTokens" ? "$" : "₹";
   /* Newest ENTRY SIGNAL first — a strategy that just filled/fired sits at the top. Fall back
      through the timestamps the server may carry so ordering is stable even for older rows. */
   const sigAt = (s) => s.filledAt || s.lastFillAt || s.lastEntryAt || s.lastSignalAt || s.entryAt || s.updatedAt || s.createdAt || 0;
@@ -1164,7 +1164,7 @@ function LiveAutoBuys({ userId, market = "IN", isAdmin = false, adminKey = "" })
       </div>
       {!data.engineLive && <div style={{ fontSize: 10.5, color: "var(--muted)", marginBottom: 8, lineHeight: 1.5 }}>{isAdmin ? "Dry-run — logs entries but places no real orders. Tap the badge above to go live." : "Engine is in dry-run — logs entries but places no real orders yet."}</div>}
       {/* One-tap self-heal: drop phantom real records Delta doesn't actually hold (Crypto/Delta only). */}
-      {onReconcileDelta && market === "Crypto" && (
+      {onReconcileDelta && (market === "Crypto" || market === "USStockTokens") && (
         <button onClick={async () => { if (await confirmDialog("Reconcile this list against your Delta account? Any recorded position Delta doesn't actually hold will be dropped from the app (display only — your Delta holdings are not touched).", { title: "Reconcile with Delta", confirmLabel: "Reconcile" })) onReconcileDelta(); }}
           className="tap disp" style={{ marginBottom: 8, fontSize: 10, fontWeight: 800, padding: "5px 11px", borderRadius: 999, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--muted)" }}>↻ Reconcile with Delta</button>
       )}
@@ -1275,7 +1275,7 @@ function CopyStrategyCard({ s, active, onToggle, onPersist, onDelete, market = "
   const { loading, stats } = useBacktestStats(s);
   const [bt, setBt] = useState(false);
   const [name, setName] = useState(s.name || "");
-  const [size, setSize] = useState(s.qty != null ? s.qty : (market === "Crypto" ? 200 : 1));
+  const [size, setSize] = useState(s.qty != null ? s.qty : ((market === "Crypto" || market === "USStockTokens") ? 200 : 1));
   const [sl, setSl] = useState(String((s.cfg && s.cfg.sl) || "0.5"));
   const [tp, setTp] = useState(String((s.cfg && s.cfg.tp) || "1.5"));
   const relSym0 = (s.symbols || []).find((x) => marketOf(x) === market) || ((UNIVERSE[market] || [])[0] || {}).sym || (s.symbols && s.symbols[0]) || null;
@@ -1961,7 +1961,7 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators,
   const DEF_SYM = { US: "SPX", IN: "NIFTY50", Crypto: "BTC", Commodity: "GOLD", FNO: "NIFTY50" };
   const [view, setView] = useState("perSymbol");   // perSymbol | perStrategy
   // Position sizing for absolute P&L: crypto = USD amount (default 500), everything else = quantity (default 1).
-  const isCrypto = market === "Crypto";
+  const isCrypto = market === "Crypto" || market === "USStockTokens";
   const [size, setSize] = useState(isCrypto ? "500" : "1");
   const [resBucket, setResBucket] = useState("existing");   // Existing | New tabs over the per-symbol results
   const sizing = () => (isCrypto ? { amount: Number(size) || 0, market } : { qty: Number(size) || 0, market });
@@ -2023,7 +2023,7 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators,
   useEffect(() => {
     setSym(DEF_SYM[market] || "NIFTY50"); setRun(null); setPickStrats([]);
     setPRun(null); setPSyms([]); setPStratId(strats[0] ? strats[0].id : ""); setResults({});
-    setSize(market === "Crypto" ? "100" : "1");
+    setSize((market === "Crypto" || market === "USStockTokens") ? "100" : "1");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [market]);
 
@@ -2315,7 +2315,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const canBacktest = !INDIAN_MKT.includes(market) || isAdmin || (typeof brokerFor === "function" && !!brokerFor(market));
   // Which strategy is being armed for real-money auto-buy, and the form for it.
   const [liveStrat, setLiveStrat] = useState(null);
-  const [liveAmt, setLiveAmt] = useState(market === "Crypto" ? "500" : "");   // crypto default stake $500
+  const [liveAmt, setLiveAmt] = useState((market === "Crypto" || market === "USStockTokens") ? "500" : "");   // crypto default stake $500
   const [liveProduct, setLiveProduct] = useState("Intraday");
   const [liveBusy, setLiveBusy] = useState(false);
   const [liveMsg, setLiveMsg] = useState(null);
@@ -2346,7 +2346,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     // direction, protection) before arming the engine to place REAL orders.
     const short = (s.side === "SELL" || (s.cfg && s.cfg.side === "SELL"));
     const brokerName = route.meta ? route.meta.name : route.id;
-    const cur = mkt === "Crypto" ? "$" : "₹";
+    const cur = (mkt === "Crypto" || mkt === "USStockTokens") ? "$" : "₹";
     const slTxt = (s.cfg && s.cfg.sl != null && s.cfg.sl !== "") ? s.cfg.sl + "%" : "—";
     const tpTxt = (s.cfg && s.cfg.tp != null && s.cfg.tp !== "") ? s.cfg.tp + "%" : "—";
     const summary =
@@ -2415,14 +2415,14 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     { la: "RSI1", op: ">", bType: "num", b: "70", gate: "OR" },
   ]);
   // Default risk per market: crypto is more volatile so it gets wider stops/targets.
-  const defSL = (m) => (m === "Crypto" ? "2" : "1");     // Crypto SL 2% · Indian/US/Commodity SL 1%
-  const defTP = (m) => (m === "Crypto" ? "5" : "3");     // Crypto TP 5% · Indian/US/Commodity TP 3%
+  const defSL = (m) => ((m === "Crypto" || m === "USStockTokens") ? "2" : "1");     // Crypto SL 2% · Indian/US/Commodity SL 1%
+  const defTP = (m) => ((m === "Crypto" || m === "USStockTokens") ? "5" : "3");     // Crypto TP 5% · Indian/US/Commodity TP 3%
   const [sl, setSl] = useState(defSL(market));
   const [tp, setTp] = useState(defTP(market));
   const [tsl, setTsl] = useState("");   // trailing stop % (server-side, ratchets as price moves your way)
   // When you switch market (fresh builder context), reset SL/TP to that market's default.
   useEffect(() => { setSl(defSL(market)); setTp(defTP(market)); /* eslint-disable-next-line */ }, [market]);
-  const [capital, setCapital] = useState(market === "Crypto" ? "10" : "1");   // crypto: $ NOTIONAL amount/trade (default 10 ≈ $0.40 margin at 25×); else quantity (default 1)
+  const [capital, setCapital] = useState((market === "Crypto" || market === "USStockTokens") ? "10" : "1");   // crypto: $ NOTIONAL amount/trade (default 10 ≈ $0.40 margin at 25×); else quantity (default 1)
 
   /* Order-execution defaults for the automation. */
   const [buyType, setBuyType] = useState("Intraday");   // Intraday (MIS) | NRML
@@ -2648,7 +2648,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const activateTemplate = (t, syms, size) => {
     const symbols = syms && syms.length ? syms : ["NIFTY50"];
     const id = "t" + Date.now();
-    const sz = size != null ? size : (market === "Crypto" ? 200 : 1);
+    const sz = size != null ? size : ((market === "Crypto" || market === "USStockTokens") ? 200 : 1);
     // by: creator — the moment YOU activate it, it is YOUR strategy and belongs under
     // "My strategies". It was previously tagged "Matrix", which filed the user's own
     // running strategies under the samples.
@@ -2811,7 +2811,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
      symbol, timeframe and SL/TP are editable. Copies never appear under "Mine". */
   const clonePremium = (s) => {
     const id = "cp" + Date.now();
-    const dsz = market === "Crypto" ? 200 : 1;
+    const dsz = (market === "Crypto" || market === "USStockTokens") ? 200 : 1;
     // Default the copy's suffix to its SYMBOL (market-relevant one first), matching the backtest "Create" naming.
     const sym = (s.symbols || []).find((x) => marketOf(x) === market) || (s.symbols || [])[0];
     setStrats((p) => [
@@ -2835,7 +2835,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     // should stay there. We just create the copy under Strategies ▸ My Copies and confirm with a toast.
     if (strats.some((x) => x.name === name)) { setToast(`"${name}" already exists in My Copies.`); return; }
     const id = "cp" + Date.now();
-    const dsz = marketOf(sym) === "Crypto" ? 200 : 1;
+    const dsz = (marketOf(sym) === "Crypto" || marketOf(sym) === "USStockTokens") ? 200 : 1;
     setStrats((p) => [
       { id, name, by: creator, active: false, alerts: false, copy: true, locked: !!(strat.locked), sourceName: strat.sourceName || strat.name,
         cfg: { ...(strat.cfg || {}) }, cap: strat.cap || dsz, qty: strat.qty || dsz, symbols: [sym],
@@ -2852,7 +2852,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
      which is meaningless — and below Delta's minimum — in dollars. Normalize any crypto strategy whose
      amount is missing or under $10 up to the $200 default, once. The guard makes it self-terminating. */
   useEffect(() => {
-    const isCrypto = (s) => s.market === "Crypto" || marketOf((s.symbols || [])[0]) === "Crypto";
+    const isCrypto = (s) => s.market === "Crypto" || s.market === "USStockTokens" || marketOf((s.symbols || [])[0]) === "Crypto" || marketOf((s.symbols || [])[0]) === "USStockTokens";
     const stale = (s) => isCrypto(s) && (s.qty == null || Number(s.qty) < 10);
     if (strats.some(stale)) setStrats((p) => p.map((s) => (stale(s) ? { ...s, qty: 200, cap: 200 } : s)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2920,7 +2920,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         } catch { matches = []; }
         if (stop) return;
         if (!matches || !matches.length) continue;
-        const isCrypto = market === "Crypto";
+        const isCrypto = market === "Crypto" || market === "USStockTokens";
         matches.forEach((m) => {
           // Don't open a second position for this strategy on a symbol it's already holding open.
           if (hasOpenPaperPos(s.id, m.sym)) return;
@@ -3178,7 +3178,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       </div>
       {/* Deploy size — AMOUNT (USD) for crypto, QUANTITY for other markets. Default $10 / 1 qty. */}
       {(() => {
-        const isC = market === "Crypto";
+        const isC = market === "Crypto" || market === "USStockTokens";
         const step = isC ? 10 : 1;
         const val = s.qty != null ? s.qty : (isC ? 200 : 1);
         const set = (n) => { const v = Math.max(isC ? 1 : 1, n); updateStrat(s.id, { qty: v, cap: v }); };
@@ -3239,7 +3239,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         {appMode === "real"
           ? (isArmedReal(s)
               ? <button onClick={() => disarmLive(s)} className="tap disp" title="Stop trading this strategy with real money" style={{ flex: "1 1 100px", borderRadius: 11, background: "var(--surface)", color: "var(--down)", padding: "7px 10px", display: "flex", gap: 5, alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800, border: "1px solid var(--down)" }}><Pause size={13} /> Deactivate</button>
-              : <button onClick={() => { const opening = liveStrat !== s.id; setLiveStrat(opening ? s.id : null); setLiveMsg(null); if (opening) setLiveAmt(String(s.qty != null ? s.qty : (market === "Crypto" ? 200 : 1))); }} className="tap disp" title="Trade this strategy with real money" style={{ flex: "1 1 100px", borderRadius: 11, background: liveStrat === s.id ? "var(--down-soft)" : "linear-gradient(120deg,var(--down),#D9403A)", color: liveStrat === s.id ? "var(--down)" : "#fff", boxShadow: liveStrat === s.id ? "none" : "0 6px 16px rgba(217,64,58,.28)", padding: "7px 10px", display: "flex", gap: 5, alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800, border: liveStrat === s.id ? "1px solid var(--down)" : "none" }}><Bolt size={13} /> Go Live</button>)
+              : <button onClick={() => { const opening = liveStrat !== s.id; setLiveStrat(opening ? s.id : null); setLiveMsg(null); if (opening) setLiveAmt(String(s.qty != null ? s.qty : ((market === "Crypto" || market === "USStockTokens") ? 200 : 1))); }} className="tap disp" title="Trade this strategy with real money" style={{ flex: "1 1 100px", borderRadius: 11, background: liveStrat === s.id ? "var(--down-soft)" : "linear-gradient(120deg,var(--down),#D9403A)", color: liveStrat === s.id ? "var(--down)" : "#fff", boxShadow: liveStrat === s.id ? "none" : "0 6px 16px rgba(217,64,58,.28)", padding: "7px 10px", display: "flex", gap: 5, alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800, border: liveStrat === s.id ? "1px solid var(--down)" : "none" }}><Bolt size={13} /> Go Live</button>)
           : <button onClick={() => toggleActive(s.id)} className="tap disp" style={{ flex: "1 1 100px", borderRadius: 11, background: s.active ? "var(--surface)" : "linear-gradient(120deg,var(--up),#0EA968)", color: s.active ? "var(--ink)" : "#fff", boxShadow: s.active ? "none" : "0 6px 16px rgba(16,185,129,.3)", padding: "7px 10px", display: "flex", gap: 5, alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800, border: s.active ? "1px solid var(--line)" : "none" }}>
               {s.active ? <><Pause size={13} /> Deactivate</> : <><Play size={13} /> Activate</>}
             </button>}
@@ -3310,7 +3310,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           <MultiSelect label="Symbols" options={DEPLOY_OPTIONS} value={s.symbols || []} onChange={(v) => updateStrat(s.id, { symbols: v })} allLabel="Select…" />
           <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, margin: "12px 0 6px" }}>Instrument</div>
           <InstrumentTypePicker value={s.instrument || "STOCK"} onChange={(v) => updateStrat(s.id, { instrument: v })} />
-          <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, margin: "12px 0 6px" }}>{market === "Crypto" ? "Amount to be deployed (per trade)" : "Capital deployed (quantity per trade)"}</div>
+          <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, margin: "12px 0 6px" }}>{(market === "Crypto" || market === "USStockTokens") ? "Amount to be deployed (per trade)" : "Capital deployed (quantity per trade)"}</div>
           <input
             value={String(s.qty ?? s.cap ?? 1)}
             onChange={(e) => { const n = Math.max(1, parseInt(e.target.value.replace(/[^0-9]/g, ""), 10) || 1); updateStrat(s.id, { qty: n, cap: n }); }}
@@ -3725,9 +3725,9 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
               return parts.length ? <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 6 }}>{parts.join(" · ")} · at {CRYPTO_LEV}× leverage</div> : null;
             })()}
             <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>{market === "Crypto" ? "Amount to be deployed (notional)" : "Quantity"}</div>
-              <input value={capital} onChange={(e) => setCapital(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder={market === "Crypto" ? "10" : "100000"} className="no-ring mono" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 14, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }} />
-              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 5 }}>{market === "Crypto" ? "Amount (in your wallet currency) spent on each entry." : "Number of shares (or lots, for options) placed on each entry."}</div>
+              <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>{(market === "Crypto" || market === "USStockTokens") ? "Amount to be deployed (notional)" : "Quantity"}</div>
+              <input value={capital} onChange={(e) => setCapital(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder={(market === "Crypto" || market === "USStockTokens") ? "10" : "100000"} className="no-ring mono" style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 12, padding: 12, fontSize: 14, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }} />
+              <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 5 }}>{(market === "Crypto" || market === "USStockTokens") ? "Amount (in your wallet currency) spent on each entry." : "Number of shares (or lots, for options) placed on each entry."}</div>
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
               {market !== "Crypto" && <SegF label="Buy Type" options={["Intraday", "NRML"]} value={buyType} set={setBuyType} />}

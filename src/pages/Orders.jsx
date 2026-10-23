@@ -51,7 +51,7 @@ function JournalPanel({ trades = [] }) {
 
 export default function TradeHistory({ userId, trades, onClose, market = null, mode = null, heldSyms = null }) {
   const RANGES = [["today", "Today"], ["7", "7d"], ["30", "30d"], ["90", "90d"], ["365", "1y"], ["all", "All"]];
-  const MKTS = [["all", "All markets"], ["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["Commodity", "🪙 Commodity"]];
+  const MKTS = [["all", "All markets"], ["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["USStockTokens", "📈 US Tokens"], ["Commodity", "🪙 Commodity"]];
   const REALS = [["all", "All"], ["real", "Real"], ["virtual", "Virtual"]];
   const STATUSES = [["all", "All status"], ["open", "Open"], ["closed", "Closed"], ["rejected", "Rejected"]];
   const [range, setRange] = useState("today");   // default to Today

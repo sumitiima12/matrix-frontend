@@ -243,7 +243,7 @@ function AnalyzeBlock({ onRun, loading, review }) {
 
 export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, onClosePosition, onUpdate, onArmRealExit, onRemove, priceSnap = {}, onWhy, onOpen, mode = "virtual", realPortfolio = null, realErr = null, realLoading = false, onRefreshReal, brokerName, realAvailable = false, userId = null }) {
   // Crypto and US settle in USD; Indian/Commodity in INR. Used to format the real book.
-  const ccy = (market === "Crypto" || market === "US") ? "$" : "₹";
+  const ccy = (market === "Crypto" || market === "US" || market === "USStockTokens") ? "$" : "₹";
   const loc = ccy === "$" ? "en-US" : "en-IN";
   /* Whole-book AI review state — shared by BOTH virtual and real mode. Declared up here so
      the real-mode early-return below can use it too. */

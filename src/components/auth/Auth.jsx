@@ -504,7 +504,7 @@ function YesNo({ on, onChange }) {
 /* ADMIN GATES — two global switches the admin flips for the whole app:
    (1) Allow users in Real mode, (2) Allow users to connect brokers, per market.
    Both default OFF. Changes are saved to the server immediately (optimistic UI). */
-const GATE_MARKETS = [["IN", "Indian"], ["US", "US"], ["Crypto", "Crypto"], ["Commodity", "Commodity"]];
+const GATE_MARKETS = [["IN", "Indian"], ["US", "US"], ["Crypto", "Crypto"], ["USStockTokens", "US Tokens"], ["Commodity", "Commodity"]];
 function AdminGates({ settings, onSave }) {
   const [local, setLocal] = useState(settings);
   useEffect(() => { setLocal(settings); }, [settings]);
@@ -789,7 +789,7 @@ function PriceAlerts({ market = "IN" }) {
           <div style={{ fontSize: 10.5, color: "var(--muted)", lineHeight: 1.5, marginBottom: 8 }}>Get a push when a symbol crosses a price or moves a % on the day. Enable notifications above to receive them.</div>
           <div style={{ display: "grid", gridTemplateColumns: "1.2fr .9fr", gap: 6 }}>
             <input value={sym} onChange={(e) => setSym(e.target.value.toUpperCase())} placeholder="Symbol (e.g. BTC)" className="no-ring" style={sel} />
-            <select value={mkt} onChange={(e) => setMkt(e.target.value)} style={sel}><option value="IN">🇮🇳 IN</option><option value="US">🇺🇸 US</option><option value="Crypto">₿ Crypto</option><option value="Commodity">🪙 Comm.</option></select>
+            <select value={mkt} onChange={(e) => setMkt(e.target.value)} style={sel}><option value="IN">🇮🇳 IN</option><option value="US">🇺🇸 US</option><option value="Crypto">₿ Crypto</option><option value="USStockTokens">📈 US Tokens</option><option value="Commodity">🪙 Comm.</option></select>
             <select value={type} onChange={(e) => setType(e.target.value)} style={sel}>{Object.entries(TYPE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
             <input value={thr} onChange={(e) => setThr(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" placeholder={type.startsWith("pct") ? "% e.g. 3" : "price"} className="no-ring mono" style={sel} />
           </div>
@@ -875,7 +875,7 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
     } catch { setUidErr("Network error."); }
     setUidBusy(false);
   };
-  const WMKTS = [["IN", "🇮🇳 Indian stocks"], ["US", "🇺🇸 US stocks"], ["Crypto", "₿ Crypto"], ["FNO", "⚡ F&O"], ["Commodity", "🪙 Commodity"]];
+  const WMKTS = [["IN", "🇮🇳 Indian stocks"], ["US", "🇺🇸 US stocks"], ["Crypto", "₿ Crypto"], ["USStockTokens", "📈 US Tokens"], ["FNO", "⚡ F&O"], ["Commodity", "🪙 Commodity"]];
   const summary = profileSummary(profile);
 
   /* The curve is drawn for ONE market at a time, in that market's own currency.
@@ -948,7 +948,7 @@ export default function ProfileSheet({ profile, walletMap = {}, onClose, onTrade
             </div>
             <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 3, lineHeight: 1.45 }}>A different broker per market. Prices are live via the built-in feed where shown.</div>
             {showBrokerHelp && <BrokerHowTo onClose={() => setShowBrokerHelp(false)} />}
-            {[["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["Commodity", "🪙 Commodity"]].map(([m, label]) => {
+            {[["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["USStockTokens", "📈 US Tokens"], ["Commodity", "🪙 Commodity"]].map(([m, label]) => {
               const personal = brokerById(marketBrokers && marketBrokers[m]);   // a broker YOU connected
               const feedName = m === "IN" && houseFeeds.fyers ? "FYERS" : m === "Crypto" && houseFeeds.delta ? "Delta" : null;   // built-in price feed
               // Is there any broker THIS user can actually connect for this market? (house feeds are admin-only)

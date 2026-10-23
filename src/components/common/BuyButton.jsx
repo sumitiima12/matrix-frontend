@@ -38,7 +38,7 @@ export default function BuyButton({ s, market = "IN", onBuy, opts = {}, lot = 1,
      amount → units at the live price (a small fill-price variation is expected and fine).
      Everything else trades by quantity/lots as before. */
   const gate = useContext(BuyGateContext);
-  const isCrypto = market === "Crypto";
+  const isCrypto = market === "Crypto" || market === "USStockTokens";
   const step = isCrypto ? 10 : (lot || 1);        // crypto steps in $10, else by lot
   const [val, setVal] = useState(step);            // amount ($) for crypto, else quantity
 

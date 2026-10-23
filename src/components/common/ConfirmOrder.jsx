@@ -30,7 +30,7 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
   useEffect(() => { setQty(initialQty || 1); }, [initialQty, order && order.s && order.s.sym]);
   /* CRYPTO is sized by AMOUNT (USD), not units. We edit dollars here and convert to units
      at the live price on confirm (a small fill variance is expected). */
-  const isCrypto = market === "Crypto";
+  const isCrypto = market === "Crypto" || market === "USStockTokens";
   const cprice = order && order.s ? order.s.price : null;
   const [amount, setAmount] = useState(() => (initialQty && cprice) ? Math.max(1, Math.round(initialQty * cprice)) : 10);
   useEffect(() => { const p = order && order.s ? order.s.price : null; setAmount((initialQty && p) ? Math.max(1, Math.round(initialQty * p)) : 10); }, [initialQty, order && order.s && order.s.sym]);
@@ -235,7 +235,7 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
               <div style={{ display: "flex", gap: 6 }}>
                 {[
                   ["CNC", "Delivery", "Hold as long as you like"],
-                  ["MIS", "Intraday", market === "Crypto" ? "Auto-sells 23h45m after buy" : "Auto-sells 15 min before close"],
+                  ["MIS", "Intraday", (market === "Crypto" || market === "USStockTokens") ? "Auto-sells 23h45m after buy" : "Auto-sells 15 min before close"],
                   ["NRML", "NRML", "Carry-forward (F&O / margin)"],
                 ].map(([id, label, sub]) => (
                   <button

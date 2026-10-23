@@ -60,7 +60,7 @@ export function csvTime(ts) {
 
 /* ------------------------------ trade export ------------------------------ */
 
-const MARKET_LABEL = { IN: "Indian", US: "US", Crypto: "Crypto", Commodity: "Commodity" };
+const MARKET_LABEL = { IN: "Indian", US: "US", Crypto: "Crypto", Commodity: "Commodity", USStockTokens: "US Tokens" };
 
 /**
  * Column layout for a trade export.

@@ -1,8 +1,8 @@
 /**
  * lib/format.js — pure formatting & small utilities. No side effects, no I/O.
  */
-export const CUR = { IN: "₹", US: "$", Crypto: "$", Commodity: "$" };
-export const MKT_LABEL = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", Commodity: "🪙 Commodity", FNO: "⚡ F&O" };
+export const CUR = { IN: "₹", US: "$", Crypto: "$", Commodity: "$", USStockTokens: "$" };
+export const MKT_LABEL = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", Commodity: "🪙 Commodity", USStockTokens: "📈 US Tokens", FNO: "⚡ F&O" };
 
 /* Commodity currency is not fixed: by default it's COMEX/NYMEX in USD, but when the backend is
    serving MCX quotes (INR) the whole commodity book flips to rupees. The feed is deployment-wide
@@ -88,7 +88,7 @@ export function fmtPnl(n, market = "IN") {
 export function compact(n, market = "IN") {
   if (n == null || isNaN(n)) return "—";
   const a = Math.abs(n);
-  const western = market === "US" || market === "Crypto" || (market === "Commodity" && !_commodityINR);
+  const western = market === "US" || market === "Crypto" || market === "USStockTokens" || (market === "Commodity" && !_commodityINR);
   if (western) {
     if (a >= 1e12) return (n / 1e12).toFixed(2) + "T";
     if (a >= 1e9) return (n / 1e9).toFixed(2) + "B";

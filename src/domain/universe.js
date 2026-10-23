@@ -219,10 +219,45 @@ const CRYPTO = [
   stock("LAB", "LAB", "Crypto"),
   stock("EVAA", "EVAA", "Crypto"),
   stock("SLVON", "SLVON", "Crypto"),
-  stock("SNDKB", "SanDisk (tokenised)", "Crypto"),
-  stock("SOXLB", "SOXL (tokenised)", "Crypto"),
   stock("H", "Humanity", "Crypto"),
   stock("PIPPIN", "pippin", "Crypto"),
+];
+
+/* ---- US Stock Tokens ----
+   Tokenised US equities/ETFs that Delta lists as USD-margined PERPETUALS (symbol = base + "USD", e.g. AAPLX→AAPLXUSD).
+   Powered by Delta Exchange exactly like Crypto: 25x leverage, USD, 24×7, same screener/ideas/automation logic. The
+   base sym is the Delta product symbol minus the trailing "USD". (SNDKB/SOXLB moved here from Crypto — they're US
+   stock/ETF tokens, not coins.) Only the user's starred symbols from the Delta watchlist are listed. */
+const US_STOCK_TOKENS = [
+  stock("AAPLX", "Apple (tokenised)", "US Token"),
+  stock("MSFTB", "Microsoft (tokenised)", "US Token"),
+  stock("NVDAX", "NVIDIA (tokenised)", "US Token"),
+  stock("AMZNX", "Amazon (tokenised)", "US Token"),
+  stock("GOOGLX", "Alphabet (tokenised)", "US Token"),
+  stock("METAX", "Meta (tokenised)", "US Token"),
+  stock("TSLAX", "Tesla (tokenised)", "US Token"),
+  stock("AMDB", "AMD (tokenised)", "US Token"),
+  stock("AVGOB", "Broadcom (tokenised)", "US Token"),
+  stock("ORCLB", "Oracle (tokenised)", "US Token"),
+  stock("MRVLB", "Marvell (tokenised)", "US Token"),
+  stock("ARMB", "ARM (tokenised)", "US Token"),
+  stock("TSMB", "TSMC (tokenised)", "US Token"),
+  stock("INTCB", "Intel (tokenised)", "US Token"),
+  stock("WDCB", "Western Digital (tokenised)", "US Token"),
+  stock("SNDKB", "SanDisk (tokenised)", "US Token"),
+  stock("PLTRB", "Palantir (tokenised)", "US Token"),
+  stock("COINX", "Coinbase (tokenised)", "US Token"),
+  stock("HOODB", "Robinhood (tokenised)", "US Token"),
+  stock("MSTRB", "Strategy / MicroStrategy (tokenised)", "US Token"),
+  stock("CRCLX", "Circle (tokenised)", "US Token"),
+  stock("RKLBB", "Rocket Lab (tokenised)", "US Token"),
+  stock("AAOIB", "Applied Optoelectronics (tokenised)", "US Token"),
+  stock("MRNAB", "Moderna (tokenised)", "US Token"),
+  stock("BABAB", "Alibaba (tokenised)", "US Token"),
+  stock("SPCXX", "SpaceX (tokenised)", "US Token"),
+  stock("SPYX", "S&P 500 (tokenised)", "US Token"),
+  stock("QQQX", "Nasdaq 100 (tokenised)", "US Token"),
+  stock("SOXLB", "SOXL 3x ETF (tokenised)", "US Token"),
 ];
 
 /* ---- Commodity ----
@@ -238,8 +273,14 @@ const COMMODITY = [
 ];
 
 
-const UNIVERSE = { IN: IN_STOCKS, US: US_STOCKS, Crypto: CRYPTO, Commodity: COMMODITY };
-const ALL = [...IN_STOCKS, ...US_STOCKS, ...CRYPTO, ...COMMODITY];
+const UNIVERSE = { IN: IN_STOCKS, US: US_STOCKS, Crypto: CRYPTO, Commodity: COMMODITY, USStockTokens: US_STOCK_TOKENS };
+const ALL = [...IN_STOCKS, ...US_STOCKS, ...CRYPTO, ...COMMODITY, ...US_STOCK_TOKENS];
+
+/* Markets that are Delta-Exchange USD perpetuals (leveraged, USD, 24×7, sized by notional): Crypto AND US Stock
+   Tokens. Everywhere the app special-cased `market === "Crypto"` for leverage / USD / shorting / amount-sizing,
+   use this so US Stock Tokens get identical behaviour. */
+const DELTA_USD_MARKETS = new Set(["Crypto", "USStockTokens"]);
+function isDeltaUsd(market) { return DELTA_USD_MARKETS.has(String(market || "")); }
 /**
  * Which market an instrument belongs to, or NULL if we do not carry it.
  *
@@ -254,6 +295,7 @@ function marketOf(sym) {
   if (US_STOCKS.find((s) => s.sym === sym)) return "US";
   if (CRYPTO.find((s) => s.sym === sym)) return "Crypto";
   if (COMMODITY.find((s) => s.sym === sym)) return "Commodity";
+  if (US_STOCK_TOKENS.find((s) => s.sym === sym)) return "USStockTokens";
   return null;
 }
 // Market hours in IST (regardless of the device's own timezone).
@@ -262,7 +304,7 @@ function istParts() {
   return { day: d.getDay(), mins: d.getHours() * 60 + d.getMinutes() };
 }
 function marketHoursLabel(market) {
-  return market === "Crypto" ? "24×7" : market === "US" ? "7:30pm–1:30am IST" : market === "Commodity" ? "9:00am–8:30pm IST" : "9:15am–3:30pm IST";
+  return (market === "Crypto" || market === "USStockTokens") ? "24×7" : market === "US" ? "7:30pm–1:30am IST" : market === "Commodity" ? "9:00am–8:30pm IST" : "9:15am–3:30pm IST";
 }
 
 /* ---- Yahoo ticker mapping (domain knowledge, kept out of the services) ---- */
@@ -277,7 +319,7 @@ const Y_SPECIAL = {
 function yahooSymbol(sym) {
   if (Y_SPECIAL[sym]) return Y_SPECIAL[sym];
   const m = marketOf(sym);
-  if (m === "Crypto") return sym + "-USD";
+  if (m === "Crypto" || m === "USStockTokens") return sym + "-USD";   // both price via Delta's USD perps feed
   if (m === "US") return sym;
   if (m === "IN") return sym + ".NS";      // NSE
   // Unknown instrument: return it untouched rather than guessing it is Indian and
@@ -287,8 +329,9 @@ function yahooSymbol(sym) {
 }
 
 export {
-  IN_STOCKS, US_STOCKS, CRYPTO, COMMODITY, UNIVERSE, ALL,
+  IN_STOCKS, US_STOCKS, CRYPTO, COMMODITY, US_STOCK_TOKENS, UNIVERSE, ALL,
   Y_SPECIAL, yahooSymbol, marketOf, istParts, marketHoursLabel,
+  isDeltaUsd, DELTA_USD_MARKETS,
   IN_INDICES, IN_EQUITY,
 };
 

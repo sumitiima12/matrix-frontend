@@ -27,7 +27,7 @@ import { ChevronDown, ChevronUp, Filter, Plus, Save, Sparkles, Square, Trash2 } 
 
 const TODAY = new Date().toISOString().slice(0, 10);
 const DAY_KEY = TODAY.replace(/-/g, "");
-const qtyDefault = (m) => (m === "Crypto" ? 500 : 1);   // crypto = USD amount (default $500), others = share/lot count
+const qtyDefault = (m) => ((m === "Crypto" || m === "USStockTokens") ? 500 : 1);   // crypto = USD amount (default $500), others = share/lot count
 
 // Same four the old Screener offered — tap to load both entry (f) and a sensible exit (x).
 const RECOMMENDED = [
@@ -226,7 +226,7 @@ export default function CustomScreener({ market, mode = "virtual", list = [], on
   }, [editing && editing.id]);
 
   const cur = CUR[market] || "₹";
-  const isCrypto = market === "Crypto";
+  const isCrypto = market === "Crypto" || market === "USStockTokens";
   const qtyLabel = isCrypto ? `AMT (${cur})` : "QTY";
   // Symbol universe for this market — INDIAVIX is not tradable, so it's excluded.
   const symbolOptions = useMemo(() => (UNIVERSE[market] || []).map((s) => s.sym).filter((s) => s !== "INDIAVIX"), [market]);

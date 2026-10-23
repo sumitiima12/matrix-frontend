@@ -203,9 +203,9 @@ function ScreenerDirToggle({ dir, setDir }) {
   );
 }
 
-const capDefault = (m) => (m === "US" || m === "Crypto") ? "100" : "10000";   // US/Crypto: 100 (USD); Indian/Commodity: 10,000 (₹)
+const capDefault = (m) => (m === "US" || m === "Crypto" || m === "USStockTokens") ? "100" : "10000";   // US/Crypto: 100 (USD); Indian/Commodity: 10,000 (₹)
 // Per-symbol quantity default: crypto is a USD notional (100), everything else is 1 unit/share.
-const qtyDefaultFor = (m) => (m === "Crypto" ? 500 : 1);   // crypto = USD notional (default $500)
+const qtyDefaultFor = (m) => ((m === "Crypto" || m === "USStockTokens") ? 500 : 1);   // crypto = USD notional (default $500)
 /* Canonical "is this a SCREENER trade" test — mirrors the backend provenance resolver so the Screener dashboard,
    Live Positions, P&L tab and per-card stats count the SAME set as the Total dashboard's Screener category. A row
    is a screener trade if it's tagged "Screener Auto Buy" OR it carries a screener attribution (screenerKey/name)
@@ -496,7 +496,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
       // Curated basket → the admin's explicit per-symbol qty (crypto qty is a USD notional → coins).
       // Otherwise fall back to the capital-split behaviour.
       const notional = useBasketQty ? cardQty(m.sym) : perCap;
-      const qty = market === "Crypto" ? +(notional / price).toFixed(6) : Math.max(1, Math.floor(useBasketQty ? cardQty(m.sym) : (perCap / price)));
+      const qty = (market === "Crypto" || market === "USStockTokens") ? +(notional / price).toFixed(6) : Math.max(1, Math.floor(useBasketQty ? cardQty(m.sym) : (perCap / price)));
       // In "Sell" mode the screener SHORTS its matches instead of buying (same setup, opposite side).
       (onScreenerBuy || onAutoBuy || onBuy)(inst, qty, { tp: cardTP(m.sym), sl: cardSL(m.sym), strategy: dispName, screenerKey: screener.key, market, ...(short ? { side: "SELL", short: true } : {}) });
     });
@@ -731,7 +731,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
             <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 7 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 8.5, color: "var(--muted)", fontWeight: 800, paddingLeft: 2 }}>
                 <span style={{ flex: 1 }}>SYMBOL</span>
-                <span style={{ width: 52, textAlign: "center" }}>{market === "Crypto" ? "AMT $" : "QTY"}</span>
+                <span style={{ width: 52, textAlign: "center" }}>{(market === "Crypto" || market === "USStockTokens") ? "AMT $" : "QTY"}</span>
                 <span style={{ width: 48, textAlign: "center" }}>SL %</span>
                 <span style={{ width: 48, textAlign: "center" }}>TP %</span>
               </div>
@@ -747,7 +747,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
                   </div>
                 );
               })}
-              <div style={{ fontSize: 9.5, color: "var(--muted)", lineHeight: 1.5, marginTop: 2 }}>Defaults: {market === "Crypto" ? "$500 amount" : "qty 1"} · 0.4% SL · 1% TP. {market === "Crypto" ? "Crypto amount is USD notional." : ""}</div>
+              <div style={{ fontSize: 9.5, color: "var(--muted)", lineHeight: 1.5, marginTop: 2 }}>Defaults: {(market === "Crypto" || market === "USStockTokens") ? "$500 amount" : "qty 1"} · 0.4% SL · 1% TP. {(market === "Crypto" || market === "USStockTokens") ? "Amount is USD notional." : ""}</div>
             </div>
           )}
 

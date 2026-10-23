@@ -234,7 +234,7 @@ export async function deleteAccount() {
 }
 
 /* ---- Global admin-controlled app settings (Real-mode + broker-connect gates) ---- */
-const DEFAULT_SETTINGS = { allowRealMode: { IN: false, US: false, Crypto: false, Commodity: false }, allowBrokerConnect: { IN: false, US: false, Crypto: false, Commodity: false }, allowVirtual: { IN: false, Global: false }, showIndianWithoutBroker: false };
+const DEFAULT_SETTINGS = { allowRealMode: { IN: false, US: false, Crypto: false, Commodity: false, USStockTokens: false }, allowBrokerConnect: { IN: false, US: false, Crypto: false, Commodity: false, USStockTokens: false }, allowVirtual: { IN: false, Global: false }, showIndianWithoutBroker: false };
 export async function getAppSettings() {
   if (!BACKEND_URL) return DEFAULT_SETTINGS;
   try {

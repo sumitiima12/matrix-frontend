@@ -50,7 +50,7 @@ export const BROKERS = [
   {
     id: "delta",
     name: "Delta Exchange",
-    markets: ["Crypto"],
+    markets: ["Crypto", "USStockTokens"],
     status: "ready",
     realtime: true,
     oi: true,

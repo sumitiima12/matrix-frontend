@@ -26,12 +26,12 @@ export const DEFAULT_LIMITS = {
 /* R3-#6: conservative (generous-leverage) per-market initial-margin fraction of notional for a short.
    A short consumes margin, not full notional — charging full notional falsely rejected legit leveraged
    crypto shorts. Kept in sync with the backend riskEngine. */
-const SHORT_MARGIN_FRACTION = { Crypto: 0.04, FNO: 0.15, IN: 0.20, US: 0.30, Commodity: 0.10 };
+const SHORT_MARGIN_FRACTION = { Crypto: 0.04, USStockTokens: 0.04, FNO: 0.15, IN: 0.20, US: 0.30, Commodity: 0.10 };
 const shortMarginFraction = (market) => SHORT_MARGIN_FRACTION[market] != null ? SHORT_MARGIN_FRACTION[market] : 0.20;
 
 /** Indian & US cash markets have sessions; crypto is 24/7. */
 export function isMarketOpen(market, now = new Date()) {
-  if (market === "Crypto") return true;
+  if (market === "Crypto" || market === "USStockTokens") return true;   // Delta USD perps trade 24×7
   const day = now.getUTCDay();
   if (day === 0 || day === 6) return false;
   const mins = now.getUTCHours() * 60 + now.getUTCMinutes();
@@ -83,7 +83,7 @@ export function localMins(market, now = new Date()) {
    and the loss circuit-breaker resets at the wrong time. Derive midnight in the market's timezone
    (IST / ET-with-DST / UTC for 24×7 crypto). Mirrors the backend riskEngine.startOfSessionDay. */
 function startOfSessionDay(market = "IN") {
-  const tz = market === "US" ? "America/New_York" : (market === "Crypto" ? "UTC" : "Asia/Kolkata");
+  const tz = market === "US" ? "America/New_York" : ((market === "Crypto" || market === "USStockTokens") ? "UTC" : "Asia/Kolkata");
   const now = new Date();
   try {
     const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {

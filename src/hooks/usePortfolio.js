@@ -4,7 +4,7 @@ import { techSignal } from "../domain/signals";
 import { analyzeHolding, portfolioHealth, sectorExposure } from "../services/portfolioService";
 
 const START_WALLET = 1000000;
-const MARKETS = ["IN", "US", "Crypto", "Commodity"];
+const MARKETS = ["IN", "US", "Crypto", "Commodity", "USStockTokens"];
 
 /**
  * usePortfolio — holdings, per-market wallets, and the AI portfolio intelligence.

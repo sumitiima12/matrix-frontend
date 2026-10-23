@@ -28,7 +28,7 @@ export function buildDailyIdeas() {
     byMarket[m].sort((a, b) => b.t.score - a.t.score);
     // Crypto is the one market where shorting is offered (mirrors Top Picks), so leave room for a couple of
     // SHORT ideas alongside the longs. Every other market stays long-only.
-    const isCrypto = m === "Crypto";
+    const isCrypto = m === "Crypto" || m === "USStockTokens";
     for (const { s, t } of byMarket[m].slice(0, isCrypto ? 4 : 5)) {
       out.push({
         // Stable per-day identity so trades taken from this card can be attributed back to it (see Ideas dashboard).

@@ -19,7 +19,7 @@ import Change from "./Change";
  * contains. Typing "TC" should surface TCS before it surfaces "Tata Consumer".
  */
 
-const MKT_TAG = { IN: "NSE", US: "US", Crypto: "CRYPTO", Commodity: "COMMODITY" };
+const MKT_TAG = { IN: "NSE", US: "US", Crypto: "CRYPTO", Commodity: "COMMODITY", USStockTokens: "US TOKEN" };
 
 function rank(s, q) {
   const sym = (s.sym || "").toLowerCase();
@@ -34,7 +34,7 @@ function rank(s, q) {
 
 /* A default spread, so the first thing you see is a cross-section of the whole
    universe rather than 30 Indian large-caps. 2 Indian, 1 US, 1 crypto, 1 commodity. */
-const SPREAD = [["IN", 2], ["US", 1], ["Crypto", 1], ["Commodity", 1]];
+const SPREAD = [["IN", 2], ["US", 1], ["Crypto", 1], ["USStockTokens", 1], ["Commodity", 1]];
 
 export default function SearchOverlay({ onClose, onOpen }) {
   const [q, setQ] = useState("");
