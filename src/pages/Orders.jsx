@@ -4,6 +4,7 @@ import { Bolt, Bot, Briefcase, Check, ChevronLeft, Home, Lightbulb, Moon, Search
 import { BACKEND_URL } from "../config";
 import { fmt, getUserId, lsGet, lsSet, orderStatusLabel } from "../lib/format";
 import { ALL, UNIVERSE, marketOf, yahooSymbol } from "../domain/universe";
+import { positionPnl } from "../domain/leverage";   // SAME leverage/fee-aware engine the Dashboard uses, so totals match
 import { fetchIndicators, fetchLiveQuotes, fetchTrades, marketOpen, postTrade, resolveExitFromCandles } from "../domain/api";
 import { DEFAULT_LIMITS, validateOrder } from "../services/riskService";
 import FilterChip from "../components/common/FilterChip";
@@ -111,14 +112,20 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
   const isOpen = (t) => !isRejected(t) && !reconciledClosed(t) && t.entry != null && (t.exitAt == null || t.exit == null || t.exitType === "Open");
   // Live P&L for still-open positions, using the current price.
   const withPnl = (t) => {
+    const tMkt = marketOf(t.sym) || t.market || market;
     if (reconciledClosed(t) && !isRejected(t) && (t.exitAt == null || t.exitType === "Open")) {
       return { ...t, livePnl: t.pnl || 0, open: false, reconciled: true };
     }
-    if (!isOpen(t)) return { ...t, livePnl: t.pnl || 0, open: false };
+    if (!isOpen(t)) {
+      // Closed: value with the SAME leverage/fee-aware engine the Dashboard uses (from the booked exit) so the
+      // Orders total reconciles with the Home Total, instead of the stored fee-less pnl.
+      const exitPx = (t.exit != null && Number(t.exit) > 0) ? Number(t.exit) : null;
+      const lp = exitPx != null ? +positionPnl(t, exitPx, tMkt).toFixed(2) : (t.pnl || 0);
+      return { ...t, livePnl: lp, open: false };
+    }
     const s = ALL.find((a) => a.sym === t.sym);
     const cur = s ? s.price : t.entry;
-    const dir = (t.side === "SELL" || t.short) ? -1 : 1;   // short profits when price falls
-    return { ...t, open: true, cur, livePnl: +((cur - t.entry) * (t.qty || 1) * dir).toFixed(2) };
+    return { ...t, open: true, cur, livePnl: +positionPnl(t, cur, tMkt).toFixed(2) };
   };
   /* Date a trade by its EXIT if it's closed, its ENTRY if it's still open. A position
      opened in March and still running is "current", not a March trade — filtering an
