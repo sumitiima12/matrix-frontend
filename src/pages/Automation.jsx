@@ -1958,7 +1958,7 @@ function IndicatorOptimizer({ defs, entry, mode, tf, appSyms, currentSl, current
    • Per Strategy: one strategy × many symbols (symbol multi-select, all by default) — the transpose.
    Both reuse useBacktestStats and only run on the "Backtest Now" tap, never automatically. */
 function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators, onCreateCopy, copyExists, isActive, onToggleActive }) {
-  const DEF_SYM = { US: "SPX", IN: "NIFTY50", Crypto: "BTC", Commodity: "GOLD", FNO: "NIFTY50" };
+  const DEF_SYM = { US: "SPX", IN: "NIFTY50", Crypto: "BTC", USStockTokens: "TSLAX", Commodity: "GOLD", FNO: "NIFTY50" };
   const [view, setView] = useState("perSymbol");   // perSymbol | perStrategy
   // Position sizing for absolute P&L: crypto = USD amount (default 500), everything else = quantity (default 1).
   const isCrypto = market === "Crypto" || market === "USStockTokens";
@@ -2432,7 +2432,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const [maxReentries, setMaxReentries] = useState("5");// max re-entries after an exit
   const [tf, setTf] = useState("5m");
   // Default deploy symbol per market: Indian → NIFTY 50, US → S&P 500, Commodity → Gold, Crypto → BTC.
-  const DEFAULT_DEPLOY_SYM = { IN: "NIFTY50", US: "SPX", Commodity: "GOLD", Crypto: "BTC", FNO: "NIFTY50" };
+  const DEFAULT_DEPLOY_SYM = { IN: "NIFTY50", US: "SPX", Commodity: "GOLD", Crypto: "BTC", USStockTokens: "TSLAX", FNO: "NIFTY50" };
   const [deploySyms, setDeploySyms] = useState([DEFAULT_DEPLOY_SYM[market] || "NIFTY50"]);
   useEffect(() => { setDeploySyms([DEFAULT_DEPLOY_SYM[market] || "NIFTY50"]); /* eslint-disable-next-line */ }, [market]);
   const [symFilter, setSymFilter] = useState([]);

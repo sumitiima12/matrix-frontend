@@ -229,13 +229,13 @@ const CRYPTO = [
    base sym is the Delta product symbol minus the trailing "USD". (SNDKB/SOXLB moved here from Crypto — they're US
    stock/ETF tokens, not coins.) Only the user's starred symbols from the Delta watchlist are listed. */
 const US_STOCK_TOKENS = [
+  stock("TSLAX", "Tesla (tokenised)", "US Token"),   // default symbol for US Tokens (first in list)
   stock("AAPLX", "Apple (tokenised)", "US Token"),
   stock("MSFTB", "Microsoft (tokenised)", "US Token"),
   stock("NVDAX", "NVIDIA (tokenised)", "US Token"),
   stock("AMZNX", "Amazon (tokenised)", "US Token"),
   stock("GOOGLX", "Alphabet (tokenised)", "US Token"),
   stock("METAX", "Meta (tokenised)", "US Token"),
-  stock("TSLAX", "Tesla (tokenised)", "US Token"),
   stock("AMDB", "AMD (tokenised)", "US Token"),
   stock("AVGOB", "Broadcom (tokenised)", "US Token"),
   stock("ORCLB", "Oracle (tokenised)", "US Token"),
