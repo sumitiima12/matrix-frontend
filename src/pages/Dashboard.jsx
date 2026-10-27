@@ -663,14 +663,14 @@ function TrendingRow({ s, market, onOpen, onBuy, onWhy }) {
      IN/FNO 9:15–15:30 Mon–Fri · Commodity 9:00–23:30 Mon–Fri · US 7:00pm–1:30am IST Mon–Fri
      (the after-midnight tail belongs to the previous weekday's session) · Crypto 24/7. */
 export function marketOpen(market) {
-  if (market === "Crypto" || market === "USStockTokens") return true;   // Delta USD perps trade 24×7
+  if (market === "Crypto") return true;   // Crypto (Delta) trades 24×7
   const ist = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
   const day = ist.getDay();                       // 0 Sun … 6 Sat
   const mins = ist.getHours() * 60 + ist.getMinutes();
   const weekday = day >= 1 && day <= 5;
   if (market === "IN" || market === "FNO") return weekday && mins >= 555 && mins <= 930;      // 9:15–15:30
   if (market === "Commodity") return weekday && mins >= 540 && mins <= 1410;                   // 9:00–23:30
-  if (market === "US") return (mins >= 1140 && day >= 1 && day <= 5) || (mins <= 90 && day >= 2 && day <= 6); // 7:00pm–1:30am IST
+  if (market === "US" || market === "USStockTokens") return (mins >= 1140 && day >= 1 && day <= 5) || (mins <= 90 && day >= 2 && day <= 6); // US + US Tokens: 7:00pm–1:30am IST
   return true;
 }
 

@@ -134,7 +134,7 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
   const after = total != null ? (side === "BUY" ? wallet - total : wallet + total) : null;
   // R42-P1-08: never place a REAL non-crypto SELL whose position product we couldn't resolve (would risk booking the
   // exit against the wrong product bucket and leaving the position open). Block submit; the user closes from the card.
-  const sellProdBlocked = isReal && side === "SELL" && market !== "Crypto" && !inheritedSellProduct;
+  const sellProdBlocked = isReal && side === "SELL" && !isCrypto && !inheritedSellProduct;
 
   const Row = ({ k, v, c }) => (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
@@ -244,7 +244,7 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
           <Row k="Action" v={side} c={side === "BUY" ? "var(--up)" : "var(--down)"} />
           {/* R42-P1-08: a SELL exits in the POSITION's product — shown read-only, never a re-chosen CNC. If we couldn't
              resolve it (position product not passed through), warn and, in Real mode, block submit rather than guess. */}
-          {side === "SELL" && market !== "Crypto" && (
+          {side === "SELL" && !isCrypto && (
             <div style={{ padding: "11px 0", borderBottom: "1px solid var(--line)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>Exit product</span>
@@ -260,7 +260,7 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
             </div>
           )}
           {/* Crypto trades 24/7 with no Intraday/Delivery (MIS/CNC) distinction — skip the product choice. */}
-          {side === "BUY" && market !== "Crypto" && (
+          {side === "BUY" && !isCrypto && (
             <div style={{ padding: "11px 0", borderBottom: "1px solid var(--line)" }}>
               <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginBottom: 7 }}>Buy type</div>
               <div style={{ display: "flex", gap: 6 }}>

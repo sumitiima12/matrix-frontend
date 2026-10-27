@@ -31,14 +31,14 @@ const shortMarginFraction = (market) => SHORT_MARGIN_FRACTION[market] != null ? 
 
 /** Indian & US cash markets have sessions; crypto is 24/7. */
 export function isMarketOpen(market, now = new Date()) {
-  if (market === "Crypto" || market === "USStockTokens") return true;   // Delta USD perps trade 24×7
+  if (market === "Crypto") return true;   // Crypto (Delta) trades 24×7
   const day = now.getUTCDay();
   if (day === 0 || day === 6) return false;
   const mins = now.getUTCHours() * 60 + now.getUTCMinutes();
   if (market === "IN") return mins >= 225 && mins <= 600;      // L-04: 09:15–15:30 IST (03:45–10:00 UTC)
   // US observes DST, so a hardcoded UTC window is wrong half the year. Compute wall-clock
   // time in the exchange timezone (Intl handles EST/EDT), then check 09:30-16:00 ET.
-  if (market === "US") {
+  if (market === "US" || market === "USStockTokens") {   // US Stock Tokens follow US equity hours
     try {
       const et = new Intl.DateTimeFormat("en-US", {
         timeZone: "America/New_York", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false,
@@ -83,7 +83,7 @@ export function localMins(market, now = new Date()) {
    and the loss circuit-breaker resets at the wrong time. Derive midnight in the market's timezone
    (IST / ET-with-DST / UTC for 24×7 crypto). Mirrors the backend riskEngine.startOfSessionDay. */
 function startOfSessionDay(market = "IN") {
-  const tz = market === "US" ? "America/New_York" : ((market === "Crypto" || market === "USStockTokens") ? "UTC" : "Asia/Kolkata");
+  const tz = (market === "US" || market === "USStockTokens") ? "America/New_York" : (market === "Crypto" ? "UTC" : "Asia/Kolkata");
   const now = new Date();
   try {
     const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {

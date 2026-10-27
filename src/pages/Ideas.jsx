@@ -375,7 +375,7 @@ export default function Ideas({ onOpen, onBuy, onAutoBuy = null, market = "IN", 
   const isRealIdeas = mode === "real";
   const [ideaCvMap, setIdeaCvMap] = useState({});
   useEffect(() => {
-    if (market !== "Crypto" || !isRealIdeas) return;
+    if ((market !== "Crypto" && market !== "USStockTokens") || !isRealIdeas) return;
     let ok = true;
     getDeltaContractValues().then((m) => { if (ok && m && typeof m === "object") setIdeaCvMap(m); }).catch(() => {});
     return () => { ok = false; };

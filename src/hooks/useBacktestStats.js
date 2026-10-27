@@ -155,7 +155,7 @@ export function useBacktestStats(strat, opts = {}) {
         let pnl = capPnl;
         let retBase = null;   // capital the return % is measured against (per-trade deployment)
         if (hasSize) {
-          if (sizeMarket === "Crypto") {
+          if (sizeMarket === "Crypto" || sizeMarket === "USStockTokens") {
             const amt = Number(amount) || 0;
             pnl = amt * trades.reduce((a, t) => a + (t.ret || 0), 0);
             retBase = amt;
@@ -186,10 +186,10 @@ export function useBacktestStats(strat, opts = {}) {
            deploys the USD amount (qty = amount ÷ entry coins), stocks deploy qty × entry (qty shares);
            with no size, the capital-split per-symbol slice is deployed. */
         const investedOf = (entry) => hasSize
-          ? (sizeMarket === "Crypto" ? (Number(amount) || 0) : (Number(qty) || 0) * (entry || 0))
+          ? ((sizeMarket === "Crypto" || sizeMarket === "USStockTokens") ? (Number(amount) || 0) : (Number(qty) || 0) * (entry || 0))
           : perSym;
         const qtyOf = (entry) => hasSize
-          ? (sizeMarket === "Crypto" ? (entry ? (Number(amount) || 0) / entry : 0) : (Number(qty) || 0))
+          ? ((sizeMarket === "Crypto" || sizeMarket === "USStockTokens") ? (entry ? (Number(amount) || 0) / entry : 0) : (Number(qty) || 0))
           : (entry ? perSym / entry : 0);
         const tradeList = trades.map((t, i) => {
           const c = t._c || [];

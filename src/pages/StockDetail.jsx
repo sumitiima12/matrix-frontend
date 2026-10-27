@@ -177,7 +177,7 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
   const fundRead = useMemo(() => fundamentalRead(fund && !fund.unavailable ? fund : null), [fund]);
   useEffect(() => {
     let alive = true; setFund(null);
-    if (market === "Crypto") { setFund({ unavailable: true }); return; }
+    if (market === "Crypto" || market === "USStockTokens") { setFund({ unavailable: true }); return; }
     fetchFundamentals(s.sym).then((f) => { if (alive) setFund(f); }).catch(() => { if (alive) setFund({ unavailable: true }); });
     return () => { alive = false; };
   }, [s.sym, market]);
@@ -301,7 +301,7 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
         <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
           {showBuy && <button onClick={() => onBuy && onBuy(s, 1)} className="tap disp glow" style={{ flex: 1, background: "linear-gradient(120deg,var(--up),#12B98A)", color: "#fff", border: "none", borderRadius: 16, padding: 14, fontWeight: 800, fontSize: 14.5, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}><Plus size={17} /> Buy</button>}
           {/* SELL (short) — crypto & Indian options only. */}
-          {showBuy && (market === "Crypto" || s.isOpt) && <button onClick={() => onBuy && onBuy(s, 1, { side: "SELL", short: true })} className="tap disp" style={{ flex: 1, background: "var(--down)", color: "#fff", border: "none", borderRadius: 16, padding: 14, fontWeight: 800, fontSize: 14.5, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}>Sell</button>}
+          {showBuy && (market === "Crypto" || market === "USStockTokens" || s.isOpt) && <button onClick={() => onBuy && onBuy(s, 1, { side: "SELL", short: true })} className="tap disp" style={{ flex: 1, background: "var(--down)", color: "#fff", border: "none", borderRadius: 16, padding: 14, fontWeight: 800, fontSize: 14.5, display: "flex", gap: 6, alignItems: "center", justifyContent: "center" }}>Sell</button>}
           <button onClick={() => onTrade(s)} className="tap disp" style={{ flex: 1, background: "var(--elev)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 16, padding: 14, fontWeight: 700, fontSize: 14.5 }}>Trade…</button>
         </div>
 
@@ -309,7 +309,7 @@ export default function DetailPage({ s, onBack, watched, toggleWatch, onTrade, o
         {(() => {
           if (s.isOpt) return null;                                    // already an option
           const optUnder = (() => {
-            if (market === "Crypto") return String(s.sym || "").toUpperCase().replace(/(USDT?|INR|PERP)$/i, "");
+            if (market === "Crypto" || market === "USStockTokens") return String(s.sym || "").toUpperCase().replace(/(USDT?|INR|PERP)$/i, "");
             return String(s.sym || "").toUpperCase();
           })();
           const cryptoOK = market === "Crypto" && (optUnder === "BTC" || optUnder === "ETH");

@@ -304,7 +304,7 @@ function istParts() {
   return { day: d.getDay(), mins: d.getHours() * 60 + d.getMinutes() };
 }
 function marketHoursLabel(market) {
-  return (market === "Crypto" || market === "USStockTokens") ? "24×7" : market === "US" ? "7:30pm–1:30am IST" : market === "Commodity" ? "9:00am–8:30pm IST" : "9:15am–3:30pm IST";
+  return market === "Crypto" ? "24×7" : (market === "US" || market === "USStockTokens") ? "7:30pm–1:30am IST" : market === "Commodity" ? "9:00am–8:30pm IST" : "9:15am–3:30pm IST";
 }
 
 /* ---- Yahoo ticker mapping (domain knowledge, kept out of the services) ---- */

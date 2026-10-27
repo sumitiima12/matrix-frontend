@@ -24,6 +24,7 @@ export const MARKET_COST_DEFAULTS = {
   // per-leg AVERAGE (0.035%) → 2×0.035 = 0.07% round-trip fees. Leverage (25×) scales notional return
   // and fee equally, so the cost as a % of the notional return is leverage-independent.
   Crypto:    { slipPct: 0.03, brokeragePct: 0.035 },
+  USStockTokens: { slipPct: 0.03, brokeragePct: 0.035 },
   Commodity: { slipPct: 0.03, brokeragePct: 0.03 },
 };
 export function marketCostDefaults(market) {

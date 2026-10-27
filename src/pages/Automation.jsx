@@ -3609,7 +3609,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             {/* Options are only offered where they exist: any Indian/US/Commodity underlying, but in CRYPTO
                 only BTC and ETH have a listed options market — so the "trade options" toggle is hidden for
                 every other coin. */}
-            {!(market === "Crypto" && !deploySyms.some((x) => x === "BTC" || x === "ETH")) && (
+            {!((market === "Crypto" && !deploySyms.some((x) => x === "BTC" || x === "ETH")) || market === "USStockTokens") && (
               <OptionLeg symbols={deploySyms.length ? deploySyms : ["NIFTY50"]} value={optLeg} onChange={setOptLeg} />
             )}
           </div>
@@ -3718,7 +3718,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
               <NumF label="Trailing SL %" v={tsl} set={setTsl} />
             </div>
             {/* SL/TP are PRICE moves; on leveraged crypto show the margin-equivalent (1% price ≈ 25% margin). */}
-            {market === "Crypto" && (() => {
+            {(market === "Crypto" || market === "USStockTokens") && (() => {
               const s = parseFloat(sl), t = parseFloat(tp), parts = [];
               if (Number.isFinite(s) && s > 0) parts.push(`SL ${s}% ≈ ${(s * CRYPTO_LEV).toFixed(0)}% of margin`);
               if (Number.isFinite(t) && t > 0) parts.push(`TP ${t}% ≈ ${(t * CRYPTO_LEV).toFixed(0)}%`);
@@ -3730,7 +3730,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
               <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 5 }}>{(market === "Crypto" || market === "USStockTokens") ? "Amount (in your wallet currency) spent on each entry." : "Number of shares (or lots, for options) placed on each entry."}</div>
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-              {market !== "Crypto" && <SegF label="Buy Type" options={["Intraday", "NRML"]} value={buyType} set={setBuyType} />}
+              {market !== "Crypto" && market !== "USStockTokens" && <SegF label="Buy Type" options={["Intraday", "NRML"]} value={buyType} set={setBuyType} />}
               <SegF label="Order Type" options={["Market", "Limit"]} value={optLeg.enabled ? "Limit" : entryType} set={setEntryType} disabled={optLeg.enabled ? ["Market"] : []} />
             </div>
             {optLeg.enabled && (

@@ -43,7 +43,7 @@ export default function Drawer({ s, onClose, onDetails, onBuy, canBuy }) {
     let stop = false;
     setFund(null);
     if (!s?.sym) return undefined;
-    if (marketOf(s.sym) === "Crypto") { setFund({ unavailable: true }); return undefined; }
+    if (marketOf(s.sym) === "Crypto" || marketOf(s.sym) === "USStockTokens") { setFund({ unavailable: true }); return undefined; }
     fetchFundamentals(s.sym).then((f) => { if (!stop) setFund(f); }).catch(() => { if (!stop) setFund({ unavailable: true }); });
     return () => { stop = true; };
   }, [s?.sym]);
@@ -51,7 +51,7 @@ export default function Drawer({ s, onClose, onDetails, onBuy, canBuy }) {
   if (!s) return null;
   const market = marketOf(s.sym);
   // Sell (short) is offered only where the app supports it: crypto and Indian options.
-  const canShort = market === "Crypto" || Boolean(s.isOpt);
+  const canShort = market === "Crypto" || market === "USStockTokens" || Boolean(s.isOpt);
 
   const onTS = (e) => { startY.current = e.touches[0].clientY; };
   const onTM = (e) => { if (startY.current == null) return; setDy(Math.max(0, e.touches[0].clientY - startY.current)); };  // down only
@@ -105,7 +105,7 @@ export default function Drawer({ s, onClose, onDetails, onBuy, canBuy }) {
         {(() => {
           const TONE = { good: "var(--up)", bad: "var(--down)", warn: "var(--amber, #F59E42)", neutral: "var(--ink)" };
           const tr = technicalRead(s, techSignal(s));
-          const fr = (market !== "Crypto" && fund && !fund.unavailable) ? fundamentalRead(fund) : null;
+          const fr = (market !== "Crypto" && market !== "USStockTokens" && fund && !fund.unavailable) ? fundamentalRead(fund) : null;
           const Bullet = ({ k, v, tone }) => (
             <div style={{ display: "flex", gap: 6, alignItems: "baseline", fontSize: 11, marginBottom: 5, lineHeight: 1.35 }}>
               <span style={{ color: "var(--muted)", flex: "0 0 auto" }}>•</span>
@@ -132,7 +132,7 @@ export default function Drawer({ s, onClose, onDetails, onBuy, canBuy }) {
               </div>
             </div>
           );
-          const isCrypto = market === "Crypto";
+          const isCrypto = market === "Crypto" || market === "USStockTokens";
           return (
             /* Crypto has no fundamentals, so we drop that column entirely and give Technicals the
                full width — rather than showing an empty "not applicable" box. */

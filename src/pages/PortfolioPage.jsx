@@ -14,7 +14,7 @@ import { loadAutoExits, cancelAutoExit } from "../services/brokerService";
 
 /* Crypto quantities carry long floating tails (4.3200048999…); show at most 2 decimals (trailing
    zeros trimmed). Non-crypto quantities are whole units and pass through unchanged. */
-const qtyText = (q, sym) => (marketOf(sym) === "Crypto" ? +(+q || 0).toFixed(2) : q);
+const qtyText = (q, sym) => ((marketOf(sym) === "Crypto" || marketOf(sym) === "USStockTokens") ? +(+q || 0).toFixed(2) : q);
 
 /* Server-side auto-exits the engine is watching for this user. Read-only + cancel. Shows
    whether the engine is actually armed (AUTO_EXIT_LIVE) so the user is never misled into
@@ -132,7 +132,7 @@ function ManageHolding({ r, st, onBuy, onSell, onClosePosition, onUpdate, onClos
   const isShort = !!(r.short || r.side === "SELL" || (Number(r.qty) < 0));
   // Live price + currency for the "amount" readout under each qty (qty × price). Crypto/US settle in USD.
   const dmkt = r.market || r.m || marketOf(r.sym);
-  const dccy = (dmkt === "Crypto" || dmkt === "US") ? "$" : "₹";
+  const dccy = (dmkt === "Crypto" || dmkt === "USStockTokens" || dmkt === "US") ? "$" : "₹";
   const px = Number(r.ltp != null ? r.ltp : (st && st.price != null ? st.price : r.avg)) || 0;
   const amtText = (q) => px ? `≈ ${dccy}${round2((Number(q) || 0) * px).toLocaleString(dccy === "$" ? "en-US" : "en-IN", { maximumFractionDigits: 2 })}` : "";
   // Qty stepper — 2-decimal aware (crypto holdings are fractional, so no more 1.4000000000000001) with the
@@ -278,7 +278,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
   const [expand, setExpand] = useState(null);   // sym with open trade panel
   const [fType, setFType] = useState([]);       // Manual / Auto Buy / Automate
   const mkt = market;
-  const mLabel = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", Commodity: "🪙 Commodity" }[market];
+  const mLabel = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", USStockTokens: "📈 US Tokens", Commodity: "🪙 Commodity" }[market] || market;
   const orphans = portfolio.filter((h) => !h.isFut && !h.isOpt && marketOf(h.sym) === null && (h.market || null) === market);
   const unplaceable = portfolio.filter((h) => !h.isFut && !h.isOpt && marketOf(h.sym) === null && !h.market);
   const TRADE_TYPES = ["Manual", "Auto Buy", "Automate"];
@@ -659,7 +659,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
         <div style={{ fontSize: 12, opacity: .8 }}>Holdings value</div>
         <div className="mono" style={{ fontWeight: 700, fontSize: 28, marginTop: 2 }}>{fmt(totalVal, mkt)}</div>
         <div style={{ display: "flex", gap: 18, marginTop: 10, fontSize: 12.5 }}>
-          {mkt !== "Crypto" && <div><div style={{ opacity: .7 }}>Cash</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(wallet, "IN")}</div></div>}
+          {!(mkt === "Crypto" || mkt === "USStockTokens") && <div><div style={{ opacity: .7 }}>Cash</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(wallet, mkt)}</div></div>}
           <div><div style={{ opacity: .7 }}>Invested</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(totalInv, mkt)}</div></div>
           <div><div style={{ opacity: .7 }}>Total P/L</div><div className="mono" style={{ fontWeight: 700, color: totalPL >= 0 ? "#5CF0B5" : "#FF8FA0" }}>{totalPL >= 0 ? "+" : ""}{fmt(totalPL, mkt)}</div></div>
         </div>
@@ -809,7 +809,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
           {orphans.map((h) => (
             <div key={h.sym} style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 12.5 }}>
               <span className="disp" style={{ fontWeight: 700 }}>{h.sym}</span>
-              <span className="mono" style={{ color: "var(--muted)" }}>{qtyText(h.qty, h.sym)} units · bought at {fmt(h.buy, "Crypto")}</span>
+              <span className="mono" style={{ color: "var(--muted)" }}>{qtyText(h.qty, h.sym)} units · bought at {fmt(h.buy, marketOf(h.sym) || "Crypto")}</span>
             </div>
           ))}
         </div>

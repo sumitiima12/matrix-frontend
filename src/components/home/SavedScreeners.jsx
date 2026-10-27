@@ -34,7 +34,7 @@ export function updateSavedScreener(id, patch) {
   saveSaved(all);
 }
 
-const qtyDefault = (m) => (m === "Crypto" ? 200 : 1);
+const qtyDefault = (m) => ((m === "Crypto" || m === "USStockTokens") ? 200 : 1);
 const cmp = (o, x, y) => o === ">" ? x > y : o === "<" ? x < y : o === ">=" ? x >= y : o === "<=" ? x <= y : Math.abs(x - y) < 1e-6;
 const passes = (stock, conds) => (conds || []).every((f) => {
   const x = indValue(stock, f.m);
@@ -51,7 +51,7 @@ function SavedRow({ scr, market, mode, trades = [], list, onOpen, onScreenerBuy,
   const [showTrades, setShowTrades] = useState(false);   // expandable List of Trades (tap the P&L)
   const [ov, setOv] = useState(scr.ov || {});
   const entryPx = useRef({});
-  const isCrypto = market === "Crypto";
+  const isCrypto = market === "Crypto" || market === "USStockTokens";
   const cur = CUR[market] || "₹";
 
   const ovSL = (sym) => (ov[sym] && ov[sym].sl != null) ? ov[sym].sl : 0.4;
