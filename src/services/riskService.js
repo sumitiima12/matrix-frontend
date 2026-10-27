@@ -18,7 +18,7 @@ export const DEFAULT_LIMITS = {
   maxPositionPct: 100,     // a single position may use the whole sleeve
   maxOpenPositions: 50,
   maxTradesPerDay: 100,
-  maxDailyLossPct: 25,     // halt a market after −25% realised on the day
+  maxDailyLossPct: 90,     // halt a market only after −90% realised on the day (raised from 25%)
   cooldownMs: 15000,       // 15s between two entries in the same symbol
   allowOutsideMarketHours: true,  // paper trading: allowed, but flagged
 };

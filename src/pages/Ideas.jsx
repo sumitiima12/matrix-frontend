@@ -419,13 +419,18 @@ export default function Ideas({ onOpen, onBuy, onAutoBuy = null, market = "IN", 
     // (onBuy opens the per-trade confirm sheet — routing auto-buy through it placed nothing, so Ideas read 0 trades.)
     const place = onAutoBuy || onBuy;
     if (!autoIdeas || !place || !ideaPlan.length || !marketOpen(market)) return;
-    const key = `mx_ideasbuy_${market}_${mode}_${Math.floor(Date.now() / 864e5)}`;   // once per day, per mode
-    if (lsGet(key, false)) return;
-    // Skip picks below one contract (real crypto) — the broker would reject them as "amount too small".
-    const picks = ideaPlan.filter((p) => !p.skipped);
-    if (!picks.length) return;   // nothing to place today → don't burn the once-per-day guard on a no-op
-    picks.forEach((p) => place(p.s, p.qty, { tp: p.gain, sl: p.slPct, tradeType: "Ideas", ideaId: p.idea && p.idea.id, ...(p.short ? { side: "SELL", short: true } : {}) }));
-    lsSet(key, true);
+    const day = Math.floor(Date.now() / 864e5);
+    // PER-IDEA once-per-day guard (not a single blanket daily flag). Ideas and their prices load asynchronously, so a
+    // single flag bought only whatever had loaded at the first fire and burned the day — late-loading ideas never got
+    // bought. Now each idea is bought once per day the moment it's ready; the effect re-runs as ideaPlan grows.
+    // Skip picks below one contract (real crypto/US-token) — the broker would reject them as "amount too small".
+    for (const p of ideaPlan.filter((x) => !x.skipped)) {
+      const id = (p.idea && p.idea.id) || p.s.sym;
+      const k = `mx_ideasbuy_${market}_${mode}_${id}_${day}`;
+      if (lsGet(k, false)) continue;
+      lsSet(k, true);   // reserve BEFORE firing so an async re-render can't double-buy the same idea
+      place(p.s, p.qty, { tp: p.gain, sl: p.slPct, tradeType: "Ideas", ideaId: p.idea && p.idea.id, ...(p.short ? { side: "SELL", short: true } : {}) });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoIdeas, market, mode, ideaPlan.length]);
   return (

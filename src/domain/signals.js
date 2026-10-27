@@ -201,8 +201,12 @@ export function dailyPicks(list, opts = {}) {
   const base = (list || []).filter((s) => s.hasData && s.rsi != null && s.sma50 != null && s.sector !== "Volatility");
   const longs = base
     .map((s) => ({ s, t: techSignal(s) }))
-    // A long "top pick" is a BUY idea, so we drop outright bearish/overbought readings.
-    .filter((x) => x.t && x.t.score > 0 && x.t.signal !== "Overbought")
+    // TIGHTENED (quality over quantity): a Smart pick must be a GENUINE strong setup, not just any positive score.
+    // Require score ≥ 2.5 — that admits only the real bullish patterns (Resistance breakout 3.2 / Bounce off support
+    // 2.7 / Trend continuation 2.5), each already carrying trend + MACD confirmation — and drops the weak
+    // "Range-bound" (0.2), bare "Uptrend" (1.2) and "Oversold" (1.6) knife-catch entries that produced most of the
+    // losing trades. Overbought and Oversold signals are excluded outright. Fewer picks, higher conviction.
+    .filter((x) => x.t && x.t.score >= 2.5 && x.t.signal !== "Overbought" && x.t.signal !== "Oversold")
     .sort((a, b) => b.t.score - a.t.score)
     .map(({ s, t }) => Object.assign(s, {
       pickDir: "long", pickSide: "BUY", pickSignal: t.signal, pickReason: pickReason(s, t), pickPattern: t.pattern,

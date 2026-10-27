@@ -94,11 +94,15 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
   // rejects it). So only buys use amount-mode.
   const amountMode = isCrypto && side === "BUY";
   const _effQtyRaw = amountMode ? (price ? (amount / price) : 0) : qty;
-  // Real crypto (Delta) trades in WHOLE contracts — Delta rounds the size down, so showing 143.30914 then filling 143
-  // was misleading. Floor to an integer for real buys so the drawer, the Buy button, and the actual fill all match.
-  const effQty = amountMode ? (isReal ? Math.floor(_effQtyRaw) : +(_effQtyRaw).toFixed(6)) : qty;
+  // Real crypto/US-token (Delta) trades in WHOLE contracts. Round to an integer so the drawer, the Buy button and the
+  // actual fill match — but round UP to at least 1 when the entered amount is below one contract (e.g. $10 on a $72
+  // token), instead of flooring to 0 (which showed "0 units" and couldn't place). Delta's minimum is 1 contract.
+  const effQty = amountMode ? (isReal ? (_effQtyRaw > 0 ? Math.max(1, Math.floor(_effQtyRaw)) : 0) : +(_effQtyRaw).toFixed(6)) : qty;
   const units = amountMode ? effQty : (isCrypto ? qty : qty * (lot || 1));
-  const total = amountMode ? (Number(amount) || 0) : (price != null ? price * units : null);
+  // Order value: a VIRTUAL amount-mode buy deploys exactly the entered USD (fractional allowed). A REAL buy fills whole
+  // contracts, so show the TRUE cost = units × price (e.g. a $10 entry on a $72 token becomes 1 unit ≈ $72) rather than
+  // the entered amount, so "Order value" / "Wallet after" aren't misleading.
+  const total = amountMode ? (isReal ? (price != null ? price * effQty : null) : (Number(amount) || 0)) : (price != null ? price * units : null);
   const short = total != null && side === "BUY" && total > wallet;
   const after = total != null ? (side === "BUY" ? wallet - total : wallet + total) : null;
   // R42-P1-08: never place a REAL non-crypto SELL whose position product we couldn't resolve (would risk booking the
