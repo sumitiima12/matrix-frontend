@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BACKEND_URL } from "../config";
-import { ALL, marketOf } from "../domain/universe";
+import { ALL, marketOf, isDeltaUsd } from "../domain/universe";
+import { leverageFor } from "../domain/leverage";
 import { postTrade, resolveExitFromCandles } from "../domain/api";
 import { validateOrder, DEFAULT_LIMITS } from "../services/riskService";
 import { fmt, lsGet, lsSet } from "../lib/format";
@@ -178,6 +179,12 @@ export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, us
       tradeType: opts.tradeType || "Manual", sl: opts.sl ?? null, tp: opts.tp ?? null, tsl: opts.tsl ?? null,
     });
     const cmOf = (row) => (Number(row?.contractMultiplier) > 0 ? Number(row.contractMultiplier) : 1);
+    // Leveraged Delta markets (Crypto / US Tokens) are isolated-margin perps: paper trading locks only the MARGIN
+    // (notional ÷ leverage) on open and releases margin ± P&L on close — NOT the full notional. This keeps the paper
+    // wallet balance consistent with the leverage/fee-aware P&L shown everywhere (positionPnl). Spot markets (lev=1)
+    // are unchanged (margin == notional).
+    const leveraged = isDeltaUsd(market);
+    const lev = leveraged ? Math.max(1, leverageFor(stock.sym, market)) : 1;
     let realized = null;                 // P&L booked by this order (only when it CLOSES a position)
     let openEntry = fill;                // entry price to journal (the position's original entry on a close)
     const existing = portfolio.find(matchMkt);
@@ -187,10 +194,10 @@ export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, us
         // Cover a short: profit when the cover price is BELOW the short entry.
         const coverQty = Math.min(qty, existing.qty || 0);
         realized = (existing.buy - fill) * coverQty * cmOf(existing); openEntry = existing.buy;
-        adjustWallet(market, realized);
+        adjustWallet(market, leveraged ? ((existing.buy * coverQty) / lev + realized) : realized);   // release short margin + P&L
         setPortfolio((p) => p.map((h) => (matchMkt(h) && isShort(h)) ? { ...h, qty: (Number(h.qty) || 0) - coverQty } : h).filter((h) => (Number(h.qty) || 0) > 1e-9));
       } else {
-        adjustWallet(market, -cost);
+        adjustWallet(market, leveraged ? -(cost / lev) : -cost);   // lock margin only for leveraged perps
         setPortfolio((p) => {
           const held = p.find((h) => matchMkt(h) && !isShort(h));
           if (held) {
@@ -206,10 +213,11 @@ export function useOrders({ portfolio, setPortfolio, walletMap, adjustWallet, us
         // Close a long: proceeds + P&L (profit when the sell price is ABOVE the buy).
         const closeQty = Math.min(qty, existing.qty || 0);
         realized = (fill - existing.buy) * closeQty * cmOf(existing); openEntry = existing.buy;
-        adjustWallet(market, fill * closeQty);
+        adjustWallet(market, leveraged ? ((existing.buy * closeQty) / lev + realized) : (fill * closeQty));   // release long margin + P&L
         setPortfolio((p) => p.map((h) => (matchMkt(h) && !isShort(h)) ? { ...h, qty: (Number(h.qty) || 0) - closeQty } : h).filter((h) => (Number(h.qty) || 0) > 1e-9));
       } else {
-        // Open / add a SHORT. Paper margin is ignored (no cash moves on open); P&L books on cover.
+        // Open / add a SHORT. Leveraged perps lock margin on open (released on cover); spot shorts move no cash.
+        if (leveraged) adjustWallet(market, -((fill * qty) / lev));
         setPortfolio((p) => {
           const sh = p.find((h) => matchMkt(h) && isShort(h));
           if (sh) {

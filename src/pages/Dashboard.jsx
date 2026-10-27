@@ -670,7 +670,15 @@ export function marketOpen(market) {
   const weekday = day >= 1 && day <= 5;
   if (market === "IN" || market === "FNO") return weekday && mins >= 555 && mins <= 930;      // 9:15–15:30
   if (market === "Commodity") return weekday && mins >= 540 && mins <= 1410;                   // 9:00–23:30
-  if (market === "US" || market === "USStockTokens") return (mins >= 1140 && day >= 1 && day <= 5) || (mins <= 90 && day >= 2 && day <= 6); // US + US Tokens: 7:00pm–1:30am IST
+  if (market === "US" || market === "USStockTokens") {   // DST-correct ET session (matches riskService.isMarketOpen)
+    try {
+      const et = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date());
+      const g = (t) => { const p = et.find((x) => x.type === t); return p ? p.value : ""; };
+      const wd = g("weekday"); if (wd === "Sat" || wd === "Sun") return false;
+      const em = parseInt(g("hour"), 10) * 60 + parseInt(g("minute"), 10);
+      return em >= 570 && em <= 960;   // 09:30–16:00 ET
+    } catch { return (mins >= 1140 && day >= 1 && day <= 5) || (mins <= 90 && day >= 2 && day <= 6); }
+  }
   return true;
 }
 
@@ -991,9 +999,14 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     // (contracts × contract_value × price). A slice below half a contract rounds to 0 → shown as SKIPPED
     // (the server would reject it as "amount too small"). cv unknown (fetch not ready) ⇒ fall back to `cap`.
     const cv = ((m === "Crypto" || m === "USStockTokens") && isReal) ? cvFor(s.sym) : 0;
-    const contracts = cv > 0 ? Math.max(0, Math.round((cap / entry) / cv)) : null;
+    // Mirror the BACKEND rounding exactly: it rescues any slice ≥ 0.25 of a contract up to 1 (DELTA_MIN_CONTRACT_FRACTION
+    // default) and only rejects below that. The old client rule used Math.round (skipped anything < 0.5 contract), which
+    // dropped picks the server would actually have accepted — under-filling real auto-buy. Now a pick is SKIPPED only
+    // when it's truly below the server's minimum.
+    const rawC = cv > 0 ? (cap / entry) / cv : null;
+    const contracts = rawC == null ? null : (rawC < 0.25 ? 0 : Math.max(1, Math.round(rawC)));
     const actualUsd = contracts != null ? +(contracts * cv * entry).toFixed(2) : +cap.toFixed(2);
-    const skipped = contracts != null && contracts < 1;
+    const skipped = contracts === 0;
     return { sym: s.sym, m, qty, entry, tpPct: p.tpPct, slPct: p.slPct, rr: p.rr, auto: p.auto, cap: +cap.toFixed(2), confPct, cv, contracts, actualUsd, skipped };
   });
   // When Auto-Buy is ON, actually place today's picks as REAL positions (once per

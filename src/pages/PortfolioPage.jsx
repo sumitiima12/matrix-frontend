@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Briefcase, ChevronRight, Home, ShieldCheck, SlidersHorizontal, X } from "lucide-react";
 import NeoIcon from "../components/common/NeoIcon";
 import { fmt } from "../lib/format";
+import { positionPnl } from "../domain/leverage";   // leverage/fee-aware P&L — same engine as Dashboard/Orders
 import { ALL, marketOf } from "../domain/universe";
 import { techSignal } from "../domain/signals";
 import { analyzeHolding, portfolioHealth, sectorExposure } from "../services/portfolioService";
@@ -293,7 +294,10 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
       // SHORT positions profit when price FALLS, so their P&L is the inverse of a long's.
       const dir = (h.side === "SELL" || h.short) ? -1 : 1;
       const inv = h.buy * h.qty;
-      const pl = dir * (cur * h.qty - inv), plp = dir * (cur / h.buy - 1) * 100;
+      // Leverage/fee-aware P&L via the SAME engine the Dashboard and Orders use, so the three views reconcile.
+      // For spot (non-Delta) markets positionPnl is plain gross, i.e. identical to the old formula.
+      const pl = +positionPnl({ sym: h.sym, entry: h.buy, qty: h.qty, side: h.side, short: h.short }, cur, m).toFixed(2);
+      const plp = inv ? +((pl / Math.abs(inv)) * 100).toFixed(2) : 0;
       // Equity value: for a long this equals cur*qty; for a short it's mirrored so `val - inv` always
       // equals the direction-aware P&L — that keeps the portfolio TOTAL (Σval − Σinv) correct with shorts.
       const val = inv + pl;
