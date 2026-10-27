@@ -3,6 +3,7 @@ import { AlertTriangle, Minus, Plus, X, ShieldCheck } from "lucide-react";
 import { fmt, pct } from "../../lib/format";
 import OptionPicker from "./OptionPicker";
 import { isOptionable } from "../../domain/fno";
+import { getDeltaContractValues } from "../../services/brokerService";
 
 /* Assumed Delta crypto leverage for the SL/TP margin-equivalent hint (display-only; never changes an
    order). Delta leverage is per-product/user-set — 25× is the app's working default for the hint. */
@@ -34,6 +35,25 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
   const cprice = order && order.s ? order.s.price : null;
   const [amount, setAmount] = useState(() => (initialQty && cprice) ? Math.max(1, Math.round(initialQty * cprice)) : 10);
   useEffect(() => { const p = order && order.s ? order.s.price : null; setAmount((initialQty && p) ? Math.max(1, Math.round(initialQty * p)) : 10); }, [initialQty, order && order.s && order.s.sym]);
+  // Delta contract values (coin units per contract) — to compute the real per-order minimum (1 contract).
+  const [cvMap, setCvMap] = useState({});
+  useEffect(() => {
+    if (!isReal || !isCrypto) return;
+    let ok = true;
+    getDeltaContractValues().then((m) => {
+      if (!ok || !m || typeof m !== "object") return;
+      setCvMap(m);
+      // Once contract values load, bump the amount up to the minimum (1 contract) so the drawer isn't stuck below it.
+      if (side === "BUY" && s && s.price) {
+        const k = String(s.sym || "").replace(/(USDT|USD|INR|PERP)$/i, "").replace(/-EQ$/i, "").toUpperCase();
+        const cv = Number(m[k] ?? m[String(s.sym).toUpperCase()]) || 0;
+        const min = (cv > 0 ? cv : (market === "USStockTokens" ? 1 : 0)) * s.price;
+        if (min > 0) setAmount((a) => (Number(a) || 0) < min ? Math.ceil(min) : a);
+      }
+    }).catch(() => {});
+    return () => { ok = false; };
+  }, [isReal, isCrypto]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const cvFor = (sym) => { const k = String(sym || "").replace(/(USDT|USD|INR|PERP)$/i, "").replace(/-EQ$/i, "").toUpperCase(); return Number(cvMap[k] ?? cvMap[String(sym).toUpperCase()]) || 0; };
 
   /* Stop-loss / take-profit (%), PRE-FILLED from the pick's or idea's suggestion when the
      buy was launched from one of those cards. Editable, and applied to the position on
@@ -99,6 +119,13 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
   // token), instead of flooring to 0 (which showed "0 units" and couldn't place). Delta's minimum is 1 contract.
   const effQty = amountMode ? (isReal ? (_effQtyRaw > 0 ? Math.max(1, Math.floor(_effQtyRaw)) : 0) : +(_effQtyRaw).toFixed(6)) : qty;
   const units = amountMode ? effQty : (isCrypto ? qty : qty * (lot || 1));
+  // MINIMUM real order = 1 Delta contract = contractValue × price. US tokens have cv≈1 (so min ≈ the share price,
+  // e.g. $72 for a $72 token); crypto cv varies (BTC cv=0.001 → ~$80 min). Block any real amount below this — Matrix
+  // won't let you submit a sub-minimum order. cv is fetched from Delta's product list below.
+  const _cv = (isReal && isCrypto && s) ? cvFor(s.sym) : 0;
+  const minAmount = (isReal && amountMode && price) ? ((_cv > 0 ? _cv : (market === "USStockTokens" ? 1 : 0)) * price) : 0;
+  const minFloor = minAmount > 0 ? Math.ceil(minAmount) : 1;
+  const belowMin = minAmount > 0 && (Number(amount) || 0) < minAmount - 1e-9;
   // Order value: a VIRTUAL amount-mode buy deploys exactly the entered USD (fractional allowed). A REAL buy fills whole
   // contracts, so show the TRUE cost = units × price (e.g. a $10 entry on a $72 token becomes 1 unit ≈ $72) rather than
   // the entered amount, so "Order value" / "Wallet after" aren't misleading.
@@ -262,12 +289,12 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
             <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>
-              {amountMode ? "Amount (USD)" : (isCrypto ? "Quantity (units)" : (lot > 1 ? `Quantity (lots of ${lot})` : "Quantity"))}
+              {amountMode ? (minAmount > 0 ? `Amount (USD) · min ${fmt(minFloor, market)}` : "Amount (USD)") : (isCrypto ? "Quantity (units)" : (lot > 1 ? `Quantity (lots of ${lot})` : "Quantity"))}
             </span>
             <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <button
-                onClick={() => amountMode ? setAmount((a) => Math.max(1, (Number(a) || 10) - 10)) : setQty((q) => Math.max(1, q - 1))}
-                disabled={amountMode ? amount <= 1 : qty <= 1}
+                onClick={() => amountMode ? setAmount((a) => Math.max(minFloor, (Number(a) || 10) - 10)) : setQty((q) => Math.max(1, q - 1))}
+                disabled={amountMode ? amount <= minFloor : qty <= 1}
                 aria-label="Decrease"
                 className="tap"
                 style={{ width: 30, height: 30, borderRadius: 9, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--ink)", display: "grid", placeItems: "center" }}
@@ -310,6 +337,11 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
           <Row k="Live price" v={fmt(price, market)} />
           <Row k="Order value" v={total != null ? fmt(total, market) : "—"} />
           <Row k="Wallet after" v={after != null ? fmt(after, market) : "—"} c={short ? "var(--down)" : undefined} />
+          {belowMin && (
+            <div style={{ fontSize: 11, color: "var(--down)", fontWeight: 700, marginTop: 6, lineHeight: 1.45 }}>
+              Minimum order for {s.sym} is {fmt(minFloor, market)} (1 contract ≈ {fmt(minAmount, market)}). Increase the amount to continue.
+            </div>
+          )}
         </div>
 
         {price == null && (
@@ -459,12 +491,12 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
               tsl: tslOn && +tslPctV > 0 ? +tslPctV : undefined,
               autoExit: tslOn ? true : undefined,
             })}
-            disabled={price == null || short || busy || sellProdBlocked}
+            disabled={price == null || short || busy || sellProdBlocked || belowMin}
             className="tap disp"
             style={{
               flex: 1.4, border: "none", borderRadius: 12, padding: 13, fontWeight: 800, fontSize: 13.5,
-              cursor: price == null || short || busy || sellProdBlocked ? "not-allowed" : "pointer",
-              opacity: price == null || short || busy || sellProdBlocked ? 0.55 : 1,
+              cursor: price == null || short || busy || sellProdBlocked || belowMin ? "not-allowed" : "pointer",
+              opacity: price == null || short || busy || sellProdBlocked || belowMin ? 0.55 : 1,
               background: side === "BUY" ? "var(--up)" : "var(--down)",
               color: "#fff",
             }}
