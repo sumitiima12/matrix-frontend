@@ -2202,7 +2202,7 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators,
 /* P&L TAB — every strategy (active + inactive) for this market with its total P&L over a chosen
    window; tap one to see its trades (entry/exit time + per-trade P&L). Crypto P&L uses the USD-notional
    formula (qty is an amount, not a coin count), matching the fixed stratPerf. */
-function StrategyPnLView({ strats, trades, market, onDelete, isActive }) {
+function StrategyPnLView({ strats, trades, market, onDelete, isActive, onToggleActive }) {
   // Use the SAME market-aware "active" test the Deployed/Strategies tab uses, so a strategy can never read
   // "active" in one tab and "· inactive" in the other. Falls back to the plain flag only if no predicate is passed.
   const isActiveHere = (s) => (isActive ? isActive(s) : !!s.active);
@@ -2247,6 +2247,13 @@ function StrategyPnLView({ strats, trades, market, onDelete, isActive }) {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <div className="mono" style={{ fontWeight: 800, fontSize: 14, color: chgColor(p.pnl) }}>{p.pnl == null ? "—" : (p.pnl >= 0 ? "+" : "") + fmtPnl(p.pnl, market)}</div>
+              {onToggleActive && (
+                <button onClick={(e) => { e.stopPropagation(); onToggleActive(s); }} className="tap disp" style={{
+                  flexShrink: 0, border: "1px solid " + (isActiveHere(s) ? "var(--down)" : "var(--up)"),
+                  background: isActiveHere(s) ? "var(--down-soft, rgba(232,72,85,.12))" : "var(--up-soft, rgba(16,185,129,.12))",
+                  color: isActiveHere(s) ? "var(--down)" : "var(--up)", borderRadius: 999, padding: "4px 10px", fontSize: 10, fontWeight: 800, whiteSpace: "nowrap", cursor: "pointer",
+                }}>{isActiveHere(s) ? "Deactivate" : "Activate"}</button>
+              )}
               {onDelete && openId === s.id && <button onClick={(e) => { e.stopPropagation(); onDelete(s); }} className="tap" title="Delete strategy" style={{ border: "none", background: "transparent", padding: 2, flexShrink: 0 }}><Trash2 size={14} color="var(--down)" /></button>}
               <ChevronDown size={15} style={{ transform: openId === s.id ? "rotate(180deg)" : "none", transition: "transform .2s", color: "var(--muted)" }} />
             </div>
@@ -3838,7 +3845,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         </button>
       )}
 
-      {topTab === "pnl" && <StrategyPnLView strats={strats} trades={trades} market={market} isActive={activeInMarket} onDelete={deleteStrategy} />}
+      {topTab === "pnl" && <StrategyPnLView strats={strats} trades={trades} market={market} isActive={activeInMarket} onToggleActive={toggleActiveHere} onDelete={deleteStrategy} />}
 
       {topTab === "backtest" && (
         <div style={{ marginTop: 16 }}>

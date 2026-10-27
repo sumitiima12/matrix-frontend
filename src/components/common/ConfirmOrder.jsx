@@ -4,6 +4,7 @@ import { fmt, pct } from "../../lib/format";
 import OptionPicker from "./OptionPicker";
 import { isOptionable } from "../../domain/fno";
 import { getDeltaContractValues } from "../../services/brokerService";
+import { leverageFor } from "../../domain/leverage";
 
 /* Assumed Delta crypto leverage for the SL/TP margin-equivalent hint (display-only; never changes an
    order). Delta leverage is per-product/user-set — 25× is the app's working default for the hint. */
@@ -130,8 +131,12 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
   // contracts, so show the TRUE cost = units × price (e.g. a $10 entry on a $72 token becomes 1 unit ≈ $72) rather than
   // the entered amount, so "Order value" / "Wallet after" aren't misleading.
   const total = amountMode ? (isReal ? (price != null ? price * effQty : null) : (Number(amount) || 0)) : (price != null ? price * units : null);
-  const short = total != null && side === "BUY" && total > wallet;
-  const after = total != null ? (side === "BUY" ? wallet - total : wallet + total) : null;
+  // Leveraged Delta markets (Crypto / US Tokens) lock only MARGIN (notional ÷ leverage) on a BUY — the wallet impact
+  // and the "insufficient funds" check must use margin, not the full notional, to match how the order actually books.
+  const lev = isCrypto ? Math.max(1, leverageFor(s.sym, market)) : 1;
+  const buyMargin = total != null ? total / lev : null;
+  const short = buyMargin != null && side === "BUY" && buyMargin > wallet;
+  const after = total != null ? (side === "BUY" ? wallet - buyMargin : wallet + total) : null;
   // R42-P1-08: never place a REAL non-crypto SELL whose position product we couldn't resolve (would risk booking the
   // exit against the wrong product bucket and leaving the position open). Block submit; the user closes from the card.
   const sellProdBlocked = isReal && side === "SELL" && !isCrypto && !inheritedSellProduct;
@@ -336,6 +341,7 @@ export default function ConfirmOrder({ order, wallet, onConfirm, onCancel, userI
           )}
           <Row k="Live price" v={fmt(price, market)} />
           <Row k="Order value" v={total != null ? fmt(total, market) : "—"} />
+          {isCrypto && side === "BUY" && lev > 1 && buyMargin != null && <Row k={`Margin (${lev}×)`} v={fmt(buyMargin, market)} />}
           <Row k="Wallet after" v={after != null ? fmt(after, market) : "—"} c={short ? "var(--down)" : undefined} />
           {belowMin && (
             <div style={{ fontSize: 11, color: "var(--down)", fontWeight: 700, marginTop: 6, lineHeight: 1.45 }}>

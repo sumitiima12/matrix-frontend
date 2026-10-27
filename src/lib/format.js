@@ -3,6 +3,8 @@
  */
 export const CUR = { IN: "₹", US: "$", Crypto: "$", Commodity: "$", USStockTokens: "$" };
 export const MKT_LABEL = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", Commodity: "🪙 Commodity", USStockTokens: "📈 US Tokens", FNO: "⚡ F&O" };
+// plain (no emoji) market names, for inline sentences like "N trades in <market>"
+export const MKT_NAME = { IN: "Indian", US: "US", Crypto: "Crypto", Commodity: "Commodity", USStockTokens: "US Tokens", FNO: "F&O" };
 
 /* Commodity currency is not fixed: by default it's COMEX/NYMEX in USD, but when the backend is
    serving MCX quotes (INR) the whole commodity book flips to rupees. The feed is deployment-wide

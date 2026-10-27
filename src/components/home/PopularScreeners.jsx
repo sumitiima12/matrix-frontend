@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ALL, UNIVERSE, marketOf, yahooSymbol } from "../../domain/universe";
 import { positionPnl } from "../../domain/leverage";   // Delta-parity crypto P&L (margin cap + fees), same for paper & real
-import { CUR, DAY, chgColor, fmt, fmtPnl, lsGet, lsSet } from "../../lib/format";
+import { CUR, DAY, MKT_NAME, chgColor, fmt, fmtPnl, lsGet, lsSet } from "../../lib/format";
 import { confirmDialog } from "../../lib/confirmDialog";
 import { scanScreener, marketOpen } from "../../domain/api";
 import { getHistory } from "../../services/marketService";
@@ -1018,7 +1018,7 @@ function ScreenerDashboard({ trades = [], market, mode = "virtual", portfolio = 
       )}
       {/* Headline P&L + subline — mirrors the Automation Dashboard. */}
       <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 6, color: up ? "var(--up)" : "var(--down)" }}>{up ? "+" : ""}{fmtPnl(pnl, market)}</div>
-      <div style={{ fontSize: 11, opacity: .85, marginTop: -2 }}>{open.length} live position{open.length === 1 ? "" : "s"} · {mine.length} trade{mine.length === 1 ? "" : "s"} in {market}</div>
+      <div style={{ fontSize: 11, opacity: .85, marginTop: -2 }}>{open.length} live position{open.length === 1 ? "" : "s"} · {mine.length} trade{mine.length === 1 ? "" : "s"} in {MKT_NAME[market] || market}</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
         <Tile k="Returns %" v={ret == null ? "—" : (ret >= 0 ? "+" : "") + ret.toFixed(2) + "%"} c={ret == null ? undefined : (ret >= 0 ? "var(--up)" : "var(--down)")} />
         <Tile k="Win rate" v={winRate == null ? "—" : winRate.toFixed(0) + "%"} />
@@ -1106,7 +1106,8 @@ function ScreenerLivePositions({ trades = [], market, mode = "virtual", portfoli
   const isReal = mode === "real";
   const heldSet = isReal ? realHeldSetFrom(realPortfolio) : null;
   const open = useMemo(() => (trades || []).filter((t) =>
-    t && isScreenerTrade(t) && (marketOf(t.sym) || t.market || "") === market && t.status !== "rejected"
+    t && isScreenerTrade(t) && (isReal ? !!t.real : !t.real)   // scope to the active book — real & virtual never mix (matches the Screener dashboard count)
+    && (marketOf(t.sym) || t.market || "") === market && t.status !== "rejected"
     && Number(t.entry) > 0 && (t.exitAt == null || t.exit == null)
     && !isPhantomOpen(t, heldSet, isReal))   // hide positions the broker no longer holds
     .sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0)), [trades, market, portfolio, realPortfolio, mode]);
@@ -1149,6 +1150,8 @@ function ScreenerLivePositions({ trades = [], market, mode = "virtual", portfoli
    Uses the SAME attribution rule as the cards (key first, market-scoped) so numbers reconcile with each card. */
 function ScreenerPnLTab({ trades = [], market, mode = "virtual", liveTick = 0 }) {
   const [range, setRange] = useState("30d");
+  const [activeTick, setActiveTick] = useState(0);   // bump to re-read the auto-buy on/off flags after a toggle
+  const toggleScreener = (key) => { if (key == null) return; const next = !isScreenerActive(key, market, false); lsSet(autoKeyFor(key, market, false), next); setActiveTick((n) => n + 1); };
   const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a && a.price != null ? a.price : null; };
   const from = useMemo(() => {
     const now = Date.now(), D = 864e5;
@@ -1171,7 +1174,8 @@ function ScreenerPnLTab({ trades = [], market, mode = "virtual", liveTick = 0 })
       if (closed && (t.exitAt || t.entryAt || 0) < from) continue;      // closed inside window, or still open
       const cur = closed ? t.exit : (priceOf(t.sym) != null ? priceOf(t.sym) : t.entry);
       const p = positionPnl(t, cur, marketOf(t.sym) || market);
-      const g = byKey.get(key) || { label: t.strategy || "Screener", pnl: 0, closed: 0, wins: 0 };
+      const g = byKey.get(key) || { label: t.strategy || "Screener", screenerKey: (t.screenerKey != null ? t.screenerKey : null), pnl: 0, closed: 0, wins: 0 };
+      if (g.screenerKey == null && t.screenerKey != null) g.screenerKey = t.screenerKey;
       g.pnl += p;
       if (closed) { g.closed += 1; if (p >= 0) g.wins += 1; }
       byKey.set(key, g);
@@ -1198,21 +1202,25 @@ function ScreenerPnLTab({ trades = [], market, mode = "virtual", liveTick = 0 })
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr>
                 <th style={{ ...th, textAlign: "left" }}>Screener</th>
-                <th style={th}>Closed</th><th style={th}>Win rate</th><th style={th}>P&amp;L</th>
+                <th style={th}>Closed</th><th style={th}>Win rate</th><th style={th}>P&amp;L</th><th style={{ ...th, textAlign: "center" }}>Auto-buy</th>
               </tr></thead>
               <tbody>
-                {rows.map((r, i) => (
+                {rows.map((r, i) => { void activeTick; const on = r.screenerKey != null ? isScreenerActive(r.screenerKey, market, false) : null; return (
                   <tr key={i}>
                     <td style={{ ...td, textAlign: "left", fontWeight: 700, color: "var(--ink)", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.label}</td>
                     <td style={{ ...td, color: "var(--muted)" }}>{r.closed}</td>
                     <td style={{ ...td, color: "var(--muted)" }}>{r.closed ? Math.round((r.wins / r.closed) * 100) + "%" : "—"}</td>
                     <td className="mono" style={{ ...td, fontWeight: 800, color: chgColor(r.pnl) }}>{(r.pnl >= 0 ? "+" : "") + fmt(Number(r.pnl.toFixed(2)), market)}</td>
+                    <td style={{ ...td, textAlign: "center" }}>{r.screenerKey == null ? <span style={{ color: "var(--muted)" }}>—</span> : (
+                      <button onClick={() => toggleScreener(r.screenerKey)} className="tap" style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "4px 10px", fontSize: 10.5, fontWeight: 800, cursor: "pointer", background: on ? "var(--up)" : "var(--elev)", color: on ? "#fff" : "var(--ink)" }}>{on ? "Deactivate" : "Activate"}</button>
+                    )}</td>
                   </tr>
-                ))}
+                ); })}
                 <tr>
                   <td style={{ ...td, textAlign: "left", fontWeight: 800, borderTop: "2px solid var(--line)" }}>Total</td>
                   <td style={{ ...td, borderTop: "2px solid var(--line)" }} /><td style={{ ...td, borderTop: "2px solid var(--line)" }} />
                   <td className="mono" style={{ ...td, fontWeight: 800, color: chgColor(total), borderTop: "2px solid var(--line)" }}>{(total >= 0 ? "+" : "") + fmt(Number(total.toFixed(2)), market)}</td>
+                  <td style={{ ...td, borderTop: "2px solid var(--line)" }} />
                 </tr>
               </tbody>
             </table>

@@ -409,6 +409,10 @@ export async function brokerPlaceOrder(session, userId, order, confirmLive) {
        the SAME idempotency id and prompt the user to reconcile, never silently fire a new order. */
     e.conclusiveReject = (r.status === 400 || r.status === 422) && !!(d.reason || d.error) && d.status !== "unknown";
     e.ambiguous = !e.conclusiveReject;
+    /* R33-P1: a 409 (or any `reconcileRequired` body) is NOT a fresh "we couldn't reach the broker" timeout — it
+       means an EARLIER order is stuck unresolved and the server has paused new orders until it's reconciled. Flag
+       it so the caller shows the calm "tap Resolve" path instead of re-alarming "outcome unknown" on every retry. */
+    e.reconcileRequired = !!d.reconcileRequired || r.status === 409;
     throw e;
   }
   return d;

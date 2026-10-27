@@ -1014,10 +1014,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   // them at real market prices — no simulated win/loss.
   useEffect(() => {
     if (!autoOn || !onBuy || !BACKEND_URL) return;
-    // SAFETY: REAL money is NEVER auto-placed silently. In Real mode this once-a-day effect does nothing —
-    // the user must deliberately place today's picks via "Run auto-buy now", which shows a confirmation
-    // listing the exact symbols/amounts first. Virtual (paper) keeps the automatic daily fill (harmless).
-    if (isReal) return;
+    // REAL auto-fire is now ENABLED (operator decision): turning Smart Auto-Buy ON in REAL mode is a deliberate
+    // per-mode opt-in (autoKey is `${market}:real`, separate from virtual), so real picks are auto-placed unattended
+    // exactly like paper — the owner accepted real-money auto-execution. ("Run auto-buy now" still works for a manual
+    // push.) Market-hours, per-symbol/day dedup and placeable (≥1 contract, live price) gates below still apply.
     // MARKET HOURS. Never place an auto-buy when the market is CLOSED (weekends, or outside session
     // hours) — placing an Indian trade at 8pm or on a Sunday is wrong. Crypto is 24/7.
     if (!marketOpen(market)) return;

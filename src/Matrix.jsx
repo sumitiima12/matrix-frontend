@@ -683,8 +683,18 @@ function AppInner() {
         setBuyToast({ t: `Order rejected: ${reason}`, e: true });
         return { ok: false, state, reason, brokerName };
       }
+      /* R33-P1: a 409 / reconcileRequired means THIS order didn't fail — an EARLIER one is stuck unresolved and the
+         server has paused new orders until it's reconciled. Re-showing "couldn't confirm your sell — outcome unknown"
+         on every retry is both wrong and alarming (the user saw it "so many times"). Instead: do NOT mint a new
+         unknown intent for this order, kick a background broker probe to auto-clear the stuck one, and show a single
+         calm toast with a Resolve action. */
+      if (e && e.reconcileRequired) {
+        setBuyToast({ t: `Trading is paused until an earlier order is reconciled with ${brokerName}. Tap Resolve — your ${side.toLowerCase()} wasn't resubmitted.`, e: true, action: { label: "Resolve", onClick: resolveUnknown } });
+        try { resolveUnknownOrders().then((rr) => { if (rr && rr.cleared) { try { const st = orderStoreRef.current; if (st) st.persisted().forEach((p) => st.settleTerminal(p.intentKey)); } catch {} setBuyToast({ t: "Resolved — you can place orders again." }); refreshPortfolio(); } }).catch(() => {}); } catch {}
+        return { ok: false, state: ORDER_STATES.UNKNOWN, reason, brokerName, reconcileRequired: true };
+      }
       orderStoreRef.current.markUnknown(intentKey, reqId, route.id);
-      setBuyToast({ t: `Couldn't confirm your ${side.toLowerCase()} order on ${brokerName} — outcome unknown; check your broker before retrying. A retry reuses the same order (no duplicate).`, e: true });
+      setBuyToast({ t: `Couldn't confirm your ${side.toLowerCase()} order on ${brokerName} — outcome unknown; check your broker before retrying. A retry reuses the same order (no duplicate).`, e: true, action: { label: "Resolve", onClick: resolveUnknown } });
       return { ok: false, state: ORDER_STATES.UNKNOWN, reason, brokerName };
     }
   };

@@ -176,6 +176,9 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
   const winN = closedFilled.filter((t) => (t.livePnl || 0) > 0).length;
   const lossN = closedFilled.filter((t) => (t.livePnl || 0) < 0).length;
   const wlRatio = lossN > 0 ? (winN / lossN).toFixed(2) : (winN > 0 ? "∞" : "—");
+  // Average win / average loss over closed, filled trades (per-trade mean P&L of the winners / losers).
+  const avgWin = winN ? closedFilled.filter((t) => (t.livePnl || 0) > 0).reduce((a, t) => a + t.livePnl, 0) / winN : 0;
+  const avgLoss = lossN ? closedFilled.filter((t) => (t.livePnl || 0) < 0).reduce((a, t) => a + t.livePnl, 0) / lossN : 0;
   const statMkt = mkt === "all" ? "IN" : mkt;
   const typeColor = (tt) => tt === "Auto Buy" ? "var(--primary)" : tt === "Automate" ? "#8B5CF6" : tt === "Screener Auto Buy" ? "#0EA5E9" : "var(--muted)";
   const exitColor = (et) => (et === "Stop loss" || et === "Trailing stop") ? "var(--down)" : et === "Exit trigger" ? "var(--up)" : et === "Open" ? "var(--primary)" : "var(--muted)";
@@ -352,9 +355,12 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
             {[
               ["Trades", rows.length, "var(--ink)"],
+              ["Open", openN, "var(--ink)"],
               ["Wins", winN, "var(--up)"],
               ["Losses", lossN, "var(--down)"],
               ["Win:Loss", wlRatio, "var(--ink)"],
+              ["Avg Win", winN ? fmt(avgWin, statMkt) : "—", "var(--up)"],
+              ["Avg Loss", lossN ? fmt(avgLoss, statMkt) : "—", "var(--down)"],
             ].map(([k, v, c]) => (
               <div key={k} style={{ background: "var(--elev)", borderRadius: 10, padding: "8px 9px", minWidth: 0 }}>
                 <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".03em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{k}</div>
