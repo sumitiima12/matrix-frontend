@@ -180,10 +180,19 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
         </div>
         <div>
           <div style={{ fontSize: 9.5, opacity: .7, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".03em" }}>If every idea was traded</div>
-          <div className="mono" style={{ fontWeight: 800, fontSize: 20, color: netPnl >= 0 ? "var(--up)" : "var(--down)" }}>{netPnl >= 0 ? "+" : ""}{fmtPnl(netPnl, market)}</div>
-          <div style={{ fontSize: 9.5, opacity: .65 }}>Hypothetical · {fmt(cap, market)} each · {openN} still open</div>
+          {n === 0
+            ? <div style={{ fontWeight: 800, fontSize: 15, color: "var(--muted)", marginTop: 2 }}>No ideas for this market yet</div>
+            : <div className="mono" style={{ fontWeight: 800, fontSize: 20, color: netPnl >= 0 ? "var(--up)" : "var(--down)" }}>{netPnl >= 0 ? "+" : ""}{fmtPnl(netPnl, market)}</div>}
+          <div style={{ fontSize: 9.5, opacity: .65 }}>{n === 0 ? "No Neo ideas published for this market in this window." : `Hypothetical · ${fmt(cap, market)} each · ${openN} still open`}</div>
         </div>
       </div>
+      {n > 0 && (
+        <div style={{ fontSize: 9.5, opacity: .6, lineHeight: 1.5, marginTop: 8 }}>
+          Your Ideas trades differ from the hypothetical: auto-buy takes each idea once a day, splits capital by
+          confidence and skips any that fail its filters, entering at the live price (with fees) — the hypothetical
+          assumes every idea filled at its publish price with flat capital and no costs.
+        </div>
+      )}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
         <Stat k="Returns %" v={(avg >= 0 ? "+" : "") + avg.toFixed(2) + "%"} c={avg >= 0 ? "var(--up)" : "var(--down)"} />
         <Stat k="Win rate" v={n ? winRate.toFixed(0) + "%" : "—"} />

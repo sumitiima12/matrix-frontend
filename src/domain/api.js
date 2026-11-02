@@ -173,6 +173,14 @@ export const marketOpen = (market) => isMarketOpen(market);
    Resolves an open position against REAL 5-minute candles: which level did
    price actually touch first — target, stop, or trailing stop? Ties inside a
    single candle assume the stop was hit first (the conservative reading). */
+/* Round an exit price to a precision that MATCHES the price magnitude. The old `+x.toFixed(2)` collapsed
+   sub-cent crypto/token prices to $0.00 — e.g. a $0.001 token stop became 0, booking a bogus −100% loss
+   (the "TAC −100%" trades). Keep ~5 significant figures: 2dp for ≥$1, more as the price shrinks. */
+const roundPx = (v) => {
+  const a = Math.abs(Number(v) || 0);
+  const dp = a >= 1 ? 2 : a >= 0.1 ? 4 : a >= 0.001 ? 6 : 8;
+  return +Number(v).toFixed(dp);
+};
 export async function resolveExitFromCandles(trade, risk = {}) {
   if (!BACKEND_URL) return null;                       // needs real candles
   const tp = risk.tp ?? trade.tp;
@@ -200,8 +208,8 @@ export async function resolveExitFromCandles(trade, risk = {}) {
       const hitStop = hasStop && c.h >= stop;            // price rose into the stop → loss
       const hitTarget = target != null && c.l <= target; // price fell to target → profit
       const stopLabel = trailStop != null && stop === trailStop ? "Trailing stop" : "Stop loss";
-      if (hitStop) return { exit: +stop.toFixed(2), exitAt: c.t, exitType: stopLabel };
-      if (hitTarget) return { exit: +target.toFixed(2), exitAt: c.t, exitType: "Exit trigger" };
+      if (hitStop) return { exit: roundPx(stop), exitAt: c.t, exitType: stopLabel };
+      if (hitTarget) return { exit: roundPx(target), exitAt: c.t, exitType: "Exit trigger" };
       if (c.l < trough) trough = c.l;
     }
     return null;
@@ -221,10 +229,10 @@ export async function resolveExitFromCandles(trade, risk = {}) {
     if (hitStop && hitTarget) {
       // Both touched inside one candle — 5m data can't tell which came first, so
       // assume the worst case (stop first). Honest and conservative.
-      return { exit: +stop.toFixed(2), exitAt: c.t, exitType: trailStop != null && stop === trailStop ? "Trailing stop" : "Stop loss" };
+      return { exit: roundPx(stop), exitAt: c.t, exitType: trailStop != null && stop === trailStop ? "Trailing stop" : "Stop loss" };
     }
-    if (hitStop) return { exit: +stop.toFixed(2), exitAt: c.t, exitType: trailStop != null && stop === trailStop ? "Trailing stop" : "Stop loss" };
-    if (hitTarget) return { exit: +target.toFixed(2), exitAt: c.t, exitType: "Exit trigger" };
+    if (hitStop) return { exit: roundPx(stop), exitAt: c.t, exitType: trailStop != null && stop === trailStop ? "Trailing stop" : "Stop loss" };
+    if (hitTarget) return { exit: roundPx(target), exitAt: c.t, exitType: "Exit trigger" };
     if (c.h > peak) peak = c.h;                         // update peak after checks
   }
   return null;   // still open

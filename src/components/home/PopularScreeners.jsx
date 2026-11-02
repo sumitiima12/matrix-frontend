@@ -373,10 +373,19 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
 
   const capNum = Math.max(1, parseInt(capital) || Number(capDefault(market)));
   const perCap = capNum / Math.max(1, matches.length);
+  /* Delta-USD stop FLOOR. On 25× leverage crypto / US-token perps a ~1% stop is noise-level: in the
+     trade history ~88% of screener trades stopped out and the win rate sat at ~25%. Floor the effective
+     stop at DELTA_MIN_SL (3%, within the 2.5–4% target) for these markets, and scale the target by the
+     SAME factor so the reward:risk the screener intended is preserved — the bands just get wider so a
+     normal wiggle no longer ejects the trade. Indian/US equity screeners are unaffected. */
+  const DELTA_MIN_SL = 3;
+  const isDeltaMkt = (market === "Crypto" || market === "USStockTokens");
+  const rawSL = (sym) => (ov[sym] && ov[sym].sl != null) ? ov[sym].sl : (eOv[sym] && eOv[sym].sl != null) ? eOv[sym].sl : defSL;
+  const rawTP = (sym) => (ov[sym] && ov[sym].tp != null) ? ov[sym].tp : (eOv[sym] && eOv[sym].tp != null) ? eOv[sym].tp : defTP;
   // Effective SL/TP/qty: the user's on-card tweak (session), else the admin's saved per-symbol override,
-  // else the default. A curated basket carries explicit per-symbol quantities.
-  const cardSL = (sym) => (ov[sym] && ov[sym].sl != null) ? ov[sym].sl : (eOv[sym] && eOv[sym].sl != null) ? eOv[sym].sl : defSL;
-  const cardTP = (sym) => (ov[sym] && ov[sym].tp != null) ? ov[sym].tp : (eOv[sym] && eOv[sym].tp != null) ? eOv[sym].tp : defTP;
+  // else the default — then the Delta-USD floor above.
+  const cardSL = (sym) => { const s = rawSL(sym); return isDeltaMkt ? Math.max(s, DELTA_MIN_SL) : s; };
+  const cardTP = (sym) => { const s = rawSL(sym), t = rawTP(sym); if (!isDeltaMkt || !(s > 0)) return t; const k = Math.max(s, DELTA_MIN_SL) / s; return +(t * k).toFixed(2); };
   const cardQty = (sym) => (eOv[sym] && eOv[sym].qty != null) ? eOv[sym].qty : qtyDefaultFor(market);
   const useBasketQty = eSel.length > 0;   // curated basket → explicit per-symbol qty (not capital-split)
   const setCardOv = (sym, field, val) => setOv((o) => ({ ...o, [sym]: { ...(o[sym] || {}), [field]: val === "" ? undefined : +val } }));

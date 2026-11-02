@@ -356,14 +356,24 @@ export function ownsStrategyTrade(t, strat) {
   if (t.strategyId != null) return String(t.strategyId) === String(strat.id);
   return t.strategy === strat.name;
 }
-export function stratPerf(strat, trades = [], rangeDays = 365, priceOf = null, win = null) {
+export function stratPerf(strat, trades = [], rangeDays = 365, priceOf = null, win = null, opts = null) {
   // `win` (optional) is an explicit { from, to } window — used by the Custom date range. When absent we fall
   // back to the rolling rangeDays window (from = now − rangeDays, no upper bound), preserving prior behaviour.
   const from = win && Number.isFinite(win.from) ? win.from : Date.now() - rangeDays * 86_400_000;
   const to = win && Number.isFinite(win.to) ? win.to : Infinity;
   const inWin = (ts) => ts >= from && ts <= to;
+  /* SCOPE (optional). Without it, every trade a strategy owns is summed — mixing REAL + VIRTUAL books and
+     cross-market trades, which made the Automation Dashboard read a figure that couldn't reconcile with the
+     Home boxes (e.g. a US-Token dashboard showing −$11k of mixed/open positions while Home showed ~$0). When
+     `opts.mode` / `opts.market` are passed, we restrict to the active book and to trades whose SYMBOL resolves
+     to that market — the same partition Home uses — so the numbers line up. Backward-compatible: no opts = old
+     behaviour. */
+  const wantReal = opts && opts.mode ? (opts.mode === "real") : null;
+  const wantMkt = opts && opts.market ? opts.market : null;
   const mine = (trades || []).filter(
     (t) => ownsStrategyTrade(t, strat) && t.status !== "rejected"
+      && (wantReal == null || (wantReal ? !!t.real : !t.real))
+      && (wantMkt == null || (marketOf(t.sym) || t.market || "") === wantMkt)
   ).filter((t) => inWin(t.exitAt || t.entryAt || 0));
 
   const closed = mine.filter((t) => t.exitAt != null && t.exit != null);

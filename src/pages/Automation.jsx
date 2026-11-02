@@ -2202,7 +2202,7 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators,
 /* P&L TAB — every strategy (active + inactive) for this market with its total P&L over a chosen
    window; tap one to see its trades (entry/exit time + per-trade P&L). Crypto P&L uses the USD-notional
    formula (qty is an amount, not a coin count), matching the fixed stratPerf. */
-function StrategyPnLView({ strats, trades, market, onDelete, isActive, onToggleActive }) {
+function StrategyPnLView({ strats, trades, market, appMode = "virtual", onDelete, isActive, onToggleActive }) {
   // Use the SAME market-aware "active" test the Deployed/Strategies tab uses, so a strategy can never read
   // "active" in one tab and "· inactive" in the other. Falls back to the plain flag only if no predicate is passed.
   const isActiveHere = (s) => (isActive ? isActive(s) : !!s.active);
@@ -2217,7 +2217,7 @@ function StrategyPnLView({ strats, trades, market, onDelete, isActive, onToggleA
   // Explicit window for Custom; else the rolling day-count window handled inside stratPerf.
   const win = isCustom ? { from: cFrom ? new Date(cFrom + "T00:00:00").getTime() : 0, to: cTo ? new Date(cTo + "T23:59:59").getTime() : Date.now() } : null;
   const days = isCustom ? 365 : range;   // rangeDays ignored when win is provided
-  const rows = strats.filter(inMkt).map((s) => ({ s, p: stratPerf(s, trades, days, priceOf, win) })).sort((a, b) => (b.p.pnl || 0) - (a.p.pnl || 0));
+  const rows = strats.filter(inMkt).map((s) => ({ s, p: stratPerf(s, trades, days, priceOf, win, { mode: appMode, market }) })).sort((a, b) => (b.p.pnl || 0) - (a.p.pnl || 0));
   const dt = (t) => (t ? new Date(t).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
   const inWin = (ts) => { const from = win ? win.from : Date.now() - range * 864e5; const to = win ? win.to : Infinity; return ts >= from && ts <= to; };
   const tradesFor = (s) => (trades || []).filter((t) => (t.strategyId != null ? String(t.strategyId) === String(s.id) : t.strategy === s.name) && t.status !== "rejected" && inWin(t.exitAt || t.entryAt || 0)).sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
@@ -2295,11 +2295,13 @@ function StrategyPnl({ s, trades = [], market, appMode = "virtual" }) {
   const pnl = useMemo(() => (trades || []).reduce((a, t) => {
     if (!(t.strategyId != null ? String(t.strategyId) === String(s.id) : t.strategy === s.name)) return a;
     if (t.status === "rejected" || t.entry == null) return a;
+    if (appMode === "real" ? !t.real : !!t.real) return a;                       // scope to the active book
+    if (market && (marketOf(t.sym) || t.market || "") !== market) return a;      // and to this market's symbols
     const closed = t.exitAt != null && t.exit != null;
     if (closed && (t.exitAt || t.entryAt || 0) < from) return a;   // closed before the window → skip
     const cur = closed ? t.exit : (priceOf(t.sym) != null ? priceOf(t.sym) : t.entry);
     return a + positionPnl(t, cur, marketOf(t.sym));
-  }, 0), [trades, s.id, s.name, from]);
+  }, 0), [trades, s.id, s.name, from, appMode, market]);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
       <select aria-label="P&L date range" value={period} onChange={(e) => setPeriod(e.target.value)} style={{ fontSize: 10.5, fontWeight: 700, border: "1px solid var(--line)", borderRadius: 9, padding: "6px 8px", background: "var(--surface)", color: "var(--ink)" }}>
@@ -2870,7 +2872,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const inMkt = (s) => !(s.symbols && s.symbols.length) || s.symbols.some((x) => marketOf(x) === amkt);
   const shown = strats.filter((s) => inMkt(s) && (dashBy === "All" || s.by === dashBy) && (symFilter.length === 0 || (s.symbols || []).some((x) => symFilter.includes(x))));
   const priceOfSym = (sym) => { const a = ALL.find((x) => x.sym === sym); return a ? a.price : null; };
-  const perf = shown.map((s) => ({ s, p: stratPerf(s, trades, dashRange, priceOfSym) }));
+  const perf = shown.map((s) => ({ s, p: stratPerf(s, trades, dashRange, priceOfSym, null, { mode: appMode, market: amkt }) }));
   const agg = perf.reduce((a, { p }) => { a.trades += p.trades; a.wins += p.wins; a.pnl += (p.pnl || 0); a.cap += p.cap; a.annSum += p.annual; a.open += (p.open || 0); return a; }, { trades: 0, wins: 0, pnl: 0, cap: 0, annSum: 0, open: 0 });
   const activeCount = shown.filter((s) => s.active).length;
   const dWinRate = agg.trades ? agg.wins / agg.trades * 100 : 0;
@@ -3053,7 +3055,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
      (running now) and Inactive, each shown with its type + state tag — market-filtered.
      Every active/armed strategy shows here (including a just-activated premium that hasn't
      traded yet); the "Live" section separately shows only those holding a position. */
-  const deployedActive   = strats.filter((s) => s.active && stratInMarket(s) && symOk(s)).map((s) => ({ s, p: stratPerf(s, trades, dashRange) }));
+  const deployedActive   = strats.filter((s) => s.active && stratInMarket(s) && symOk(s)).map((s) => ({ s, p: stratPerf(s, trades, dashRange, null, null, { mode: appMode, market }) }));
   const byOptions = ["All", "Matrix", "You", "Community"];
   const dsel = { ...selStyle, flex: "1 1 0", minWidth: 0, padding: "8px 8px", fontSize: 11.5 };
   const fmtDate = (t) => new Date(t).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" });
@@ -3845,7 +3847,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         </button>
       )}
 
-      {topTab === "pnl" && <StrategyPnLView strats={strats} trades={trades} market={market} isActive={activeInMarket} onToggleActive={toggleActiveHere} onDelete={deleteStrategy} />}
+      {topTab === "pnl" && <StrategyPnLView strats={strats} trades={trades} market={market} appMode={appMode} isActive={activeInMarket} onToggleActive={toggleActiveHere} onDelete={deleteStrategy} />}
 
       {topTab === "backtest" && (
         <div style={{ marginTop: 16 }}>
