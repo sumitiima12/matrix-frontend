@@ -51,7 +51,7 @@ function JournalPanel({ trades = [] }) {
 }
 
 export default function TradeHistory({ userId, trades, onClose, market = null, mode = null, heldSyms = null }) {
-  const RANGES = [["today", "Today"], ["7", "7d"], ["30", "30d"], ["90", "90d"], ["365", "1y"], ["all", "All"]];
+  const RANGES = [["today", "Today"], ["month", "This month"], ["7", "7d"], ["30", "30d"], ["90", "90d"], ["365", "1y"], ["all", "All"]];
   const MKTS = [["all", "All markets"], ["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["USStockTokens", "📈 US Tokens"], ["Commodity", "🪙 Commodity"]];
   const REALS = [["all", "All"], ["real", "Real"], ["virtual", "Virtual"]];
   const STATUSES = [["confirmed", "Confirmed"], ["all", "All status"], ["open", "Open"], ["closed", "Closed"], ["rejected", "Rejected"]];
@@ -87,6 +87,7 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
     const t = Date.now();
     if (range === "all") return { from: 0, to: t };
     if (range === "today") { const d = new Date(); d.setHours(0, 0, 0, 0); return { from: d.getTime(), to: t }; }
+    if (range === "month") { const d = new Date(); d.setDate(1); d.setHours(0, 0, 0, 0); return { from: d.getTime(), to: t }; }
     return { from: t - (+range) * 86400000, to: t };
   }, [range, dFrom, dTo, custom]);
 
@@ -107,8 +108,16 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
      from the portfolio. We only reconcile when we have authoritative holdings for that trade's OWN
      market (heldSyms is the active market's book), so a crypto position is never "closed" by an
      Indian holdings snapshot. */
-  const heldSet = heldSyms && heldSyms.length != null ? new Set(heldSyms) : null;
-  const reconciledClosed = (t) => t.real && heldSet && market && t.market === market && t.entry != null && !heldSet.has(t.sym);
+  /* Normalise symbols the SAME way Home/Screener/Automation do (_normHold) so a trade's "BTC" matches the
+     broker's "BTCUSD"; otherwise reconciledClosed never fired and Orders showed broker-flat positions as
+     still-open while Home hid them — the Home-vs-Orders open-count & P&L mismatch. heldSyms must be the REAL
+     Delta holdings in real mode (passed from Matrix), not the virtual book. */
+  const _normHold = (s) => String(s || "").replace(/(USDT|USD|INR|PERP)$/i, "").replace(/-EQ$/i, "").toUpperCase();
+  const heldSet = heldSyms && heldSyms.length != null ? new Set((heldSyms || []).map(_normHold)) : null;
+  // A real position the broker no longer holds is reconciled-closed — but give a 90s grace so a just-opened
+  // position isn't flagged before the broker snapshot catches up (mirrors isPhantomOpen everywhere else).
+  const reconciledClosed = (t) => t.real && heldSet && market && t.market === market && t.entry != null
+    && !heldSet.has(_normHold(t.sym)) && (t.entryAt == null || t.entryAt <= Date.now() - 90000);
   const isOpen = (t) => !isRejected(t) && !reconciledClosed(t) && t.entry != null && (t.exitAt == null || t.exit == null || t.exitType === "Open");
   // Live P&L for still-open positions, using the current price.
   const withPnl = (t) => {

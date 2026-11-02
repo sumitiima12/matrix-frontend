@@ -1911,7 +1911,7 @@ function AppInner() {
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} onAuthed={onAuthed} />}
       {histOpen && (
         <Suspense fallback={<div style={{ position: "fixed", inset: 0, zIndex: 150, display: "grid", placeItems: "center", background: "rgba(0,0,0,.4)", color: "#fff", fontSize: 13 }}>Loading…</div>}>
-          <TradeHistory userId={userId} trades={trades} market={market} mode={mode} heldSyms={(portfolio || []).map((h) => h.sym)} onClose={() => setHistOpen(false)} />
+          <TradeHistory userId={userId} trades={trades} market={market} mode={mode} heldSyms={mode === "real" ? ((realPortfolio && Array.isArray(realPortfolio.holdings)) ? realPortfolio.holdings.filter((h) => Number(h && h.qty)).map((h) => h.sym) : []) : (portfolio || []).map((h) => h.sym)} onClose={() => setHistOpen(false)} />
         </Suspense>
       )}
       {mode === "real" && haltStatus && haltStatus.safety && (
