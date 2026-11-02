@@ -379,7 +379,7 @@ export default function Ideas({ onOpen, onBuy, onAutoBuy = null, market = "IN", 
   const toggleAutoIdeas = async () => {
     const v = !autoIdeas;
     if (v && mode === "real" && !(await confirmDialog(`Auto-Buy Ideas · ${market}\nMode  Real\n\nWhile ON, this places REAL orders on every Neo idea for this market, once a day, sized by confidence, each with its target/stop. Turn OFF anytime to stop new entries.`, { title: "Turn on real Auto-Buy Ideas?", confirmLabel: "Turn on" }))) return;
-    setAutoIdeas(v); lsSet("mx_ideas_autobuy_" + market, v); notifyAutoSettingsChanged();
+    setAutoIdeas(v); lsSet("mx_ideas_autobuy_" + market, v); lsSet("mx_ideas_mode_" + market, mode); notifyAutoSettingsChanged();
   };
   // Delta contract sizes so the real-crypto preview shows the true deploy size after whole-contract rounding.
   const isRealIdeas = mode === "real";
@@ -428,7 +428,11 @@ export default function Ideas({ onOpen, onBuy, onAutoBuy = null, market = "IN", 
     // Use the NON-INTERACTIVE placer (onAutoBuy) so auto-buy actually places orders without the confirm drawer.
     // (onBuy opens the per-trade confirm sheet — routing auto-buy through it placed nothing, so Ideas read 0 trades.)
     const place = onAutoBuy || onBuy;
-    if (!autoIdeas || !place || !ideaPlan.length || !marketOpen(market)) return;
+    if (!autoIdeas || !place || !ideaPlan.length) return;
+    // Delta markets (Crypto / US Tokens) are driven by the SERVER-SIDE Ideas engine (24/7, app-closed), so the
+    // client must not also fire them. Other markets stay client-side until their server engine lands.
+    if (market === "Crypto" || market === "USStockTokens") return;
+    if (!marketOpen(market)) return;
     const day = Math.floor(Date.now() / 864e5);
     // PER-IDEA once-per-day guard (not a single blanket daily flag). Ideas and their prices load asynchronously, so a
     // single flag bought only whatever had loaded at the first fire and burned the day — late-loading ideas never got

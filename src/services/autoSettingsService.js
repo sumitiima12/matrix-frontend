@@ -5,14 +5,17 @@
 import { BACKEND_URL } from "../config";
 import { getAuthToken } from "./tradeService";
 import { lsGet } from "../lib/format";
+import { UNIVERSE } from "../domain/universe";
 
 const tokenHdr = () => { const t = (() => { try { return getAuthToken(); } catch { return null; } })(); return t ? { Authorization: `Bearer ${t}` } : {}; };
 
 const MARKETS = ["IN", "US", "Crypto", "Commodity", "USStockTokens", "FNO"];
 const MODES = ["virtual", "real"];
 
-/* Read every `mx_scrauto_<key>_<market>[_sell]` flag out of localStorage into { market: { "<key>[:sell]": bool } }.
-   Only `true` values are kept — an absent/false screener simply isn't in the blob. */
+/* Read every enabled screener's FULL config out of localStorage into
+   { market: { "<key>[:sell]": { enabled, defs, entry, tf, sl, tp, symbols, notional, short, modes } } }.
+   The screener card writes `mx_scrcfg_<key>_<market>[_sell]` (its defs/entry/tf/sl/tp/basket/capital/mode) on
+   every toggle so the server engine can run the exact same scan. Only enabled screeners are included. */
 function collectScreeners() {
   const out = {};
   try {
@@ -23,7 +26,14 @@ function collectScreeners() {
       let v = false; try { v = JSON.parse(localStorage.getItem(k)); } catch { v = false; }
       if (v !== true) continue;
       const [, key, market, sell] = m;
-      (out[market] = out[market] || {})[key + (sell ? ":sell" : "")] = true;
+      const cfg = lsGet(`mx_scrcfg_${key}_${market}${sell ? "_sell" : ""}`, null);
+      if (!cfg || !Array.isArray(cfg.entry) || !cfg.entry.length) continue;   // no runnable cfg → skip (server can't scan it)
+      (out[market] = out[market] || {})[key + (sell ? ":sell" : "")] = {
+        enabled: true, defs: cfg.defs || [], entry: cfg.entry, tf: cfg.tf || "5m",
+        sl: cfg.sl != null ? Number(cfg.sl) : null, tp: cfg.tp != null ? Number(cfg.tp) : null,
+        symbols: Array.isArray(cfg.symbols) ? cfg.symbols : [], capital: Number(cfg.capital) || 0,
+        short: !!(sell || cfg.short), modes: cfg.modes || (cfg.mode ? { [cfg.mode]: true } : {}),
+      };
     }
   } catch { /* storage unavailable — empty blob */ }
   return out;
@@ -35,23 +45,27 @@ function collectScreeners() {
 export function collectAutoSettings({ autoOnMap = {}, deployCapMap = {} } = {}) {
   const prodMap = lsGet("mx_autobuy_product", {}) || {};
   const smartAutoBuy = {}, ideas = {};
+  const symsOf = (market) => ((UNIVERSE[market] || []).map((s) => s.sym));
   for (const market of MARKETS) {
+    // Smart-Auto-Buy: on/off is per market+mode (autoOnMap key). Symbols = the market universe (server ranks).
     for (const mode of MODES) {
-      const sabOn = !!autoOnMap[`${market}:${mode}`];
-      if (sabOn) {
+      if (autoOnMap[`${market}:${mode}`]) {
         (smartAutoBuy[market] = smartAutoBuy[market] || {})[mode] = {
           enabled: true,
           capital: deployCapMap[market] != null ? Number(deployCapMap[market]) : null,
           product: prodMap[market] || null,
+          symbols: symsOf(market),
         };
       }
-      const ideaOn = !!lsGet(`mx_ideas_autobuy_${market}`, false);
-      if (ideaOn) {
-        (ideas[market] = ideas[market] || {})[mode] = {
-          enabled: true,
-          capital: Number(lsGet(`mx_ideas_cap_${market}`, 0)) || null,
-        };
-      }
+    }
+    // Ideas: a single per-market on/off that applies to the mode it was enabled in (stored alongside).
+    if (lsGet(`mx_ideas_autobuy_${market}`, false)) {
+      const mode = lsGet(`mx_ideas_mode_${market}`, "virtual") === "real" ? "real" : "virtual";
+      (ideas[market] = ideas[market] || {})[mode] = {
+        enabled: true,
+        capital: Number(lsGet(`mx_ideas_cap_${market}`, 0)) || null,
+        symbols: symsOf(market),
+      };
     }
   }
   return { screeners: collectScreeners(), smartAutoBuy, ideas };

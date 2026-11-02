@@ -387,6 +387,19 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
   // else the default — then the Delta-USD floor above.
   const cardSL = (sym) => { const s = rawSL(sym); return isDeltaMkt ? Math.max(s, DELTA_MIN_SL) : s; };
   const cardTP = (sym) => { const s = rawSL(sym), t = rawTP(sym); if (!isDeltaMkt || !(s > 0)) return t; const k = Math.max(s, DELTA_MIN_SL) / s; return +(t * k).toFixed(2); };
+  /* Persist THIS screener's full run config so the SERVER-SIDE screener engine can run it 24/7 (the collector in
+     autoSettingsService reads `mx_scrcfg_*`). Written on every auto-buy toggle; removed when turned off. The
+     SL/TP carry the Delta-USD floor so the server scans/exits with the same bands the card uses. */
+  const writeScrCfg = (on) => {
+    const ck = `mx_scrcfg_${screener.key}_${market}${short ? "_sell" : ""}`;
+    try {
+      if (!on) { localStorage.removeItem(ck); return; }
+      const symbols = eSel.length ? eSel : (UNIVERSE[market] || []).map((s) => s.sym);
+      const cfgSL = isDeltaMkt ? Math.max(defSL, DELTA_MIN_SL) : defSL;
+      const cfgTP = (isDeltaMkt && defSL > 0) ? +(defTP * (Math.max(defSL, DELTA_MIN_SL) / defSL)).toFixed(2) : defTP;
+      lsSet(ck, { defs: eDefs, entry: eEntry, tf: eTf, sl: cfgSL, tp: cfgTP, symbols, capital: capNum, short: !!short, mode });
+    } catch { /* storage unavailable */ }
+  };
   const cardQty = (sym) => (eOv[sym] && eOv[sym].qty != null) ? eOv[sym].qty : qtyDefaultFor(market);
   const useBasketQty = eSel.length > 0;   // curated basket → explicit per-symbol qty (not capital-split)
   const setCardOv = (sym, field, val) => setOv((o) => ({ ...o, [sym]: { ...(o[sym] || {}), [field]: val === "" ? undefined : +val } }));
@@ -488,6 +501,10 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
      mode), each with the card's SL/TP — mirroring Smart Auto-Buy. */
   useEffect(() => {
     if (!autoOn || !(onScreenerBuy || onAutoBuy || onBuy) || !matches.length) return;
+    // Delta markets (Crypto / US Tokens) are now driven by the SERVER-SIDE screener engine (runs 24/7 even when
+    // the app is closed), so the client must NOT also fire them — that would double-trade. Other markets stay
+    // client-side until their server engine lands.
+    if (market === "Crypto" || market === "USStockTokens") return;
     if (!marketOpen(market)) return;
     const key = `mx_scrbuy_${screener.key}_${market}_${mode}${short ? "_sell" : ""}_${Math.floor(Date.now() / 864e5)}`;   // fresh day index (module `DAY` never rolls in a long session)
     if (lsGet(key, false)) return;
@@ -553,7 +570,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
                 `Screener   ${dispName}\nMode       Real\nBroker     your connected broker\n\nWhile ON, this places REAL orders on every symbol this screener matches, each with its default SL/TP. Turn OFF anytime to stop new entries.`,
                 { title: "Turn on real Auto-Buy?", confirmLabel: "Turn on" }
               ))) return;
-              setAutoOn(v); lsSet(autoKey, v); notifyAutoSettingsChanged();
+              setAutoOn(v); lsSet(autoKey, v); writeScrCfg(v); notifyAutoSettingsChanged();
             }} style={{ width: 36, height: 21, borderRadius: 999, background: autoOn ? "#22C55E" : "var(--line)", position: "relative", flexShrink: 0, transition: "background .2s" }}>
               <span style={{ position: "absolute", top: 2, left: autoOn ? 17 : 2, width: 17, height: 17, borderRadius: 999, background: "#fff", transition: "left .2s" }} />
             </span>
