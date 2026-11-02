@@ -63,6 +63,7 @@ import ConfirmOrder from "./components/common/ConfirmOrder";
 import BrokerSheet from "./components/common/BrokerSheet";
 import { brokerSymbol } from "./domain/brokerSymbols";
 import { brokerPlaceOrder, brokerIntentStatus, registerAutoExit, reconcileRealTrades, backfillExits, updateAutoBuy, BROKER_MARKETS, loadBrokerCapabilities, orderTypesOf, resolveUnknownOrders, getEntryHaltStatus, getOptionPremium } from "./services/brokerService";
+import { collectAutoSettings, pushAutoSettings } from "./services/autoSettingsService";
 import { OrderLifecycleStore, deriveIntentKey, interpretResult, classifyError, reconcileAction, ORDER_STATES, planClose } from "./services/orderLifecycle";
 import MatrixRain from "./components/common/MatrixRain";
 import MLogo from "./components/common/MLogo";
@@ -1232,6 +1233,19 @@ function AppInner() {
     }
   }, [portfolio, walletMap, watchlists, profile, onboardSkipped, deposits, strats, autoOnMap, deployCapMap, hydratedUser, userId, remoteHydrated, auth]);
   useEffect(() => { if (hydratedUser === userId) lsSet("mx_trades_" + userId, trades); }, [trades, hydratedUser, userId]);
+  /* Phase 1 of server-side automation: mirror the user's auto-trading settings (screener on/off, Smart-Auto-Buy
+     capital, Ideas capital) to the backend whenever they change, so the server engines can run them 24/7 even
+     when the app is closed. Debounced. Screener/Ideas toggles write straight to localStorage, so they fire a
+     window event the listener below catches; Smart-Auto-Buy lives in React state (the effect deps). */
+  useEffect(() => {
+    if (!auth) return undefined;
+    let t = null;
+    const sync = () => { if (t) clearTimeout(t); t = setTimeout(() => { pushAutoSettings(collectAutoSettings({ autoOnMap, deployCapMap })); }, 800); };
+    sync();
+    window.addEventListener("mx-autosettings-changed", sync);
+    return () => { window.removeEventListener("mx-autosettings-changed", sync); if (t) clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth, autoOnMap, deployCapMap]);
   const [drawer, setDrawer] = useState(null);
   const [detail, setDetail] = useState(null);
   /* Opening or closing a stock detail page also lands at the top. */

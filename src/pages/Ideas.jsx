@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { currentIdeas, resolveIdea } from "../domain/ideas";
 import { BACKEND_URL } from "../config";
 import { fmt, fmtPnl, lsGet, lsSet } from "../lib/format";
+import { notifyAutoSettingsChanged } from "../services/autoSettingsService";
 import { alertDialog, confirmDialog } from "../lib/confirmDialog";   // in-app notice/confirm (reliable in webviews/PWA)
 import { ALL, marketOf, UNIVERSE } from "../domain/universe";
 import { techSignal } from "../domain/signals";   // signal-quality score → confidence weighting for Auto-Buy Ideas
@@ -378,7 +379,7 @@ export default function Ideas({ onOpen, onBuy, onAutoBuy = null, market = "IN", 
   const toggleAutoIdeas = async () => {
     const v = !autoIdeas;
     if (v && mode === "real" && !(await confirmDialog(`Auto-Buy Ideas · ${market}\nMode  Real\n\nWhile ON, this places REAL orders on every Neo idea for this market, once a day, sized by confidence, each with its target/stop. Turn OFF anytime to stop new entries.`, { title: "Turn on real Auto-Buy Ideas?", confirmLabel: "Turn on" }))) return;
-    setAutoIdeas(v); lsSet("mx_ideas_autobuy_" + market, v);
+    setAutoIdeas(v); lsSet("mx_ideas_autobuy_" + market, v); notifyAutoSettingsChanged();
   };
   // Delta contract sizes so the real-crypto preview shows the true deploy size after whole-contract rounding.
   const isRealIdeas = mode === "real";
@@ -422,7 +423,7 @@ export default function Ideas({ onOpen, onBuy, onAutoBuy = null, market = "IN", 
   // here in the card-rendering component (not in IdeasDashboard) so it's in scope where the cards render.
   const ideaStats = useMemo(() => computeCategories(trades, { mode, market }).byIdea || {}, [trades, mode, market]);
   const ideaCurSym = (market === "Crypto" || market === "US" || market === "USStockTokens") ? "$" : "₹";
-  const saveIdeaCap = () => { const v = Math.max(1, parseInt(ideaCapDraft) || ideaCapDefault); setIdeaCap(v); setIdeaCapDraft(v); lsSet("mx_ideas_cap_" + market, v); };
+  const saveIdeaCap = () => { const v = Math.max(1, parseInt(ideaCapDraft) || ideaCapDefault); setIdeaCap(v); setIdeaCapDraft(v); lsSet("mx_ideas_cap_" + market, v); notifyAutoSettingsChanged(); };
   useEffect(() => {
     // Use the NON-INTERACTIVE placer (onAutoBuy) so auto-buy actually places orders without the confirm drawer.
     // (onBuy opens the per-trade confirm sheet — routing auto-buy through it placed nothing, so Ideas read 0 trades.)

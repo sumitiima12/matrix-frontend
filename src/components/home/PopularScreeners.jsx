@@ -4,6 +4,7 @@ import { positionPnl } from "../../domain/leverage";   // Delta-parity crypto P&
 import { CUR, DAY, MKT_NAME, chgColor, fmt, fmtPnl, lsGet, lsSet } from "../../lib/format";
 import { confirmDialog } from "../../lib/confirmDialog";
 import { scanScreener, marketOpen } from "../../domain/api";
+import { notifyAutoSettingsChanged } from "../../services/autoSettingsService";
 import { getHistory } from "../../services/marketService";
 import { backtest } from "../../domain/backtest";
 import Section from "../common/Section";
@@ -552,7 +553,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
                 `Screener   ${dispName}\nMode       Real\nBroker     your connected broker\n\nWhile ON, this places REAL orders on every symbol this screener matches, each with its default SL/TP. Turn OFF anytime to stop new entries.`,
                 { title: "Turn on real Auto-Buy?", confirmLabel: "Turn on" }
               ))) return;
-              setAutoOn(v); lsSet(autoKey, v);
+              setAutoOn(v); lsSet(autoKey, v); notifyAutoSettingsChanged();
             }} style={{ width: 36, height: 21, borderRadius: 999, background: autoOn ? "#22C55E" : "var(--line)", position: "relative", flexShrink: 0, transition: "background .2s" }}>
               <span style={{ position: "absolute", top: 2, left: autoOn ? 17 : 2, width: 17, height: 17, borderRadius: 999, background: "#fff", transition: "left .2s" }} />
             </span>
@@ -1160,7 +1161,7 @@ function ScreenerLivePositions({ trades = [], market, mode = "virtual", portfoli
 function ScreenerPnLTab({ trades = [], market, mode = "virtual", liveTick = 0 }) {
   const [range, setRange] = useState("30d");
   const [activeTick, setActiveTick] = useState(0);   // bump to re-read the auto-buy on/off flags after a toggle
-  const toggleScreener = (key) => { if (key == null) return; const next = !isScreenerActive(key, market, false); lsSet(autoKeyFor(key, market, false), next); setActiveTick((n) => n + 1); };
+  const toggleScreener = (key) => { if (key == null) return; const next = !isScreenerActive(key, market, false); lsSet(autoKeyFor(key, market, false), next); setActiveTick((n) => n + 1); notifyAutoSettingsChanged(); };
   const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a && a.price != null ? a.price : null; };
   const from = useMemo(() => {
     const now = Date.now(), D = 864e5;
