@@ -1014,6 +1014,9 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   // them at real market prices — no simulated win/loss.
   useEffect(() => {
     if (!autoOn || !onBuy || !BACKEND_URL) return;
+    // SERVER-SIDE now: Crypto, US Tokens and Indian Smart-Auto-Buy run on the backend engine 24/7 (even with the
+    // app closed), so the client must NOT also fire them — that would double-trade. Other markets stay client-side.
+    if (market === "Crypto" || market === "USStockTokens" || market === "IN") return;
     // REAL auto-fire is now ENABLED (operator decision): turning Smart Auto-Buy ON in REAL mode is a deliberate
     // per-mode opt-in (autoKey is `${market}:real`, separate from virtual), so real picks are auto-placed unattended
     // exactly like paper — the owner accepted real-money auto-execution. ("Run auto-buy now" still works for a manual

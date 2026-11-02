@@ -429,9 +429,9 @@ export default function Ideas({ onOpen, onBuy, onAutoBuy = null, market = "IN", 
     // (onBuy opens the per-trade confirm sheet — routing auto-buy through it placed nothing, so Ideas read 0 trades.)
     const place = onAutoBuy || onBuy;
     if (!autoIdeas || !place || !ideaPlan.length) return;
-    // Delta markets (Crypto / US Tokens) are driven by the SERVER-SIDE Ideas engine (24/7, app-closed), so the
-    // client must not also fire them. Other markets stay client-side until their server engine lands.
-    if (market === "Crypto" || market === "USStockTokens") return;
+    // SERVER-SIDE now (Crypto / US Tokens / Indian): the backend Ideas engine runs these 24/7 even when the app is
+    // closed, so the client must not also fire them. Other markets stay client-side.
+    if (market === "Crypto" || market === "USStockTokens" || market === "IN") return;
     if (!marketOpen(market)) return;
     const day = Math.floor(Date.now() / 864e5);
     // PER-IDEA once-per-day guard (not a single blanket daily flag). Ideas and their prices load asynchronously, so a
