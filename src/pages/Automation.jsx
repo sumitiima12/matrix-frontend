@@ -2883,7 +2883,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
      scoped by the selected window. Powers the Screener-style Trades drill-down and the Live Positions table. */
   const dashWinFrom = Date.now() - dashRange * 864e5;
   const dashTrades = (trades || []).filter((t) =>
-    t && t.tradeType === "Automate" && ((t.market || marketOf(t.sym) || "IN")) === market
+    t && t.tradeType === "Automate" && ((marketOf(t.sym) || t.market || "IN")) === market
     && (appMode === "real" ? !!t.real : !t.real) && t.status !== "rejected" && Number(t.entry) > 0
     && ((t.exitAt == null || t.exit == null) || (Number(t.exitAt || t.entryAt || 0) >= dashWinFrom)))
     .sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
@@ -3944,7 +3944,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
               <ListChecks size={14} /> {compareOpen ? "Hide table" : "Compare all"}
             </button>
           </div>
-          {compareOpen && <ComparisonTable strats={premiumLong.filter((s) => (s.market || marketOf((s.symbols || [])[0])) === market)} market={market} />}
+          {compareOpen && <ComparisonTable strats={premiumLong.filter((s) => (marketOf((s.symbols || [])[0]) || s.market) === market)} market={market} />}
           {(!premiumLong.length && !premiumShort.length)
             ? <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 12 }}>No premium strategies available.</div>
             : (() => {

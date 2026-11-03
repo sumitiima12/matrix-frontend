@@ -57,7 +57,7 @@ export function computeCategories(trades, opts = {}) {
   for (const t of Array.isArray(trades) ? trades : []) {
     if (!t || t.status === "rejected") continue;
     if (isReal ? !t.real : !!t.real) continue;                              // REAL/VIRTUAL wall
-    if (market && (String(t.market || marketOf(t.sym) || "")) !== market) continue;
+    if (market && (String(marketOf(t.sym) || t.market || "")) !== market) continue;   // symbol-market wins (a BTC trade is Crypto even if tagged IN)
     if (t.entry == null || !(Number(t.entry) > 0)) continue;
 
     // Phantom-open reconciliation (real): a still-journalled-open row the broker no longer holds is a phantom.

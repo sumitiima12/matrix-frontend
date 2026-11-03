@@ -823,7 +823,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   /* Prefer the trade's OWN stored market (broker-authoritative); else classify from the symbol. Do NOT default an
      unclassifiable symbol to "IN" — that made obscure Delta crypto (RAVE, PIPPIN, BILL…) show under the Indian tab.
      An unknown-market row simply matches no specific market tab rather than polluting Indian. */
-  const inMarket = (sym, m) => { const mk = m || marketOf(sym); return mk ? mk === market : false; };
+  const inMarket = (sym, m) => { const mk = marketOf(sym) || m; return mk ? mk === market : false; };   // symbol-market wins over the stored tag
   // Real broker holdings arrive as an OBJECT { holdings:[...], cash } — not an array — with
   // each holding shaped { sym, qty, avg, value, pnl }. Normalise to the paper-holding shape
   // (buy = avg cost, price = current unit value) so the same math works for both modes.
@@ -1145,7 +1145,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     // Orders list scopes them by the selected window — that's why the card could show "1 order rejected" but Orders
     // (Today) showed none. Scope rejects by their entry/created stamp so the two views agree; open positions still
     // always show (live now), closed stay scoped by exit.
-    .filter((t) => (t.tradeType === "Auto Buy") && (isReal ? !!t.real : !t.real) && ((t.market || marketOf(t.sym) || "IN")) === market && (
+    .filter((t) => (t.tradeType === "Auto Buy") && (isReal ? !!t.real : !t.real) && ((marketOf(t.sym) || t.market || "IN")) === market && (
       t.status === "rejected"
         ? ((t.entryAt || t.ts || t.entryTs || 0) >= periodFrom)
         : (t.exitAt == null || ((t.exitAt || t.entryAt || 0) >= periodFrom))))
@@ -1677,7 +1677,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   {/* Rejected orders aren't positions — they live under Orders, not here. */}
                   {autoRows.filter((t) => !t.rejected).length === 0 && <div style={{ fontSize: 11.5, opacity: .82, lineHeight: 1.6 }}>No auto-buy positions in this period yet. Positions are placed at real market prices and closed by the exit engine when a target or stop is actually hit.</div>}
                   {autoRows.filter((t) => !t.rejected).map((t) => {
-                    const cyc = (t.market || marketOf(t.sym) || "IN");
+                    const cyc = (marketOf(t.sym) || t.market || "IN");
                     const statusLabel = t.rejected ? "⛔ Order rejected" : t.status === "partial" ? "◑ PARTIAL" : t.open ? "● OPEN" : (t.exitType || "CLOSED");
                     const statusColor = t.rejected ? "var(--down)" : t.status === "partial" ? "#B26B00" : undefined;
                     return (

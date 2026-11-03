@@ -715,8 +715,17 @@ function AppInner() {
      reduce-only broker flatten through the ONE durable lifecycle (same as Automate's "Stop & sell"); in paper
      mode it just books the exit. Either way the originating journal row is marked exited so it leaves the live
      list. `flatten` is the opposite side of the position (SELL closes a long, BUY covers a short). */
-  const closePositionRow = async (trade) => {
-    if (!trade || trade.exitAt != null) return;
+  const closePositionRow = async (tradeOrHolding) => {
+    if (!tradeOrHolding) return;
+    /* The caller may pass a journal TRADE (has a matching id) or a PORTFOLIO HOLDING (no journal id — e.g. closing
+       from the Portfolio screen). Resolve to the matching OPEN journal row by symbol/book so the exit books on the
+       real trade; otherwise closeTrade can't find it and the close never reflects in Orders / P&L (the HUSD case). */
+    const _isReal = mode === "real";
+    const _matchById = tradeOrHolding.id && (trades || []).some((t) => t.id === tradeOrHolding.id);
+    const _row = _matchById ? tradeOrHolding
+      : ((trades || []).find((t) => t && t.sym === tradeOrHolding.sym && (_isReal ? !!t.real : !t.real) && t.entry != null && (t.exitAt == null || t.exit == null) && t.status !== "rejected") || tradeOrHolding);
+    const trade = { ..._row, qty: Number(tradeOrHolding.qty) || Number(_row.qty) || 0, short: tradeOrHolding.short ?? _row.short, side: tradeOrHolding.side ?? _row.side, product: tradeOrHolding.product || _row.product };
+    if (trade.exitAt != null && trade.exit != null) return;
     const stock = ALL.find((a) => a.sym === trade.sym) || { sym: trade.sym, price: trade.entry, market: trade.market || market };
     const qty = Number(trade.qty) || 0;
     const mkt = marketOf(trade.sym) || trade.market || market;
