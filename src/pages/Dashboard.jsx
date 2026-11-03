@@ -1410,11 +1410,15 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   // real mode there's no wallet gap, so it's just the tracked Unknown/Imported bucket.
                   const known5 = catPnl("Manual", totalStats.byType.Manual) + catPnl("Smart Auto-Buy", totalStats.byType["Auto Buy"]) + automatePnl + catPnl("Screener", totalStats.byType["Screener Auto Buy"]) + catPnl("Ideas", totalStats.byType.Ideas);
                   const unknownBox = (isReal && isLeveraged) ? +((dashNet - known5)).toFixed(2) : shared.categories["Unknown/Imported"];
+                  // In REAL leveraged mode this box IS the broker-wallet-vs-tracked gap — i.e. funding + fees (+ mark
+                  // differences / externally-opened positions). Name it for what it is. Virtual/spot keeps the
+                  // "Unknown/Imported" meaning (genuinely untracked/legacy journal rows).
+                  const unknownLabel = (isReal && isLeveraged) ? "Fees & Funding" : "Unknown / Imported";
                   return (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(58px, 1fr))", gap: 8, marginTop: 12 }}>
                     {[["Manual", catPnl("Manual", totalStats.byType.Manual)], ["Smart Auto-Buy", catPnl("Smart Auto-Buy", totalStats.byType["Auto Buy"])], ["Automate", catPnl("Automate", automatePnl)], ["Screener", catPnl("Screener", totalStats.byType["Screener Auto Buy"])], ["Ideas", catPnl("Ideas", totalStats.byType.Ideas)],
                       // Unknown/Imported absorbs the broker-vs-Matrix gap so the boxes reconcile to the headline.
-                      ...((Math.abs(unknownBox || 0) > 0.005) ? [["Unknown / Imported", unknownBox]] : [])].map(([label, v]) => (
+                      ...((Math.abs(unknownBox || 0) > 0.005) ? [[unknownLabel, unknownBox]] : [])].map(([label, v]) => (
                       <div key={label} style={{ background: "var(--elev)", borderRadius: 9, padding: "7px 8px", minWidth: 0 }}>
                         <div style={{ fontSize: 9, opacity: .65, fontWeight: 700, lineHeight: 1.2, minHeight: 21, overflow: "hidden" }}>{label}</div>
                         <div className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: v >= 0 ? "var(--up)" : "var(--down)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(v >= 0 ? "+" : "") + (isReal ? money1(v) : fmtPnl(v, market))}</div>
@@ -1429,7 +1433,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   const matrixAttrib = boxesSum;
                   return (
                     <div style={{ marginTop: 7, fontSize: 10, lineHeight: 1.5, opacity: .7 }}>
-                      <div>Headline is your <b style={{ opacity: .9 }}>Delta wallet</b> P&amp;L; boxes add up to it. <b style={{ opacity: .9 }}>Unknown/Imported</b> is wallet P&amp;L not tied to a tracked trade (external positions, funding, fees).</div>
+                      <div>Headline is your <b style={{ opacity: .9 }}>Delta wallet</b> P&amp;L; boxes add up to it. <b style={{ opacity: .9 }}>Fees &amp; Funding</b> is the part of your wallet P&amp;L not tied to a tracked trade — perpetual funding, trading fees, mark-price differences, or positions opened outside the app.</div>
                       {false && <div>Matrix-attributed P&amp;L (boxes): <b style={{ opacity: .9 }}>{money1(matrixAttrib)}</b></div>}
                       {false && <div>Unattributed difference: <b style={{ opacity: .9 }}>{money1(dashNet - matrixAttrib)}</b></div>}
                     </div>
