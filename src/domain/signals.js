@@ -80,9 +80,12 @@ export function techSignal(s) {
   // Levels are already dirty-candle-sanitised above; here we additionally keep target/stop
   // inside a believable swing band so a daily idea is reachable in days, not never, and the
   // stop can never underflow below zero.
-  const tpCap = px * (isCrypto ? 1.30 : 1.20);               // target at most +30% (crypto) / +20%
-  const slFloor = px * (isCrypto ? 0.85 : 0.90);             // stop at most −15% (crypto) / −10%, always > 0
-  let target = (res != null && res <= tpCap) ? res : px + 2.5 * atr;
+  // WIN-RATE TUNING: a far target is rarely reached, so crypto targets are kept tight — cap +12% (was +30%)
+  // and project only 1.5×ATR (was 2.5×), so RAVE-style high-ATR coins stop setting 20%+ targets that almost
+  // never fill. Equities unchanged. Closer target = higher hit rate (smaller per-win, better win rate).
+  const tpCap = px * (isCrypto ? 1.12 : 1.20);               // target at most +12% (crypto) / +20%
+  const slFloor = px * (isCrypto ? 0.88 : 0.90);             // stop at most −12% (crypto) / −10%, always > 0
+  let target = (res != null && res <= tpCap) ? res : px + (isCrypto ? 1.5 : 2.5) * atr;
   target = Math.min(Math.max(target, px * 1.01), tpCap);     // between +1% and the cap
   let stop = (sup != null && sup >= slFloor) ? Math.max(sup - 0.25 * atr, slFloor) : px - 2 * atr;
   stop = Math.min(Math.max(stop, slFloor), px * 0.995);      // between the floor and −0.5%, always positive
@@ -181,9 +184,9 @@ export function techSignalShort(s) {
   if (s.rsi < 30) score -= 0.8;                                       // too oversold to chase a short
   if (s.chg != null) score += Math.max(-1, Math.min(1, -s.chg * 0.15));
 
-  const tpFloor = px * (isCrypto ? 0.70 : 0.80);                      // target at most −30% (crypto) / −20%
-  const slCap = px * (isCrypto ? 1.15 : 1.10);                        // stop at most +15% (crypto) / +10%
-  let target = (sup != null && sup >= tpFloor) ? Math.min(sup + 0.25 * atr, px * 0.99) : px - 2.5 * atr;
+  const tpFloor = px * (isCrypto ? 0.88 : 0.80);                      // target at most −12% (crypto) / −20%
+  const slCap = px * (isCrypto ? 1.12 : 1.10);                        // stop at most +12% (crypto) / +10%
+  let target = (sup != null && sup >= tpFloor) ? Math.min(sup + 0.25 * atr, px * 0.99) : px - (isCrypto ? 1.5 : 2.5) * atr;
   target = Math.max(Math.min(target, px * 0.99), tpFloor);           // between −1% and the floor
   let stop = (res != null && res <= slCap) ? Math.min(res + 0.25 * atr, slCap) : px + 2 * atr;
   stop = Math.max(Math.min(stop, slCap), px * 1.005);               // between +0.5% and the cap

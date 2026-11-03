@@ -142,7 +142,10 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
      live position from the user. */
   const stamp = (t) => (isOpen(t) ? (t.entryAt || 0) : (t.exitAt || t.entryAt || 0));
   const src = (remote || trades)
-    .filter((t) => { const ts = stamp(t); return ts >= from && ts <= to; })
+    // OPEN positions count in EVERY window (their unrealised P&L is live "now") — matching the Home Total's rule,
+    // so the two agree. A position opened before "today" was previously filtered out of Today here, which made the
+    // Orders P&L differ from the Home dashboard. Closed trades stay scoped to the selected window by exit time.
+    .filter((t) => isOpen(t) || (() => { const ts = stamp(t); return ts >= from && ts <= to; })())
     .map(withPnl);
   const allSyms = [...new Set(src.map((t) => t.sym))].sort();
   const TYPES = ["Manual", "Automate", "Auto Buy", "Screener Auto Buy"];
