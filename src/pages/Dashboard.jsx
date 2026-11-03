@@ -13,6 +13,7 @@ import { positionPnl } from "../domain/leverage";   // Delta-parity crypto P&L (
 import { computeCategories } from "../domain/portfolioPnl";   // the ONE per-category P&L fn every dashboard shares
 import { askMatrix, fetchNews, fetchNewsFeed, scanIdeas } from "../domain/api";
 import { getDeltaContractValues, getPortfolioAnalytics } from "../services/brokerService";
+import { fetchAutoStatus, autoReasonText } from "../services/autoSettingsService";
 import AddBtn from "../components/common/AddBtn";
 import SectorHeatmap from "../components/common/SectorHeatmap";
 import EarningsSection from "../components/common/EarningsSection";
@@ -680,6 +681,37 @@ export function marketOpen(market) {
     } catch { return (mins >= 1140 && day >= 1 && day <= 5) || (mins <= 90 && day >= 2 && day <= 6); }
   }
   return true;
+}
+
+/* "Why no auto trades" indicator — reads the server's last auto-engine outcome per (source, mode) for the
+   current market+mode and shows a short reason (market closed / no pick / amount too small / placed, …). Only
+   renders when the server has something to say for this market+mode. */
+function AutoStatusNote({ market, mode }) {
+  const [status, setStatus] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    const load = () => fetchAutoStatus().then((s) => { if (alive) setStatus(s); }).catch(() => {});
+    load(); const id = setInterval(load, 60000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
+  const m = status && status.markets && status.markets[market];
+  if (!m) return null;
+  const srcLabel = { smartbuy: "Smart Auto-Buy", screener: "Screener", ideas: "Ideas" };
+  const rows = ["smartbuy", "screener", "ideas"].map((src) => {
+    const e = m[`${src}:${mode}`]; if (!e) return null;
+    return { src, placed: e.placed > 0, reason: e.lastReason };
+  }).filter(Boolean);
+  if (!rows.length) return null;
+  return (
+    <div style={{ fontSize: 10.5, lineHeight: 1.6, opacity: .8, marginTop: 8, padding: "8px 10px", background: "rgba(127,127,127,.08)", borderRadius: 10 }}>
+      <div style={{ fontWeight: 800, opacity: .7, marginBottom: 2 }}>Auto-buy status ({mode})</div>
+      {rows.map((r) => (
+        <div key={r.src}>
+          <b style={{ opacity: .9 }}>{srcLabel[r.src]}:</b> <span style={{ color: r.placed ? "var(--up)" : "var(--muted)" }}>{autoReasonText(r.reason)}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 /* Homepage — Live Positions + Recent Activity as TWO TABS in one section (instead of two stacked cards).
@@ -1452,6 +1484,9 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   })()}
                 </div>
                 {totalStats.count === 0 && <div style={{ fontSize: 11.5, opacity: .8, marginTop: 10 }}>No {isReal ? "real" : "virtual"} trades {totLabel} in {MKT_LABEL[market]}.</div>}
+
+                {/* Why did/didn't auto-buy fire — the server-reported reason per source for THIS market + book. */}
+                <AutoStatusNote market={market} mode={isReal ? "real" : "virtual"} />
 
                 {/* Show positions — the OPEN positions behind the Total (all types), rejected excluded. */}
                 {totalOpenRows.length > 0 && (

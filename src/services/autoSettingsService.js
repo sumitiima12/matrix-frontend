@@ -97,3 +97,46 @@ export async function fetchAutoSettings() {
 export function notifyAutoSettingsChanged() {
   try { window.dispatchEvent(new Event("mx-autosettings-changed")); } catch { /* non-browser */ }
 }
+
+/* Last server-side auto-engine outcome per market/source — for the "why no trades" indicator. */
+export async function fetchAutoStatus() {
+  if (!BACKEND_URL) return null;
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/auto-status`, { headers: { ...tokenHdr() } });
+    const d = r.ok ? await r.json().catch(() => ({})) : {};
+    return d.status || null;
+  } catch { return null; }
+}
+
+/* Turn a raw engine reason code into a short human line. */
+export function autoReasonText(reason) {
+  const map = {
+    placed: "firing — entries placed",
+    "market-closed": "market closed — fires during session hours",
+    "no-qualifying-pick": "no strong pick today (needs a ≥2.5 setup)",
+    "no-screener-match": "no screener matches right now",
+    "no-idea-today": "no ideas published today",
+    "no-symbols": "no symbols configured",
+    "no-idea-price": "idea had no usable price",
+    "amount-too-small": "per-trade amount below the broker minimum — raise capital",
+    "no-capital-set": "set a capital amount",
+    "already-today": "already entered today",
+    "already-open": "already holding this position",
+    "no-broker-session": "broker not connected for this market",
+    "fill-unverified-broker": "this broker isn't enabled for unattended auto",
+    capability: "this broker isn't certified for unattended auto",
+    "reconciliation-locked": "paused — reconcile with your broker",
+    "risk-read-failed": "couldn't read risk state this cycle",
+    "account-unverifiable": "couldn't verify broker account this cycle",
+    "daily-loss-limit": "daily-loss limit hit — paused for the session",
+    "account-inactive": "account not active (blocked/unapproved)",
+    "commodity-real-needs-derivative-route": "commodity real auto isn't wired yet (paper only)",
+    "short-not-supported": "auto-short only supported on Delta",
+    "bad-input": "no price/amount available",
+    "dry-run": "preview mode (live orders disabled on the server)",
+  };
+  if (!reason) return "waiting for the next run";
+  if (reason.startsWith("risk:")) return "blocked by risk checks: " + reason.slice(5);
+  if (reason.startsWith("error:")) return "error: " + reason.slice(6);
+  return map[reason] || reason;
+}

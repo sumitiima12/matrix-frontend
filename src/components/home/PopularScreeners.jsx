@@ -400,6 +400,14 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
       lsSet(ck, { defs: eDefs, entry: eEntry, tf: eTf, sl: cfgSL, tp: cfgTP, symbols, capital: capNum, short: !!short, mode });
     } catch { /* storage unavailable */ }
   };
+  /* MIGRATION + keep-fresh: whenever this screener's auto-buy is ON, make sure its full config is persisted for
+     the SERVER engine. Screeners toggled on BEFORE the sync code existed have no mx_scrcfg, so the backend can't
+     run them — this writes it on mount (and re-writes if the config changes while on), then nudges the sync. */
+  useEffect(() => {
+    if (!autoOn) return;
+    writeScrCfg(true); notifyAutoSettingsChanged();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOn, market, eTf, defSL, defTP, capNum, eSel.length]);
   const cardQty = (sym) => (eOv[sym] && eOv[sym].qty != null) ? eOv[sym].qty : qtyDefaultFor(market);
   const useBasketQty = eSel.length > 0;   // curated basket → explicit per-symbol qty (not capital-split)
   const setCardOv = (sym, field, val) => setOv((o) => ({ ...o, [sym]: { ...(o[sym] || {}), [field]: val === "" ? undefined : +val } }));
