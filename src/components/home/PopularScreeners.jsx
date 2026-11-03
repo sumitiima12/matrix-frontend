@@ -501,9 +501,9 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
      mode), each with the card's SL/TP — mirroring Smart Auto-Buy. */
   useEffect(() => {
     if (!autoOn || !(onScreenerBuy || onAutoBuy || onBuy) || !matches.length) return;
-    // SERVER-SIDE now (Crypto / US Tokens / Indian): the backend screener engine runs these 24/7 even when the app
-    // is closed, so the client must NOT also fire them — that would double-trade. Other markets stay client-side.
-    if (market === "Crypto" || market === "USStockTokens" || market === "IN") return;
+    // SERVER-SIDE now (Crypto / US Tokens / Indian / US / Commodity): the backend screener engine runs these 24/7
+    // even when the app is closed, so the client must NOT also fire them — that would double-trade.
+    if (["Crypto", "USStockTokens", "IN", "US", "Commodity"].includes(market)) return;
     if (!marketOpen(market)) return;
     const key = `mx_scrbuy_${screener.key}_${market}_${mode}${short ? "_sell" : ""}_${Math.floor(Date.now() / 864e5)}`;   // fresh day index (module `DAY` never rolls in a long session)
     if (lsGet(key, false)) return;
