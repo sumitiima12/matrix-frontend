@@ -11,6 +11,9 @@ const tokenHdr = () => { const t = (() => { try { return getAuthToken(); } catch
 
 const MARKETS = ["IN", "US", "Crypto", "Commodity", "USStockTokens", "FNO"];
 const MODES = ["virtual", "real"];
+// Default per-trade capital when the user hasn't explicitly saved one (mirrors the UI's shown default), so the
+// server engine never sees "no capital set" just because the value was left at its default.
+const capDefault = (m) => ((m === "US" || m === "Crypto" || m === "USStockTokens") ? 1000 : 100000);
 
 /* Read every enabled screener's FULL config out of localStorage into
    { market: { "<key>[:sell]": { enabled, defs, entry, tf, sl, tp, symbols, notional, short, modes } } }.
@@ -52,7 +55,7 @@ export function collectAutoSettings({ autoOnMap = {}, deployCapMap = {} } = {}) 
       if (autoOnMap[`${market}:${mode}`]) {
         (smartAutoBuy[market] = smartAutoBuy[market] || {})[mode] = {
           enabled: true,
-          capital: deployCapMap[market] != null ? Number(deployCapMap[market]) : null,
+          capital: deployCapMap[market] != null ? Number(deployCapMap[market]) : capDefault(market),
           product: prodMap[market] || null,
           symbols: symsOf(market),
         };
@@ -63,7 +66,7 @@ export function collectAutoSettings({ autoOnMap = {}, deployCapMap = {} } = {}) 
       const mode = lsGet(`mx_ideas_mode_${market}`, "virtual") === "real" ? "real" : "virtual";
       (ideas[market] = ideas[market] || {})[mode] = {
         enabled: true,
-        capital: Number(lsGet(`mx_ideas_cap_${market}`, 0)) || null,
+        capital: Number(lsGet(`mx_ideas_cap_${market}`, 0)) || capDefault(market),
         symbols: symsOf(market),
       };
     }
