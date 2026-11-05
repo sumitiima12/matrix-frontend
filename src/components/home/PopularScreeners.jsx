@@ -316,7 +316,9 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
   const writeSLTP = (sl, tp) => { const next = { ...(ovr || {}), sl, tp }; setOvr(next); lsSet(EDK, next); };
   const applyExits = (sl, tp) => { setSlDraft(String(sl)); setTpDraft(String(tp)); writeSLTP(sl, tp); };
   const applyIndicators = (nd, ntf) => { const next = { ...(ovr || {}), defs: nd, tf: ntf }; setOvr(next); lsSet(EDK, next); };
-  const optSyms = (n) => (eSel.length ? eSel : (UNIVERSE[market] || []).map((s) => s.sym)).slice(0, n);
+  // Optimize SL/TP on the SELECTED basket only (all of it, capped at 30 to protect the backend grid sweep). Only
+  // when NO symbols are selected do we fall back to the top-n of the whole market.
+  const optSyms = (n) => (eSel.length ? eSel.slice(0, 30) : (UNIVERSE[market] || []).map((s) => s.sym).slice(0, n));
   const runAutoSelect = async () => {
     const syms = (UNIVERSE[market] || []).map((s) => s.sym);
     if (!syms.length || autoSel.running) return;
@@ -397,7 +399,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
       const symbols = eSel.length ? eSel : (UNIVERSE[market] || []).map((s) => s.sym);
       const cfgSL = isDeltaMkt ? Math.max(defSL, DELTA_MIN_SL) : defSL;
       const cfgTP = (isDeltaMkt && defSL > 0) ? +(defTP * (Math.max(defSL, DELTA_MIN_SL) / defSL)).toFixed(2) : defTP;
-      lsSet(ck, { defs: eDefs, entry: eEntry, tf: eTf, sl: cfgSL, tp: cfgTP, symbols, capital: capNum, short: !!short, mode });
+      lsSet(ck, { defs: eDefs, entry: eEntry, tf: eTf, sl: cfgSL, tp: cfgTP, symbols, capital: capNum, short: !!short, mode, name: dispName });
     } catch { /* storage unavailable */ }
   };
   /* MIGRATION + keep-fresh: whenever this screener's auto-buy is ON, make sure its full config is persisted for
@@ -1185,6 +1187,7 @@ function ScreenerLivePositions({ trades = [], market, mode = "virtual", portfoli
 function ScreenerPnLTab({ trades = [], market, mode = "virtual", liveTick = 0 }) {
   const [range, setRange] = useState("30d");
   const [activeTick, setActiveTick] = useState(0);   // bump to re-read the auto-buy on/off flags after a toggle
+  const [sort, setSort] = useState({ key: "pnl", dir: -1 });   // sortable P&L table (default P&L desc)
   const toggleScreener = (key) => { if (key == null) return; const next = !isScreenerActive(key, market, false); lsSet(autoKeyFor(key, market, false), next); setActiveTick((n) => n + 1); notifyAutoSettingsChanged(); };
   const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a && a.price != null ? a.price : null; };
   const from = useMemo(() => {
@@ -1214,10 +1217,16 @@ function ScreenerPnLTab({ trades = [], market, mode = "virtual", liveTick = 0 })
       if (closed) { g.closed += 1; if (p >= 0) g.wins += 1; }
       byKey.set(key, g);
     }
-    return [...byKey.values()].sort((a, b) => b.pnl - a.pnl);
+    const _wr = (g) => (g.closed ? g.wins / g.closed : -1);
+    const val = { label: (g) => String(g.label || "").toLowerCase(), closed: (g) => g.closed, winRate: _wr, pnl: (g) => g.pnl };
+    const f = val[sort.key] || val.pnl;
+    return [...byKey.values()].sort((a, b) => { const av = f(a), bv = f(b); return (av < bv ? -1 : av > bv ? 1 : 0) * sort.dir; });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trades, market, mode, from, liveTick]);
+  }, [trades, market, mode, from, liveTick, sort]);
   const total = rows.reduce((a, r) => a + r.pnl, 0);
+  // Click a column header to sort by it (toggles asc/desc; default P&L desc).
+  const _sortClick = (key) => setSort((s) => s.key === key ? { key, dir: -s.dir } : { key, dir: key === "label" ? 1 : -1 });
+  const _arrow = (key) => sort.key === key ? (sort.dir < 0 ? " ↓" : " ↑") : "";
   const th = { fontSize: 9.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".02em", padding: "6px 8px", textAlign: "right" };
   const td = { fontSize: 12, padding: "8px", textAlign: "right", borderTop: "1px solid var(--line)" };
   const rangeSel = { border: "1px solid var(--line)", borderRadius: 9, padding: "5px 8px", fontSize: 11.5, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" };
@@ -1235,8 +1244,11 @@ function ScreenerPnLTab({ trades = [], market, mode = "virtual", liveTick = 0 })
           <div className="card" style={{ padding: 0, overflow: "hidden" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr>
-                <th style={{ ...th, textAlign: "left" }}>Screener</th>
-                <th style={th}>Closed</th><th style={th}>Win rate</th><th style={th}>P&amp;L</th><th style={{ ...th, textAlign: "center" }}>Auto-buy</th>
+                <th onClick={() => _sortClick("label")} style={{ ...th, textAlign: "left", cursor: "pointer" }}>Screener{_arrow("label")}</th>
+                <th onClick={() => _sortClick("closed")} style={{ ...th, cursor: "pointer" }}>Closed{_arrow("closed")}</th>
+                <th onClick={() => _sortClick("winRate")} style={{ ...th, cursor: "pointer" }}>Win rate{_arrow("winRate")}</th>
+                <th onClick={() => _sortClick("pnl")} style={{ ...th, cursor: "pointer" }}>P&amp;L{_arrow("pnl")}</th>
+                <th style={{ ...th, textAlign: "center" }}>Auto-buy</th>
               </tr></thead>
               <tbody>
                 {rows.map((r, i) => { void activeTick; const on = r.screenerKey != null ? isScreenerActive(r.screenerKey, market, false) : null; return (
@@ -1309,7 +1321,7 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
       {/* Build a screener | Popular Screeners | My Screeners */}
       <div className="hide-scroll" style={{ display: "flex", marginBottom: 4, overflowX: "auto" }}>
         <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3 }}>
-          {[["active", "Active Screeners"], ["custom", "Build a screener"], ["popular", "Popular Screeners"], ["mine", "My Screeners"], ["pnl", "P&L"]].map(([k, l]) => (
+          {[["active", "Active Screeners"], ["pnl", "P&L"], ["custom", "Build a screener"], ["popular", "Popular Screeners"], ["mine", "My Screeners"]].map(([k, l]) => (
             <button key={k} onClick={() => { setTab(k); if (k !== "custom") setEditing(null); }} className="pill tap disp" style={{ padding: "6px 14px", fontSize: 12, fontWeight: 800, border: "none", whiteSpace: "nowrap", background: tab === k ? "var(--primary)" : "transparent", color: tab === k ? "var(--on-primary)" : "var(--muted)" }}>{l}</button>
           ))}
         </div>

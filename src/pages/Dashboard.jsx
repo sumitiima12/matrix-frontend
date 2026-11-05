@@ -952,7 +952,11 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   // picks; sabMinRR defaults to 2 (2:1) so only picks whose target ÷ stop meets the ratio are bought.
   const [sabSyms, setSabSyms] = useState([]);
   const [sabSymOpen, setSabSymOpen] = useState(false);   // collapse the symbol chip picker to a count by default
-  const [sabMinRR, setSabMinRR] = useState(2);
+  const [sabMinRR, setSabMinRR] = useState(() => { const v = Number(lsGet("mx_sab_minrr_" + market, 2)); return v > 0 ? v : 2; });
+  // Reload the saved MIN R:R when the market changes (each market keeps its own).
+  useEffect(() => { const v = Number(lsGet("mx_sab_minrr_" + market, 2)); setSabMinRR(v > 0 ? v : 2); /* eslint-disable-next-line */ }, [market]);
+  const saveSabMinRR = () => { lsSet("mx_sab_minrr_" + market, sabMinRR); setSabRRSaved(true); setTimeout(() => setSabRRSaved(false), 1500); };
+  const [sabRRSaved, setSabRRSaved] = useState(false);
   const [editSym, setEditSym] = useState(null);
   const [showTrades, setShowTrades] = useState(false);
   const [showTotalPos, setShowTotalPos] = useState(false);   // Total card "Show positions" toggle
@@ -1649,6 +1653,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     <span style={{ fontSize: 9.5, opacity: .8, fontWeight: 700 }}>MIN R:R</span>
                     <input value={sabMinRR} onChange={(e) => setSabMinRR(Math.max(0, +String(e.target.value).replace(/[^0-9.]/g, "") || 0))} inputMode="decimal" className="no-ring mono" style={{ width: 46, textAlign: "center", border: "none", background: "var(--surface)", borderRadius: 8, padding: "5px 4px", fontWeight: 800, fontSize: 13, color: "var(--primary)" }} />
                     <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 800 }}>: 1</span>
+                    <button onClick={saveSabMinRR} className="tap disp" style={{ border: "none", borderRadius: 8, padding: "5px 10px", fontWeight: 800, fontSize: 11, cursor: "pointer", background: sabRRSaved ? "var(--up)" : "var(--primary)", color: "#fff" }}>{sabRRSaved ? "Saved" : "Save"}</button>
                   </div>
                 </div>
                 {sabSymOpen && (

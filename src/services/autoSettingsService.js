@@ -35,7 +35,7 @@ function collectScreeners() {
         enabled: true, defs: cfg.defs || [], entry: cfg.entry, tf: cfg.tf || "5m",
         sl: cfg.sl != null ? Number(cfg.sl) : null, tp: cfg.tp != null ? Number(cfg.tp) : null,
         symbols: Array.isArray(cfg.symbols) ? cfg.symbols : [], capital: Number(cfg.capital) || 0,
-        short: !!(sell || cfg.short), modes: cfg.modes || (cfg.mode ? { [cfg.mode]: true } : {}),
+        short: !!(sell || cfg.short), modes: cfg.modes || (cfg.mode ? { [cfg.mode]: true } : {}), name: cfg.name || key,
       };
     }
   } catch { /* storage unavailable — empty blob */ }

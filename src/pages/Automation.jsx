@@ -3570,18 +3570,18 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           so the resting Automate screen is just: New strategy → your strategies. */}
 
       {/* + New strategy (primary) + secondary P&L / Backtest links. */}
-      {topTab === "strategies" && (
-        <div style={{ marginTop: 18 }}>
-          <button onClick={() => { setEditingId(null); setStratName(""); setTopTab("build"); setTimeout(() => { try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {} }, 40); }}
-            className="tap disp" style={{ width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)", borderRadius: 14, padding: "13px", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>
-            <Plus size={16} /> New strategy
-          </button>
-          <div style={{ display: "flex", gap: 18, justifyContent: "center", marginTop: 11 }}>
-            <button onClick={() => { setTopTab("pnl"); setTimeout(() => { try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {} }, 40); }} className="tap disp" style={{ border: "none", background: "transparent", color: "var(--muted)", fontWeight: 800, fontSize: 12, cursor: "pointer", padding: 0 }}>P&amp;L ▸</button>
-            <button onClick={() => { setTopTab("backtest"); setTimeout(() => { try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {} }, 40); }} className="tap disp" style={{ border: "none", background: "transparent", color: "var(--muted)", fontWeight: 800, fontSize: 12, cursor: "pointer", padding: 0 }}>Backtest all ▸</button>
+      {topTab === "strategies" && (() => {
+        // New strategy / P&L / Backtest all as three buttons on ONE line.
+        const _go = (tab) => { setTopTab(tab); setTimeout(() => { try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {} }, 40); };
+        const _secBtn = { flex: "1 1 0", minWidth: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 12, padding: "11px 8px", fontWeight: 800, fontSize: 12.5, cursor: "pointer" };
+        return (
+          <div style={{ marginTop: 18, display: "flex", gap: 8 }}>
+            <button onClick={() => { setEditingId(null); setStratName(""); _go("build"); }} className="tap disp" style={{ ..._secBtn, border: "1px solid var(--primary)", background: "var(--primary-soft)", color: "var(--primary)" }}><Plus size={15} /> New</button>
+            <button onClick={() => _go("pnl")} className="tap disp" style={_secBtn}>P&amp;L</button>
+            <button onClick={() => _go("backtest")} className="tap disp" style={_secBtn}>Backtest all</button>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* BUILD ZONE — the builder is always expanded (no create/close toggle). */}
       {topTab === "build" && (<>
