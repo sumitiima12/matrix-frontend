@@ -2210,6 +2210,7 @@ function StrategyPnLView({ strats, trades, market, appMode = "virtual", onDelete
   const [cFrom, setCFrom] = useState("");   // #610 custom from/to
   const [cTo, setCTo] = useState("");
   const [openId, setOpenId] = useState(null);
+  const [sort, setSort] = useState({ key: "pnl", dir: -1 });   // sortable columns (default P&L desc)
   const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a ? a.price : null; };
   const inMkt = (s) => !(s.symbols && s.symbols.length) || s.symbols.some((x) => marketOf(x) === market);
   const RANGES = [[1, "Today"], [7, "Last 7 days"], [30, "Last 30 days"], [180, "Last 6 months"], ["custom", "Custom range"]];
@@ -2217,7 +2218,12 @@ function StrategyPnLView({ strats, trades, market, appMode = "virtual", onDelete
   // Explicit window for Custom; else the rolling day-count window handled inside stratPerf.
   const win = isCustom ? { from: cFrom ? new Date(cFrom + "T00:00:00").getTime() : 0, to: cTo ? new Date(cTo + "T23:59:59").getTime() : Date.now() } : null;
   const days = isCustom ? 365 : range;   // rangeDays ignored when win is provided
-  const rows = strats.filter(inMkt).map((s) => ({ s, p: stratPerf(s, trades, days, priceOf, win, { mode: appMode, market }) })).sort((a, b) => (b.p.pnl || 0) - (a.p.pnl || 0));
+  const _sv = { name: (r) => String(r.s.name || "").toLowerCase(), trades: (r) => r.p.trades || 0, winRate: (r) => (r.p.winRate == null ? -1 : r.p.winRate), pnl: (r) => (r.p.pnl || 0) };
+  const rows = strats.filter(inMkt).map((s) => ({ s, p: stratPerf(s, trades, days, priceOf, win, { mode: appMode, market }) }))
+    .sort((a, b) => { const f = _sv[sort.key] || _sv.pnl; const av = f(a), bv = f(b); return (av < bv ? -1 : av > bv ? 1 : 0) * sort.dir; });
+  const sortClick = (key) => setSort((s) => s.key === key ? { key, dir: -s.dir } : { key, dir: key === "name" ? 1 : -1 });
+  const arrow = (key) => sort.key === key ? (sort.dir < 0 ? " ↓" : " ↑") : "";
+  const total = rows.reduce((a, r) => a + (r.p.pnl || 0), 0);
   const dt = (t) => (t ? new Date(t).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
   const inWin = (ts) => { const from = win ? win.from : Date.now() - range * 864e5; const to = win ? win.to : Infinity; return ts >= from && ts <= to; };
   const tradesFor = (s) => (trades || []).filter((t) => (t.strategyId != null ? String(t.strategyId) === String(s.id) : t.strategy === s.name) && t.status !== "rejected" && inWin(t.exitAt || t.entryAt || 0)).sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
@@ -2237,44 +2243,64 @@ function StrategyPnLView({ strats, trades, market, appMode = "virtual", onDelete
           <select aria-label="Date range" value={range} onChange={(e) => { const v = e.target.value; setRange(v === "custom" ? "custom" : +v); }} style={{ ...selStyle, flex: "0 0 auto", width: "auto", fontSize: 12 }}>{RANGES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
         </div>
       </div>
-      {rows.length === 0 && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 12 }}>No strategies in this market yet.</div>}
-      {rows.map(({ s, p }) => (
-        <div key={s.id} className="card" style={{ padding: 12, marginTop: 10 }}>
-          <div onClick={() => setOpenId(openId === s.id ? null : s.id)} className="tap" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-            <div style={{ minWidth: 0 }}>
-              <div className="disp" style={{ fontWeight: 800, fontSize: 13 }}>{s.name || "Strategy"}{!isActiveHere(s) && <span style={{ color: "var(--muted)", fontWeight: 700 }}> · inactive</span>}</div>
-              <div style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 600, marginTop: 1 }}>{(s.symbols || []).join(", ") || "—"} · {p.trades || 0} trades{p.winRate != null ? ` · ${p.winRate.toFixed(0)}% win` : ""}</div>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <div className="mono" style={{ fontWeight: 800, fontSize: 14, color: chgColor(p.pnl) }}>{p.pnl == null ? "—" : (p.pnl >= 0 ? "+" : "") + fmtPnl(p.pnl, market)}</div>
-              {onToggleActive && (
-                <button onClick={(e) => { e.stopPropagation(); onToggleActive(s); }} className="tap disp" style={{
-                  flexShrink: 0, border: "1px solid " + (isActiveHere(s) ? "var(--down)" : "var(--up)"),
-                  background: isActiveHere(s) ? "var(--down-soft, rgba(232,72,85,.12))" : "var(--up-soft, rgba(16,185,129,.12))",
-                  color: isActiveHere(s) ? "var(--down)" : "var(--up)", borderRadius: 999, padding: "4px 10px", fontSize: 10, fontWeight: 800, whiteSpace: "nowrap", cursor: "pointer",
-                }}>{isActiveHere(s) ? "Deactivate" : "Activate"}</button>
-              )}
-              {onDelete && openId === s.id && <button onClick={(e) => { e.stopPropagation(); onDelete(s); }} className="tap" title="Delete strategy" style={{ border: "none", background: "transparent", padding: 2, flexShrink: 0 }}><Trash2 size={14} color="var(--down)" /></button>}
-              <ChevronDown size={15} style={{ transform: openId === s.id ? "rotate(180deg)" : "none", transition: "transform .2s", color: "var(--muted)" }} />
-            </div>
+      {rows.length === 0
+        ? <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 12 }}>No strategies in this market yet.</div>
+        : (() => {
+          const hth = { fontSize: 9.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".02em", padding: "7px 8px", textAlign: "right", cursor: "pointer", whiteSpace: "nowrap" };
+          const bd = { fontSize: 12, padding: "9px 8px", textAlign: "right", borderTop: "1px solid var(--line)" };
+          return (
+          <div className="card" style={{ padding: 0, overflow: "hidden", marginTop: 10 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead><tr>
+                <th onClick={() => sortClick("name")} style={{ ...hth, textAlign: "left" }}>Strategy{arrow("name")}</th>
+                <th onClick={() => sortClick("trades")} style={hth}>Trades{arrow("trades")}</th>
+                <th onClick={() => sortClick("winRate")} style={hth}>Win rate{arrow("winRate")}</th>
+                <th onClick={() => sortClick("pnl")} style={hth}>P&amp;L{arrow("pnl")}</th>
+                <th style={{ ...hth, textAlign: "center", cursor: "default" }}>Active</th>
+              </tr></thead>
+              <tbody>
+                {rows.map(({ s, p }) => {
+                  const act = isActiveHere(s); const isOpen = openId === s.id;
+                  return (
+                  <React.Fragment key={s.id}>
+                    <tr onClick={() => setOpenId(isOpen ? null : s.id)} className="tap" style={{ cursor: "pointer" }}>
+                      <td style={{ ...bd, textAlign: "left", fontWeight: 700, color: "var(--ink)", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {s.name || "Strategy"}{!act && <span style={{ color: "var(--muted)", fontWeight: 600, fontSize: 10 }}> · off</span>}
+                      </td>
+                      <td style={{ ...bd, color: "var(--muted)" }}>{p.trades || 0}</td>
+                      <td style={{ ...bd, color: "var(--muted)" }}>{p.winRate != null ? p.winRate.toFixed(0) + "%" : "—"}</td>
+                      <td className="mono" style={{ ...bd, fontWeight: 800, color: p.pnl == null ? "var(--muted)" : chgColor(p.pnl) }}>{p.pnl == null ? "—" : (p.pnl >= 0 ? "+" : "") + fmtPnl(p.pnl, market)}</td>
+                      <td style={{ ...bd, textAlign: "center" }}>{onToggleActive
+                        ? <button onClick={(e) => { e.stopPropagation(); onToggleActive(s); }} className="tap" style={{ border: "1px solid " + (act ? "var(--down)" : "var(--up)"), background: act ? "rgba(232,72,85,.12)" : "rgba(16,185,129,.12)", color: act ? "var(--down)" : "var(--up)", borderRadius: 8, padding: "4px 9px", fontSize: 10, fontWeight: 800, whiteSpace: "nowrap", cursor: "pointer" }}>{act ? "Deactivate" : "Activate"}</button>
+                        : "—"}</td>
+                    </tr>
+                    {isOpen && (
+                      <tr><td colSpan={5} style={{ padding: "4px 10px 10px", background: "rgba(127,127,127,.04)" }}>
+                        {onDelete && <div style={{ textAlign: "right" }}><button onClick={(e) => { e.stopPropagation(); onDelete(s); }} className="tap" style={{ border: "none", background: "transparent", color: "var(--down)", fontSize: 10.5, fontWeight: 800, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, padding: 2 }}><Trash2 size={12} /> Delete</button></div>}
+                        {tradesFor(s).length === 0 && <div style={{ fontSize: 11.5, color: "var(--muted)" }}>No trades in this period.</div>}
+                        {tradesFor(s).map((t, i) => { const pl = tPnl(t); return (
+                          <div key={t.id || i} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "6px 0", borderTop: i ? "1px solid var(--line)" : "none", fontSize: 11 }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 800 }}>{t.sym} <span style={{ color: "var(--muted)", fontWeight: 600 }}>×{t.qty}</span></div>
+                              <div style={{ color: "var(--muted)" }}>In {dt(t.entryAt)}{t.exitAt ? " · Out " + dt(t.exitAt) : " · open"}</div>
+                            </div>
+                            <div className="mono" style={{ fontWeight: 800, color: pl == null ? "var(--muted)" : chgColor(pl), textAlign: "right", flex: "0 0 auto" }}>{pl == null ? "—" : (pl >= 0 ? "+" : "") + fmtPnl(pl, marketOf(t.sym))}</div>
+                          </div>
+                        ); })}
+                      </td></tr>
+                    )}
+                  </React.Fragment>
+                ); })}
+                <tr>
+                  <td style={{ ...bd, textAlign: "left", fontWeight: 800, borderTop: "2px solid var(--line)" }}>Total</td>
+                  <td style={{ ...bd, borderTop: "2px solid var(--line)" }} /><td style={{ ...bd, borderTop: "2px solid var(--line)" }} />
+                  <td className="mono" style={{ ...bd, fontWeight: 800, color: chgColor(total), borderTop: "2px solid var(--line)" }}>{(total >= 0 ? "+" : "") + fmtPnl(total, market)}</td>
+                  <td style={{ ...bd, borderTop: "2px solid var(--line)" }} />
+                </tr>
+              </tbody>
+            </table>
           </div>
-          {openId === s.id && (
-            <div style={{ marginTop: 10, borderTop: "1px solid var(--line)", paddingTop: 8 }}>
-              {tradesFor(s).length === 0 && <div style={{ fontSize: 11.5, color: "var(--muted)" }}>No trades in this period.</div>}
-              {tradesFor(s).map((t, i) => { const pl = tPnl(t); return (
-                <div key={t.id || i} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "7px 0", borderTop: i ? "1px solid var(--line)" : "none", fontSize: 11 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 800 }}>{t.sym} <span style={{ color: "var(--muted)", fontWeight: 600 }}>×{t.qty}</span></div>
-                    <div style={{ color: "var(--muted)" }}>In {dt(t.entryAt)}</div>
-                    <div style={{ color: "var(--muted)" }}>{t.exitAt ? "Out " + dt(t.exitAt) : "position open"}</div>
-                  </div>
-                  <div className="mono" style={{ fontWeight: 800, color: pl == null ? "var(--muted)" : chgColor(pl), textAlign: "right", flex: "0 0 auto" }}>{pl == null ? "—" : (pl >= 0 ? "+" : "") + fmtPnl(pl, marketOf(t.sym))}</div>
-                </div>
-              ); })}
-            </div>
-          )}
-        </div>
-      ))}
+          ); })()}
     </div>
   );
 }
