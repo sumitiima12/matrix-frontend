@@ -553,12 +553,24 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
     <div className="card" style={{ marginTop: 12, padding: 12, opacity: published ? 1 : 0.75 }}>
       {/* Header — screener name (left), Auto-Buy toggle + admin edit (right) */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-        <div style={{ minWidth: 0 }}>
-          <div className="disp" style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.15, color: "var(--ink)", display: "flex", alignItems: "center", gap: 7 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 9, minWidth: 0 }}>
+          {/* Status dot — mirrors the My-Strategies card: green when Auto-Buy is on, grey when off. */}
+          <span style={{ width: 9, height: 9, borderRadius: 9, flex: "0 0 auto", marginTop: 5, background: autoOn ? "var(--up)" : "var(--muted)", boxShadow: autoOn ? "0 0 0 4px var(--up-soft)" : "none" }} />
+          <div style={{ minWidth: 0 }}>
+          <div className="disp" style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.15, color: "var(--ink)", display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
             {dispName}
+            {/* ACTIVE/INACTIVE + SCREENER pills in the same chrome as the strategy cards. */}
+            <span className="pill" style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".03em", padding: "2px 7px", background: autoOn ? "var(--up-soft)" : "var(--elev)", color: autoOn ? "var(--up)" : "var(--muted)", border: "1px solid var(--line)" }}>{autoOn ? "ACTIVE" : "INACTIVE"}</span>
+            <span className="pill" style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".03em", padding: "2px 7px", background: "var(--elev)", color: "var(--primary)", border: "1px solid var(--line)" }}>SCREENER</span>
             {!published && <span className="pill" style={{ fontSize: 8, fontWeight: 800, padding: "2px 7px", background: "var(--down-soft, rgba(232,72,85,.14))", color: "var(--down)" }}>UNPUBLISHED</span>}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 3, flexWrap: "wrap" }}>
+          {/* Symbol chips — the scan basket (or a whole-market chip), matching the strategy card's chip row. */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
+            {(eSel && eSel.length ? eSel.slice(0, 4) : []).map((sy) => <span key={sy} className="pill" style={{ fontSize: 9.5, fontWeight: 700, background: "var(--primary-soft)", color: "var(--primary)", padding: "2px 8px" }}>{sy}</span>)}
+            {eSel && eSel.length > 4 && <span style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700, alignSelf: "center" }}>+{eSel.length - 4}</span>}
+            {(!eSel || !eSel.length) && !eNone && <span className="pill" style={{ fontSize: 9.5, fontWeight: 700, background: "var(--elev)", color: "var(--muted)", padding: "2px 8px" }}>All {market}</span>}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5, flexWrap: "wrap" }}>
             {/* Live Positions X — tappable, expands the card to show this screener's open positions. */}
             <button type="button" onClick={() => setShowLivePos((v) => !v)} className="tap" style={{ border: "none", background: "transparent", padding: 0, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 800, color: livePositions.length ? "var(--primary)" : "var(--muted)" }}>
               Live Positions <span className="mono">{livePositions.length}</span>
@@ -568,6 +580,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
             {/* Symbols count — the screener's scan universe (its selected basket, or the whole market when none
                 is selected). M04: labelled so it's not mistaken for matching/open-position count. */}
             <span title="Symbols this screener scans — its selected basket, or the whole market universe when none is selected. Not the number currently matching or held." style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)" }}><span className="mono" style={{ color: "var(--ink)" }}>{liveSymbolCount}</span> Symbols</span>
+          </div>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>

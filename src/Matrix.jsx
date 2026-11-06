@@ -237,6 +237,16 @@ input,textarea,select{font-family:inherit;color:var(--ink)}
 .no-ring:focus{outline:2px solid var(--primary);outline-offset:1px}
 input::placeholder,textarea::placeholder{color:var(--muted)}
 select option{background:var(--surface);color:var(--ink)}
+/* RESPONSIVE. Mobile is the default narrow column (unchanged). On desktop the app gets a roomier centred
+   column and the navigation moves from a bottom bar to a top bar, so the screen isn't a thin strip in a sea of
+   black. The top nav is hidden on mobile and the bottom nav on desktop. */
+.mx-topnav{display:none}
+@media (min-width:1024px){
+  .mx-shell{max-width:980px !important}
+  .mx-bottomnav{display:none !important}
+  .mx-topnav{display:flex}
+  .mx-fab-track{max-width:980px !important}
+}
 `;
 
 /* ============================== HELPERS ============================== */
@@ -1506,7 +1516,7 @@ function AppInner() {
         />
       )}
 
-      <div style={{ maxWidth: 460, margin: "0 auto", minHeight: "100vh", position: "relative", zIndex: 1, paddingBottom: 86 }}>
+      <div className="mx-shell" style={{ maxWidth: 460, margin: "0 auto", minHeight: "100vh", position: "relative", zIndex: 1, paddingBottom: 86 }}>
         {/* ambient glow */}
         <div style={{ position: "absolute", top: -80, left: "50%", transform: "translateX(-50%)", width: 420, height: 320, background: "radial-gradient(circle, rgba(150,150,160,.12), transparent 70%)", pointerEvents: "none", zIndex: 0 }} />
         {/* HEADER */}
@@ -1681,6 +1691,20 @@ function AppInner() {
               ))}
             </div>
           )}
+          {/* DESKTOP top nav — same destinations as the mobile bottom bar, shown only >=1024px via CSS. On
+              desktop the bottom bar is hidden, so the nav lives here in the (sticky) header instead. */}
+          {!detail && (
+            <nav className="mx-topnav" aria-label="Primary" style={{ gap: 6, padding: "0 18px 10px", flexWrap: "wrap" }}>
+              {nav.map(([k, Icon, label]) => {
+                const current = k === "orders" ? histOpen : (tab === k && !histOpen);
+                return (
+                  <button key={k} aria-current={current ? "page" : undefined} onClick={() => { if (k === "orders") { setHistOpen(true); return; } setHistOpen(false); setTab(k); setTradePreset(null); }} className="tap disp" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 11, border: "1px solid " + (current ? "var(--primary)" : "var(--line)"), background: current ? "var(--primary)" : "var(--surface)", color: current ? "var(--on-primary)" : "var(--ink)", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>
+                    <Icon size={15} /> {label}
+                  </button>
+                );
+              })}
+            </nav>
+          )}
         </div>
 
         {/* BODY */}
@@ -1737,7 +1761,7 @@ function AppInner() {
           controls, so a thumb reaching for "Buy" can land on "Watch". */}
       {!detail && !onboarding && !drawer && !confirmOrder && !walletOpen && !brokerOpen && !search && !showProfile && (
         <Portal theme={theme}>
-          <nav aria-label="Main navigation" className="glass" style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--header-bg)", borderTop: "1px solid var(--line)", borderRadius: "22px 22px 0 0", boxShadow: "0 -10px 34px rgba(40,10,80,.3)", display: "flex", padding: "8px 2px calc(4px + env(safe-area-inset-bottom, 0px))", zIndex: 100 }}>
+          <nav aria-label="Main navigation" className="glass mx-bottomnav" style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--header-bg)", borderTop: "1px solid var(--line)", borderRadius: "22px 22px 0 0", boxShadow: "0 -10px 34px rgba(40,10,80,.3)", display: "flex", padding: "8px 2px calc(4px + env(safe-area-inset-bottom, 0px))", zIndex: 100 }}>
             {nav.map(([k, Icon, label]) => {
               const current = k === "orders" ? histOpen : (tab === k && !histOpen);
               return (
@@ -1754,7 +1778,7 @@ function AppInner() {
       {/* NEO — floating chatbot button, bottom-right, just above the bottom bar. Replaces the old Neo
           tab. Sits inside a centered 460-wide track so it hugs the app's right edge, not the viewport. */}
       {!detail && !onboarding && !drawer && !confirmOrder && !walletOpen && !brokerOpen && !search && !showProfile && tab !== "ask" && (
-        <div style={{ position: "fixed", left: 0, right: 0, bottom: "calc(env(safe-area-inset-bottom, 0px) + 108px)", maxWidth: 460, margin: "0 auto", zIndex: 105, display: "flex", justifyContent: "flex-end", paddingRight: 16, pointerEvents: "none" }}>
+        <div className="mx-fab-track" style={{ position: "fixed", left: 0, right: 0, bottom: "calc(env(safe-area-inset-bottom, 0px) + 108px)", maxWidth: 460, margin: "0 auto", zIndex: 105, display: "flex", justifyContent: "flex-end", paddingRight: 16, pointerEvents: "none" }}>
           <button onClick={() => { setHistOpen(false); setTab("ask"); setTradePreset(null); }} aria-label="Ask Neo" className="tap" style={{ pointerEvents: fabHide ? "none" : "auto", opacity: fabHide ? 0 : 1, transform: fabHide ? "translateY(14px) scale(.85)" : "none", transition: "opacity .2s ease, transform .2s ease", width: 56, height: 56, borderRadius: "50%", border: "none", background: "linear-gradient(135deg, var(--primary), var(--primary-2))", boxShadow: "0 8px 24px rgba(40,10,80,.4)", display: "grid", placeItems: "center", color: "var(--on-primary)" }}>
             <NeoIcon size={28} />
           </button>
