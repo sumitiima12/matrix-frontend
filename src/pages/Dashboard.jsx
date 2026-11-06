@@ -32,6 +32,18 @@ import PopularScreeners from "../components/home/PopularScreeners";
 import ActionRequired from "../components/home/ActionRequired";
 import ActivityTimeline from "../components/home/ActivityTimeline";
 
+/* One-line explainers for the Total P&L source boxes — shown on hover so a trader instantly knows what each
+   bucket is and how the automation engines differ (the single biggest "what does this mean?" on the home card). */
+const CAT_HELP = {
+  "Manual": "Trades you placed yourself.",
+  "Smart Auto-Buy": "Auto-buys Matrix's top-ranked daily picks for this market (once a day, with target/stop).",
+  "Automate": "Your deployed strategies (Auto tab) trading on their own rules.",
+  "Screener": "Auto-buys when a symbol matches one of your active screeners.",
+  "Ideas": "Auto-buys from Neo's daily chart Ideas.",
+  "Fees & Funding": "Wallet P&L not tied to a tracked trade — perpetual funding, trading fees, mark-price moves, or positions opened outside the app.",
+  "Unknown / Imported": "Positions opened outside the app, or legacy trades with no recorded source.",
+};
+
 /* Canonical Source label for a trade chip — mirrors the backend provenance resolver so a position that was
    placed by a screener but mis-stamped "Manual" (it still carries screenerKey/screenerName as self-evidence)
    reads "Screener", never "Manual". Never defaults to Manual: an unrecognised/empty tag reads "Unknown". */
@@ -1456,7 +1468,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     {[["Manual", catPnl("Manual", totalStats.byType.Manual)], ["Smart Auto-Buy", catPnl("Smart Auto-Buy", totalStats.byType["Auto Buy"])], ["Automate", catPnl("Automate", automatePnl)], ["Screener", catPnl("Screener", totalStats.byType["Screener Auto Buy"])], ["Ideas", catPnl("Ideas", totalStats.byType.Ideas)],
                       // Unknown/Imported absorbs the broker-vs-Matrix gap so the boxes reconcile to the headline.
                       ...((Math.abs(unknownBox || 0) > 0.005) ? [[unknownLabel, unknownBox]] : [])].map(([label, v]) => (
-                      <div key={label} style={{ background: "var(--elev)", borderRadius: 9, padding: "7px 8px", minWidth: 0 }}>
+                      <div key={label} title={CAT_HELP[label] || undefined} style={{ background: "var(--elev)", borderRadius: 9, padding: "7px 8px", minWidth: 0, cursor: CAT_HELP[label] ? "help" : "default" }}>
                         <div style={{ fontSize: 9, opacity: .65, fontWeight: 700, lineHeight: 1.2, minHeight: 21, overflow: "hidden" }}>{label}</div>
                         <div className="mono" style={{ fontWeight: 800, fontSize: 12.5, color: v >= 0 ? "var(--up)" : "var(--down)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{(v >= 0 ? "+" : "") + (isReal ? money1(v) : fmtPnl(v, market))}</div>
                       </div>
