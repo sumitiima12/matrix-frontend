@@ -281,7 +281,11 @@ export function useBroker({ onTick, userId, intervalMs = 60000 } = {}) {   // 60
       setReal(d);
       setRealErr(null);
     } catch (e) {
-      setReal(null);
+      // A transient refresh failure (backend waking up, a timeout right after a close) must NOT wipe the
+      // last-good holdings — that turned every manual close into a full-screen "Couldn't load your portfolio".
+      // Keep whatever we last showed and surface the error as a non-blocking banner; only clear when we've
+      // never had holdings to show.
+      setReal((prev) => prev || null);
       setRealErr(String(e.message || e));
     } finally {
       setRealLoading(false);

@@ -62,6 +62,17 @@ export function csvTime(ts) {
 
 const MARKET_LABEL = { IN: "Indian", US: "US", Crypto: "Crypto", Commodity: "Commodity", USStockTokens: "US Tokens" };
 
+/* Price string with precision scaled to the price's magnitude. A flat toFixed(2) destroyed sub-dollar crypto —
+   DOGE 0.0712 and 0.0733 both became "0.07" (so entry==exit and a real move looked like zero P&L), and coins
+   under a cent like PIPPIN/BILL exported as "0.00". Give small prices more decimals so the exported entry/exit
+   actually reconcile with the P&L column, and trim trailing zeros so large prices stay clean. */
+function priceStr(x) {
+  if (x == null || x === "" || !Number.isFinite(Number(x))) return "";
+  const n = Number(x), a = Math.abs(n);
+  const dp = a >= 1000 ? 2 : a >= 1 ? 4 : a >= 0.01 ? 6 : 8;
+  return n.toFixed(dp).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
+}
+
 /**
  * Column layout for a trade export.
  *
@@ -109,10 +120,10 @@ export function tradeColumns(livePriceOf = () => null) {
     { label: "Quantity",      get: (t) => t.qty ?? 1 },
     { label: "Entry Date",    get: (t) => csvDate(t.entryAt) },
     { label: "Entry Time",    get: (t) => csvTime(t.entryAt) },
-    { label: "Entry Price",   get: (t) => (t.entry != null ? Number(t.entry).toFixed(2) : "") },
+    { label: "Entry Price",   get: (t) => priceStr(t.entry) },
     { label: "Exit Date",     get: (t) => (isOpen(t) ? "" : csvDate(t.exitAt)) },
     { label: "Exit Time",     get: (t) => (isOpen(t) ? "" : csvTime(t.exitAt)) },
-    { label: "Exit Price",    get: (t) => { const p = exitPrice(t); return p != null ? Number(p).toFixed(2) : ""; } },
+    { label: "Exit Price",    get: (t) => priceStr(exitPrice(t)) },
     { label: "P&L",           get: (t) => { const p = pnl(t); return p != null ? p.toFixed(2) : ""; } },
     { label: "P&L %",         get: (t) => { const p = pnlPct(t); return p != null ? p.toFixed(2) : ""; } },
     { label: "Status",        get: (t) => (isOpen(t) ? "Open" : "Closed") },

@@ -1184,7 +1184,7 @@ function ScreenerLivePositions({ trades = [], market, mode = "virtual", portfoli
    owning screener (stable screenerKey when present, else the display name), and shows one row per screener:
    total P&L (realised on closed + unrealised on open), closed-trade count and win rate, over a date range.
    Uses the SAME attribution rule as the cards (key first, market-scoped) so numbers reconcile with each card. */
-function ScreenerPnLTab({ trades = [], market, mode = "virtual", liveTick = 0 }) {
+function ScreenerPnLTab({ trades = [], market, mode = "virtual", liveTick = 0, onRowOpen }) {
   const [range, setRange] = useState("30d");
   const [activeTick, setActiveTick] = useState(0);   // bump to re-read the auto-buy on/off flags after a toggle
   const [sort, setSort] = useState({ key: "pnl", dir: -1 });   // sortable P&L table (default P&L desc)
@@ -1251,9 +1251,9 @@ function ScreenerPnLTab({ trades = [], market, mode = "virtual", liveTick = 0 })
                 <th style={{ ...th, textAlign: "center" }}>Auto-buy</th>
               </tr></thead>
               <tbody>
-                {rows.map((r, i) => { void activeTick; const on = r.screenerKey != null ? isScreenerActive(r.screenerKey, market, false) : null; return (
+                {rows.map((r, i) => { void activeTick; const on = r.screenerKey != null ? isScreenerActive(r.screenerKey, market, false) : null; const canOpen = r.screenerKey != null && onRowOpen; return (
                   <tr key={i}>
-                    <td style={{ ...td, textAlign: "left", fontWeight: 700, color: "var(--ink)", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.label}</td>
+                    <td onClick={() => canOpen && onRowOpen(r.screenerKey)} title={canOpen ? "Open this screener" : undefined} className={canOpen ? "tap" : undefined} style={{ ...td, textAlign: "left", fontWeight: 700, color: canOpen ? "var(--primary)" : "var(--ink)", cursor: canOpen ? "pointer" : "default", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.label}</td>
                     <td style={{ ...td, color: "var(--muted)" }}>{r.closed}</td>
                     <td style={{ ...td, color: "var(--muted)" }}>{r.closed ? Math.round((r.wins / r.closed) * 100) + "%" : "—"}</td>
                     <td className="mono" style={{ ...td, fontWeight: 800, color: chgColor(r.pnl) }}>{(r.pnl >= 0 ? "+" : "") + fmt(Number(r.pnl.toFixed(2)), market)}</td>
@@ -1282,6 +1282,20 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
   const [dir, setDir] = useState("buy");   // Buy (long) | Sell (short) for Popular Screeners
   const [editing, setEditing] = useState(null);   // a saved screener loaded into the builder for editing
   const [showAllActive, setShowAllActive] = useState(false);   // homepage: collapse Active Screeners to 2 + "Show all"
+  const [focusKey, setFocusKey] = useState(null);   // screener to scroll-to/highlight after a P&L row click
+  // Clicking a row in the P&L table opens that screener's card: jump to the tab that renders it (Active if it's
+  // on, else Popular which lists every screener), then scroll it into view and flash a highlight.
+  const openScreenerCard = useCallback((key) => {
+    if (key == null) return;
+    setTab(isScreenerActive(key, market, false) ? "active" : "popular");
+    setFocusKey(key);
+  }, [market]);
+  useEffect(() => {
+    if (focusKey == null) return;
+    const id = window.setTimeout(() => { try { const el = document.getElementById("scr-" + focusKey); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); } catch { /* no-op */ } }, 60);
+    const clr = window.setTimeout(() => setFocusKey(null), 2200);
+    return () => { window.clearTimeout(id); window.clearTimeout(clr); };
+  }, [focusKey, tab]);
   // Not for Commodity (thin universe / no 5m intraday screening there).
   if (market === "Commodity") return null;
   const startEdit = (scr) => { setEditing(scr); setTab("custom"); };
@@ -1339,19 +1353,23 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
           </div>
         );
         return activeRows.map(({ s, side }) => (
-          <ScreenerRow key={s.key + side + "|" + market} screener={s} market={market} mode={mode} trades={trades} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} onClosePosition={onClosePosition} liveTick={liveTick} side={side} />
+          <div key={s.key + side + "|" + market} id={"scr-" + s.key} style={{ scrollMarginTop: 90, borderRadius: 16, outline: focusKey === s.key ? "2px solid var(--primary)" : "none", transition: "outline .2s" }}>
+            <ScreenerRow screener={s} market={market} mode={mode} trades={trades} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} onClosePosition={onClosePosition} liveTick={liveTick} side={side} />
+          </div>
         ));
       })()}
       {tab === "popular" && <>
         <ScreenerDirToggle dir={dir} setDir={setDir} />
         {dir === "sell" && <div style={{ fontSize: 10.5, color: "var(--muted)", lineHeight: 1.5, margin: "0 2px 8px" }}>Sell mode shorts each match instead of buying it. Shorting executes on crypto and Indian options; elsewhere it runs in paper.</div>}
         {SCREENERS.map((s) => (
-          <ScreenerRow key={s.key + dir + "|" + market} screener={s} market={market} mode={mode} trades={trades} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} onClosePosition={onClosePosition} liveTick={liveTick} side={dir === "sell" ? "SELL" : "BUY"} />
+          <div key={s.key + dir + "|" + market} id={"scr-" + s.key} style={{ scrollMarginTop: 90, borderRadius: 16, outline: focusKey === s.key ? "2px solid var(--primary)" : "none", transition: "outline .2s" }}>
+            <ScreenerRow screener={s} market={market} mode={mode} trades={trades} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} onClosePosition={onClosePosition} liveTick={liveTick} side={dir === "sell" ? "SELL" : "BUY"} />
+          </div>
         ))}
       </>}
       {tab === "custom" && <CustomScreener market={market} mode={mode} list={list} onOpen={onOpen} onScreenerBuy={onScreenerBuy} liveTick={liveTick} editing={editing} onDoneEditing={() => setEditing(null)} />}
       {tab === "mine" && <MyScreeners market={market} mode={mode} list={list} trades={trades} onOpen={onOpen} onScreenerBuy={onScreenerBuy} onEdit={startEdit} liveTick={liveTick} />}
-      {tab === "pnl" && <ScreenerPnLTab trades={trades} market={market} mode={mode} liveTick={liveTick} />}
+      {tab === "pnl" && <ScreenerPnLTab trades={trades} market={market} mode={mode} liveTick={liveTick} onRowOpen={openScreenerCard} />}
     </Section>
   );
 }

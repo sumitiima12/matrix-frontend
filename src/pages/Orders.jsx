@@ -402,7 +402,7 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
                   strategy's stop, so they're protected even when the journal row didn't copy the SL onto itself
                   (which is why NIFTY automation positions were wrongly flagged "Unprotected"). */}
               {t.open && !isRejected(t) && (() => {
-                const prot = t.sl != null || t.tp != null || t.tsl != null || strategyOf(t) !== "—";
+                const prot = t.sl != null || t.tp != null || t.tsl != null || t.brokerBracket || strategyOf(t) !== "—";
                 return (
                   <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: prot ? "var(--up-soft)" : "var(--down-soft)", color: prot ? "var(--up)" : "var(--down)" }}>
                     {prot ? "🛡 Protected" : "⚠ Unprotected"}

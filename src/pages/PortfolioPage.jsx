@@ -242,7 +242,7 @@ function AnalyzeBlock({ onRun, loading, review }) {
   );
 }
 
-export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, onClosePosition, onUpdate, onArmRealExit, onRemove, priceSnap = {}, onWhy, onOpen, mode = "virtual", realPortfolio = null, realErr = null, realLoading = false, onRefreshReal, brokerName, realAvailable = false, userId = null }) {
+export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, onBuy, onSell, onClosePosition, onUpdate, onArmRealExit, onRemove, priceSnap = {}, onWhy, onOpen, mode = "virtual", trades = [], realPortfolio = null, realErr = null, realLoading = false, onRefreshReal, brokerName, realAvailable = false, userId = null }) {
   // Crypto and US settle in USD; Indian/Commodity in INR. Used to format the real book.
   const ccy = (market === "Crypto" || market === "US" || market === "USStockTokens") ? "$" : "₹";
   const loc = ccy === "$" ? "en-US" : "en-IN";
@@ -337,7 +337,12 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
     if (realLoading && !realPortfolio) {
       return <div style={{ padding: "40px 16px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>Loading your {brokerName || "broker"} portfolio…</div>;
     }
-    if (realErr) {
+    // Only take over the whole screen with the error when we have NOTHING to show. If a prior load
+    // succeeded (e.g. the user just closed a position and the follow-up refresh briefly failed), keep the
+    // holdings on screen and show the error as a small banner below — a transient refresh must never blank
+    // the portfolio the user is looking at.
+    const haveHoldings = !!(realPortfolio && realPortfolio.holdings && realPortfolio.holdings.length);
+    if (realErr && !haveHoldings) {
       const stillRetrying = retryN < RETRY_MAX;
       return (
         <div style={{ padding: "40px 16px", textAlign: "center" }}>
@@ -358,6 +363,24 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
     const holdMkt = (h) => h.market || (/USDT?$/i.test(h.sym || "") ? "Crypto" : marketOf(h.sym));
     const hold = ((realPortfolio && realPortfolio.holdings) || []).filter((h) => (market === "Commodity" ? holdMkt(h) === "Commodity" : true));
     const cash = realPortfolio ? realPortfolio.cash : null;
+
+    /* Which engine opened a given real holding — matched to its OPEN journal row by symbol so the card can show
+       an "entry type" badge (Smart Auto-Buy / Screener / Ideas / Automate / Manual). The broker holding itself
+       carries no app attribution; the journal does. */
+    const entryLabel = (tt) => {
+      const s = String(tt || "").toLowerCase();
+      if (s.includes("screener")) return { t: "SCREENER", c: "var(--primary)" };
+      if (s.includes("automate")) return { t: "AUTOMATE", c: "var(--primary)" };
+      if (s.includes("idea")) return { t: "IDEAS", c: "var(--primary)" };
+      if (s.includes("auto")) return { t: "AUTO-BUY", c: "var(--primary)" };
+      if (s === "manual" || s === "") return { t: "MANUAL", c: "var(--muted)" };
+      return { t: tt.toUpperCase(), c: "var(--muted)" };
+    };
+    const entryTypeFor = (sym) => {
+      const base = String(sym).replace(/USDT?$/i, "").replace(/\.P$/i, "");
+      const row = (trades || []).find((t) => t && t.real && (t.sym === sym || t.sym === base) && t.entry != null && (t.exitAt == null || t.exit == null) && t.status !== "rejected");
+      return row ? entryLabel(row.tradeType) : null;
+    };
     const pnl = hold.reduce((a, h) => a + (h.pnl != null ? h.pnl : 0), 0);
     /* On a LEVERAGED venue (Delta) the position notional is 20–25× the real capital, so we show
        the actual margin deployed instead: invested = margin, holdings value = margin + P&L. */
@@ -397,6 +420,15 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
             {brokerName ? brokerName.toUpperCase() : "BROKER"}
           </span>
         </div>
+
+        {realErr && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, margin: "0 2px 12px", padding: "8px 12px", borderRadius: 10, background: "var(--down-soft)", border: "1px solid var(--line)" }}>
+            <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.4 }}>
+              Showing your last synced holdings — couldn't refresh just now{realLoading ? " (retrying…)" : ""}.
+            </div>
+            <button onClick={() => { setRetryN(0); onRefreshReal && onRefreshReal(); }} className="tap" style={{ flex: "0 0 auto", border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 8, padding: "5px 12px", fontWeight: 800, fontSize: 11, cursor: "pointer" }}>Refresh</button>
+          </div>
+        )}
 
         <div className="card" style={{ padding: 15 }}>
           <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>{leveraged ? "Holdings value (real margin)" : "Holdings value"}</div>
@@ -456,6 +488,25 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
           </div>
         )}
 
+        {hold.length > 1 && onClosePosition && (
+          <div style={{ display: "flex", justifyContent: "flex-end", margin: "12px 2px 0" }}>
+            <button
+              onClick={async () => {
+                const open = hold.filter((h) => Math.abs(Number(h.qty) || 0) > 0);
+                if (!open.length) return;
+                // Flatten each holding via the same reduce-only close path as a single row. Sequential so each
+                // confirm/toast resolves cleanly and the broker isn't hit with a burst of parallel orders.
+                for (const h of open) {
+                  // eslint-disable-next-line no-await-in-loop
+                  await onClosePosition({ ...h, qty: Math.abs(Number(h.qty) || 0), short: h.short || h.side === "SELL" || Number(h.qty) < 0, side: (h.short || h.side === "SELL" || Number(h.qty) < 0) ? "BUY" : "SELL" });
+                }
+              }}
+              className="tap disp"
+              style={{ border: "1px solid var(--down)", background: "transparent", color: "var(--down)", borderRadius: 10, padding: "7px 14px", fontWeight: 800, fontSize: 11.5, cursor: "pointer" }}
+            >Close all positions</button>
+          </div>
+        )}
+
         {!hold.length ? (
           <div style={{ padding: "34px 16px", textAlign: "center", color: "var(--muted)", fontSize: 12.5, lineHeight: 1.5 }}>
             No holdings in your {brokerName || "broker"} account.
@@ -498,6 +549,9 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
                     {h.source === "positions" && (
                       <span style={{ fontSize: 8, fontWeight: 800, padding: "2px 6px", borderRadius: 6, background: "var(--elev)", color: "var(--muted)", letterSpacing: ".03em" }}>POSITION</span>
                     )}
+                    {(() => { const et = entryTypeFor(h.sym); return et ? (
+                      <span style={{ fontSize: 8, fontWeight: 800, padding: "2px 6px", borderRadius: 6, background: "var(--elev)", color: et.c, letterSpacing: ".03em" }} title="How this position was opened">{et.t}</span>
+                    ) : null; })()}
                   </div>
                   <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>
                     {(() => { const q = Number(h.qty); return !Number.isFinite(q) ? h.qty : Math.abs(q) >= 1 ? (+q.toFixed(4)).toString() : (+q.toPrecision(4)).toString(); })()} @ {h.avg != null ? ccy + h.avg.toFixed(2) : "—"}

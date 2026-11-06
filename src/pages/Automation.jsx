@@ -3891,12 +3891,12 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         const group = YOURS.includes(stratTab) ? "yours" : "library";
         const members = group === "yours"
           ? [["mine", "My Strategies"], ["copies", "My Copies"]]
-          : [["sample", "Samples"], ["premium", "Premium"], ["public", "Public"]];
+          : [["premium", "Premium"], ["sample", "Samples"], ["public", "Public"]];
         return (
           <div ref={stratsRef} style={{ margin: "18px 0 14px", scrollMarginTop: 80 }}>
             <div style={{ display: "flex", gap: 7, marginBottom: 9 }}>
               {[["yours", "Yours"], ["library", "Library"]].map(([g, label]) => (
-                <button key={g} onClick={() => setStratTab(g === "yours" ? "mine" : "sample")} className="tap disp"
+                <button key={g} onClick={() => setStratTab(g === "yours" ? "mine" : "premium")} className="tap disp"
                   style={{ flex: 1, borderRadius: 11, padding: "9px 2px", fontWeight: 800, fontSize: 12, cursor: "pointer", border: "1px solid " + (group === g ? "var(--primary)" : "var(--line)"), background: group === g ? "var(--primary)" : "var(--surface)", color: group === g ? "var(--on-primary)" : "var(--ink)" }}>{label}</button>
               ))}
             </div>
