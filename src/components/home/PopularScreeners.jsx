@@ -247,12 +247,12 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
   const [edit, setEdit] = useState(null);   // null | { name, sl, tp, defs, entry, exit, tf } while the panel is open
   const [ovr, setOvr] = useState(() => lsGet(EDK, {}));
   const dispName = ((ovr && ovr.name) || screener.name) + (short ? " -Sell" : "");
-  // Market-aware default stop/target. A flat 0.4% stop is fine for calm equities but suicidal on crypto/US-tokens,
-  // where ordinary intraday noise is 1–3% — it stopped positions out instantly (the pile of −$0.16/−$5 stop-losses).
-  // Crypto/tokens get a volatility-sized default (3% SL / 6% TP); equities keep a tight 1% / 2%. Users still override.
+  // Market-aware default stop/target. Crypto/US-tokens trade on 20–25× leverage, so the stop is kept TIGHT: a 1%
+  // default (band 0.5–2% — never wider than 2%, which is already ~40–50% of margin). Tune per screener/symbol or
+  // use Optimize SL&TP to fit ATR. Equities (unleveraged) keep 1% / 2%. The old flat 0.4% was the other extreme.
   const _wideVol = (market === "Crypto" || market === "USStockTokens");
-  const _defSL0 = _wideVol ? 3 : 1;
-  const _defTP0 = _wideVol ? 6 : 2;
+  const _defSL0 = _wideVol ? 1 : 1;
+  const _defTP0 = _wideVol ? 3 : 2;
   const defSL = (ovr && ovr.sl != null) ? ovr.sl : (screener.sl != null ? +screener.sl : _defSL0);
   const defTP = (ovr && ovr.tp != null) ? ovr.tp : (screener.tp != null ? +screener.tp : _defTP0);
   // Effective scan config — admin's edited rules if present, else the built-in screener definition.

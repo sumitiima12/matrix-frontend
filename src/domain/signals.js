@@ -84,7 +84,9 @@ export function techSignal(s) {
   // and project only 1.5×ATR (was 2.5×), so RAVE-style high-ATR coins stop setting 20%+ targets that almost
   // never fill. Equities unchanged. Closer target = higher hit rate (smaller per-win, better win rate).
   const tpCap = px * (isCrypto ? 1.12 : 1.20);               // target at most +12% (crypto) / +20%
-  const slFloor = px * (isCrypto ? 0.88 : 0.90);             // stop at most −12% (crypto) / −10%, always > 0
+  // LEVERAGE-AWARE STOP (crypto/US-tokens on 20–25× leverage): the ATR-based stop is clamped to the 0.5%–2% band
+  // (slFloor = 2% ceiling here, the px*0.995 below = 0.5% floor). Equities keep the 10% floor.
+  const slFloor = px * (isCrypto ? 0.98 : 0.90);
   let target = (res != null && res <= tpCap) ? res : px + (isCrypto ? 1.5 : 2.5) * atr;
   target = Math.min(Math.max(target, px * 1.01), tpCap);     // between +1% and the cap
   let stop = (sup != null && sup >= slFloor) ? Math.max(sup - 0.25 * atr, slFloor) : px - 2 * atr;
@@ -185,7 +187,7 @@ export function techSignalShort(s) {
   if (s.chg != null) score += Math.max(-1, Math.min(1, -s.chg * 0.15));
 
   const tpFloor = px * (isCrypto ? 0.88 : 0.80);                      // target at most −12% (crypto) / −20%
-  const slCap = px * (isCrypto ? 1.12 : 1.10);                        // stop at most +12% (crypto) / +10%
+  const slCap = px * (isCrypto ? 1.02 : 1.10);                        // crypto short stop capped at +2% (leverage); equities +10%
   let target = (sup != null && sup >= tpFloor) ? Math.min(sup + 0.25 * atr, px * 0.99) : px - (isCrypto ? 1.5 : 2.5) * atr;
   target = Math.max(Math.min(target, px * 0.99), tpFloor);           // between −1% and the floor
   let stop = (res != null && res <= slCap) ? Math.min(res + 0.25 * atr, slCap) : px + 2 * atr;
