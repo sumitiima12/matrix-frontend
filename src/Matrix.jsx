@@ -415,10 +415,16 @@ function AppInner() {
 
   const {
     connected: brokerLive, broker: liveBroker, connect: connectBroker, disconnect: disconnectBroker,
-    lastTick: brokerTick, real: realPortfolio, realErr, realLoading, refreshPortfolio, session: brokerSession,
+    lastTick: brokerTick, real: realPortfolioRaw, realErr, realLoading, refreshPortfolio, session: brokerSession,
     brokerFor, marketMap: brokerMarketMap, connectedBrokers, reconnectHints,
     serverBrokerFor,
   } = useBroker({ onTick: () => setBrokerTicks((t) => t + 1), userId });
+  /* Real portfolio is a single shared snapshot; show it ONLY for the market it was fetched for. Otherwise the
+     Delta (crypto) wallet leaked onto the Indian/US tabs — same cash and holdings, just relabelled ₹ — and the
+     Home P&L even read "Delta wallet" on the Indian tab. When the active tab's broker hasn't returned yet, we
+     show nothing real for it rather than another market's account. (_market-less snapshots pass through for
+     backward safety.) */
+  const realPortfolio = (realPortfolioRaw && realPortfolioRaw._market && realPortfolioRaw._market !== market) ? null : realPortfolioRaw;
 
   /* DAILY RECONNECT NUDGE. Broker tokens expire every morning (SEBI). Rather than silently sliding a
      previously-connected user onto delayed Yahoo prices, we surface a one-tap "reconnect" banner.

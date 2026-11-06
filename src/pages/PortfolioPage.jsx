@@ -360,8 +360,18 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
        endpoint returns EVERY holding. On the Commodity tab that leaked the user's Indian equity
        holdings in. Keep only holdings that actually belong to the market being viewed — crypto
        holdings arrive as "<COIN>USD", so classify those as Crypto. */
-    const holdMkt = (h) => h.market || (/USDT?$/i.test(h.sym || "") ? "Crypto" : marketOf(h.sym));
-    const hold = ((realPortfolio && realPortfolio.holdings) || []).filter((h) => (market === "Commodity" ? holdMkt(h) === "Commodity" : true));
+    // Classify a holding by SYMBOL first (strip Delta's USD/perp suffix so "ETHUSD" -> "ETH" -> Crypto), then the
+    // broker-tagged market. On the non-Delta tabs (IN/US/Commodity) we filter strictly to that market so a broker
+    // covering several markets — FYERS = IN + Commodity — can't spill the other one's holdings in. On the Delta
+    // tabs (Crypto/US Tokens) we keep showing the Delta holdings as before.
+    const DELTA_MKTS = new Set(["Crypto", "USStockTokens"]);
+    const holdMkt = (h) => {
+      const base = String(h.sym || "").replace(/[-_]/g, "").replace(/\.P$/i, "").replace(/(USDT|USD|INR)$/i, "");
+      if (/USDT?$/i.test(h.sym || "")) return marketOf(base) && DELTA_MKTS.has(marketOf(base)) ? marketOf(base) : "Crypto";
+      return marketOf(base) || marketOf(h.sym) || h.market || null;
+    };
+    const hold = ((realPortfolio && realPortfolio.holdings) || []).filter((h) => (
+      DELTA_MKTS.has(market) ? DELTA_MKTS.has(holdMkt(h)) : holdMkt(h) === market));
     const cash = realPortfolio ? realPortfolio.cash : null;
 
     /* Which engine opened a given real holding — matched to its OPEN journal row by symbol so the card can show

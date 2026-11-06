@@ -87,6 +87,13 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
   const actPriceOf = (s) => { const a = ALL.find((x) => x.sym === s); return a && a.price != null ? a.price : null; };
   const actualCats = computeCategories(trades, { mode, market, from: actFrom, to: actTo, priceOf: actPriceOf });
   const actualIdeasPnl = actualCats.categories.Ideas;
+  /* Stats for the dashboard numbers come from the SAME actual Ideas trades that produce actualIdeasPnl — not the
+     hypothetical "every idea" set — so the count can never read 0 while the P&L is non-zero. An open position
+     contributes to P&L and to the trade count (as open), but only CLOSED trades decide win/loss and win rate. */
+  const ic = actualCats.catCounts.Ideas;
+  const actN = ic.trades, actClosed = ic.closed, actOpen = ic.open, actWins = ic.wins, actLosses = actClosed - actWins;
+  const actWinRate = actClosed ? (actWins / actClosed) * 100 : 0;
+  const actReturnPct = actualCats.invested.Ideas ? (actualIdeasPnl / actualCats.invested.Ideas) * 100 : 0;
 
   /* Period label: for an account younger than 3 months we show "Since Jul'26"; once it's
      older, we show the selected range window ("last 3 months", etc.). */
@@ -107,7 +114,7 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
       <button onClick={onExpand} className="tap disp card glow" style={{ width: "100%", marginTop: 14, border: "1px solid var(--line)", outline: "none", background: "var(--card-grad)", boxShadow: "inset 0 1px 0 rgba(255,255,255,.10), inset 0 0 0 1px rgba(255,255,255,.02), 0 10px 30px rgba(0,0,0,.28)", color: "var(--ink)", borderRadius: 24, padding: "13px 16px", display: "flex", alignItems: "center", gap: 14 }}>
         <div style={{ textAlign: "left" }}>
           <div style={{ fontSize: 10, opacity: .85, fontWeight: 700 }}>WIN / LOSS</div>
-          <div className="mono" style={{ fontWeight: 800, fontSize: 15 }}>{wins} : {losses}</div>
+          <div className="mono" style={{ fontWeight: 800, fontSize: 15 }}>{actWins} : {actLosses}</div>
         </div>
         <div style={{ textAlign: "left" }}>
           <div style={{ fontSize: 10, opacity: .85, fontWeight: 700 }}>P&amp;L</div>
@@ -180,10 +187,10 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
         </div>
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-        <Stat k="Returns %" v={(avg >= 0 ? "+" : "") + avg.toFixed(2) + "%"} c={avg >= 0 ? "var(--up)" : "var(--down)"} />
-        <Stat k="Win rate" v={n ? winRate.toFixed(0) + "%" : "—"} />
-        <Stat k="Win / Loss" v={wins + " : " + losses} />
-        <Stat k="Trades" v={n} />
+        <Stat k="Returns %" v={actClosed || actOpen ? (actReturnPct >= 0 ? "+" : "") + actReturnPct.toFixed(2) + "%" : "—"} c={actReturnPct >= 0 ? "var(--up)" : "var(--down)"} />
+        <Stat k="Win rate" v={actClosed ? actWinRate.toFixed(0) + "%" : "—"} />
+        <Stat k="Win / Loss" v={actWins + " : " + actLosses} />
+        <Stat k="Trades" v={actOpen ? `${actN} (${actOpen} open)` : actN} />
       </div>
     </div>
   );

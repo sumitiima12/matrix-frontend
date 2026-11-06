@@ -278,7 +278,10 @@ export function useBroker({ onTick, userId, intervalMs = 60000 } = {}) {   // 60
     setRealLoading(true);
     try {
       const d = await brokerPortfolio(sess, userId);
-      setReal(d);
+      // Tag the snapshot with the market it was fetched for. A single `real` state is shared across tabs, so
+      // without this the Delta (crypto) wallet leaked onto the Indian/US tabs — same cash, just relabelled ₹.
+      // Consumers show it only when _market matches the active tab.
+      setReal(d ? { ...d, _market: market || null } : d);
       setRealErr(null);
     } catch (e) {
       // A transient refresh failure (backend waking up, a timeout right after a close) must NOT wipe the

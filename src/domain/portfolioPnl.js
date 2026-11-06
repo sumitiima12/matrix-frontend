@@ -1,4 +1,4 @@
-import { positionPnl } from "./leverage";   // the ONE P&L engine (Delta-parity crypto perps + spot); used everywhere
+import { positionPnl, marginFor } from "./leverage";   // the ONE P&L engine (Delta-parity crypto perps + spot); used everywhere
 import { marketOf } from "./universe";
 
 /**
@@ -51,6 +51,11 @@ export function computeCategories(trades, opts = {}) {
   const isReal = String(mode || "").toLowerCase() === "real";
   const lo = _lo(from), hi = _hi(to);
   const cats = CATEGORIES.reduce((m, c) => (m[c] = 0, m), {});
+  // Per-category trade counts + invested, so a feature dashboard (Ideas, Screener…) can show a trade count and
+  // return % that match ITS category's P&L box exactly — instead of a count from a different (e.g. hypothetical)
+  // population. This is what fixes "P&L is −$1.13 but Trades shows 0": the count now comes from the same trades.
+  const catCounts = CATEGORIES.reduce((m, c) => (m[c] = { trades: 0, open: 0, closed: 0, wins: 0 }, m), {});
+  const catInvested = CATEGORIES.reduce((m, c) => (m[c] = 0, m), {});
   const byIdea = {};   // per-Idea attribution keyed on t.ideaId (only trades that carry one) → { pnl, trades, open, closed, wins }
   let total = 0, open = 0, closed = 0, wins = 0, tradesN = 0;
 
@@ -77,7 +82,9 @@ export function computeCategories(trades, opts = {}) {
     const p = positionPnl(t, px, marketOf(t.sym) || market);
     const cat = sourceCategory(t);
     cats[cat] += p; total += p; tradesN += 1;
-    if (isO) open += 1; else { closed += 1; if (p > 0) wins += 1; }
+    const cc = catCounts[cat]; cc.trades += 1;
+    catInvested[cat] += Math.abs(Number(marginFor(t, marketOf(t.sym) || market)) || 0);
+    if (isO) { open += 1; cc.open += 1; } else { closed += 1; cc.closed += 1; if (p > 0) { wins += 1; cc.wins += 1; } }
 
     // Per-idea attribution: group every trade that carries an ideaId so the Ideas dashboard can show the real
     // trades taken from each specific idea card (count, P&L, open/closed, wins).
@@ -91,6 +98,7 @@ export function computeCategories(trades, opts = {}) {
 
   const round = (n) => +Number(n).toFixed(2);
   const categories = {}; for (const c of CATEGORIES) categories[c] = round(cats[c]);
+  const invested = {}; for (const c of CATEGORIES) invested[c] = round(catInvested[c]);
   for (const k of Object.keys(byIdea)) byIdea[k].pnl = round(byIdea[k].pnl);
-  return { total: round(total), categories, byIdea, open, closed, trades: tradesN, wins, winRate: closed ? +((wins / closed) * 100).toFixed(1) : null };
+  return { total: round(total), categories, catCounts, invested, byIdea, open, closed, trades: tradesN, wins, winRate: closed ? +((wins / closed) * 100).toFixed(1) : null };
 }
