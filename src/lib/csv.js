@@ -60,6 +60,8 @@ export function csvTime(ts) {
 
 /* ------------------------------ trade export ------------------------------ */
 
+import { sourceCategory } from "../domain/portfolioPnl";   // resolve the true source (Automate/Screener/Ideas/…) for the export
+
 const MARKET_LABEL = { IN: "Indian", US: "US", Crypto: "Crypto", Commodity: "Commodity", USStockTokens: "US Tokens" };
 
 /* Price string with precision scaled to the price's magnitude. A flat toFixed(2) destroyed sub-dollar crypto —
@@ -127,7 +129,9 @@ export function tradeColumns(livePriceOf = () => null) {
     { label: "P&L",           get: (t) => { const p = pnl(t); return p != null ? p.toFixed(2) : ""; } },
     { label: "P&L %",         get: (t) => { const p = pnlPct(t); return p != null ? p.toFixed(2) : ""; } },
     { label: "Status",        get: (t) => (isOpen(t) ? "Open" : "Closed") },
-    { label: "Trade Type",    get: (t) => t.tradeType || "Manual" },
+    // Resolved SOURCE (Automate / Screener / Ideas / Smart Auto-Buy / Manual), not the raw tradeType — so a
+    // deployed-strategy fill shows as "Automate" even when its journal tradeType is the mis-stamped "Auto Buy".
+    { label: "Trade Type",    get: (t) => sourceCategory(t) },
     { label: "Exit Type",     get: (t) => (isOpen(t) ? "" : (t.exitType || "Manual")) },
     { label: "Stop Loss %",   get: (t) => (t.sl != null ? t.sl : "") },
     { label: "Target %",      get: (t) => (t.tp != null ? t.tp : "") },

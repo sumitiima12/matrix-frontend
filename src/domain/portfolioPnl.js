@@ -22,12 +22,17 @@ export const CATEGORIES = ["Manual", "Smart Auto-Buy", "Automate", "Screener", "
 export function sourceCategory(t) {
   const tt = String((t && t.tradeType) || "").toLowerCase();
   const hasScreener = !!(t && (t.screenerKey || t.screenerName));
+  // A DEPLOYED (Automate) strategy stamps strategyId; screeners/ideas/smart-buy don't. This is the self-evidence
+  // that keeps an Automate fill mis-tagged "Auto Buy" (the old journal bug) from mis-bucketing as Smart Auto-Buy —
+  // so Automate actually shows up in the Orders report and the Automate P&L box.
+  const hasStrategy = !!(t && t.strategyId != null && t.strategyId !== "");
   if (tt === "screener auto buy") return "Screener";
-  if (tt === "auto buy") return "Smart Auto-Buy";
   if (tt === "automate") return "Automate";
+  if (hasScreener) return "Screener";                 // screener self-evidence wins over a mis-stamped tradeType
+  if (hasStrategy) return "Automate";                 // strategy self-evidence → Automate even if tradeType says "Auto Buy"
+  if (tt === "auto buy") return "Smart Auto-Buy";
   if (tt === "ideas" || tt === "idea") return "Ideas";
-  if (tt === "manual") return hasScreener ? "Screener" : "Manual";
-  if (hasScreener) return "Screener";
+  if (tt === "manual") return "Manual";
   return tt ? "Manual" : "Unknown/Imported";   // recognised-but-other → Manual; truly blank → Unknown/Imported
 }
 

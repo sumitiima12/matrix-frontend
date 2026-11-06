@@ -148,7 +148,9 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
     .filter((t) => isOpen(t) || (() => { const ts = stamp(t); return ts >= from && ts <= to; })())
     .map(withPnl);
   const allSyms = [...new Set(src.map((t) => t.sym))].sort();
-  const TYPES = ["Manual", "Automate", "Auto Buy", "Screener Auto Buy"];
+  // Filter by RESOLVED source (matches the "Source:" chip on each row), so Automation and Ideas are both
+  // selectable and a mis-tagged fill filters under its true source.
+  const TYPES = ["Manual", "Automation", "Smart Auto-Buy", "Screener", "Idea"];
   const EXITS = ["Manual", "Auto exit", "Exit trigger", "Stop loss", "Trailing stop", "Square-off", "Open"];
   /* Exit classification. Trust an explicit exitType. If it's MISSING, don't default to "Manual" — a deliberate
      manual close stamps the type, so a missing type on an automation-sourced position (Automate / Screener / Smart
@@ -170,12 +172,26 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
     return null;
   };
   const exitOf = (t) => (isRejected(t) ? "Rejected" : t.open ? "Open" : t.reconciled ? "Closed" : (t.exitType || fromReason(t.exitReason) || (isAutoSourced(t) ? "Auto exit" : "Manual")));
+  /* SOURCE (order origin) resolver — defined before the row filter so the Trade-type filter can match on the
+     RESOLVED source (a deployed strategy stamps strategyId → Automation even if tradeType says "Auto Buy"). */
+  const ORIGIN_LABEL = { MANUAL: "Manual", SCREENER: "Screener", SMART_AUTO_BUY: "Smart Auto-Buy", AUTOMATE: "Automation", IDEA: "Idea", BROKER_IMPORTED: "Imported", UNKNOWN: "Unknown" };
+  const sourceOf = (t) => {
+    if (t.origin && ORIGIN_LABEL[t.origin]) return ORIGIN_LABEL[t.origin];
+    const tt = String(t.tradeType || "").toLowerCase();
+    if (t.screenerKey || t.screenerName || tt === "screener auto buy") return "Screener";
+    if (tt === "automate") return "Automation";
+    if (t.strategyId != null && t.strategyId !== "") return "Automation";
+    if (tt === "auto buy") return "Smart Auto-Buy";
+    if (tt === "ideas" || tt === "idea") return "Idea";
+    if (tt === "manual") return "Manual";
+    return "Unknown";
+  };
   const rows = src
     .filter((t) => (mkt === "all" ? true : (t.market || "IN") === mkt))
     .filter((t) => (realF === "all" ? true : realF === "real" ? !!t.real : !t.real))
     .filter((t) => (fStatus === "all" ? true : fStatus === "confirmed" ? !isRejected(t) : fStatus === "rejected" ? isRejected(t) : fStatus === "open" ? (!!t.open && !isRejected(t)) : (!t.open && !isRejected(t))))
     .filter((t) => (fSym.length ? fSym.includes(t.sym) : true))
-    .filter((t) => (fType.length ? fType.includes(t.tradeType || "Manual") : true))
+    .filter((t) => (fType.length ? fType.includes(sourceOf(t)) : true))
     .filter((t) => (fExit.length ? fExit.includes(exitOf(t)) : true))
     .sort((a, b) => (b.exitAt || b.entryAt || 0) - (a.exitAt || a.entryAt || 0));
   const dt = (ms) => ms ? new Date(ms).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
@@ -194,24 +210,13 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
   const avgWin = winN ? closedFilled.filter((t) => (t.livePnl || 0) > 0).reduce((a, t) => a + t.livePnl, 0) / winN : 0;
   const avgLoss = lossN ? closedFilled.filter((t) => (t.livePnl || 0) < 0).reduce((a, t) => a + t.livePnl, 0) / lossN : 0;
   const statMkt = mkt === "all" ? "IN" : mkt;
-  const typeColor = (tt) => tt === "Auto Buy" ? "var(--primary)" : tt === "Automate" ? "#8B5CF6" : tt === "Screener Auto Buy" ? "#0EA5E9" : "var(--muted)";
+  const typeColor = (tt) => tt === "Smart Auto-Buy" ? "var(--primary)" : tt === "Automation" ? "#8B5CF6" : tt === "Screener" ? "#0EA5E9" : tt === "Idea" ? "var(--up)" : "var(--muted)";
   const exitColor = (et) => (et === "Stop loss" || et === "Trailing stop") ? "var(--down)" : et === "Exit trigger" ? "var(--up)" : et === "Open" ? "var(--primary)" : "var(--muted)";
   /* SOURCE (order origin) and STRATEGY (the strategy/screener NAME) are INDEPENDENT — never conflated. This is
      what kills "Strategy by: Manual" (Manual is an origin, not a strategy). Mirrors the backend provenance:
      origin (if the row carries the canonical one) → label; else derived from tradeType + screener attribution.
      A row that carries a screener attribution (screenerKey/screenerName) is Screener even if tradeType says
      "Manual" — that internal inconsistency was the bug. */
-  const ORIGIN_LABEL = { MANUAL: "Manual", SCREENER: "Screener", SMART_AUTO_BUY: "Smart Auto-Buy", AUTOMATE: "Automation", IDEA: "Idea", BROKER_IMPORTED: "Imported", UNKNOWN: "Unknown" };
-  const sourceOf = (t) => {
-    if (t.origin && ORIGIN_LABEL[t.origin]) return ORIGIN_LABEL[t.origin];
-    const tt = String(t.tradeType || "").toLowerCase();
-    if (t.screenerKey || t.screenerName || tt === "screener auto buy") return "Screener";
-    if (tt === "auto buy") return "Smart Auto-Buy";
-    if (tt === "automate") return "Automation";
-    if (tt === "ideas" || tt === "idea") return "Idea";
-    if (tt === "manual") return "Manual";
-    return "Unknown";
-  };
   const strategyOf = (t) => {
     const src = sourceOf(t);
     if (src === "Screener") return t.screenerName || t.strategy || "—";
@@ -398,7 +403,7 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
               </div>
             </div>
             <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-              <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: typeColor(t.tradeType || "") }}>Source: {sourceOf(t)}</span>
+              <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: typeColor(sourceOf(t)) }}>Source: {sourceOf(t)}</span>
               <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: isRejected(t) ? "var(--down-soft)" : t.open ? "var(--primary-soft)" : "var(--elev)", color: isRejected(t) ? "var(--down)" : exitColor(exitOf(t)) }}>{isRejected(t) ? "Rejected" : `Exit: ${exitOf(t)}`}</span>
               {strategyOf(t) !== "—" && <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: "var(--muted)" }}>Strategy: {strategyOf(t)}</span>}
               {/* #9 — protection status is explicit on every OPEN position. Unprotected = visible warning.
