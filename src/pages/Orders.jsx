@@ -187,7 +187,7 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
     return "Unknown";
   };
   const rows = src
-    .filter((t) => (mkt === "all" ? true : (t.market || "IN") === mkt))
+    .filter((t) => (mkt === "all" ? true : (marketOf(t.sym) || t.market || "IN") === mkt))
     .filter((t) => (realF === "all" ? true : realF === "real" ? !!t.real : !t.real))
     .filter((t) => (fStatus === "all" ? true : fStatus === "confirmed" ? !isRejected(t) : fStatus === "rejected" ? isRejected(t) : fStatus === "open" ? (!!t.open && !isRejected(t)) : (!t.open && !isRejected(t))))
     .filter((t) => (fSym.length ? fSym.includes(t.sym) : true))
@@ -398,7 +398,7 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
               <div style={{ minWidth: 0 }}><span className="disp" style={{ fontWeight: 700, fontSize: 14 }}>{t.sym}</span> <span style={{ fontSize: 11, color: "var(--muted)" }}>×{t.qty}</span></div>
               <div style={{ textAlign: "right", flex: "0 0 auto" }}>
-                <div className="mono" style={{ fontWeight: 800, fontSize: 14, color: (t.livePnl || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{(t.livePnl || 0) >= 0 ? "+" : ""}{fmt(t.livePnl || 0, t.market || "IN")}</div>
+                <div className="mono" style={{ fontWeight: 800, fontSize: 14, color: (t.livePnl || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{(t.livePnl || 0) >= 0 ? "+" : ""}{fmt(t.livePnl || 0, marketOf(t.sym) || t.market || "IN")}</div>
                 {t.open && <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 700 }}>unrealised</div>}
               </div>
             </div>
@@ -436,10 +436,10 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
               </div>
             )}
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 9, fontSize: 11 }}>
-              <div><div style={{ color: "var(--muted)", fontSize: 9.5 }}>Entry</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.entry, t.market || "IN")}</div><div style={{ color: "var(--muted)", fontSize: 9.5 }}>{dt(t.entryAt)}</div></div>
+              <div><div style={{ color: "var(--muted)", fontSize: 9.5 }}>Entry</div><div className="mono" style={{ fontWeight: 700 }}>{fmt(t.entry, marketOf(t.sym) || t.market || "IN")}</div><div style={{ color: "var(--muted)", fontSize: 9.5 }}>{dt(t.entryAt)}</div></div>
               <div style={{ textAlign: "right" }}>
                 <div style={{ color: "var(--muted)", fontSize: 9.5 }}>{t.open ? "Current" : "Exit"}</div>
-                <div className="mono" style={{ fontWeight: 700 }}>{fmt(t.open ? t.cur : t.exit, t.market || "IN")}</div>
+                <div className="mono" style={{ fontWeight: 700 }}>{fmt(t.open ? t.cur : t.exit, marketOf(t.sym) || t.market || "IN")}</div>
                 <div style={{ color: "var(--muted)", fontSize: 9.5 }}>{t.open ? "position open" : t.reconciled ? "closed on broker" : dt(t.exitAt)}</div>
               </div>
             </div>

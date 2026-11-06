@@ -59,10 +59,10 @@ export function computeCategories(trades, opts = {}) {
   // Per-category trade counts + invested, so a feature dashboard (Ideas, Screener…) can show a trade count and
   // return % that match ITS category's P&L box exactly — instead of a count from a different (e.g. hypothetical)
   // population. This is what fixes "P&L is −$1.13 but Trades shows 0": the count now comes from the same trades.
-  const catCounts = CATEGORIES.reduce((m, c) => (m[c] = { trades: 0, open: 0, closed: 0, wins: 0 }, m), {});
+  const catCounts = CATEGORIES.reduce((m, c) => (m[c] = { trades: 0, open: 0, closed: 0, wins: 0, losses: 0 }, m), {});
   const catInvested = CATEGORIES.reduce((m, c) => (m[c] = 0, m), {});
   const byIdea = {};   // per-Idea attribution keyed on t.ideaId (only trades that carry one) → { pnl, trades, open, closed, wins }
-  let total = 0, open = 0, closed = 0, wins = 0, tradesN = 0;
+  let total = 0, open = 0, closed = 0, wins = 0, losses = 0, tradesN = 0;
 
   for (const t of Array.isArray(trades) ? trades : []) {
     if (!t || t.status === "rejected") continue;
@@ -89,7 +89,10 @@ export function computeCategories(trades, opts = {}) {
     cats[cat] += p; total += p; tradesN += 1;
     const cc = catCounts[cat]; cc.trades += 1;
     catInvested[cat] += Math.abs(Number(marginFor(t, marketOf(t.sym) || market)) || 0);
-    if (isO) { open += 1; cc.open += 1; } else { closed += 1; cc.closed += 1; if (p > 0) { wins += 1; cc.wins += 1; } }
+    // A FLAT close (p == 0 — almost always a reconciled exit=entry placeholder) is neither a win nor a loss, so it
+    // must NOT sit in the win-rate denominator. Counting it as "closed but not won" is what crushed the win rate
+    // (e.g. 79 flat $0 reconciled closes turned a ~50% real win rate into "5%"). Win rate = wins / (wins + losses).
+    if (isO) { open += 1; cc.open += 1; } else { closed += 1; cc.closed += 1; if (p > 0) { wins += 1; cc.wins += 1; } else if (p < 0) { losses += 1; cc.losses += 1; } }
 
     // Per-idea attribution: group every trade that carries an ideaId so the Ideas dashboard can show the real
     // trades taken from each specific idea card (count, P&L, open/closed, wins).
@@ -105,5 +108,6 @@ export function computeCategories(trades, opts = {}) {
   const categories = {}; for (const c of CATEGORIES) categories[c] = round(cats[c]);
   const invested = {}; for (const c of CATEGORIES) invested[c] = round(catInvested[c]);
   for (const k of Object.keys(byIdea)) byIdea[k].pnl = round(byIdea[k].pnl);
-  return { total: round(total), categories, catCounts, invested, byIdea, open, closed, trades: tradesN, wins, winRate: closed ? +((wins / closed) * 100).toFixed(1) : null };
+  const decided = wins + losses;   // flat $0 closes excluded from the win-rate denominator
+  return { total: round(total), categories, catCounts, invested, byIdea, open, closed, trades: tradesN, wins, losses, decided, winRate: decided ? +((wins / decided) * 100).toFixed(1) : null };
 }
