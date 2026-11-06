@@ -31,6 +31,7 @@ import Section from "../components/common/Section";
 import PopularScreeners from "../components/home/PopularScreeners";
 import ActionRequired from "../components/home/ActionRequired";
 import ActivityTimeline from "../components/home/ActivityTimeline";
+import IntroCard from "../components/home/IntroCard";   // one-time "how it works" orientation card
 
 /* One-line explainers for the Total P&L source boxes — shown on hover so a trader instantly knows what each
    bucket is and how the automation engines differ (the single biggest "what does this mean?" on the home card). */
@@ -732,6 +733,7 @@ function AutoStatusNote({ market, mode }) {
    book is completely empty (no positions and no activity). */
 function LiveActivityTabs({ opens = [], gcols, market, onGoPortfolio, trades = [], isReal = false }) {
   const [tab, setTab] = useState("pos");   // default to Live Positions (was Recent Activity when no opens)
+  const [posAll, setPosAll] = useState(false);   // expand the positions list IN PLACE (don't jump to Portfolio)
   // Any activity to show? (cheap check — same predicate ActivityTimeline uses.)
   const hasActivity = (trades || []).some((t) => (isReal ? !!t.real : !t.real) && t.entry != null && t.entryAt != null);
   if (!opens.length && !hasActivity) return null;
@@ -754,7 +756,7 @@ function LiveActivityTabs({ opens = [], gcols, market, onGoPortfolio, trades = [
               <div style={{ display: "grid", gridTemplateColumns: gcols, fontSize: 8.5, fontWeight: 800, color: "var(--muted)", background: "var(--elev)", padding: "5px 10px", letterSpacing: ".03em", gap: 6 }}>
                 <span>SYMBOL</span><span style={{ textAlign: "right" }}>ENTRY</span><span style={{ textAlign: "right" }}>NOW</span><span style={{ textAlign: "right" }}>P&amp;L</span>
               </div>
-              {opens.slice(0, 5).map((t, i) => (
+              {opens.slice(0, posAll ? opens.length : 5).map((t, i) => (
                 <div key={t.id || i} style={{ display: "grid", gridTemplateColumns: gcols, fontSize: 10.5, padding: "7px 10px", borderTop: "1px solid var(--line)", alignItems: "center", gap: 6 }}>
                   <span className="disp" style={{ fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.sym} <span style={{ fontSize: 8, fontWeight: 700, opacity: .55 }}>{srcLabel(t)}</span></span>
                   <span className="mono" style={{ textAlign: "right" }}>{fmt(Number(t.entry), t.market || market)}</span>
@@ -764,7 +766,7 @@ function LiveActivityTabs({ opens = [], gcols, market, onGoPortfolio, trades = [
               ))}
             </div>
             {opens.length > 5 && (
-              <button onClick={onGoPortfolio} className="tap disp" style={{ marginTop: 8, width: "100%", border: "1px solid var(--line)", background: "var(--elev)", color: "var(--primary)", borderRadius: 10, padding: "8px", fontWeight: 800, fontSize: 12 }}>See all {opens.length} positions</button>
+              <button onClick={() => setPosAll((v) => !v)} className="tap disp" style={{ marginTop: 8, width: "100%", border: "1px solid var(--line)", background: "var(--elev)", color: "var(--primary)", borderRadius: 10, padding: "8px", fontWeight: 800, fontSize: 12 }}>{posAll ? "Show less" : `Show all ${opens.length} positions`}</button>
             )}
           </>
         ) : <div style={{ fontSize: 11.5, color: "var(--muted)", padding: "14px 4px", textAlign: "center" }}>No open positions.</div>
@@ -778,6 +780,7 @@ function LiveActivityTabs({ opens = [], gcols, market, onGoPortfolio, trades = [
 
 export default function HomeView({ market, setMarket, segment, setSegment, list, onOpen, onBuy, onAutoBuy, onScreenerBuy, isAdmin = false, mode, watch, toggleWatch, profile, portfolio = [], realPortfolio = [], onRefreshReal, wallet = 0, onGoPortfolio, autoBuy, setAutoBuy, autoStats, onRecord, watchlists, addToWatch, createWatchlist, trades = [], liveTick = 0, onWhy, autoOnMap: autoOnMapProp, setAutoOnMap: setAutoOnMapProp, deployCapMap: deployCapMapProp, setDeployCapMap: setDeployCapMapProp, hideDash = false, onOpenScreener, actionItems = [], strategies = [], onGoDeployed, brokerName = null }) {
   const [glMode, setGlMode] = useState("Gainers");
+  const [stratAll, setStratAll] = useState(false);   // expand Active Strategies IN PLACE instead of jumping to Auto
   // Picks refresh ONCE AN HOUR (not on every tick) so they don't churn.
   const [pickHour, setPickHour] = useState(() => Math.floor(Date.now() / 3600000));
   useEffect(() => {
@@ -1339,6 +1342,8 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
 
   return (
     <div className="home-metal">
+      {/* First-visit orientation — what the app is and what the four engines do. Dismissible, shows once. */}
+      <IntroCard />
       {/* #24 — persistent safety summary: mode · broker · active strategies · open positions, at a glance.
           Real mode gets a red accent so situational awareness is continuous, never buried. */}
       {(() => {
@@ -1937,7 +1942,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
             {stratRows.length > 0 && (
               <Section title="Active Strategies" icon={<Zap size={17} color="var(--primary)" />}>
                 <div style={{ background: "transparent", border: "none", borderRadius: 16, padding: 0 }}>
-                {stratRows.slice(0, 3).map(({ s, pl, open }) => (
+                {stratRows.slice(0, stratAll ? stratRows.length : 3).map(({ s, pl, open }) => (
                   <div key={s.id} onClick={onGoDeployed} className="card tap" style={{ display: "flex", alignItems: "center", gap: 10, padding: "13px 15px", marginBottom: 10, borderRadius: 16, boxShadow: "0 10px 26px -14px rgba(0,0,0,.55)", cursor: onGoDeployed ? "pointer" : "default" }}>
                     <div style={{ flex: "1 1 0", minWidth: 0 }}>
                       <div className="disp" style={{ fontWeight: 800, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name || (s.symbols && s.symbols[0]) || "Strategy"}</div>
@@ -1946,9 +1951,9 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     <div className="mono" style={{ flex: "0 0 auto", fontWeight: 800, fontSize: 13.5, color: pl >= 0 ? "var(--up)" : "var(--down)" }}>{(pl >= 0 ? "+" : "") + fmtPnl(pl, market)}</div>
                   </div>
                 ))}
-                {(stratRows.length > 3 || onGoDeployed) && (
-                  <button onClick={onGoDeployed} className="card tap disp" style={{ width: "100%", color: "var(--primary)", borderRadius: 16, padding: "12px", fontWeight: 800, fontSize: 12.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, boxShadow: "0 10px 26px -14px rgba(0,0,0,.55)", cursor: "pointer" }}>
-                    Show all{stratRows.length > 3 ? ` (${stratRows.length})` : ""} <ChevronRight size={14} />
+                {stratRows.length > 3 && (
+                  <button onClick={() => setStratAll((v) => !v)} className="card tap disp" style={{ width: "100%", color: "var(--primary)", borderRadius: 16, padding: "12px", fontWeight: 800, fontSize: 12.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, boxShadow: "0 10px 26px -14px rgba(0,0,0,.55)", cursor: "pointer" }}>
+                    {stratAll ? "Show less" : `Show all (${stratRows.length})`} <ChevronRight size={14} style={{ transform: stratAll ? "rotate(-90deg)" : "none", transition: "transform .15s" }} />
                   </button>
                 )}
                 </div>

@@ -240,6 +240,11 @@ select option{background:var(--surface);color:var(--ink)}
 /* RESPONSIVE. Mobile is the default narrow column (unchanged). On desktop the app gets a roomier centred
    column and the navigation moves from a bottom bar to a top bar, so the screen isn't a thin strip in a sea of
    black. The top nav is hidden on mobile and the bottom nav on desktop. */
+/* Micro-interaction polish: every tappable element eases its state changes (no jarring snaps), and cards that
+   are themselves tappable lift slightly on hover (desktop only) — a classier, more responsive feel. */
+.tap{transition:transform .12s ease, background .16s ease, border-color .16s ease, box-shadow .2s ease, opacity .16s ease}
+.tap:active{transform:scale(.985)}
+@media (hover:hover){ .card.tap:hover{ transform:translateY(-1px); box-shadow:var(--glow); } }
 .mx-topnav{display:none}
 .gl-both{display:none}
 @media (min-width:1024px){
