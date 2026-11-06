@@ -812,7 +812,7 @@ function CardTradeLog({ tradeList, market = "IN", open = false }) {
 function SampleStrategyCard({ s, onActivate, onClone, onEdit, onPersist, market = "IN", canBacktest = true, onConnect }) {
   const { loading, stats } = useBacktestStats(s);
   const [bt, setBt] = useState(false);
-  const [size, setSize] = useState(((s.symbols && (marketOf(s.symbols[0]) === "Crypto" || marketOf(s.symbols[0]) === "USStockTokens")) || market === "Crypto" || market === "USStockTokens") ? 200 : 1);
+  const [size, setSize] = useState(((s.symbols && (marketOf(s.symbols[0]) === "Crypto" || marketOf(s.symbols[0]) === "USStockTokens")) || market === "Crypto" || market === "USStockTokens") ? 500 : 1);
   const [sl, setSl] = useState(String((s.cfg && s.cfg.sl) || "0.5"));
   const [tp, setTp] = useState(String((s.cfg && s.cfg.tp) || "1.5"));
   const relSym0 = (s.symbols || []).find((x) => marketOf(x) === market) || ((UNIVERSE[market] || [])[0] || {}).sym || (s.symbols && s.symbols[0]) || null;
@@ -931,7 +931,7 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, onPersist, market 
 function PremiumStrategyCard({ s, active, onToggle, onEdit, onPersist, onClone, market = "IN", canBacktest = true, onConnect }) {
   const { loading, stats } = useBacktestStats(s);
   const [bt, setBt] = useState(false);
-  const [size, setSize] = useState(((s.symbols && (marketOf(s.symbols[0]) === "Crypto" || marketOf(s.symbols[0]) === "USStockTokens")) || market === "Crypto" || market === "USStockTokens") ? 200 : 1);
+  const [size, setSize] = useState(((s.symbols && (marketOf(s.symbols[0]) === "Crypto" || marketOf(s.symbols[0]) === "USStockTokens")) || market === "Crypto" || market === "USStockTokens") ? 500 : 1);
   const [sl, setSl] = useState(String((s.cfg && s.cfg.sl) || "0.5"));
   const [tp, setTp] = useState(String((s.cfg && s.cfg.tp) || "1.5"));
   /* Show a symbol relevant to the CURRENT market. Premium strategies are shared across
@@ -1275,7 +1275,7 @@ function CopyStrategyCard({ s, active, onToggle, onPersist, onDelete, market = "
   const { loading, stats } = useBacktestStats(s);
   const [bt, setBt] = useState(false);
   const [name, setName] = useState(s.name || "");
-  const [size, setSize] = useState(s.qty != null ? s.qty : ((market === "Crypto" || market === "USStockTokens") ? 200 : 1));
+  const [size, setSize] = useState(s.qty != null ? s.qty : ((market === "Crypto" || market === "USStockTokens") ? 500 : 1));
   const [sl, setSl] = useState(String((s.cfg && s.cfg.sl) || "0.5"));
   const [tp, setTp] = useState(String((s.cfg && s.cfg.tp) || "1.5"));
   const relSym0 = (s.symbols || []).find((x) => marketOf(x) === market) || ((UNIVERSE[market] || [])[0] || {}).sym || (s.symbols && s.symbols[0]) || null;
@@ -2249,8 +2249,8 @@ function StrategyPnLView({ strats, trades, market, appMode = "virtual", onDelete
           const hth = { fontSize: 9.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".02em", padding: "7px 8px", textAlign: "right", cursor: "pointer", whiteSpace: "nowrap" };
           const bd = { fontSize: 12, padding: "9px 8px", textAlign: "right", borderTop: "1px solid var(--line)" };
           return (
-          <div className="card" style={{ padding: 0, overflow: "hidden", marginTop: 10 }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <div className="card" style={{ padding: 0, overflowX: "auto", marginTop: 10 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 460 }}>
               <thead><tr>
                 <th onClick={() => sortClick("name")} style={{ ...hth, textAlign: "left" }}>Strategy{arrow("name")}</th>
                 <th onClick={() => sortClick("trades")} style={hth}>Trades{arrow("trades")}</th>
@@ -2683,7 +2683,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const activateTemplate = (t, syms, size) => {
     const symbols = syms && syms.length ? syms : ["NIFTY50"];
     const id = "t" + Date.now();
-    const sz = size != null ? size : ((market === "Crypto" || market === "USStockTokens") ? 200 : 1);
+    const sz = size != null ? size : ((market === "Crypto" || market === "USStockTokens") ? 500 : 1);
     // by: creator — the moment YOU activate it, it is YOUR strategy and belongs under
     // "My strategies". It was previously tagged "Matrix", which filed the user's own
     // running strategies under the samples.
@@ -2846,7 +2846,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
      symbol, timeframe and SL/TP are editable. Copies never appear under "Mine". */
   const clonePremium = (s) => {
     const id = "cp" + Date.now();
-    const dsz = (market === "Crypto" || market === "USStockTokens") ? 200 : 1;
+    const dsz = (market === "Crypto" || market === "USStockTokens") ? 500 : 1;
     // Default the copy's suffix to its SYMBOL (market-relevant one first), matching the backtest "Create" naming.
     const sym = (s.symbols || []).find((x) => marketOf(x) === market) || (s.symbols || [])[0];
     setStrats((p) => [
@@ -2870,7 +2870,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     // should stay there. We just create the copy under Strategies ▸ My Copies and confirm with a toast.
     if (strats.some((x) => x.name === name)) { setToast(`"${name}" already exists in My Copies.`); return; }
     const id = "cp" + Date.now();
-    const dsz = (marketOf(sym) === "Crypto" || marketOf(sym) === "USStockTokens") ? 200 : 1;
+    const dsz = (marketOf(sym) === "Crypto" || marketOf(sym) === "USStockTokens") ? 500 : 1;
     setStrats((p) => [
       { id, name, by: creator, active: false, alerts: false, copy: true, locked: !!(strat.locked), sourceName: strat.sourceName || strat.name,
         cfg: { ...(strat.cfg || {}) }, cap: strat.cap || dsz, qty: strat.qty || dsz, symbols: [sym],
@@ -2889,7 +2889,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   useEffect(() => {
     const isCrypto = (s) => s.market === "Crypto" || s.market === "USStockTokens" || marketOf((s.symbols || [])[0]) === "Crypto" || marketOf((s.symbols || [])[0]) === "USStockTokens";
     const stale = (s) => isCrypto(s) && (s.qty == null || Number(s.qty) < 10);
-    if (strats.some(stale)) setStrats((p) => p.map((s) => (stale(s) ? { ...s, qty: 200, cap: 200 } : s)));
+    if (strats.some(stale)) setStrats((p) => p.map((s) => (stale(s) ? { ...s, qty: 500, cap: 500 } : s)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [strats]);
 
@@ -2962,7 +2962,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           const inst = ALL.find((a) => a.sym === m.sym);
           const price = (inst && inst.price) || m.entryPrice;
           if (!inst || !price) return;
-          const notional = Number(s.qty || s.cap || (isCrypto ? 200 : 1));
+          const notional = Number(s.qty || s.cap || (isCrypto ? 500 : 1));
           const qty = isCrypto ? +(notional / price).toFixed(6) : Math.max(1, Math.floor(notional / price) || 1);
           onRecord({
             id: `au-${s.id}-${m.sym}-${Date.now()}`, sym: m.sym, market, qty, side: "BUY",
@@ -3215,7 +3215,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       {(() => {
         const isC = market === "Crypto" || market === "USStockTokens";
         const step = isC ? 10 : 1;
-        const val = s.qty != null ? s.qty : (isC ? 200 : 1);
+        const val = s.qty != null ? s.qty : (isC ? 500 : 1);
         const set = (n) => { const v = Math.max(isC ? 1 : 1, n); updateStrat(s.id, { qty: v, cap: v }); };
         return (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10, gap: 8 }}>
@@ -3274,7 +3274,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         {appMode === "real"
           ? (isArmedReal(s)
               ? <button onClick={() => disarmLive(s)} className="tap disp" title="Stop trading this strategy with real money" style={{ flex: "1 1 100px", borderRadius: 11, background: "var(--surface)", color: "var(--down)", padding: "7px 10px", display: "flex", gap: 5, alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800, border: "1px solid var(--down)" }}><Pause size={13} /> Deactivate</button>
-              : <button onClick={() => { const opening = liveStrat !== s.id; setLiveStrat(opening ? s.id : null); setLiveMsg(null); if (opening) setLiveAmt(String(s.qty != null ? s.qty : ((market === "Crypto" || market === "USStockTokens") ? 200 : 1))); }} className="tap disp" title="Trade this strategy with real money" style={{ flex: "1 1 100px", borderRadius: 11, background: liveStrat === s.id ? "var(--down-soft)" : "linear-gradient(120deg,var(--down),#D9403A)", color: liveStrat === s.id ? "var(--down)" : "#fff", boxShadow: liveStrat === s.id ? "none" : "0 6px 16px rgba(217,64,58,.28)", padding: "7px 10px", display: "flex", gap: 5, alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800, border: liveStrat === s.id ? "1px solid var(--down)" : "none" }}><Bolt size={13} /> Go Live</button>)
+              : <button onClick={() => { const opening = liveStrat !== s.id; setLiveStrat(opening ? s.id : null); setLiveMsg(null); if (opening) setLiveAmt(String(s.qty != null ? s.qty : ((market === "Crypto" || market === "USStockTokens") ? 500 : 1))); }} className="tap disp" title="Trade this strategy with real money" style={{ flex: "1 1 100px", borderRadius: 11, background: liveStrat === s.id ? "var(--down-soft)" : "linear-gradient(120deg,var(--down),#D9403A)", color: liveStrat === s.id ? "var(--down)" : "#fff", boxShadow: liveStrat === s.id ? "none" : "0 6px 16px rgba(217,64,58,.28)", padding: "7px 10px", display: "flex", gap: 5, alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800, border: liveStrat === s.id ? "1px solid var(--down)" : "none" }}><Bolt size={13} /> Go Live</button>)
           : <button onClick={() => toggleActive(s.id)} className="tap disp" style={{ flex: "1 1 100px", borderRadius: 11, background: s.active ? "var(--surface)" : "linear-gradient(120deg,var(--up),#0EA968)", color: s.active ? "var(--ink)" : "#fff", boxShadow: s.active ? "none" : "0 6px 16px rgba(16,185,129,.3)", padding: "7px 10px", display: "flex", gap: 5, alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800, border: s.active ? "1px solid var(--line)" : "none" }}>
               {s.active ? <><Pause size={13} /> Deactivate</> : <><Play size={13} /> Activate</>}
             </button>}

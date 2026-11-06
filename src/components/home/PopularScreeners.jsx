@@ -204,7 +204,7 @@ function ScreenerDirToggle({ dir, setDir }) {
   );
 }
 
-const capDefault = (m) => (m === "US" || m === "Crypto" || m === "USStockTokens") ? "100" : "10000";   // US/Crypto: 100 (USD); Indian/Commodity: 10,000 (₹)
+const capDefault = (m) => (m === "US" || m === "Crypto" || m === "USStockTokens") ? "1000" : "10000";   // US/Crypto: 1000 (USD); Indian/Commodity: 10,000 (₹)
 // Per-symbol quantity default: crypto is a USD notional (100), everything else is 1 unit/share.
 const qtyDefaultFor = (m) => ((m === "Crypto" || m === "USStockTokens") ? 500 : 1);   // crypto = USD notional (default $500)
 /* Canonical "is this a SCREENER trade" test — mirrors the backend provenance resolver so the Screener dashboard,
@@ -1241,8 +1241,8 @@ function ScreenerPnLTab({ trades = [], market, mode = "virtual", liveTick = 0 })
       {rows.length === 0
         ? <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.5, padding: "10px 2px" }}>No screener trades in this market/mode over the selected range yet. Turn on a screener's Auto-Buy to start building a track record.</div>
         : (
-          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <div className="card" style={{ padding: 0, overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 420 }}>
               <thead><tr>
                 <th onClick={() => _sortClick("label")} style={{ ...th, textAlign: "left", cursor: "pointer" }}>Screener{_arrow("label")}</th>
                 <th onClick={() => _sortClick("closed")} style={{ ...th, cursor: "pointer" }}>Closed{_arrow("closed")}</th>
