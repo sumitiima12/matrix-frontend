@@ -212,6 +212,10 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
   const statMkt = mkt === "all" ? "IN" : mkt;
   const typeColor = (tt) => tt === "Smart Auto-Buy" ? "var(--primary)" : tt === "Automation" ? "#8B5CF6" : tt === "Screener" ? "#0EA5E9" : tt === "Idea" ? "var(--up)" : "var(--muted)";
   const exitColor = (et) => (et === "Stop loss" || et === "Trailing stop") ? "var(--down)" : et === "Exit trigger" ? "var(--up)" : et === "Open" ? "var(--primary)" : "var(--muted)";
+  // Friendly, consistent exit vocabulary (matches the backtest's "TP hit / SL hit / Exit signal"). The stored
+  // exitType values stay as-is for filtering; this is display only. A TP exit is "Exit trigger" internally.
+  const EXIT_LABEL = { "Exit trigger": "TP hit", "Stop loss": "SL hit", "Auto exit": "Exit signal", "Trailing stop": "Trailing SL hit", "Square-off": "Square-off", "Manual": "Manual close", "Open": "Open", "Closed": "Closed on broker", "Rejected": "Rejected" };
+  const exitLabel = (et) => EXIT_LABEL[et] || et;
   /* SOURCE (order origin) and STRATEGY (the strategy/screener NAME) are INDEPENDENT — never conflated. This is
      what kills "Strategy by: Manual" (Manual is an origin, not a strategy). Mirrors the backend provenance:
      origin (if the row carries the canonical one) → label; else derived from tradeType + screener attribution.
@@ -364,7 +368,7 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
       <div style={{ display: "flex", gap: 7, flexWrap: "wrap", padding: "6px 16px 10px" }}>
         <FilterChip label="Symbol" options={allSyms} sel={fSym} setter={setFSym} open={openF} setOpen={setOpenF} />
         <FilterChip label="Trade type" options={TYPES} sel={fType} setter={setFType} colors={typeColor} open={openF} setOpen={setOpenF} />
-        <FilterChip label="Exit type" options={EXITS} sel={fExit} setter={setFExit} colors={exitColor} open={openF} setOpen={setOpenF} />
+        <FilterChip label="Exit type" options={EXITS} sel={fExit} setter={setFExit} colors={exitColor} labelOf={exitLabel} open={openF} setOpen={setOpenF} />
         {(fSym.length || fType.length || fExit.length) ? <button onClick={() => { setFSym([]); setFType([]); setFExit([]); }} className="pill tap disp" style={{ flex: "0 0 auto", padding: "7px 12px", fontSize: 11.5, fontWeight: 700, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--muted)", whiteSpace: "nowrap" }}>Clear all</button> : null}
       </div>
 
@@ -405,7 +409,7 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
             </div>
             <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
               <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: typeColor(sourceOf(t)) }}>Source: {sourceOf(t)}</span>
-              <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: isRejected(t) ? "var(--down-soft)" : t.open ? "var(--primary-soft)" : "var(--elev)", color: isRejected(t) ? "var(--down)" : exitColor(exitOf(t)) }}>{isRejected(t) ? "Rejected" : `Exit: ${exitOf(t)}`}</span>
+              <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: isRejected(t) ? "var(--down-soft)" : t.open ? "var(--primary-soft)" : "var(--elev)", color: isRejected(t) ? "var(--down)" : exitColor(exitOf(t)) }}>{isRejected(t) ? "Rejected" : `Exit: ${exitLabel(exitOf(t))}`}</span>
               {strategyOf(t) !== "—" && <span className="pill" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 8px", background: "var(--elev)", color: "var(--muted)" }}>Strategy: {strategyOf(t)}</span>}
               {/* #9 — protection status is explicit on every OPEN position. Unprotected = visible warning.
                   A position is protected if it carries a stop/target/trailing on the row OR it's an automation

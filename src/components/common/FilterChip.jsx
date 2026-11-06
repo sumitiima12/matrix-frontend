@@ -5,7 +5,8 @@ import { Check, ChevronRight } from "lucide-react";
  * Filter chip with dropdown.
  */
 
-export default function FilterChip({ label, options, sel, setter, colors, open, setOpen }) {
+export default function FilterChip({ label, options, sel, setter, colors, open, setOpen, labelOf }) {
+  const show = (o) => (labelOf ? labelOf(o) : o);   // friendly display label; selection still matches the raw value
   const isOpen = open === label;
   const toggle = (v) => setter(sel.includes(v) ? sel.filter((x) => x !== v) : [...sel, v]);
   return (
