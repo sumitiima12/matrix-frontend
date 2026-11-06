@@ -241,11 +241,16 @@ select option{background:var(--surface);color:var(--ink)}
    column and the navigation moves from a bottom bar to a top bar, so the screen isn't a thin strip in a sea of
    black. The top nav is hidden on mobile and the bottom nav on desktop. */
 .mx-topnav{display:none}
+.gl-both{display:none}
 @media (min-width:1024px){
   .mx-shell{max-width:980px !important}
   .mx-bottomnav{display:none !important}
   .mx-topnav{display:flex}
   .mx-fab-track{max-width:980px !important}
+  /* Gainers & Losers: show both tables side by side on desktop (the single-table toggle is for mobile). */
+  .gl-both{display:flex !important}
+  .gl-single{display:none !important}
+  .gl-mobile-only{display:none !important}
 }
 `;
 

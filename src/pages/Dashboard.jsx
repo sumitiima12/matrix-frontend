@@ -2000,14 +2000,23 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
       {market !== "Commodity" && (
         <Section title="Top gainers & losers" icon={<Zap size={17} color="#E8A33D" />}
           right={
-            <div className="pill" style={{ display: "flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3 }}>
+            <div className="pill gl-mobile-only" style={{ display: "flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3 }}>
               {["Gainers", "Losers"].map((m) => (
                 <button key={m} onClick={() => setGlMode(m)} className="pill tap disp" style={{ padding: "5px 13px", fontSize: 11.5, fontWeight: 700, border: "none", background: glMode === m ? (m === "Gainers" ? "var(--up)" : "var(--down)") : "transparent", color: glMode === m ? "var(--on-primary)" : "var(--muted)" }}>{m}</button>
               ))}
             </div>
           }>
-          <div className="card" style={{ padding: "4px 14px" }}>
+          {/* Mobile: one table chosen by the toggle. Desktop: both tables side by side (toggle hidden). */}
+          <div className="card gl-single" style={{ padding: "4px 14px" }}>
             {(glMode === "Gainers" ? gainers : losers).map((s) => <ListRow key={s.sym} s={s} market={market} onOpen={onOpen} />)}
+          </div>
+          <div className="gl-both" style={{ gap: 12, alignItems: "flex-start" }}>
+            {[["Gainers", gainers, "var(--up)"], ["Losers", losers, "var(--down)"]].map(([label, rows, col]) => (
+              <div key={label} className="card" style={{ flex: "1 1 0", minWidth: 0, padding: "4px 14px" }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: col, letterSpacing: ".03em", textTransform: "uppercase", padding: "8px 2px 4px" }}>{label}</div>
+                {rows.map((s) => <ListRow key={s.sym} s={s} market={market} onOpen={onOpen} />)}
+              </div>
+            ))}
           </div>
         </Section>
       )}

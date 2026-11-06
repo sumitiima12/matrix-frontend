@@ -674,11 +674,13 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
           <input value={retMin} onChange={(e) => setRetMin(e.target.value.replace(/[^0-9.-]/g, ""))} inputMode="decimal" disabled={autoSel.running} className="no-ring mono" style={inBox} />
         </label>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+      {/* The three card actions (Auto-Select / SL&TP / Backtest) sit on ONE wrapping row — they fit on a single
+          line on desktop and wrap to stacked on narrow screens, instead of three full-width stacked buttons. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
         <button onClick={runAutoSelect} disabled={autoSel.running} className="tap disp" style={{
-          flex: 1, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)",
-          borderRadius: 10, padding: "8px 12px", fontSize: 11.5, fontWeight: 800, cursor: autoSel.running ? "default" : "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center", gap: 7, opacity: autoSel.running ? 0.7 : 1,
+          flex: "1 1 160px", minWidth: 0, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)",
+          borderRadius: 10, padding: "8px 10px", fontSize: 11.5, fontWeight: 800, cursor: autoSel.running ? "default" : "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: autoSel.running ? 0.7 : 1,
         }}>
           <Sparkles size={13} color="var(--primary)" />
           {autoSel.running ? `Backtesting… ${autoSel.n}/${autoSel.total}` : "Auto-Select Symbols"}
@@ -686,6 +688,12 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
         {(eSel.length > 0 || eNone) && !autoSel.running && (
           <button onClick={clearAutoSelect} className="tap disp" title="Clear the auto-selected basket (scan the whole market again)" style={{ flexShrink: 0, border: "1px solid var(--line)", background: "transparent", color: "var(--muted)", borderRadius: 10, padding: "8px 11px", fontSize: 11, fontWeight: 800 }}>Clear</button>
         )}
+        <button onClick={() => setOptOpen((v) => !v)} className="tap disp" style={{ flex: "1 1 150px", minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--line)", background: optOpen ? "var(--primary-soft)" : "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: "8px 10px", fontSize: 11.5, fontWeight: 800 }}>
+          <SlidersHorizontal size={13} color="var(--primary)" /> SL/TP &amp; Optimize {optOpen ? "▲" : "▼"}
+        </button>
+        <button onClick={() => setStatsOpen((v) => !v)} className="tap disp" title="Run a historical backtest of this screener" style={{ flex: "1 1 120px", minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--line)", background: statsOpen ? "var(--primary-soft)" : "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: "8px 10px", fontSize: 11.5, fontWeight: 800 }}>
+          <Activity size={13} color="var(--primary)" /> Backtest {statsOpen ? "▲" : "▼"}
+        </button>
       </div>
       {autoSel.done && !autoSel.running && (
         <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600, marginTop: 5 }}>
@@ -708,11 +716,8 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
         </div>
       )}
 
-      {/* DEFAULT SL/TP (editable) + Optimize SL & TP + Optimize Indicators — available to everyone. */}
-      <div style={{ marginTop: 8 }}>
-        <button onClick={() => setOptOpen((v) => !v)} className="tap disp" style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--line)", background: optOpen ? "var(--primary-soft)" : "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: "8px 12px", fontSize: 11.5, fontWeight: 800 }}>
-          <SlidersHorizontal size={13} color="var(--primary)" /> Default SL/TP & Optimize {optOpen ? "▲" : "▼"}
-        </button>
+      {/* DEFAULT SL/TP + Optimize panel (its toggle button is in the action row above). */}
+      <div style={{ marginTop: optOpen ? 8 : 0 }}>
         {optOpen && (
           <div style={{ marginTop: 8, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: 10 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
@@ -733,10 +738,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
       {/* #6: BACKTEST lives behind its own explicit button — tapping it runs the historical backtest. The card's real
           stats/trades (the P&L pill + its expandable List of Trades below) come from ACTUAL screener trades, never a
           backtest, so viewing them never triggers a backtest. Lazy: backtests only when this is opened. */}
-      <div style={{ marginTop: 8 }}>
-        <button onClick={() => setStatsOpen((v) => !v)} className="tap disp" title="Run a historical backtest of this screener" style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--line)", background: statsOpen ? "var(--primary-soft)" : "var(--surface)", color: "var(--ink)", borderRadius: 10, padding: "8px 12px", fontSize: 11.5, fontWeight: 800 }}>
-          <Activity size={13} color="var(--primary)" /> Backtest {statsOpen ? "▲" : "▼"}
-        </button>
+      <div style={{ marginTop: statsOpen ? 8 : 0 }}>
         {statsOpen && (
           <div style={{ marginTop: 8, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, padding: 10 }}>
             <ScreenerStats screenerKey={screener.key} market={market} defs={eDefs} entry={eEntry} exit={(ovr && ovr.exit) || screener.exit || []} sl={defSL} tp={defTP} tf={eTf} short={short} symbols={eSel.length ? eSel.slice(0, 10) : (UNIVERSE[market] || []).map((s) => s.sym).slice(0, 6)} />
