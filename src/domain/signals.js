@@ -211,9 +211,9 @@ export function dailyPicks(list, opts = {}) {
     // losing trades. Overbought and Oversold signals are excluded outright. Fewer picks, higher conviction.
     // Require score ≥ 2.8 and keep only the top 12 — concentrate on the highest-conviction setups (matches the
     // server dailyPicks), instead of entering a long tail of marginal signals that dragged the hit rate down.
-    .filter((x) => x.t && x.t.score >= 2.8 && x.t.signal !== "Overbought" && x.t.signal !== "Oversold")
+    .filter((x) => x.t && x.t.score >= 3.0 && x.t.signal !== "Overbought" && x.t.signal !== "Oversold")
     .sort((a, b) => b.t.score - a.t.score)
-    .slice(0, 12)
+    .slice(0, 8)
     .map(({ s, t }) => Object.assign(s, {
       pickDir: "long", pickSide: "BUY", pickSignal: t.signal, pickReason: pickReason(s, t), pickPattern: t.pattern,
       pickStop: t.stop, pickTarget: t.target, pickSlPct: t.slPct, pickTpPct: t.tpPct, pickRR: t.rr, pickScore: t.score,

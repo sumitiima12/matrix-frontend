@@ -2221,6 +2221,10 @@ function StrategyPnLView({ strats, trades, market, appMode = "virtual", onDelete
   const [cTo, setCTo] = useState("");
   const [openId, setOpenId] = useState(null);
   const [sort, setSort] = useState({ key: "pnl", dir: -1 });   // sortable columns (default P&L desc)
+  // Performance filter — show only strategies clearing a minimum win rate AND return %. Both editable; off by default.
+  const [perfFilter, setPerfFilter] = useState(false);
+  const [minWR, setMinWR] = useState(40);
+  const [minRet, setMinRet] = useState(3);
   const priceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a ? a.price : null; };
   const inMkt = (s) => !(s.symbols && s.symbols.length) || s.symbols.some((x) => marketOf(x) === market);
   const RANGES = [[1, "Today"], [7, "Last 7 days"], [30, "Last 30 days"], [180, "Last 6 months"], ["custom", "Custom range"]];
@@ -2229,8 +2233,13 @@ function StrategyPnLView({ strats, trades, market, appMode = "virtual", onDelete
   const win = isCustom ? { from: cFrom ? new Date(cFrom + "T00:00:00").getTime() : 0, to: cTo ? new Date(cTo + "T23:59:59").getTime() : Date.now() } : null;
   const days = isCustom ? 365 : range;   // rangeDays ignored when win is provided
   const _sv = { name: (r) => String(r.s.name || "").toLowerCase(), trades: (r) => r.p.trades || 0, winRate: (r) => (r.p.winRate == null ? -1 : r.p.winRate), pnl: (r) => (r.p.pnl || 0) };
-  const rows = strats.filter(inMkt).map((s) => ({ s, p: stratPerf(s, trades, days, priceOf, win, { mode: appMode, market }) }))
+  const rowsAll = strats.filter(inMkt).map((s) => ({ s, p: stratPerf(s, trades, days, priceOf, win, { mode: appMode, market }) }))
     .sort((a, b) => { const f = _sv[sort.key] || _sv.pnl; const av = f(a), bv = f(b); return (av < bv ? -1 : av > bv ? 1 : 0) * sort.dir; });
+  // When the performance filter is on, keep only strategies that clear BOTH thresholds (a strategy with no
+  // decided trades yet — win rate / return null — doesn't qualify).
+  const rows = perfFilter
+    ? rowsAll.filter((r) => r.p.winRate != null && r.p.winRate >= Number(minWR || 0) && r.p.retPct != null && r.p.retPct >= Number(minRet || 0))
+    : rowsAll;
   const sortClick = (key) => setSort((s) => s.key === key ? { key, dir: -s.dir } : { key, dir: key === "name" ? 1 : -1 });
   const arrow = (key) => sort.key === key ? (sort.dir < 0 ? " ↓" : " ↑") : "";
   const total = rows.reduce((a, r) => a + (r.p.pnl || 0), 0);
@@ -2253,8 +2262,24 @@ function StrategyPnLView({ strats, trades, market, appMode = "virtual", onDelete
           <select aria-label="Date range" value={range} onChange={(e) => { const v = e.target.value; setRange(v === "custom" ? "custom" : +v); }} style={{ ...selStyle, flex: "0 0 auto", width: "auto", fontSize: 12 }}>{RANGES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
         </div>
       </div>
+      {/* Performance filter — show only strategies clearing an editable win-rate AND return-% bar. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "2px 2px 0", fontSize: 11.5, fontWeight: 700, color: "var(--muted)" }}>
+        <label className="tap" style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", color: "var(--ink)" }}>
+          <input type="checkbox" checked={perfFilter} onChange={(e) => setPerfFilter(e.target.checked)} style={{ width: 14, height: 14, accentColor: "var(--primary)" }} />
+          Top performers
+        </label>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, opacity: perfFilter ? 1 : 0.5 }}>
+          Win % &gt;
+          <input value={minWR} disabled={!perfFilter} onChange={(e) => setMinWR(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="no-ring mono" style={{ width: 44, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 7, padding: "4px 6px", fontSize: 11.5, fontWeight: 800, textAlign: "center" }} />
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, opacity: perfFilter ? 1 : 0.5 }}>
+          Return % &gt;
+          <input value={minRet} disabled={!perfFilter} onChange={(e) => setMinRet(e.target.value.replace(/[^0-9.\-]/g, ""))} inputMode="decimal" className="no-ring mono" style={{ width: 44, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 7, padding: "4px 6px", fontSize: 11.5, fontWeight: 800, textAlign: "center" }} />
+        </span>
+        {perfFilter && <span style={{ fontSize: 10.5, color: "var(--muted)" }}>{rows.length} of {rowsAll.length}</span>}
+      </div>
       {rows.length === 0
-        ? <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 12 }}>No strategies in this market yet.</div>
+        ? <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 12 }}>{perfFilter && rowsAll.length ? "No strategies clear the win-rate / return filter for this range." : "No strategies in this market yet."}</div>
         : (() => {
           const hth = { fontSize: 9.5, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".02em", padding: "7px 8px", textAlign: "right", cursor: "pointer", whiteSpace: "nowrap" };
           const bd = { fontSize: 12, padding: "9px 8px", textAlign: "right", borderTop: "1px solid var(--line)" };
