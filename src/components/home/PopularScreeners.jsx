@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import AutoOptionConfig from "../common/AutoOptionConfig";   // IN-only "trade the option instead of the stock" for screener auto-buy
 import { ALL, UNIVERSE, marketOf, yahooSymbol } from "../../domain/universe";
 import { positionPnl } from "../../domain/leverage";   // Delta-parity crypto P&L (margin cap + fees), same for paper & real
 import { CUR, DAY, MKT_NAME, chgColor, fmt, fmtPnl, lsGet, lsSet } from "../../lib/format";
@@ -1332,6 +1333,8 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
       <ScreenerDashboard trades={trades} market={market} mode={mode} portfolio={portfolio} realPortfolio={realPortfolio} />
       {/* Live Positions — its OWN section below the dashboard (Screener column, editable SL/TP, Close). */}
       <ScreenerLivePositions trades={trades} market={market} mode={mode} portfolio={portfolio} realPortfolio={realPortfolio} onClosePosition={onClosePosition} onUpdatePosition={onUpdatePosition} />
+      {/* IN options: when enabled, every screener match for this market buys the symbol's CALL/PUT instead of the stock. */}
+      <AutoOptionConfig market={market} />
       {/* Build a screener | Popular Screeners | My Screeners */}
       <div className="hide-scroll" style={{ display: "flex", marginBottom: 4, overflowX: "auto" }}>
         <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3 }}>

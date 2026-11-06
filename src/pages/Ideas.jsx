@@ -15,6 +15,7 @@ import { selStyle } from "../components/common/styles";
 import BuyButton from "../components/common/BuyButton";
 import TagRow from "../components/common/TagRow";
 import MultiSelect from "../components/common/MultiSelect";
+import AutoOptionConfig from "../components/common/AutoOptionConfig";   // IN-only "trade the option instead of the stock" for Ideas auto-buy
 
 /**
  * Ideas — trade ideas published by Matrix, scored against real candles.
@@ -167,6 +168,8 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
             <input value={auto.capDraft} onChange={(e) => auto.setCapDraft(String(e.target.value).replace(/[^0-9]/g, ""))} inputMode="numeric" className="no-ring mono" style={{ flex: "1 1 0", minWidth: 0, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", borderRadius: 9, padding: "7px 9px", fontWeight: 800, fontSize: 13 }} />
             <button onClick={auto.onSaveCap} disabled={String(auto.capDraft) === String(auto.cap)} className="tap disp" style={{ flex: "0 0 auto", border: "none", borderRadius: 9, padding: "7px 14px", fontWeight: 800, fontSize: 12, cursor: String(auto.capDraft) === String(auto.cap) ? "default" : "pointer", background: String(auto.capDraft) === String(auto.cap) ? "var(--elev)" : "var(--primary)", color: String(auto.capDraft) === String(auto.cap) ? "var(--muted)" : "var(--on-primary)" }}>Save</button>
           </div>
+          {/* IN options: auto-buy the idea's CALL/PUT instead of the stock (real server path). */}
+          <AutoOptionConfig market={market} />
         </div>
       )}
       {/* Filters sit directly under the title, above the numbers. Options are plain ids; symbols are

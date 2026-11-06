@@ -2966,16 +2966,24 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
         if (stop) return;
         if (!matches || !matches.length) continue;
         const isCrypto = market === "Crypto" || market === "USStockTokens";
+        // A strategy's SHORT mirror carries side:"SELL" in its cfg (or a "… -Sell" name). Record the paper trade
+        // on the correct side so its P&L direction and exit logic are right — not always as a BUY.
+        const isShort = (s.cfg && s.cfg.side === "SELL") || s.side === "SELL" || /[-\s]sell\b/i.test(s.name || "");
         matches.forEach((m) => {
           // Don't open a second position for this strategy on a symbol it's already holding open.
           if (hasOpenPaperPos(s.id, m.sym)) return;
           const inst = ALL.find((a) => a.sym === m.sym);
           const price = (inst && inst.price) || m.entryPrice;
           if (!inst || !price) return;
-          const notional = Number(s.qty || s.cap || (isCrypto ? 500 : 1));
+          // Per-trade NOTIONAL. Only s.qty (the per-trade amount the user set) is a position size; s.cap is the
+          // strategy's TOTAL capital (defaults to 100000) and must NOT be used as the per-trade notional — that
+          // made strategies whose qty was unset (e.g. short mirrors) open ~200× larger positions than ones with
+          // qty set, so an identical price move produced a wildly asymmetric P&L (longs +₹247, shorts −₹24,739).
+          const notional = Number(s.qty) > 0 ? Number(s.qty) : (isCrypto ? 500 : 500);
           const qty = isCrypto ? +(notional / price).toFixed(6) : Math.max(1, Math.floor(notional / price) || 1);
           onRecord({
-            id: `au-${s.id}-${m.sym}-${Date.now()}`, sym: m.sym, market, qty, side: "BUY",
+            id: `au-${s.id}-${m.sym}-${Date.now()}`, sym: m.sym, market, qty,
+            side: isShort ? "SELL" : "BUY", ...(isShort ? { short: true } : {}),
             entry: price, entryAt: Date.now(), tradeType: "Automate", strategy: s.name, strategyId: s.id,
             sl: (s.cfg && s.cfg.sl != null) ? s.cfg.sl : null, tp: (s.cfg && s.cfg.tp != null) ? s.cfg.tp : null,
           });
@@ -3098,8 +3106,10 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
 
   const DStat = ({ k, v, c, onClick, active }) => (
     <button onClick={onClick} disabled={!onClick} className={onClick ? "tap" : undefined}
-      style={{ flex: "1 1 0", minWidth: 0, textAlign: "left", background: active ? "var(--primary-soft)" : "rgba(127,127,127,.12)", border: active ? "1px solid var(--primary)" : "1px solid transparent", borderRadius: 14, padding: "10px 8px", cursor: onClick ? "pointer" : "default" }}>
-      <div style={{ fontSize: 9, opacity: .85, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".02em", whiteSpace: "nowrap" }}>{k}{onClick ? " ›" : ""}</div>
+      style={{ flex: "1 1 0", minWidth: 0, textAlign: "left", background: active ? "var(--primary-soft)" : "rgba(127,127,127,.12)", border: active ? "1px solid var(--primary)" : "1px solid transparent", borderRadius: 14, padding: "10px 8px", cursor: onClick ? "pointer" : "default", color: "var(--ink)" }}>
+      {/* explicit colour — a <button> does NOT inherit text colour, so without it the label fell back to the
+          browser default (black) and vanished in dark mode. */}
+      <div style={{ fontSize: 9, color: "var(--muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".02em", whiteSpace: "nowrap" }}>{k}{onClick ? " ›" : ""}</div>
       <div className="mono" style={{ fontWeight: 800, fontSize: 15, marginTop: 3, color: c || "var(--ink)" }}>{v}</div>
     </button>
   );

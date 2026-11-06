@@ -46,8 +46,9 @@ export default function InstrumentTypePicker({ value = "STOCK", onChange, compac
       </div>
       {isDeriv && (
         <div style={{ marginTop: 6, fontSize: 10, color: "var(--muted)", lineHeight: 1.5 }}>
-          Preview — automated {v === "FUTURE" ? "futures" : "options"} execution is coming. This strategy runs on the
-          stock until then. (Manual paper futures already work from a stock’s Trade options panel.)
+          Preview — automated {v === "FUTURE" ? "futures" : "options"} execution is coming, so this strategy runs on
+          the underlying stock until then (your choice here is saved). To trade {v === "FUTURE" ? "futures" : "options"} now,
+          open any stock and use its <b style={{ color: "var(--ink)" }}>Trade options</b> panel (pick strike/expiry, buy the contract).
         </div>
       )}
     </div>

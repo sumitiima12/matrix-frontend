@@ -71,7 +71,16 @@ export function collectAutoSettings({ autoOnMap = {}, deployCapMap = {} } = {}) 
       };
     }
   }
-  return { screeners: collectScreeners(), smartAutoBuy, ideas };
+  // Per-market OPTION config (IN only for now): when enabled, the server's Screener/Ideas/Smart-Auto-Buy engines
+  // buy the signal symbol's ATM CALL (long) / PUT (short) instead of the stock. Mirrors the Automate OptionLeg.
+  const options = {};
+  for (const market of MARKETS) {
+    const o = lsGet(`mx_auto_option_${market}`, null);
+    if (market === "IN" && o && o.enabled === true) {
+      options[market] = { enabled: true, mny: o.mny || "ATM", expiry: o.expiry || "Current week", lots: Math.max(1, Number(o.lots) || 1) };
+    }
+  }
+  return { screeners: collectScreeners(), smartAutoBuy, ideas, options };
 }
 
 export async function pushAutoSettings(settings) {
@@ -135,6 +144,10 @@ export function autoReasonText(reason) {
     "account-inactive": "account not active (blocked/unapproved)",
     "commodity-real-needs-derivative-route": "commodity real auto isn't wired yet (paper only)",
     "short-not-supported": "auto-short only supported on Delta",
+    "option-chain-unavailable": "couldn't load the NSE option chain this cycle — will retry",
+    "option-unresolved": "couldn't resolve a listed option contract for this signal — skipped (never guesses a strike)",
+    "option-no-premium": "no live option premium to price the entry — skipped",
+    "option-live-not-certified": "real option auto-execution isn't certified yet — runs in paper (use an Automate strategy for real options)",
     "bad-input": "no price/amount available",
     "dry-run": "preview mode (live orders disabled on the server)",
   };

@@ -9,6 +9,7 @@ import { confirmDialog } from "../lib/confirmDialog";   // in-app confirm (relia
 import { ALL, GLOBAL_MKTS, UNIVERSE, marketOf } from "../domain/universe";
 import { derivativePnl } from "../domain/derivativePnl";   // contract-aware P&L (multiplier 1 for spot)
 import InstrumentTypePicker from "../components/common/InstrumentTypePicker";   // Stock/Future/Option choice (gated preview)
+import AutoOptionConfig from "../components/common/AutoOptionConfig";   // IN-only "trade the option instead of the stock" config (real server option entries)
 import { positionPnl } from "../domain/leverage";   // Delta-parity crypto P&L (margin cap + fees), same for paper & real
 import { computeCategories } from "../domain/portfolioPnl";   // the ONE per-category P&L fn every dashboard shares
 import { askMatrix, fetchNews, fetchNewsFeed, scanIdeas } from "../domain/api";
@@ -1554,6 +1555,8 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
               <div style={{ marginTop: 8 }}>
                 <span style={{ fontSize: 10.5, opacity: .8, fontWeight: 700, display: "block", marginBottom: 5 }}>Instrument</span>
                 <InstrumentTypePicker value={instrument} onChange={setInstrument} compact />
+                {/* IN options: when enabled, Smart Auto-Buy buys the pick's CALL/PUT instead of the stock (real server path). */}
+                <AutoOptionConfig market={market} />
               </div>
               {/* Plain-English "how this works" so the behaviour and requirements are obvious. */}
               <div style={{ fontSize: 9.5, opacity: .6, marginTop: 3, lineHeight: 1.45 }}>
