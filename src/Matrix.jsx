@@ -1775,7 +1775,7 @@ function AppInner() {
           <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, maxWidth: 460, margin: "0 auto", background: "var(--surface)", borderRadius: "22px 22px 0 0", zIndex: 191, padding: "20px 20px 26px", boxShadow: "0 -16px 44px rgba(0,0,0,.35)" }}>
             <div className="disp" style={{ fontSize: 19, fontWeight: 800, color: "var(--down)" }}>Switch to Real money?</div>
             <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 8, lineHeight: 1.6 }}>
-              In Real mode, orders are sent to <b style={{ color: "var(--ink)" }}>{liveBroker ? liveBroker.name : "your broker"}</b> and
+              In Real mode, orders are sent to <b style={{ color: "var(--ink)" }}>{(brokerFor(market) && brokerFor(market).meta ? brokerFor(market).meta.name : (liveBroker ? liveBroker.name : "your broker"))}</b> and
               executed against your actual account with your actual money. Your Portfolio will show your real
               holdings, not the paper ones.
               <br /><br />

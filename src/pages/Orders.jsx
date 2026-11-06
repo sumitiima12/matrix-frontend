@@ -187,7 +187,9 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
   const closedFilled = filledRows.filter((t) => !t.open);
   const winN = closedFilled.filter((t) => (t.livePnl || 0) > 0).length;
   const lossN = closedFilled.filter((t) => (t.livePnl || 0) < 0).length;
-  const wlRatio = lossN > 0 ? (winN / lossN).toFixed(2) : (winN > 0 ? "∞" : "—");
+  // Show the plain win:loss COUNT (e.g. "5 : 36") to match the Screener/Automation dashboards — a decimal
+  // ratio like "0.14" reads as meaningless to a trader scanning the stat.
+  const wlRatio = (winN || lossN) ? `${winN} : ${lossN}` : "—";
   // Average win / average loss over closed, filled trades (per-trade mean P&L of the winners / losers).
   const avgWin = winN ? closedFilled.filter((t) => (t.livePnl || 0) > 0).reduce((a, t) => a + t.livePnl, 0) / winN : 0;
   const avgLoss = lossN ? closedFilled.filter((t) => (t.livePnl || 0) < 0).reduce((a, t) => a + t.livePnl, 0) / lossN : 0;
