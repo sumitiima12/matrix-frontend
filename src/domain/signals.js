@@ -209,19 +209,22 @@ export function dailyPicks(list, opts = {}) {
     // 2.7 / Trend continuation 2.5), each already carrying trend + MACD confirmation — and drops the weak
     // "Range-bound" (0.2), bare "Uptrend" (1.2) and "Oversold" (1.6) knife-catch entries that produced most of the
     // losing trades. Overbought and Oversold signals are excluded outright. Fewer picks, higher conviction.
-    .filter((x) => x.t && x.t.score >= 2.5 && x.t.signal !== "Overbought" && x.t.signal !== "Oversold")
+    // Require score ≥ 2.8 and keep only the top 12 — concentrate on the highest-conviction setups (matches the
+    // server dailyPicks), instead of entering a long tail of marginal signals that dragged the hit rate down.
+    .filter((x) => x.t && x.t.score >= 2.8 && x.t.signal !== "Overbought" && x.t.signal !== "Oversold")
     .sort((a, b) => b.t.score - a.t.score)
+    .slice(0, 12)
     .map(({ s, t }) => Object.assign(s, {
       pickDir: "long", pickSide: "BUY", pickSignal: t.signal, pickReason: pickReason(s, t), pickPattern: t.pattern,
       pickStop: t.stop, pickTarget: t.target, pickSlPct: t.slPct, pickTpPct: t.tpPct, pickRR: t.rr, pickScore: t.score,
     }));
   if (!opts.allowShorts) return longs;
-  // Short picks: genuine bearish setups only (score ≥ 2.4), excluding anything already a long pick.
+  // Short picks: genuine bearish setups only (score ≥ 2.6), excluding anything already a long pick.
   const longSyms = new Set(longs.map((s) => s.sym));
   const shorts = base
     .filter((x) => !longSyms.has(x.sym))
     .map((s) => ({ s, t: techSignalShort(s) }))
-    .filter((x) => x.t && x.t.score >= 2.4)
+    .filter((x) => x.t && x.t.score >= 2.6)
     .sort((a, b) => b.t.score - a.t.score)
     .slice(0, 4)
     .map(({ s, t }) => Object.assign(s, {

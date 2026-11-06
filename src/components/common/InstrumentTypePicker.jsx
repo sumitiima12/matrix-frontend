@@ -44,11 +44,12 @@ export default function InstrumentTypePicker({ value = "STOCK", onChange, compac
           );
         })}
       </div>
-      {isDeriv && (
+      {/* FUTURE stays a preview (automated futures execution isn't wired). OPTION is handled by the option-config
+          panel shown below this picker (moneyness/expiry/lots), so it gets no "coming soon" note here. */}
+      {v === "FUTURE" && (
         <div style={{ marginTop: 6, fontSize: 10, color: "var(--muted)", lineHeight: 1.5 }}>
-          Preview — automated {v === "FUTURE" ? "futures" : "options"} execution is coming, so this strategy runs on
-          the underlying stock until then (your choice here is saved). To trade {v === "FUTURE" ? "futures" : "options"} now,
-          open any stock and use its <b style={{ color: "var(--ink)" }}>Trade options</b> panel (pick strike/expiry, buy the contract).
+          Preview — automated futures execution is coming, so this strategy runs on the underlying stock until then
+          (your choice here is saved). To trade futures now, open any stock and use its <b style={{ color: "var(--ink)" }}>Trade options</b> panel.
         </div>
       )}
     </div>

@@ -1555,8 +1555,9 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
               <div style={{ marginTop: 8 }}>
                 <span style={{ fontSize: 10.5, opacity: .8, fontWeight: 700, display: "block", marginBottom: 5 }}>Instrument</span>
                 <InstrumentTypePicker value={instrument} onChange={setInstrument} compact />
-                {/* IN options: when enabled, Smart Auto-Buy buys the pick's CALL/PUT instead of the stock (real server path). */}
-                <AutoOptionConfig market={market} />
+                {/* IN options: the Option capsule above is the toggle; when it's selected we show the option params
+                    (no separate "Trade as options" checkbox). Smart Auto-Buy then buys the pick's CALL/PUT. */}
+                <AutoOptionConfig market={market} externalEnabled={instrument === "OPTION"} />
               </div>
               {/* Plain-English "how this works" so the behaviour and requirements are obvious. */}
               <div style={{ fontSize: 9.5, opacity: .6, marginTop: 3, lineHeight: 1.45 }}>
