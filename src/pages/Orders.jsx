@@ -230,7 +230,10 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "var(--bg)", zIndex: 80, display: "flex", flexDirection: "column" }} onClick={() => setOpenF(null)}>
+    <div style={{ position: "fixed", inset: 0, background: "var(--bg)", zIndex: 80, display: "flex", flexDirection: "column", alignItems: "center" }} onClick={() => setOpenF(null)}>
+      {/* Constrain to the same centred column the rest of the app uses, so Trade history doesn't sprawl
+          edge-to-edge on desktop while Home/Portfolio/Screener sit in a narrow column. */}
+      <div style={{ width: "100%", maxWidth: 520, flex: 1, minHeight: 0, display: "flex", flexDirection: "column", borderLeft: "1px solid var(--line)", borderRight: "1px solid var(--line)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 16px 12px", borderBottom: "1px solid var(--line)" }}>
         <button onClick={onClose} className="tap" style={{ border: "none", background: "var(--elev)", borderRadius: 11, width: 36, height: 36, display: "grid", placeItems: "center" }}><ChevronLeft size={18} /></button>
         <div>
@@ -440,6 +443,7 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
         </div>
         </>
       )}
+      </div>
     </div>
   );
 }

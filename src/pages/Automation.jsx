@@ -963,11 +963,19 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, onPersist, onClone, 
     <div className="card" style={{ marginTop: 12, padding: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
         <div style={{ minWidth: 0 }}>
-          <div className="disp" style={{ fontWeight: 700, fontSize: 14 }}>{s.name}</div>
-          <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>Created by {creatorOf(s)}{shownSyms.length ? " · " + shownSyms.join(" · ") : ""}</div>
-          {s.desc && <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 4, lineHeight: 1.5 }}>{s.desc}</div>}
+          <div className="disp" style={{ fontWeight: 700, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</div>
+          <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 2 }}>Created by {creatorOf(s)}</div>
+          {/* Symbol chips + pill chrome mirror the "Yours" cards so Premium reads as the same card family, not a
+              different-looking block — the symbols move out of the author line into chips like the deployed cards. */}
+          {shownSyms.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
+              {shownSyms.slice(0, 4).map((sy) => <span key={sy} className="pill" style={{ fontSize: 9.5, fontWeight: 700, background: "var(--primary-soft)", color: "var(--primary)", padding: "2px 8px" }}>{sy}</span>)}
+              {shownSyms.length > 4 && <span style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700, alignSelf: "center" }}>+{shownSyms.length - 4}</span>}
+            </div>
+          )}
+          {s.desc && <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>{s.desc}</div>}
         </div>
-        <span className="pill gold-border" style={{ fontSize: 9.5, fontWeight: 800, padding: "3px 9px", color: "var(--gold)", flex: "0 0 auto", whiteSpace: "nowrap" }}>★ PREMIUM</span>
+        <span className="pill" style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".03em", padding: "3px 8px", background: "var(--elev)", color: "var(--gold)", border: "1px solid var(--line)", flex: "0 0 auto", whiteSpace: "nowrap" }}>★ PREMIUM</span>
       </div>
 
       {loading ? (
@@ -983,6 +991,8 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, onPersist, onClone, 
               </div>
               <div className="mono" style={{ fontWeight: 800, fontSize: 13.5, marginTop: 3, color: "var(--ink)", textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 3 }}>{stats.trades}</div>
             </button>
+            {/* P&L stat — matches the Sample / My-strategy cards so Premium reads the same, not a trimmed-down variant. */}
+            <Stat k="P&L" v={(stats.pnl >= 0 ? "+" : "") + fmtPnl(stats.pnl, market)} c={chgColor(stats.pnl)} />
             <Stat k="RETURN" v={pct(stats.retPct, 1)} c={chgColor(stats.retPct)} />
             <Stat k="MAX DD" v={stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmtPnl(stats.maxDD, market) : fmt(0, market)) : "—"} c={stats.maxDD > 0 ? "var(--down)" : "var(--muted)"} />
           </div>

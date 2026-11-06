@@ -389,6 +389,12 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
     const invested = (leveraged && marginSum > 0) ? marginSum : hold.reduce((a, h) => a + (h.avg != null && h.qty ? h.avg * h.qty : 0), 0);
     const value = (leveraged && marginSum > 0) ? marginSum + pnl : hold.reduce((a, h) => a + (h.value != null ? h.value : 0), 0);
     const equity = (realPortfolio && realPortfolio.equity != null) ? realPortfolio.equity : null;
+    // Money formatter: keep cents on small real accounts (a $45.12 wallet shouldn't read "$45"), drop them once
+    // the number is large enough that cents are noise. Matches the headline Holdings value, which already shows 2dp.
+    const money = (n) => ccy + Number(n || 0).toLocaleString(loc, { maximumFractionDigits: Math.abs(Number(n) || 0) < 1000 ? 2 : 0 });
+    // Clean broker tickers for display: "SLVONUSD" -> "SLVON", "BTC-USDT.P" -> "BTC". Delta returns the full
+    // perpetual symbol; showing the bare asset reads better and matches the rest of the app.
+    const cleanSym = (s) => String(s || "").replace(/[-_]/g, "").replace(/\.P$/i, "").replace(/(USDT|USD|INR)$/i, "") || String(s || "");
 
     /* Health from real holdings — only the components FYERS data can honestly support. */
     const realHealth = (() => {
@@ -404,9 +410,9 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
       const drawdown = Math.round((1 - losers / priced.length) * 100);
       const score = Math.round((concentration + drawdown) / 2);
       return {
-        score, biggest: biggest.sym, biggestPct, losers, total: priced.length,
+        score, biggest: cleanSym(biggest.sym), biggestPct, losers, total: priced.length,
         components: [
-          { label: "Diversification", value: concentration, hint: `Largest position ${biggest.sym} is ${biggestPct}% of holdings` },
+          { label: "Diversification", value: concentration, hint: `Largest position ${cleanSym(biggest.sym)} is ${biggestPct}% of holdings` },
           { label: "Drawdown resilience", value: drawdown, hint: `${losers} of ${priced.length} position${priced.length > 1 ? "s" : ""} underwater` },
         ],
       };
@@ -438,23 +444,23 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
           <div style={{ display: "flex", gap: 18, marginTop: 12, flexWrap: "wrap" }}>
             <div>
               <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>{leveraged ? "Margin deployed" : "Invested"}</div>
-              <div className="mono" style={{ fontSize: 13, fontWeight: 800 }}>{invested ? ccy + invested.toLocaleString(loc, { maximumFractionDigits: 0 }) : "—"}</div>
+              <div className="mono" style={{ fontSize: 13, fontWeight: 800 }}>{invested ? money(invested) : "—"}</div>
             </div>
             {leveraged && equity != null && (
               <div>
                 <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>Account equity</div>
-                <div className="mono" style={{ fontSize: 13, fontWeight: 800 }}>{ccy + equity.toLocaleString(loc, { maximumFractionDigits: 0 })}</div>
+                <div className="mono" style={{ fontSize: 13, fontWeight: 800 }}>{money(equity)}</div>
               </div>
             )}
             <div>
               <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>P&L</div>
               <div className="mono" style={{ fontSize: 13, fontWeight: 800, color: pnl > 0 ? "var(--up)" : pnl < 0 ? "var(--down)" : "var(--ink)" }}>
-                {hold.length ? (pnl >= 0 ? "+" : "") + ccy + pnl.toLocaleString(loc, { maximumFractionDigits: 0 }) : "—"}
+                {hold.length ? (pnl >= 0 ? "+" : "-") + money(Math.abs(pnl)) : "—"}
               </div>
             </div>
             <div>
               <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>Available cash</div>
-              <div className="mono" style={{ fontSize: 13, fontWeight: 800 }}>{cash != null ? ccy + cash.toLocaleString(loc, { maximumFractionDigits: 0 }) : "—"}</div>
+              <div className="mono" style={{ fontSize: 13, fontWeight: 800 }}>{cash != null ? money(cash) : "—"}</div>
             </div>
           </div>
         </div>
@@ -542,7 +548,7 @@ export default function Portfolio({ portfolio, wallet, market = "IN", onGoHome, 
               >
                 <div>
                   <div className="disp" style={{ fontWeight: 800, fontSize: 13.5, display: "flex", alignItems: "center", gap: 6 }}>
-                    {h.sym}
+                    {cleanSym(h.sym)}
                     {(h.short || h.side === "SELL") && (
                       <span style={{ fontSize: 8, fontWeight: 800, padding: "2px 6px", borderRadius: 6, background: "var(--down-soft)", color: "var(--down)", letterSpacing: ".03em" }}>SHORT</span>
                     )}
