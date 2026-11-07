@@ -2787,9 +2787,18 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
 
   /* "Use this strategy" on a sample/premium: the card-chosen SL/TP, and now the TIMEFRAME (which
      re-times every indicator) and symbol, ride along on the cfg when the user deploys it. */
+  /* On activation in Crypto / US Tokens, default a 1% trailing stop when the strategy hasn't set one — the server
+     exit monitor then ratchets the stop up 1% per 1% favourable move. IN / US / Commodity keep their configured
+     stop (no trailing default). A user who set tsl explicitly (including 0) is left untouched. */
+  const withTrailDefault = (cfg) => {
+    if (!(market === "Crypto" || market === "USStockTokens")) return cfg;
+    if (cfg && cfg.tsl != null && String(cfg.tsl) !== "") return cfg;
+    return { ...(cfg || {}), tsl: 1 };
+  };
   const withSLTP = (cfg, opts) => {
-    if (!opts) return cfg;
-    const c = { ...cfg };
+    const base = withTrailDefault(cfg);
+    if (!opts) return base;
+    const c = { ...base };
     if (opts.sl != null) c.sl = String(opts.sl);
     if (opts.tp != null) c.tp = String(opts.tp);
     if (opts.tf) { c.tf = opts.tf; c.defs = (c.defs || []).map((d) => ({ ...d, tf: opts.tf })); }
@@ -2874,7 +2883,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
       setToast(`Deactivated ${s.name}`);
     } else {
       const relSym = (s.symbols || []).find((x) => marketOf(x) === market) || ((UNIVERSE[market] || [])[0] || {}).sym || (s.symbols || [])[0];
-      setStrats((p) => p.map((x) => x.id === s.id ? { ...x, active: true, ...(relSym ? { symbols: [relSym] } : {}) } : x));
+      setStrats((p) => p.map((x) => x.id === s.id ? { ...x, active: true, cfg: withTrailDefault(x.cfg), ...(relSym ? { symbols: [relSym] } : {}) } : x));
       setToast(`Activated ${s.name}`);
     }
   };

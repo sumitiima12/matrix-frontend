@@ -242,13 +242,13 @@ function StockIdeasStrip({ onOpen, onBuy, market, liveTick = 0 }) {
   if (top.length === 0) return null;
   return (
     <Section title="Ideas" icon={<Lightbulb size={17} color="var(--primary)" />}>
-      <div className="hide-scroll" style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4 }}>
+      <div className="hide-scroll" style={{ display: "flex", alignItems: "stretch", gap: 12, overflowX: "auto", paddingBottom: 4 }}>
         {top.map((idea, i) => {
           const s = ALL.find((a) => a.sym === idea.sym); const m = marketOf(idea.sym);
           const cur = s ? s.price : idea.entry;
           const potLeft = ((idea.exit - cur) / cur) * 100;
           return (
-            <div key={i} onClick={() => s && onOpen(s)} className="card tap glow pickcard" style={{ flex: "0 0 auto", width: 236, padding: 13 }}>
+            <div key={i} onClick={() => s && onOpen(s)} className="card tap glow pickcard" style={{ flex: "0 0 auto", width: 236, padding: 13, display: "flex", flexDirection: "column" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span className="disp" style={{ fontWeight: 700, fontSize: 14 }}>{idea.sym}</span>
                 <span className="pill" style={{ fontSize: 10, background: "var(--primary-soft)", color: "var(--primary)", fontWeight: 700, padding: "2px 8px" }}>✦ Matrix</span>
@@ -263,7 +263,7 @@ function StockIdeasStrip({ onOpen, onBuy, market, liveTick = 0 }) {
               {/* The shared control. This was the last bespoke buy button left: it
                   silently bought qty 1 with no way to change it. */}
               {s && onBuy && (
-                <div style={{ marginTop: 10 }} onClick={(e) => e.stopPropagation()}>
+                <div style={{ marginTop: "auto", paddingTop: 10 }} onClick={(e) => e.stopPropagation()}>
                   <BuyButton s={s} market={m} onBuy={onBuy} lot={s.lot || 1} fullWidth
                     only={(idea.direction === "Short" || idea.side === "SELL" || idea.short) ? "sell" : "buy"}
                     opts={{ tp: idea.gain, sl: (idea.entry && idea.stop) ? +(((idea.entry - idea.stop) / idea.entry) * 100).toFixed(2) : undefined, tradeType: "Manual" }} />
@@ -403,7 +403,7 @@ function LiveNewsStrip({ symbols = [], onOpen, onBuy, list = [], market = "IN" }
                 <button
                   onClick={(e) => { e.stopPropagation(); e.preventDefault(); setReadSym(n.sym); }}
                   className="tap disp"
-                  style={{ alignSelf: "stretch", marginTop: 6, background: "none", border: "none", padding: "10px 2px", color: "var(--primary)", fontWeight: 800, fontSize: 12, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 3 }}
+                  style={{ alignSelf: "stretch", marginTop: "auto", background: "none", border: "none", padding: "10px 2px", color: "var(--primary)", fontWeight: 800, fontSize: 12, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 3 }}
                 >
                   Read more <ChevronRight size={13} />
                 </button>
