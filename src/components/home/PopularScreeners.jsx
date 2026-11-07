@@ -1339,9 +1339,9 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
               {(showAllActive ? activeScreeners : activeScreeners.slice(0, 2)).map((s) => (
                 <ScreenerRow key={s.key + "|" + market} screener={s} market={market} mode={mode} trades={trades} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} onClosePosition={onClosePosition} liveTick={liveTick} side="BUY" />
               ))}
-              {(onOpenScreener || activeScreeners.length > 2) && (
-                <button onClick={() => { if (onOpenScreener) onOpenScreener(); else setShowAllActive((v) => !v); }} className="tap disp" style={{ marginTop: 4, width: "100%", border: "none", background: "transparent", color: "var(--primary)", fontWeight: 800, fontSize: 12, padding: "6px", cursor: "pointer" }}>
-                  {onOpenScreener ? `Show all (${activeScreeners.length})` : (showAllActive ? "Show less" : `Show all (${activeScreeners.length})`)}
+              {activeScreeners.length > 2 && (
+                <button onClick={() => setShowAllActive((v) => !v)} className="tap disp" style={{ marginTop: 4, width: "100%", border: "none", background: "transparent", color: "var(--primary)", fontWeight: 800, fontSize: 12, padding: "6px", cursor: "pointer" }}>
+                  {showAllActive ? "Show less" : `Show all (${activeScreeners.length})`}
                 </button>
               )}
             </>)}

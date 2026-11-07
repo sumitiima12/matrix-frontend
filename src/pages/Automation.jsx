@@ -810,7 +810,8 @@ function CardTradeLog({ tradeList, market = "IN", open = false }) {
 }
 
 function SampleStrategyCard({ s, onActivate, onClone, onEdit, onPersist, market = "IN", canBacktest = true, onConnect }) {
-  const { loading, stats } = useBacktestStats(s);
+  const [btDays, setBtDays] = useState(0);
+  const { loading, stats } = useBacktestStats(s, { days: btDays });
   const [bt, setBt] = useState(false);
   const [size, setSize] = useState(((s.symbols && (marketOf(s.symbols[0]) === "Crypto" || marketOf(s.symbols[0]) === "USStockTokens")) || market === "Crypto" || market === "USStockTokens") ? 500 : 1);
   const [sl, setSl] = useState(String((s.cfg && s.cfg.sl) || "0.5"));
@@ -874,6 +875,7 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, onPersist, market 
           </div>
         </>
       )}
+      <CardRange onDays={setBtDays} />
 
       <DeploySizeField market={market} value={size} onChange={setSize} />
       <StratSLTP sl={sl} tp={tp} setSl={setSl} setTp={setTp} market={market} />
@@ -928,8 +930,41 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, onPersist, market 
 /* Premium strategy card — locked. Shows only the name + a short description, with a
    backtest and an activate toggle. No rules are revealed and it cannot be edited or
    copied as a template. */
+/* Per-card date-range selector (Today / Last 7 days / This month / Custom / full), matching the range picker used
+   elsewhere. It reports the chosen window as a day-count to useBacktestStats, which trims the backtest candles to
+   that span. "This month" = since the 1st; "Custom" = since the chosen date. */
+function CardRange({ onDays }) {
+  const [sel, setSel] = useState("0");
+  const [from, setFrom] = useState("");
+  const toDays = (s, f) => {
+    if (s === "month") { const m = new Date(); m.setDate(1); m.setHours(0, 0, 0, 0); return Math.max(1, Math.ceil((Date.now() - m.getTime()) / 864e5)); }
+    if (s === "custom") return f ? Math.max(1, Math.ceil((Date.now() - new Date(f + "T00:00:00").getTime()) / 864e5)) : 0;
+    return Number(s) || 0;
+  };
+  const pick = (v) => { setSel(v); onDays(toDays(v, from)); };
+  const pickFrom = (f) => { setFrom(f); onDays(toDays("custom", f)); };
+  const sel0 = { ...selStyle, width: "auto", fontSize: 11, padding: "5px 8px" };
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+      <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>Range</span>
+      <select aria-label="Date range" value={sel} onChange={(e) => pick(e.target.value)} style={sel0}>
+        <option value="1">Today</option>
+        <option value="7">Last 7 days</option>
+        <option value="30">Last 30 days</option>
+        <option value="month">This month</option>
+        <option value="0">Full (6 mo)</option>
+        <option value="custom">Custom…</option>
+      </select>
+      {sel === "custom" && (
+        <input type="date" aria-label="From" value={from} max={new Date().toISOString().slice(0, 10)} onChange={(e) => pickFrom(e.target.value)} className="no-ring mono" style={{ ...sel0, colorScheme: "light" }} />
+      )}
+    </div>
+  );
+}
+
 function PremiumStrategyCard({ s, active, onToggle, onEdit, onPersist, onClone, market = "IN", canBacktest = true, onConnect }) {
-  const { loading, stats } = useBacktestStats(s);
+  const [btDays, setBtDays] = useState(0);   // card date-range window (0 = full 6-month backtest)
+  const { loading, stats } = useBacktestStats(s, { days: btDays });
   const [bt, setBt] = useState(false);
   const [size, setSize] = useState(((s.symbols && (marketOf(s.symbols[0]) === "Crypto" || marketOf(s.symbols[0]) === "USStockTokens")) || market === "Crypto" || market === "USStockTokens") ? 500 : 1);
   const [sl, setSl] = useState(String((s.cfg && s.cfg.sl) || "0.5"));
@@ -999,6 +1034,8 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, onPersist, onClone, 
           <CardTradeLog tradeList={stats.tradeList} market={market} open={showTrades} />
         </>
       ) : null}
+      {/* Date-range selector for the stats above (Today / 7d / This month / Custom / full). */}
+      <CardRange onDays={setBtDays} />
 
       <DeploySizeField market={market} value={size} onChange={setSize} />
       <StratSLTP sl={sl} tp={tp} setSl={setSl} setTp={setTp} market={market} />
@@ -1282,7 +1319,8 @@ function CollapsibleList({ items, render, initial = 3, reverse = true }) {
 /* MY COPIES card — a user's editable copy of a Premium strategy. Rules & indicators are HIDDEN
    (locked); the user can rename it, change symbol / timeframe / SL / TP, optimise, deploy and delete. */
 function CopyStrategyCard({ s, active, onToggle, onPersist, onDelete, market = "IN", canBacktest = true, onConnect }) {
-  const { loading, stats } = useBacktestStats(s);
+  const [btDays, setBtDays] = useState(0);
+  const { loading, stats } = useBacktestStats(s, { days: btDays });
   const [bt, setBt] = useState(false);
   const [name, setName] = useState(s.name || "");
   const [size, setSize] = useState(s.qty != null ? s.qty : ((market === "Crypto" || market === "USStockTokens") ? 500 : 1));
@@ -1331,6 +1369,7 @@ function CopyStrategyCard({ s, active, onToggle, onPersist, onDelete, market = "
               <Stat k="MAX DD" v={stats.maxDD != null ? (stats.maxDD > 0 ? "-" + fmtPnl(stats.maxDD, market) : fmt(0, market)) : "—"} c={stats.maxDD > 0 ? "var(--down)" : "var(--muted)"} />
             </div>
             <CardTradeLog tradeList={stats.tradeList} market={market} open={showTrades} />
+            <CardRange onDays={setBtDays} />
           </>
         ) : null}
 

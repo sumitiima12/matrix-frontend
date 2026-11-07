@@ -248,7 +248,7 @@ function StockIdeasStrip({ onOpen, onBuy, market, liveTick = 0 }) {
           const cur = s ? s.price : idea.entry;
           const potLeft = ((idea.exit - cur) / cur) * 100;
           return (
-            <div key={i} onClick={() => s && onOpen(s)} className="card tap" style={{ flex: "0 0 auto", width: 236, padding: 13 }}>
+            <div key={i} onClick={() => s && onOpen(s)} className="card tap glow pickcard" style={{ flex: "0 0 auto", width: 236, padding: 13 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span className="disp" style={{ fontWeight: 700, fontSize: 14 }}>{idea.sym}</span>
                 <span className="pill" style={{ fontSize: 10, background: "var(--primary-soft)", color: "var(--primary)", fontWeight: 700, padding: "2px 8px" }}>✦ Matrix</span>
@@ -976,6 +976,8 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   const [editSym, setEditSym] = useState(null);
   const [showTrades, setShowTrades] = useState(false);
   const [showTotalPos, setShowTotalPos] = useState(false);   // Total card "Show positions" toggle
+  const [posStatus, setPosStatus] = useState("open");        // positions filter: open | closed
+  const [posBucket, setPosBucket] = useState("All");         // source bucket: All | Smart Auto-Buy | Automation | Screener | Ideas | Manual
   const [runMsg, setRunMsg] = useState("");                  // transient feedback for "Run now"
   const MKT_LABEL = { IN: "🇮🇳 Indian", US: "🇺🇸 US", Crypto: "₿ Crypto", Commodity: "🪙 Commodity", FNO: "⚡ F&O" };
   // Smart Auto-Buy on/off is INDEPENDENT per mode: Real and Virtual each keep their own switch, so
@@ -1340,6 +1342,23 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [trades, market, isReal, realHeld]);
 
+  /* The CLOSED positions behind the Total — same market + mode window, exited (has exitAt + exit). Realised
+     P&L via the same positionPnl engine, measured entry→exit. Powers the "Exit (closed)" tab. */
+  const totalClosedRows = useMemo(() => (trades || [])
+    .filter((t) => inMarket(t.sym, t.market) && (isReal ? !!t.real : !t.real)
+      && t.status !== "rejected" && t.entry != null && t.exitAt != null && t.exit != null)
+    .map((t) => ({ ...t, cur: t.exit, livePnl: +positionPnl(t, t.exit, market).toFixed(2) }))
+    .sort((a, b) => (b.exitAt || 0) - (a.exitAt || 0)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [trades, market, isReal]);
+
+  /* Which source bucket a position belongs to, aligned with the Total's category boxes. srcLabel yields
+     Smart Auto-Buy / Automation / Screener / Idea / Manual; "Idea" maps to the "Ideas" tab. */
+  const bucketOf = (t) => { const s = srcLabel(t); return s === "Idea" ? "Ideas" : s; };
+  const POS_BUCKETS = ["All", "Smart Auto-Buy", "Automation", "Screener", "Ideas", "Manual"];
+  const posSource = posStatus === "closed" ? totalClosedRows : totalOpenRows;
+  const posRows = posBucket === "All" ? posSource : posSource.filter((t) => bucketOf(t) === posBucket);
+
   return (
     <div className="home-metal">
       {/* First-visit orientation — what the app is and what the four engines do. Dismissible, shows once. */}
@@ -1510,24 +1529,44 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 {/* Why did/didn't auto-buy fire — the server-reported reason per source for THIS market + book. */}
                 <AutoStatusNote market={market} mode={isReal ? "real" : "virtual"} />
 
-                {/* Show positions — the OPEN positions behind the Total (all types), rejected excluded. */}
-                {totalOpenRows.length > 0 && (
+                {/* Show positions — OPEN or CLOSED, bucketed by source (All / Smart Auto-Buy / Automation /
+                    Screener / Ideas / Manual). Rejected orders excluded (they live under Orders). */}
+                {(totalOpenRows.length > 0 || totalClosedRows.length > 0) && (
                   <>
                     <button onClick={(e) => { e.stopPropagation(); setShowTotalPos((v) => !v); }} className="tap disp" style={{ marginTop: 12, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--primary)", borderRadius: 11, padding: "9px 12px", fontWeight: 800, fontSize: 12 }}>
                       {showTotalPos ? "Hide positions" : `Show positions (${totalOpenRows.length})`}<ChevronRight size={15} style={{ transform: showTotalPos ? "rotate(-90deg)" : "rotate(90deg)", transition: "transform .2s" }} />
                     </button>
                     {showTotalPos && (
-                      <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-                        {totalOpenRows.map((t) => (
-                          <div key={t.id || `${t.sym}-${t.entryAt}`} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--elev)", borderRadius: 9, padding: "8px 10px" }}>
-                            <div style={{ flex: "1 1 0", minWidth: 0 }}>
-                              <div className="disp" style={{ fontWeight: 800, fontSize: 12.5, color: "var(--primary)" }}>{t.sym} <span style={{ fontSize: 9.5, fontWeight: 700, opacity: .6 }}>{srcLabel(t)}</span></div>
-                              <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>Entry {isReal ? money1(t.entry) : fmt(t.entry, market)} · now {isReal ? money1(t.cur) : fmt(t.cur, market)}</div>
+                      <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 8 }}>
+                        {/* Open vs Closed */}
+                        <div style={{ display: "flex", gap: 6, background: "var(--elev)", borderRadius: 11, padding: 3 }}>
+                          {[["open", "Open", totalOpenRows.length], ["closed", "Exit (closed)", totalClosedRows.length]].map(([k, lbl, n]) => (
+                            <button key={k} onClick={() => setPosStatus(k)} className="tap disp" style={{ flex: 1, border: "none", borderRadius: 9, padding: "7px 8px", fontWeight: 800, fontSize: 11.5, cursor: "pointer", background: posStatus === k ? "var(--primary)" : "transparent", color: posStatus === k ? "var(--on-primary)" : "var(--muted)" }}>{lbl} ({n})</button>
+                          ))}
+                        </div>
+                        {/* Source buckets */}
+                        <div style={{ display: "flex", gap: 6, marginTop: 8, overflowX: "auto", paddingBottom: 2, WebkitOverflowScrolling: "touch" }}>
+                          {POS_BUCKETS.map((b) => {
+                            const n = b === "All" ? posSource.length : posSource.filter((t) => bucketOf(t) === b).length;
+                            const on = posBucket === b;
+                            return (
+                              <button key={b} onClick={() => setPosBucket(b)} className="tap disp" style={{ flex: "0 0 auto", border: "1px solid " + (on ? "var(--primary)" : "var(--line)"), borderRadius: 999, padding: "5px 11px", fontWeight: 800, fontSize: 11, cursor: "pointer", whiteSpace: "nowrap", background: on ? "var(--primary)" : "transparent", color: on ? "var(--on-primary)" : "var(--ink)" }}>{b}{b !== "All" ? ` (${n})` : ""}</button>
+                            );
+                          })}
+                        </div>
+                        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                          {posRows.length === 0 && <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 600, padding: "6px 2px" }}>No {posStatus === "closed" ? "closed" : "open"} positions{posBucket !== "All" ? ` in ${posBucket}` : ""}.</div>}
+                          {posRows.map((t) => (
+                            <div key={t.id || `${t.sym}-${t.entryAt}`} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--elev)", borderRadius: 9, padding: "8px 10px" }}>
+                              <div style={{ flex: "1 1 0", minWidth: 0 }}>
+                                <div className="disp" style={{ fontWeight: 800, fontSize: 12.5, color: "var(--primary)" }}>{t.sym} <span style={{ fontSize: 9.5, fontWeight: 700, opacity: .6 }}>{srcLabel(t)}</span></div>
+                                <div style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 700 }}>Entry {isReal ? money1(t.entry) : fmt(t.entry, market)} · {posStatus === "closed" ? "exit" : "now"} {isReal ? money1(t.cur) : fmt(t.cur, market)}</div>
+                              </div>
+                              <div className="mono" style={{ flex: "0 0 auto", fontWeight: 800, fontSize: 13, color: (t.livePnl || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{(t.livePnl || 0) >= 0 ? "+" : ""}{isReal ? money1(t.livePnl) : fmtPnl(t.livePnl, market)}</div>
                             </div>
-                            <div className="mono" style={{ flex: "0 0 auto", fontWeight: 800, fontSize: 13, color: (t.livePnl || 0) >= 0 ? "var(--up)" : "var(--down)" }}>{(t.livePnl || 0) >= 0 ? "+" : ""}{isReal ? money1(t.livePnl) : fmtPnl(t.livePnl, market)}</div>
-                          </div>
-                        ))}
-                        <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600, marginTop: 2 }}>Rejected orders aren't positions — find them under Orders.</div>
+                          ))}
+                          <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600, marginTop: 2 }}>Rejected orders aren't positions — find them under Orders.</div>
+                        </div>
                       </div>
                     )}
                   </>

@@ -14,6 +14,11 @@ import { analyzeJournal } from "../services/journalService";
  * Orders — trade history and the trading journal.
  */
 
+/* Small uppercase heading above each filter group — keeps the filter bar legible instead of a wall of chips. */
+function FLabel({ children }) {
+  return <div className="disp" style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase", padding: "10px 16px 5px" }}>{children}</div>;
+}
+
 function JournalPanel({ trades = [] }) {
   const { stats, insights } = useMemo(() => analyzeJournal(trades), [trades]);
   const tone = { good: "var(--up)", warn: "#F59E0B", info: "var(--primary)" };
@@ -281,29 +286,33 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
 
       {view === "history" && (
         <>
-      {/* Real / Virtual selector — real orders are journalled with real:true; paper ones aren't. */}
-      <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "10px 16px 0" }}>
+      {/* Mode — real orders are journalled with real:true; paper ones aren't. */}
+      <FLabel>Mode</FLabel>
+      <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "0 16px" }}>
         {REALS.map(([k, l]) => (
           <button key={k} onClick={() => setRealF(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "6px 14px", fontSize: 12, fontWeight: 800, whiteSpace: "nowrap", border: "1px solid " + (realF === k ? "var(--primary)" : "var(--line)"), background: realF === k ? "var(--primary)" : "var(--surface)", color: realF === k ? "var(--on-primary)" : (k === "real" ? "var(--down)" : "var(--ink)") }}>{l}</button>
         ))}
       </div>
 
       {/* Order status — Open (filled, not exited) / Closed / Rejected. */}
-      <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "8px 16px 0" }}>
+      <FLabel>Order status</FLabel>
+      <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "0 16px" }}>
         {STATUSES.map(([k, l]) => (
           <button key={k} onClick={() => setFStatus(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "6px 13px", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", border: "1px solid " + (fStatus === k ? "var(--primary)" : "var(--line)"), background: fStatus === k ? "var(--primary)" : "var(--surface)", color: fStatus === k ? "var(--on-primary)" : (k === "rejected" ? "var(--down)" : "var(--ink)") }}>{l}</button>
         ))}
       </div>
 
-      {/* market selector */}
-      <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "8px 16px 4px" }}>
+      {/* Market selector */}
+      <FLabel>Market</FLabel>
+      <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "0 16px" }}>
         {MKTS.map(([k, l]) => (
           <button key={k} onClick={() => setMkt(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "7px 13px", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", border: "1px solid " + (mkt === k ? "var(--primary)" : "var(--line)"), background: mkt === k ? "var(--primary)" : "var(--surface)", color: mkt === k ? "var(--on-primary)" : "var(--ink)" }}>{l}</button>
         ))}
       </div>
 
-      {/* timeframe — presets, then an explicit From/To */}
-      <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "8px 16px 4px" }}>
+      {/* Period — presets, then an explicit From/To */}
+      <FLabel>Period</FLabel>
+      <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "0 16px 2px" }}>
         {RANGES.map(([k, l]) => (
           <button
             key={k}
@@ -365,7 +374,8 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
       )}
 
       {/* multi-select filters */}
-      <div style={{ display: "flex", gap: 7, flexWrap: "wrap", padding: "6px 16px 10px" }}>
+      <FLabel>Trade type · Symbol · Exit type</FLabel>
+      <div style={{ display: "flex", gap: 7, flexWrap: "wrap", padding: "0 16px 10px" }}>
         <FilterChip label="Symbol" options={allSyms} sel={fSym} setter={setFSym} open={openF} setOpen={setOpenF} />
         <FilterChip label="Trade type" options={TYPES} sel={fType} setter={setFType} colors={typeColor} open={openF} setOpen={setOpenF} />
         <FilterChip label="Exit type" options={EXITS} sel={fExit} setter={setFExit} colors={exitColor} labelOf={exitLabel} open={openF} setOpen={setOpenF} />
