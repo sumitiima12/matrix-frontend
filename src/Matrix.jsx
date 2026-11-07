@@ -247,8 +247,13 @@ select option{background:var(--surface);color:var(--ink)}
 @media (hover:hover){ .card.tap:hover{ transform:translateY(-1px); box-shadow:var(--glow); } }
 .mx-topnav{display:none}
 .gl-both{display:none}
+/* Shared horizontal gutter for the header rows AND the body, so the sticky header bar and every section
+   below it line up on the same left/right edges. 18px on mobile; flush to the shell on desktop (the shell
+   is a centred 980 column, so content sits at its edge with viewport whitespace beyond). */
+.mx-gutter{padding-left:18px;padding-right:18px}
 @media (min-width:1024px){
   .mx-shell{max-width:980px !important}
+  .mx-gutter{padding-left:0;padding-right:0}
   .mx-bottomnav{display:none !important}
   .mx-topnav{display:flex}
   .mx-fab-track{max-width:980px !important}
@@ -1495,7 +1500,7 @@ function AppInner() {
   }, [market, profile]);
 
   // Neo is no longer a bottom-bar tab — it's a floating chatbot button (see below), so the bar has room.
-  const nav = [["home", Home, "Home"], ["ideas", Lightbulb, "Ideas"], ["portfolio", Briefcase, "Portfolio"], ["automation", Bolt, "Auto"], ["screener", SlidersHorizontal, "Screen"], ["orders", Clock, "Orders"]];
+  const nav = [["home", Home, "Home"], ["ideas", Lightbulb, "Ideas"], ["automation", Bolt, "Automation"], ["screener", SlidersHorizontal, "Screener"], ["portfolio", Briefcase, "Portfolio"], ["orders", Clock, "Orders"]];
 
   /* The Automate page must show the P&L for the CURRENT mode, exactly like the homepage Total does: in Real mode
      only real automate trades count; in Virtual mode only the paper ones. Passing an unfiltered mix made the
@@ -1531,7 +1536,7 @@ function AppInner() {
         <div style={{ position: "absolute", top: -80, left: "50%", transform: "translateX(-50%)", width: 420, height: 320, background: "radial-gradient(circle, rgba(150,150,160,.12), transparent 70%)", pointerEvents: "none", zIndex: 0 }} />
         {/* HEADER */}
         <div className="glass" style={{ position: "sticky", top: 0, zIndex: 30, background: "var(--header-bg)", borderBottom: "1px solid var(--line)" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px 8px", gap: 8 }}>
+          <div className="mx-gutter" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 14, paddingBottom: 8, gap: 8 }}>
             <div onClick={() => { setTab("home"); setDetail(null); }} className="tap disp" style={{ display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 7, minWidth: 0, marginRight: "auto" }}>
               <Wordmark height={28} />
             </div>
@@ -1686,7 +1691,7 @@ function AppInner() {
           )}
 
           {/* Search + Watch share one row — Watch moved here from the market-chips row so the chips stay clean. */}
-          <div style={{ padding: "0 18px 14px", display: "flex", gap: 8, alignItems: "center" }}>
+          <div className="mx-gutter" style={{ paddingBottom: 14, display: "flex", gap: 8, alignItems: "center" }}>
             <div onClick={() => setSearch(true)} className="tap" style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, background: "var(--elev)", border: "1px solid var(--line)", borderRadius: 14, padding: "11px 13px", color: "var(--muted)", fontSize: 13.5 }}>
               <Search size={17} style={{ flex: "0 0 auto" }} /> <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Search any stock, crypto or commodity…</span>
             </div>
@@ -1695,7 +1700,7 @@ function AppInner() {
             )}
           </div>
           {!detail && ["home", "ideas", "automation", "portfolio", "screener", "watchlist"].includes(tab) && (
-            <div className="hide-scroll" style={{ display: "flex", gap: 8, overflowX: "auto", padding: "0 18px 12px" }}>
+            <div className="hide-scroll mx-gutter" style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 12 }}>
               {[["IN", "🇮🇳 Indian"], ["US", "🇺🇸 US"], ["Crypto", "₿ Crypto"], ["USStockTokens", "📈 US Tokens"], ["Commodity", "🪙 Commodity"]].filter(([k]) => marketVisible(k)).map(([k, l]) => (
                 <button key={k} onClick={() => { setMarket(k); if (tab === "watchlist") { setHistOpen(false); setTab("home"); } }} className="pill tap disp" style={{ flex: "0 0 auto", padding: "8px 14px", fontWeight: 700, fontSize: 12.5, border: "1px solid " + (market === k ? "var(--primary)" : "var(--line)"), background: market === k ? "var(--primary)" : "var(--surface)", color: market === k ? "var(--on-primary)" : "var(--ink)" }}>{l}</button>
               ))}
@@ -1704,7 +1709,7 @@ function AppInner() {
           {/* DESKTOP top nav — same destinations as the mobile bottom bar, shown only >=1024px via CSS. On
               desktop the bottom bar is hidden, so the nav lives here in the (sticky) header instead. */}
           {!detail && (
-            <nav className="mx-topnav" aria-label="Primary" style={{ gap: 6, padding: "0 18px 10px", flexWrap: "wrap" }}>
+            <nav className="mx-topnav mx-gutter" aria-label="Primary" style={{ gap: 6, paddingBottom: 10, flexWrap: "wrap" }}>
               {nav.map(([k, Icon, label]) => {
                 const current = k === "orders" ? histOpen : (tab === k && !histOpen);
                 return (
@@ -1718,7 +1723,7 @@ function AppInner() {
         </div>
 
         {/* BODY */}
-        <div style={{ padding: "0 18px", position: "relative", zIndex: 1 }}>
+        <div className="mx-gutter" style={{ position: "relative", zIndex: 1 }}>
           {/* key per tab/detail: a crash in one page no longer latches the boundary for every
               other tab — switching tabs remounts a fresh boundary and clears the error. */}
           <ErrorBoundary key={detail ? "detail" : tab} name={detail ? "Stock detail" : tab}>

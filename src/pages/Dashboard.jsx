@@ -621,7 +621,7 @@ function TrendingRow({ s, market, onOpen, onBuy, onWhy }) {
     /* Fixed height + column layout so EVERY card lines up: tags reserve their space, "Why?"
        always sits just below them, and the Buy row is pinned to the bottom (marginTop:auto)
        so it's on the same line across cards whether or not they have tags. */
-    <div className="card tap" onClick={() => onOpen(s)} style={{ flex: "0 0 auto", width: 210, padding: 13, display: "flex", flexDirection: "column", minHeight: 244 }}>
+    <div className="card tap glow pickcard" onClick={() => onOpen(s)} style={{ flex: "0 0 auto", width: 210, padding: 13, display: "flex", flexDirection: "column", minHeight: 244 }}>
       {/* symbol left, price top-right */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
         <div className="disp" style={{ fontWeight: 700, fontSize: 13.5, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.sym}</div>
