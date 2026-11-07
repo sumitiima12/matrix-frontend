@@ -1967,7 +1967,9 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           .sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
         const deployed = (strategies || []).filter((s) => s && s.active);
         const stratRows = deployed.map((s) => {
-          const ts = (trades || []).filter((t) => (isReal ? !!t.real : !t.real) && (t.strategyId != null ? String(t.strategyId) === String(s.id) : t.strategy === s.name));
+          // Market-scoped: only this market's trades count toward the card shown under this market (a strategy's
+          // crypto trades must not inflate its P&L on the Commodity tab). Matches the open-positions list above.
+          const ts = (trades || []).filter((t) => (isReal ? !!t.real : !t.real) && inMarket(t.sym, t.market) && (t.strategyId != null ? String(t.strategyId) === String(s.id) : t.strategy === s.name));
           const pl = ts.reduce((a, t) => { const closed = t.exitAt != null && t.exit != null; const cur = closed ? t.exit : (priceOf(t.sym) ?? t.entry); const dir = (t.side === "SELL" || t.short) ? -1 : 1; return a + derivativePnl({ entry: t.entry, price: cur, quantity: t.qty || 0, contractMultiplier: t.contractMultiplier, side: dir < 0 ? "SELL" : "BUY" }); }, 0);
           return { s, pl, open: ts.filter((t) => t.exitAt == null).length };
         }).sort((a, b) => b.pl - a.pl);
