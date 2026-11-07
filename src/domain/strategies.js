@@ -317,10 +317,28 @@ SEED_STRATS.forEach((s) => {
    `-sell` id suffix keeps them distinct and per-user activation/persistence works
    unchanged. Shorting itself is only executable where the app allows it (crypto and
    Indian options); the risk engine still gates non-shortable markets. */
+/* A short mirror trades the setup in reverse, so its NAME should read bearish, not bullish: shorting a
+   "Bull Flag" is really playing a "Bear Flag" breakdown. Flip the directional words (specific → general so
+   "Bull Flag" is caught before the bare "Bull"); neutral names (Mean Reversion, RSI) pass through unchanged. */
+const shortName = (name) => {
+  let n = String(name || "");
+  const map = [
+    [/Bull Flag/gi, "Bear Flag"],
+    [/Golden Cross/gi, "Death Cross"],
+    [/Ascending Triangle/gi, "Descending Triangle"],
+    [/Bullish/gi, "Bearish"],
+    [/Breakout/gi, "Breakdown"],
+    [/\bBull\b/gi, "Bear"],
+    [/\bLong\b/gi, "Short"],
+    [/\bUptrend\b/gi, "Downtrend"],
+  ];
+  for (const [re, to] of map) n = n.replace(re, to);
+  return n;
+};
 const SHORT_MIRRORS = SEED_STRATS.map((s) => ({
   ...s,
   id: `${s.id}-sell`,
-  name: `${s.name} -Sell`,
+  name: `${shortName(s.name)} -Sell`,
   side: "SELL",
   active: false,
   cfg: {

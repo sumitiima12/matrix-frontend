@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { optimizeExits } from "../../domain/api";
+import { marketOf } from "../../domain/universe";
 import { Sparkles } from "lucide-react";
 
 /* ExitOptimizer — "Optimize SL & TP".
@@ -18,7 +19,7 @@ const cnt = (x) => (x == null || isNaN(x)) ? "—" : String(x);
 export default function ExitOptimizer({ mode, defs, entry, tf, appSyms, currentSl, currentTp, onApply, short = false }) {
   const [state, setState] = useState({ loading: false, res: null, ran: false });
   const [objective, setObjective] = useState(null);   // null until the user picks an option
-  const [rrMin, setRrMin] = useState(1.5);            // minimum reward/risk the optimiser must respect
+  const [rrMin, setRrMin] = useState(() => (marketOf((appSyms || [])[0]) === "Crypto" ? 3 : 1.5));   // crypto defaults to 3:1 reward/risk
   const [maxSl, setMaxSl] = useState(0);              // optional cap: never recommend an SL above this (0 = off)
 
   const run = async (obj) => {

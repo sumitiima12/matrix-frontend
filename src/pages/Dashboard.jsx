@@ -968,7 +968,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
   // picks; sabMinRR defaults to 2 (2:1) so only picks whose target ÷ stop meets the ratio are bought.
   const [sabSyms, setSabSyms] = useState([]);
   const [sabSymOpen, setSabSymOpen] = useState(false);   // collapse the symbol chip picker to a count by default
-  const [sabMinRR, setSabMinRR] = useState(() => { const v = Number(lsGet("mx_sab_minrr_" + market, 2)); return v > 0 ? v : 2; });
+  const [sabMinRR, setSabMinRR] = useState(() => { const def = market === "Crypto" ? 3 : 2; const v = Number(lsGet("mx_sab_minrr_" + market, def)); return v > 0 ? v : def; });
   // Reload the saved MIN R:R when the market changes (each market keeps its own).
   useEffect(() => { const v = Number(lsGet("mx_sab_minrr_" + market, 2)); setSabMinRR(v > 0 ? v : 2); /* eslint-disable-next-line */ }, [market]);
   const saveSabMinRR = () => { lsSet("mx_sab_minrr_" + market, sabMinRR); setSabRRSaved(true); setTimeout(() => setSabRRSaved(false), 1500); };

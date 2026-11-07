@@ -26,10 +26,20 @@ export default function AutoOptionConfig({ market, externalEnabled = null }) {
   const controlled = typeof externalEnabled === "boolean";
   const [cfg, setCfg] = useState(() => {
     const v = lsGet(key, null);
+    // Indian defaults to OPTION when the user hasn't chosen yet (per product: IN auto-trades use options by default);
+    // every other market defaults to stock (enabled:false).
+    const freshDefault = market === "IN";
     const base = v && typeof v === "object" ? { enabled: !!v.enabled, mny: v.mny || "ATM", expiry: v.expiry || "Current week", lots: Math.max(1, Number(v.lots) || 1) }
-                                            : { enabled: false, mny: "ATM", expiry: "Current week", lots: 1 };
+                                            : { enabled: freshDefault, mny: "ATM", expiry: "Current week", lots: 1 };
     return controlled ? { ...base, enabled: externalEnabled } : base;
   });
+  // Persist the IN "options by default" choice on first mount so the SERVER engine receives it (the UI default
+  // alone wouldn't reach settings.options[market]). Only when nothing is stored yet and not externally controlled.
+  useEffect(() => {
+    if (controlled || market !== "IN") return;
+    if (lsGet(key, null) == null) { lsSet(key, cfg); notifyAutoSettingsChanged(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [saved, setSaved] = useState(false);
   const savedTimer = useRef(null);
 

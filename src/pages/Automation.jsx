@@ -536,7 +536,7 @@ function OptimizerBox({ children }) {
 function CardOptimizeButton({ cfg, sym, tf = "5m", sl, tp, setSl, setTp }) {
   const [st, setSt] = useState({ loading: false, done: false, none: false });
   const [objective, setObjective] = useState(null);
-  const [rrMin, setRrMin] = useState(1.5);   // minimum reward/risk the optimiser must respect
+  const [rrMin, setRrMin] = useState(() => (marketOf(sym) === "Crypto" ? 3 : 1.5));   // minimum reward/risk — crypto defaults to 3:1 (leverage demands a wider edge)
   const [maxSl, setMaxSl] = useState(0);     // optional cap: never recommend an SL above this (0 = off)
   const canOpt = !!(cfg && (cfg.entry || []).length > 0 && sym);
   const run = async (obj) => {
@@ -879,6 +879,7 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, onPersist, market 
 
       <DeploySizeField market={market} value={size} onChange={setSize} />
       <StratSLTP sl={sl} tp={tp} setSl={setSl} setTp={setTp} market={market} />
+      <CardInstrument s={s} market={market} onPersist={onPersist} />
       <OptimizerBox>
         <CardOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} setSl={setSl} setTp={setTp} />
         <CardIndicatorOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} onApply={(defs, newTf) => { onPersist && onPersist(s.id, { defs, tf: newTf }); setTfSel(newTf); }} />
@@ -933,6 +934,18 @@ function SampleStrategyCard({ s, onActivate, onClone, onEdit, onPersist, market 
 /* Per-card date-range selector (Today / Last 7 days / This month / Custom / full), matching the range picker used
    elsewhere. It reports the chosen window as a day-count to useBacktestStats, which trims the backtest candles to
    that span. "This month" = since the 1st; "Custom" = since the chosen date. */
+/* IN-only Stock/Future/Option selector for a strategy card — the same instrument choice the deployed-strategy
+   editor exposes, surfaced on the card so a user can pick options without opening the editor (parity with the
+   Ideas / Smart Auto-Buy option toggles). Persists to the strategy's `instrument` field. */
+function CardInstrument({ s, market, onPersist }) {
+  if (market !== "IN") return null;
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, marginBottom: 6 }}>Trade as</div>
+      <InstrumentTypePicker value={s.instrument || "OPTION"} onChange={(v) => onPersist && onPersist(s.id, { instrument: v })} />
+    </div>
+  );
+}
 function CardRange({ onDays }) {
   const [sel, setSel] = useState("0");
   const [from, setFrom] = useState("");
@@ -1039,6 +1052,7 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, onPersist, onClone, 
 
       <DeploySizeField market={market} value={size} onChange={setSize} />
       <StratSLTP sl={sl} tp={tp} setSl={setSl} setTp={setTp} market={market} />
+      <CardInstrument s={s} market={market} onPersist={onPersist} />
       <OptimizerBox>
         <CardOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} setSl={setSl} setTp={setTp} />
         <CardIndicatorOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} onApply={(defs, newTf) => { onPersist && onPersist(s.id, { defs, tf: newTf }); setTfSel(newTf); }} />
@@ -1375,6 +1389,7 @@ function CopyStrategyCard({ s, active, onToggle, onPersist, onDelete, market = "
 
       <DeploySizeField market={market} value={size} onChange={setSize} />
       <StratSLTP sl={sl} tp={tp} setSl={setSl} setTp={setTp} market={market} />
+      <CardInstrument s={s} market={market} onPersist={onPersist} />
       <OptimizerBox>
         <CardOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} setSl={setSl} setTp={setTp} />
         <CardIndicatorOptimizeButton cfg={cfgTf} sym={symSel} tf={tfSel} sl={sl} tp={tp} onApply={(defs, newTf) => { onPersist && onPersist(s.id, { defs, tf: newTf }); setTfSel(newTf); }} />
@@ -1565,7 +1580,7 @@ function PerSymbolStrategyOptimizer({ strats, sym, tf, onApplyExits, onCreateCop
   const [objective, setObjective] = useState("pnl");
   const [state, setState] = useState({ loading: false, rows: null, ran: false });
   const [applied, setApplied] = useState(false);
-  const [rrMin, setRrMin] = useState(1.5);   // minimum reward/risk floor for the optimiser
+  const [rrMin, setRrMin] = useState(market === "Crypto" ? 3 : 1.5);   // crypto defaults to 3:1 reward/risk
   const [maxSl, setMaxSl] = useState(0);     // optional cap: never recommend an SL above this (0 = off)
   const [sel, setSel] = useState(() => new Set());   // rows the user ticked (for bulk apply / create)
   const [view, setView] = useState("all");           // All | Apply (existing only) | Create (new only)
@@ -2015,7 +2030,10 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators,
   const [resBucket, setResBucket] = useState("existing");   // Existing | New tabs over the per-symbol results
   const sizing = () => (isCrypto ? { amount: Number(size) || 0, market } : { qty: Number(size) || 0, market });
   const symOptions = useMemo(() => (UNIVERSE[market] || []).map((s) => s.sym), [market]);
-  const stratNames = useMemo(() => strats.map((s) => s.name), [strats]);
+  // Backtest-All operates on the SEED/premium strategies only — a user's own copies are per-symbol clones of
+  // these, so including them would duplicate rows. (Copies carry copy:true.)
+  const baseStrats = useMemo(() => (strats || []).filter((s) => !s.copy), [strats]);
+  const stratNames = useMemo(() => baseStrats.map((s) => s.name), [baseStrats]);
   const TF_OPTS = [["5m", "5 min"], ["15m", "15 min"], ["30m", "30 min"], ["1h", "1 hour"], ["1d", "1 day"]];
   const PERIODS = [[5, "5 days"], [30, "1 month"], [90, "3 months"], [180, "6 months"], [365, "1 year"]];
   const sel = { ...selStyle, flex: "1 1 0", minWidth: 0, fontSize: 12 };
@@ -2146,12 +2164,12 @@ function BacktestPanel({ strats, market = "IN", onApplyExits, onApplyIndicators,
           </div>
 
           {/* Ideal SL/TP for EACH strategy on the selected symbol. */}
-          {strats.length > 0 && (
-            <PerSymbolStrategyOptimizer strats={pickStrats.length ? strats.filter((s) => pickStrats.includes(s.name)) : strats} sym={sym} tf={tf} days={days} qty={isCrypto ? null : Number(size)} amount={isCrypto ? Number(size) : null} market={market} onApplyExits={onApplyExits} onCreateCopy={onCreateCopy} copyExists={copyExists} />
+          {baseStrats.length > 0 && (
+            <PerSymbolStrategyOptimizer strats={pickStrats.length ? baseStrats.filter((s) => pickStrats.includes(s.name)) : baseStrats} sym={sym} tf={tf} days={days} qty={isCrypto ? null : Number(size)} amount={isCrypto ? Number(size) : null} market={market} onApplyExits={onApplyExits} onCreateCopy={onCreateCopy} copyExists={copyExists} />
           )}
           {/* Ideal INDICATORS (lengths + timeframe) for EACH strategy on the selected symbol. */}
-          {strats.length > 0 && (
-            <PerSymbolIndicatorOptimizer strats={pickStrats.length ? strats.filter((s) => pickStrats.includes(s.name)) : strats} sym={sym} tf={tf} days={days} qty={isCrypto ? null : Number(size)} amount={isCrypto ? Number(size) : null} market={market} onApplyIndicators={onApplyIndicators} onCreateCopy={onCreateCopy} copyExists={copyExists} />
+          {baseStrats.length > 0 && (
+            <PerSymbolIndicatorOptimizer strats={pickStrats.length ? baseStrats.filter((s) => pickStrats.includes(s.name)) : baseStrats} sym={sym} tf={tf} days={days} qty={isCrypto ? null : Number(size)} amount={isCrypto ? Number(size) : null} market={market} onApplyIndicators={onApplyIndicators} onCreateCopy={onCreateCopy} copyExists={copyExists} />
           )}
 
           <button onClick={() => { setResults({}); setRun({ tf, days, sym, names: pickStrats.length ? pickStrats : stratNames, ...sizing() }); }} disabled={!strats.length} className="tap disp" style={{ width: "100%", marginBottom: 12, border: "none", borderRadius: 12, padding: 12, fontSize: 13.5, fontWeight: 800, display: "flex", gap: 7, alignItems: "center", justifyContent: "center", background: strats.length ? "var(--primary)" : "var(--elev)", color: strats.length ? "var(--on-primary)" : "var(--muted)", cursor: strats.length ? "pointer" : "not-allowed" }}>
