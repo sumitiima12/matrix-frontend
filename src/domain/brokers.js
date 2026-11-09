@@ -122,7 +122,7 @@ export const BROKERS = [
     userCreds: true,
     fields: [
       { key: "apiKey", label: "API key name", type: "text", hint: "The full CDP key name, e.g. organizations/…/apiKeys/… (Coinbase → Developer Platform → API keys)" },
-      { key: "apiSecret", label: "Private key (EC PEM)", type: "textarea", hint: "The EC private key shown when you created the CDP key — paste the whole thing including the BEGIN/END EC PRIVATE KEY lines" },
+      { key: "apiSecret", label: "Private key", type: "textarea", hint: "Paste the whole secret Coinbase gave you — either an ECDSA key (BEGIN/END EC PRIVATE KEY block) or an Ed25519 key (base64 string). Both work." },
     ],
     note: "Connect your own Coinbase account (Advanced Trade). Create a CDP API key at Coinbase → Developer Platform; requests are signed server-side with a short-lived JWT (keys never leave the server).",
     docs: "https://docs.cdp.coinbase.com/advanced-trade/docs/auth",
