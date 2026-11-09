@@ -1471,13 +1471,19 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   );
                 })()}
                 {isReal && realCash != null && <div style={{ marginTop: 8, fontSize: 11.5, opacity: .9 }}>Available cash <b style={{ fontWeight: 800, color: "var(--ink)" }}>{money1(realCash)}</b></div>}
-                {/* Live Positions P&L — the UNREALISED mark-to-market on what's still open, broken out from the
-                    headline Total so the user sees "of my total, this much is still riding in open trades". */}
-                {totalOpenRows.length > 0 && (() => {
-                  const liveNet = +totalOpenRows.reduce((a, t) => a + (t.livePnl || 0), 0).toFixed(2);
+                {/* P&L split — REALISED (booked on closed trades) vs UNREALISED (live mark-to-market on open
+                    positions). Unrealised = Σ open-position live P&L; Realised = the headline Total minus that, so
+                    the two always add up to the number shown above regardless of its source (wallet or tiles). */}
+                {(() => {
+                  const unrealised = +totalOpenRows.reduce((a, t) => a + (t.livePnl || 0), 0).toFixed(2);
+                  const totalShown = (isReal && isLeveraged) ? dashNet : boxesSum;
+                  const realised = +(totalShown - unrealised).toFixed(2);
+                  const money = (v) => (v >= 0 ? "+" : "") + (isReal ? money1(v) : fmtPnl(v, market));
+                  const col = (v) => v >= 0 ? "var(--up)" : "var(--down)";
                   return (
-                    <div style={{ marginTop: 4, fontSize: 11.5, opacity: .9 }}>
-                      Live positions P&amp;L <b style={{ fontWeight: 800, color: liveNet >= 0 ? "var(--up)" : "var(--down)" }}>{(liveNet >= 0 ? "+" : "") + (isReal ? money1(liveNet) : fmtPnl(liveNet, market))}</b> <span style={{ opacity: .6 }}>· {totalOpenRows.length} open</span>
+                    <div style={{ display: "flex", gap: 16, marginTop: 6, fontSize: 11.5, flexWrap: "wrap" }}>
+                      <span style={{ opacity: .9 }}>Realized <b style={{ fontWeight: 800, color: col(realised) }}>{money(realised)}</b></span>
+                      <span style={{ opacity: .9 }}>Unrealized <b style={{ fontWeight: 800, color: col(unrealised) }}>{money(unrealised)}</b>{totalOpenRows.length ? <span style={{ opacity: .6 }}> · {totalOpenRows.length} open</span> : null}</span>
                     </div>
                   );
                 })()}
