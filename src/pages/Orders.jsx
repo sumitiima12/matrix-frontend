@@ -9,6 +9,7 @@ import { fetchIndicators, fetchLiveQuotes, fetchTrades, marketOpen, postTrade, r
 import { DEFAULT_LIMITS, validateOrder } from "../services/riskService";
 import FilterChip from "../components/common/FilterChip";
 import { analyzeJournal } from "../services/journalService";
+import { getDeltaRealised } from "../services/tradeService";
 
 /**
  * Orders — trade history and the trading journal.
@@ -119,6 +120,18 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
     if (BACKEND_URL) fetchTrades(userId, from, to).then((t) => { if (!stop && t) setRemote(t); }).catch(() => {});
     return () => { stop = true; };
   }, [from, to, userId]);
+
+  /* AUTHORITATIVE realised P&L from Delta's own ledger (the source of Delta's export "Realised P&L" column), used
+     as the headline for REAL Delta markets so the total matches the broker exactly where per-trade reconstruction
+     can't (shorts, funding, contract scaling). Delta covers Crypto + US Tokens; for other markets / virtual we keep
+     the journal sum. Window follows the Period filter. */
+  const [authReal, setAuthReal] = useState(null);
+  const authEligible = realF !== "virtual" && (mkt === "Crypto" || mkt === "USStockTokens" || mkt === "all");
+  useEffect(() => {
+    let stop = false; setAuthReal(null);
+    if (BACKEND_URL && authEligible) getDeltaRealised(from, to).then((r) => { if (!stop && r && r.realised != null) setAuthReal(r); }).catch(() => {});
+    return () => { stop = true; };
+  }, [from, to, authEligible]);
 
   // A trade is only OPEN if it actually FILLED (has an entry price) and hasn't exited. A rejected
   // or never-filled order (e.g. "amount too small") has no entry and is NOT an open position — it
@@ -366,10 +379,26 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
       <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 24px" }}>
         {/* Summary dashboard — reflects the current filter selection above. */}
         <div className="card" style={{ padding: 12, marginBottom: 12 }}>
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
-            <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".04em" }}>Total P&amp;L</span>
-            <span className="mono" style={{ fontWeight: 800, fontSize: 22, color: totalPnl >= 0 ? "var(--up)" : "var(--down)" }}>{(totalPnl >= 0 ? "+" : "") + fmt(totalPnl, statMkt)}</span>
-          </div>
+          {(() => {
+            // On REAL Delta markets the headline is Delta's OWN realised P&L (broker truth); the journal sum below
+            // it is best-effort per-trade detail that can drift where fills can't be reconstructed.
+            const headVal = (authReal && authReal.realised != null) ? +Number(authReal.realised).toFixed(2) : totalPnl;
+            const showAuth = authReal && authReal.realised != null;
+            return (
+              <>
+                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: showAuth ? 4 : 10 }}>
+                  <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".04em" }}>{showAuth ? "Realised P&amp;L · broker" : "Total P&amp;L"}</span>
+                  <span className="mono" style={{ fontWeight: 800, fontSize: 22, color: headVal >= 0 ? "var(--up)" : "var(--down)" }}>{(headVal >= 0 ? "+" : "") + fmt(headVal, statMkt)}</span>
+                </div>
+                {showAuth && (
+                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 10, fontSize: 11, color: "var(--muted)" }}>
+                    <span>Tracked trades (journal)</span>
+                    <span className="mono" style={{ fontWeight: 700 }}>{(totalPnl >= 0 ? "+" : "") + fmt(totalPnl, statMkt)}</span>
+                  </div>
+                )}
+              </>
+            );
+          })()}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
             {[
               ["Trades", rows.length, "var(--ink)"],

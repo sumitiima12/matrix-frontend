@@ -66,6 +66,19 @@ export async function listTrades(userId, from, to) {
   } catch { return null; }
 }
 
+/** Authoritative realised P&L for the caller's Delta account over a window (from Delta's wallet-transaction
+ *  ledger). Returns { realised, funding, fees, types, complete } or null if unavailable. */
+export async function getDeltaRealised(from, to) {
+  if (!BACKEND_URL) return null;
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/broker/realised?from=${from || 0}&to=${to || Date.now()}`, { headers: authHeaders() });
+    handle401(r.status);
+    if (!r.ok) return null;
+    const j = await r.json();
+    return (j && j.ok) ? j : null;
+  } catch { return null; }
+}
+
 /** Delete ALL of the caller's virtual (paper) trades across every market. Real trades are kept. */
 export async function clearVirtualTrades() {
   if (!BACKEND_URL) return null;
