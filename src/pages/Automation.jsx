@@ -3588,7 +3588,10 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           </div>
         )}
         <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 6, color: agg.pnl >= 0 ? "var(--up)" : "var(--down)" }}>{agg.pnl >= 0 ? "+" : ""}{fmt(agg.pnl, market)}</div>
-        <div style={{ fontSize: 11, opacity: .85, marginTop: -2 }}>{activeCount} active of {shown.length} strategies · {agg.open} still open{agg.costs > 0 ? ` · net of ${fmt(agg.costs, market)} costs` : ""}</div>
+        {/* "still open" counts the SAME set as the Live Positions table below (every open Automate position in this
+            market/book) — not agg.open, which only counts positions still owned by a CURRENT seed strategy and so
+            read 0 while 5 server-opened/legacy Automate positions sat in the list. */}
+        <div style={{ fontSize: 11, opacity: .85, marginTop: -2 }}>{activeCount} active of {shown.length} strategies · {dashOpenPos.length} still open{agg.costs > 0 ? ` · net of ${fmt(agg.costs, market)} costs` : ""}</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
           <DStat k="Returns %" v={(dRet >= 0 ? "+" : "") + dRet.toFixed(2) + "%"} c={dRet >= 0 ? "var(--up)" : "var(--down)"} />
           <DStat k="Win rate" v={agg.decided ? dWinRate.toFixed(0) + "%" : "—"} />
