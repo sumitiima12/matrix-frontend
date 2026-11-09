@@ -1471,6 +1471,16 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   );
                 })()}
                 {isReal && realCash != null && <div style={{ marginTop: 8, fontSize: 11.5, opacity: .9 }}>Available cash <b style={{ fontWeight: 800, color: "var(--ink)" }}>{money1(realCash)}</b></div>}
+                {/* Live Positions P&L — the UNREALISED mark-to-market on what's still open, broken out from the
+                    headline Total so the user sees "of my total, this much is still riding in open trades". */}
+                {totalOpenRows.length > 0 && (() => {
+                  const liveNet = +totalOpenRows.reduce((a, t) => a + (t.livePnl || 0), 0).toFixed(2);
+                  return (
+                    <div style={{ marginTop: 4, fontSize: 11.5, opacity: .9 }}>
+                      Live positions P&amp;L <b style={{ fontWeight: 800, color: liveNet >= 0 ? "var(--up)" : "var(--down)" }}>{(liveNet >= 0 ? "+" : "") + (isReal ? money1(liveNet) : fmtPnl(liveNet, market))}</b> <span style={{ opacity: .6 }}>· {totalOpenRows.length} open</span>
+                    </div>
+                  );
+                })()}
                 {/* Per-type P&L breakdown — equal, subtle boxes so all four sources read at a glance.
                     Shown in BOTH virtual and real mode (including leveraged crypto): even when the
                     headline P&L comes from the broker wallet, the user still wants to see how much of

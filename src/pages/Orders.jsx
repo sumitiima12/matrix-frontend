@@ -14,9 +14,26 @@ import { analyzeJournal } from "../services/journalService";
  * Orders — trade history and the trading journal.
  */
 
-/* Small uppercase heading above each filter group — keeps the filter bar legible instead of a wall of chips. */
-function FLabel({ children }) {
-  return <div className="disp" style={{ fontSize: 9.5, color: "var(--muted)", fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase", padding: "10px 16px 5px" }}>{children}</div>;
+/* Compact labelled dropdown for the single-row filter bar. The label sits inside the control (as the
+   placeholder-style prefix) so every filter is one small pill — Mode, Status, Market, Period all read the same. */
+function Sel({ label, value, onChange, options }) {
+  return (
+    <label style={{ position: "relative", display: "inline-flex", flex: "0 0 auto" }}>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="no-ring disp"
+        style={{
+          appearance: "none", WebkitAppearance: "none", cursor: "pointer",
+          border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)",
+          borderRadius: 999, padding: "7px 26px 7px 12px", fontSize: 12, fontWeight: 700, maxWidth: 170,
+        }}
+      >
+        {options.map(([k, l]) => <option key={k} value={k}>{`${label}: ${l}`}</option>)}
+      </select>
+      <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", fontSize: 9, color: "var(--muted)" }}>▾</span>
+    </label>
+  );
 }
 
 function JournalPanel({ trades = [] }) {
@@ -206,14 +223,21 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
      are measured on CLOSED, filled trades (an open position hasn't won or lost yet; a reject isn't a trade). */
   const filledRows = rows.filter((t) => !isRejected(t));
   const closedFilled = filledRows.filter((t) => !t.open);
-  const winN = closedFilled.filter((t) => (t.livePnl || 0) > 0).length;
-  const lossN = closedFilled.filter((t) => (t.livePnl || 0) < 0).length;
+  // A close is DECIDED only when its exit price actually differs from entry. Broker-reconstructed "breakeven"
+  // closes (exit booked AT entry — a flat/unreconciled fill whose only P&L is fees) are neither a win nor a loss;
+  // counting their small fee-negative P&L as "losses" dragged the win rate to a misleading ~4%. This matches the
+  // Home dashboard, which also treats exit===entry as undecided.
+  const isDecided = (t) => t.exit != null && Number(t.exit) !== Number(t.entry);
+  const decidedClosed = closedFilled.filter(isDecided);
+  const winN = decidedClosed.filter((t) => (t.livePnl || 0) > 0).length;
+  const lossN = decidedClosed.filter((t) => (t.livePnl || 0) < 0).length;
+  const flatN = closedFilled.length - decidedClosed.length;   // breakeven / unreconciled closes (shown separately)
   // Show the plain win:loss COUNT (e.g. "5 : 36") to match the Screener/Automation dashboards — a decimal
   // ratio like "0.14" reads as meaningless to a trader scanning the stat.
   const wlRatio = (winN || lossN) ? `${winN} : ${lossN}` : "—";
-  // Average win / average loss over closed, filled trades (per-trade mean P&L of the winners / losers).
-  const avgWin = winN ? closedFilled.filter((t) => (t.livePnl || 0) > 0).reduce((a, t) => a + t.livePnl, 0) / winN : 0;
-  const avgLoss = lossN ? closedFilled.filter((t) => (t.livePnl || 0) < 0).reduce((a, t) => a + t.livePnl, 0) / lossN : 0;
+  // Average win / average loss over DECIDED closed trades (per-trade mean P&L of the winners / losers).
+  const avgWin = winN ? decidedClosed.filter((t) => (t.livePnl || 0) > 0).reduce((a, t) => a + t.livePnl, 0) / winN : 0;
+  const avgLoss = lossN ? decidedClosed.filter((t) => (t.livePnl || 0) < 0).reduce((a, t) => a + t.livePnl, 0) / lossN : 0;
   const statMkt = mkt === "all" ? "IN" : mkt;
   const typeColor = (tt) => tt === "Smart Auto-Buy" ? "var(--primary)" : tt === "Automation" ? "#8B5CF6" : tt === "Screener" ? "#0EA5E9" : tt === "Idea" ? "var(--up)" : "var(--muted)";
   const exitColor = (et) => (et === "Stop loss" || et === "Trailing stop") ? "var(--down)" : et === "Exit trigger" ? "var(--up)" : et === "Open" ? "var(--primary)" : "var(--muted)";
@@ -286,50 +310,16 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
 
       {view === "history" && (
         <>
-      {/* Mode — real orders are journalled with real:true; paper ones aren't. */}
-      <FLabel>Mode</FLabel>
-      <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "0 16px" }}>
-        {REALS.map(([k, l]) => (
-          <button key={k} onClick={() => setRealF(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "6px 14px", fontSize: 12, fontWeight: 800, whiteSpace: "nowrap", border: "1px solid " + (realF === k ? "var(--primary)" : "var(--line)"), background: realF === k ? "var(--primary)" : "var(--surface)", color: realF === k ? "var(--on-primary)" : (k === "real" ? "var(--down)" : "var(--ink)") }}>{l}</button>
-        ))}
-      </div>
-
-      {/* Order status — Open (filled, not exited) / Closed / Rejected. */}
-      <FLabel>Order status</FLabel>
-      <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "0 16px" }}>
-        {STATUSES.map(([k, l]) => (
-          <button key={k} onClick={() => setFStatus(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "6px 13px", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", border: "1px solid " + (fStatus === k ? "var(--primary)" : "var(--line)"), background: fStatus === k ? "var(--primary)" : "var(--surface)", color: fStatus === k ? "var(--on-primary)" : (k === "rejected" ? "var(--down)" : "var(--ink)") }}>{l}</button>
-        ))}
-      </div>
-
-      {/* Market selector */}
-      <FLabel>Market</FLabel>
-      <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "0 16px" }}>
-        {MKTS.map(([k, l]) => (
-          <button key={k} onClick={() => setMkt(k)} className="pill tap disp" style={{ flex: "0 0 auto", padding: "7px 13px", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", border: "1px solid " + (mkt === k ? "var(--primary)" : "var(--line)"), background: mkt === k ? "var(--primary)" : "var(--surface)", color: mkt === k ? "var(--on-primary)" : "var(--ink)" }}>{l}</button>
-        ))}
-      </div>
-
-      {/* Period — presets, then an explicit From/To */}
-      <FLabel>Period</FLabel>
-      <div className="hide-scroll" style={{ display: "flex", gap: 7, overflowX: "auto", padding: "0 16px 2px" }}>
-        {RANGES.map(([k, l]) => (
-          <button
-            key={k}
-            onClick={() => { setRange(k); setDFrom(""); setDTo(""); }}   // a preset clears the custom dates
-            className="pill tap disp"
-            style={{ flex: "0 0 auto", padding: "7px 14px", fontSize: 12, fontWeight: 700, border: "1px solid " + (range === k ? "var(--primary)" : "var(--line)"), background: range === k ? "var(--primary)" : "var(--surface)", color: range === k ? "var(--on-primary)" : "var(--ink)" }}
-          >
-            {l}
-          </button>
-        ))}
-        <button
-          onClick={() => setRange("custom")}
-          className="pill tap disp"
-          style={{ flex: "0 0 auto", padding: "7px 14px", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", border: "1px solid " + (range === "custom" ? "var(--primary)" : "var(--line)"), background: range === "custom" ? "var(--primary)" : "var(--surface)", color: range === "custom" ? "var(--on-primary)" : "var(--ink)" }}
-        >
-          Custom
-        </button>
+      {/* Single-row filter bar — every filter is a compact dropdown (wraps on narrow screens). */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", padding: "12px 16px 4px" }}>
+        <Sel label="Mode" value={realF} onChange={setRealF} options={REALS} />
+        <Sel label="Status" value={fStatus} onChange={setFStatus} options={STATUSES} />
+        <Sel label="Market" value={mkt} onChange={setMkt} options={MKTS} />
+        <Sel label="Period" value={range} onChange={(v) => { setRange(v); if (v !== "custom") { setDFrom(""); setDTo(""); } }} options={[...RANGES, ["custom", "Custom…"]]} />
+        <FilterChip label="Symbol" options={allSyms} sel={fSym} setter={setFSym} open={openF} setOpen={setOpenF} />
+        <FilterChip label="Trade type" options={TYPES} sel={fType} setter={setFType} colors={typeColor} open={openF} setOpen={setOpenF} />
+        <FilterChip label="Exit type" options={EXITS} sel={fExit} setter={setFExit} colors={exitColor} labelOf={exitLabel} open={openF} setOpen={setOpenF} />
+        {(fSym.length || fType.length || fExit.length) ? <button onClick={() => { setFSym([]); setFType([]); setFExit([]); }} className="pill tap disp" style={{ flex: "0 0 auto", padding: "7px 12px", fontSize: 11.5, fontWeight: 700, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--muted)", whiteSpace: "nowrap" }}>Clear</button> : null}
       </div>
 
       {range === "custom" && (
@@ -373,15 +363,6 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
         </div>
       )}
 
-      {/* multi-select filters */}
-      <FLabel>Trade type · Symbol · Exit type</FLabel>
-      <div style={{ display: "flex", gap: 7, flexWrap: "wrap", padding: "0 16px 10px" }}>
-        <FilterChip label="Symbol" options={allSyms} sel={fSym} setter={setFSym} open={openF} setOpen={setOpenF} />
-        <FilterChip label="Trade type" options={TYPES} sel={fType} setter={setFType} colors={typeColor} open={openF} setOpen={setOpenF} />
-        <FilterChip label="Exit type" options={EXITS} sel={fExit} setter={setFExit} colors={exitColor} labelOf={exitLabel} open={openF} setOpen={setOpenF} />
-        {(fSym.length || fType.length || fExit.length) ? <button onClick={() => { setFSym([]); setFType([]); setFExit([]); }} className="pill tap disp" style={{ flex: "0 0 auto", padding: "7px 12px", fontSize: 11.5, fontWeight: 700, border: "1px solid var(--line)", background: "var(--elev)", color: "var(--muted)", whiteSpace: "nowrap" }}>Clear all</button> : null}
-      </div>
-
       <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 24px" }}>
         {/* Summary dashboard — reflects the current filter selection above. */}
         <div className="card" style={{ padding: 12, marginBottom: 12 }}>
@@ -395,7 +376,8 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
               ["Open", openN, "var(--ink)"],
               ["Wins", winN, "var(--up)"],
               ["Losses", lossN, "var(--down)"],
-              ["Win:Loss", wlRatio, "var(--ink)"],
+              ["Win rate", (winN + lossN) ? Math.round((winN / (winN + lossN)) * 100) + "%" : "—", (winN + lossN) && (winN / (winN + lossN)) >= 0.5 ? "var(--up)" : "var(--down)"],
+              ["Flat", flatN, "var(--muted)"],
               ["Avg Win", winN ? fmt(avgWin, statMkt) : "—", "var(--up)"],
               ["Avg Loss", lossN ? fmt(avgLoss, statMkt) : "—", "var(--down)"],
             ].map(([k, v, c]) => (
