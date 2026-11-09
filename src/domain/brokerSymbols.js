@@ -127,7 +127,7 @@ export const BROKER_COVERAGE = {
   coindcx:   { markets: ["Crypto"],    name: "CoinDCX",        realtime: false, orders: true },
   binance:   { markets: ["Crypto"],    name: "Binance",        realtime: false, orders: true },
   coinswitch:{ markets: ["Crypto"],    name: "CoinSwitch",     realtime: false, orders: true },
-  coinbase:  { markets: ["Crypto"],    name: "Coinbase",       realtime: false, orders: false },   // connect + balances live; order routing is the next slice
+  coinbase:  { markets: ["Crypto"],    name: "Coinbase",       realtime: false, orders: true },   // spot market orders via Advanced Trade (test with a small amount first; USD products)
   schwab:    { markets: ["US"],        name: "Charles Schwab", realtime: false, orders: false },
   robinhood: { markets: ["US"],        name: "Robinhood",      realtime: false, orders: false },
 };
