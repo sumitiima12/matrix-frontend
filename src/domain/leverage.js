@@ -82,35 +82,44 @@ export function tradeCostOf(t) {
    close first) so overlapping positions in the same symbol don't double-count. Returns a NEW array; non-matching
    trades pass through untouched. Idempotent per call — pass the full trades list each time costs refresh. */
 export function attributeDeltaCosts(trades, costs) {
-  const bySymbol = costs && costs.bySymbol;
-  if (!Array.isArray(trades) || !bySymbol) return trades || [];
-  // Fresh pools of unconsumed entries per base symbol (ms timestamps), sorted oldest→newest.
-  const pool = {};
-  for (const k of Object.keys(bySymbol)) {
-    const es = (bySymbol[k].entries || []).map((e, i) => ({ i, ts: Number(e.ts) || 0, amount: Number(e.amount) || 0, used: false }));   // e.ts is ms since epoch
-    es.sort((a, b) => a.ts - b.ts);
-    pool[k] = es;
-  }
+  if (!Array.isArray(trades) || !costs) return trades || [];
+  const mkPool = (bySym) => { const p = {}; for (const k of Object.keys(bySym || {})) { const es = (bySym[k].entries || []).map((e) => ({ ts: Number(e.ts) || 0, amount: Number(e.amount) || 0, used: false })); es.sort((a, b) => a.ts - b.ts); p[k] = es; } return p; };
+  const costPool = mkPool(costs.bySymbol);           // funding + commission + liquidation (≤0)
+  const realPool = mkPool(costs.realisedBySymbol);   // Delta's per-close realised trade P&L (cashflow)
   const BUFFER_MS = 5 * 60 * 1000;   // fees/funding can post a few minutes after the fill
   const closed = trades
     .map((t, idx) => ({ t, idx }))
     .filter(({ t }) => t && t.real && isDeltaUsd(marketOf(t.sym)) && t.exitAt != null && t.exit != null)
     .sort((a, b) => (Number(a.t.exitAt) || 0) - (Number(b.t.exitAt) || 0));
-  const stamp = {};   // idx → cost
+  const stampCost = {}, stampReal = {};
+  // COSTS (funding/fees/liquidation): precise Delta timestamps → window-match around the hold.
   for (const { t, idx } of closed) {
     const base = coinOf(t.sym);
-    const es = pool[base];
-    if (!es || !es.length) continue;
-    const lo = (Number(t.entryAt) || Number(t.exitAt) || 0) - BUFFER_MS;
-    const hi = (Number(t.exitAt) || 0) + BUFFER_MS;
-    let sum = 0, any = false;
-    for (const e of es) {
-      if (e.used) continue;
-      if (e.ts >= lo && e.ts <= hi) { sum += e.amount; e.used = true; any = true; }
+    const ces = costPool[base];
+    if (ces && ces.length) {
+      const lo = (Number(t.entryAt) || Number(t.exitAt) || 0) - BUFFER_MS, hi = (Number(t.exitAt) || 0) + BUFFER_MS;
+      let sum = 0, any = false;
+      for (const e of ces) { if (e.used) continue; if (e.ts >= lo && e.ts <= hi) { sum += e.amount; e.used = true; any = true; } }
+      if (any) stampCost[idx] = +sum.toFixed(6);
     }
-    if (any) stamp[idx] = +sum.toFixed(6);
   }
-  return trades.map((t, idx) => (idx in stamp ? { ...t, _cost: stamp[idx], _costAttributed: true } : t));
+  // REALISED (cashflow): the app's exitAt can lag Delta's real close, so pair FIFO per symbol (nth close ↔ nth
+  // cashflow, chronological) rather than by time window — robust to the lag.
+  const bySym = {};
+  for (const { t, idx } of closed) { const b = coinOf(t.sym); (bySym[b] = bySym[b] || []).push(idx); }
+  for (const sym of Object.keys(bySym)) {
+    const es = realPool[sym]; if (!es || !es.length) continue;
+    const idxs = bySym[sym];
+    const n = Math.min(es.length, idxs.length);
+    for (let i = 0; i < n; i++) { stampReal[idxs[i]] = +Number(es[i].amount).toFixed(6); es[i].used = true; }
+  }
+  return trades.map((t, idx) => {
+    if (!(idx in stampCost) && !(idx in stampReal)) return t;
+    const out = { ...t, _costAttributed: true };
+    if (idx in stampCost) out._cost = stampCost[idx];
+    if (idx in stampReal) out._attrRealised = stampReal[idx];
+    return out;
+  });
 }
 
 /* P&L NET of real costs — the number shown per strategy / per screener.
@@ -123,6 +132,10 @@ export function netTradePnl(t, exitPx, market) {
   const mkt = market || marketOf(t.sym);
   const cost = tradeCostOf(t);
   if (isDeltaUsd(mkt)) {
+    // AUTHORITATIVE: Delta's own per-close realised P&L (cashflow), attributed to this trade, is the truth for a
+    // closed real position — it rescues the 90%+ of crypto closes the app books flat ($0) because it can't
+    // reconstruct the exit. Net = Delta realised + attributed funding/fees (cost ≤ 0).
+    if (t.real && t._attrRealised != null) return Number(t._attrRealised) + cost;
     if (t.real && t._costAttributed) {
       const grossNet = positionPnl(t, exitPx, mkt, { gross: true }) + cost;   // cost ≤ 0
       const qty = Number(t.qty) || 0;

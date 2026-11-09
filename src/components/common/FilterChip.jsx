@@ -23,6 +23,14 @@ export default function FilterChip({ label, options, sel, setter, colors, open, 
               {sel.length > 0 && <button onClick={() => setter([])} className="tap disp" style={{ border: "none", background: "transparent", color: "var(--primary)", fontWeight: 700, fontSize: 12.5 }}>Clear</button>}
             </div>
             <div style={{ overflowY: "auto", marginTop: 10, flex: 1 }}>
+              {/* Explicit "All" row — selecting it clears the filter (empty selection = everything shown). It's the
+                  default state, so it reads as checked whenever nothing specific is picked. */}
+              {options.length > 0 && (
+                <button onClick={() => setter([])} className="tap disp" style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "12px 6px", border: "none", borderBottom: "1px solid var(--line)", background: "transparent", color: "var(--ink)", fontSize: 13.5, fontWeight: 700, textAlign: "left" }}>
+                  <span style={{ width: 19, height: 19, borderRadius: 6, border: "1.5px solid " + (sel.length === 0 ? "var(--primary)" : "var(--line)"), background: sel.length === 0 ? "var(--primary)" : "transparent", display: "grid", placeItems: "center", flexShrink: 0 }}>{sel.length === 0 && <Check size={13} color="var(--on-primary)" />}</span>
+                  <span>All {label.toLowerCase()}s</span>
+                </button>
+              )}
               {options.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--muted)", padding: 16, textAlign: "center" }}>No {label.toLowerCase()} options in your history yet.</div> : options.map((o) => {
                 const on = sel.includes(o);
                 return (

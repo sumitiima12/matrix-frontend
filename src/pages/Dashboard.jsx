@@ -1456,13 +1456,16 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   // (dashNet), which is broker truth and intentionally separate from recorded per-type activity.
                   // Prefer the CANONICAL server total (headline == Σ category boxes by construction). Fall back to
                   // the local tile sum only if the analytics endpoint is unavailable, so the view never breaks.
-                  const tileSum = boxesSum;   // headline === Σ category boxes (all client-side, one P&L engine)
-                  const hp = (isReal && isLeveraged) ? dashNet : tileSum;
-                  const hr = (isReal && isLeveraged) ? dashRet : (totalStats.invested ? (tileSum / totalStats.invested) * 100 : totalStats.retPct);
+                  // Headline === Σ category boxes, ALL from the one client P&L engine. For real Delta (leveraged)
+                  // trades each closed row now carries Delta's OWN realised P&L (cashflow) + funding/fees attributed
+                  // to it, so boxesSum is the broker-true net — no longer the reconstructed-journal undercount, and
+                  // no longer the misleading "open-holdings-only" dashNet. Period-scoped (closes filtered by exit).
+                  const hp = boxesSum;
+                  const pctBase = (isReal && isLeveraged && realMargin > 0) ? dashInv : totalStats.invested;
+                  const hr = pctBase ? (boxesSum / pctBase) * 100 : (isReal && isLeveraged ? dashRet : totalStats.retPct);
                   // Suppress the % when the capital base is too small for it to mean anything: a few dollars of P&L
                   // on a tiny deployed base produces absurd triple-digit percentages (e.g. "+214%") that overstate
                   // performance — misleading on a real-money app. Below the floor we show just the absolute P&L.
-                  const pctBase = (isReal && isLeveraged) ? dashInv : totalStats.invested;
                   const pctFloor = (market === "Crypto" || market === "US" || market === "USStockTokens") ? 25 : 2000;
                   const showPct = pctBase >= pctFloor && isFinite(hr);
                   return (
@@ -1478,8 +1481,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     the two always add up to the number shown above regardless of its source (wallet or tiles). */}
                 {(() => {
                   const unrealised = +totalOpenRows.reduce((a, t) => a + (t.livePnl || 0), 0).toFixed(2);
-                  const totalShown = (isReal && isLeveraged) ? dashNet : boxesSum;
-                  const realised = +(totalShown - unrealised).toFixed(2);
+                  const realised = +(boxesSum - unrealised).toFixed(2);
                   const money = (v) => (v >= 0 ? "+" : "") + (isReal ? money1(v) : fmtPnl(v, market));
                   const col = (v) => v >= 0 ? "var(--up)" : "var(--down)";
                   return (
@@ -1500,7 +1502,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   // (broker P&L − the 5 tracked boxes), so the boxes ALWAYS sum to the headline. In virtual / spot
                   // real mode there's no wallet gap, so it's just the tracked Unknown/Imported bucket.
                   const known5 = catPnl("Manual", totalStats.byType.Manual) + catPnl("Smart Auto-Buy", totalStats.byType["Auto Buy"]) + automatePnl + catPnl("Screener", totalStats.byType["Screener Auto Buy"]) + catPnl("Ideas", totalStats.byType.Ideas);
-                  const unknownBox = (isReal && isLeveraged) ? +((dashNet - known5)).toFixed(2) : shared.categories["Unknown/Imported"];
+                  // Each real Delta trade now carries its OWN funding/fees + Delta realised, so fees aren't a headline
+                  // plug any more — the 6th box is just genuinely untracked activity (positions opened outside the app,
+                  // unattributable ledger lines). Keep "Fees & Funding" as its leveraged label since that's what lands here.
+                  const unknownBox = +(boxesSum - known5).toFixed(2);
                   // In REAL leveraged mode this box IS the broker-wallet-vs-tracked gap — i.e. funding + fees (+ mark
                   // differences / externally-opened positions). Name it for what it is. Virtual/spot keeps the
                   // "Unknown/Imported" meaning (genuinely untracked/legacy journal rows).
@@ -1524,7 +1529,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   const matrixAttrib = boxesSum;
                   return (
                     <div style={{ marginTop: 7, fontSize: 10, lineHeight: 1.5, opacity: .7 }}>
-                      <div>Headline is your <b style={{ opacity: .9 }}>Delta wallet</b> P&amp;L; boxes add up to it. <b style={{ opacity: .9 }}>Fees &amp; Funding</b> is the part of your wallet P&amp;L not tied to a tracked trade — perpetual funding, trading fees, mark-price differences, or positions opened outside the app.</div>
+                      <div>Each trade's P&amp;L is <b style={{ opacity: .9 }}>net of Delta's own realised, funding &amp; fees</b>, so the headline is your true net and the boxes add up to it. <b style={{ opacity: .9 }}>Fees &amp; Funding</b> holds only activity not tied to a tracked trade — e.g. positions opened outside the app.</div>
                       {false && <div>Matrix-attributed P&amp;L (boxes): <b style={{ opacity: .9 }}>{money1(matrixAttrib)}</b></div>}
                       {false && <div>Unattributed difference: <b style={{ opacity: .9 }}>{money1(dashNet - matrixAttrib)}</b></div>}
                     </div>
