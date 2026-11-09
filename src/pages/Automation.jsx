@@ -3000,7 +3000,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const shown = strats.filter((s) => inMkt(s) && (dashBy === "All" || s.by === dashBy) && (symFilter.length === 0 || (s.symbols || []).some((x) => symFilter.includes(x))));
   const priceOfSym = (sym) => { const a = ALL.find((x) => x.sym === sym); return a ? a.price : null; };
   const perf = shown.map((s) => ({ s, p: stratPerf(s, trades, dashRange, priceOfSym, null, { mode: appMode, market: amkt }) }));
-  const agg = perf.reduce((a, { p }) => { a.trades += p.trades; a.wins += p.wins; a.losses += (p.losses || 0); a.decided += (p.decided || 0); a.pnl += (p.pnl || 0); a.cap += p.cap; a.annSum += p.annual; a.open += (p.open || 0); return a; }, { trades: 0, wins: 0, losses: 0, decided: 0, pnl: 0, cap: 0, annSum: 0, open: 0 });
+  const agg = perf.reduce((a, { p }) => { a.trades += p.trades; a.wins += p.wins; a.losses += (p.losses || 0); a.decided += (p.decided || 0); a.pnl += (p.pnl || 0); a.costs += (p.costs || 0); a.cap += p.cap; a.annSum += p.annual; a.open += (p.open || 0); return a; }, { trades: 0, wins: 0, losses: 0, decided: 0, pnl: 0, costs: 0, cap: 0, annSum: 0, open: 0 });
   const activeCount = shown.filter((s) => s.active).length;
   const dWinRate = agg.decided ? agg.wins / agg.decided * 100 : 0;   // decided-only (exclude breakeven/unreconciled)
   const dLosses = agg.losses;   // DECIDED losses only (excludes breakeven/unreconciled $0 closes)
@@ -3588,7 +3588,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           </div>
         )}
         <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 6, color: agg.pnl >= 0 ? "var(--up)" : "var(--down)" }}>{agg.pnl >= 0 ? "+" : ""}{fmt(agg.pnl, market)}</div>
-        <div style={{ fontSize: 11, opacity: .85, marginTop: -2 }}>{activeCount} active of {shown.length} strategies · {agg.open} still open</div>
+        <div style={{ fontSize: 11, opacity: .85, marginTop: -2 }}>{activeCount} active of {shown.length} strategies · {agg.open} still open{agg.costs > 0 ? ` · net of ${fmt(agg.costs, market)} costs` : ""}</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
           <DStat k="Returns %" v={(dRet >= 0 ? "+" : "") + dRet.toFixed(2) + "%"} c={dRet >= 0 ? "var(--up)" : "var(--down)"} />
           <DStat k="Win rate" v={agg.decided ? dWinRate.toFixed(0) + "%" : "—"} />

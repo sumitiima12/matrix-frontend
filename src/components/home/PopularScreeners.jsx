@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import AutoOptionConfig from "../common/AutoOptionConfig";   // IN-only "trade the option instead of the stock" for screener auto-buy
 import TrailingStopConfig from "../common/TrailingStopConfig";   // per-market trailing stop (default on 1% except IN)
 import { ALL, UNIVERSE, marketOf, yahooSymbol } from "../../domain/universe";
-import { positionPnl } from "../../domain/leverage";   // Delta-parity crypto P&L (margin cap + fees), same for paper & real
+import { netTradePnl, tradeCostOf } from "../../domain/leverage";   // P&L NET of real costs (Delta funding+commission+liquidation / spot brokerage); Delta-parity crypto margin cap
 import { CUR, DAY, MKT_NAME, chgColor, fmt, fmtPnl, lsGet, lsSet } from "../../lib/format";
 import { confirmDialog } from "../../lib/confirmDialog";
 import { scanScreener, marketOpen } from "../../domain/api";
@@ -480,11 +480,25 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
       if (closed && (t.exitAt || t.entryAt || 0) < periodFrom) return a;
       const cur = closed ? t.exit : (priceOf(t.sym) != null ? priceOf(t.sym) : t.entry);
       // Delta-parity: crypto is a leveraged perp (margin cap + fees); other markets stay plain spot.
-      const p = positionPnl(t, cur, marketOf(t.sym));
+      const p = netTradePnl(t, cur, marketOf(t.sym));
       return a + p;
     }, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trades, ownsTrade, mode, periodFrom, liveTick]);
+
+  /* Real costs (Delta funding + commission + liquidation, or spot brokerage) baked into periodPnl above —
+     surfaced as a magnitude so the card can show "net · incl. $X costs". Closed trades in-window only. */
+  const periodCosts = useMemo(() => {
+    const isReal = mode === "real";
+    const c = (trades || []).reduce((a, t) => {
+      if (!ownsTrade(t) || (isReal ? !t.real : !!t.real) || t.status === "rejected") return a;
+      if (!(t.exitAt != null && t.exit != null)) return a;
+      if ((t.exitAt || t.entryAt || 0) < periodFrom) return a;
+      return a + tradeCostOf(t);                             // ≤ 0
+    }, 0);
+    return +(-c).toFixed(2);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trades, ownsTrade, mode, periodFrom]);
 
   /* Does THIS screener have any trades in the active mode? Used so its P&L stays visible even after the
      user turns Auto-Buy OFF — turning the toggle off stops NEW entries, but the screener's realised/open
@@ -511,7 +525,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
       // not yet reconstructed). Its gross is 0, so after round-trip fees positionPnl goes slightly NEGATIVE and it
       // was being counted as a loss — that's what dragged these trades' win-rate to 0%. Treat it as undecided.
       if (Number(t.exit) === Number(t.entry)) continue;
-      const p = positionPnl(t, t.exit, marketOf(t.sym));
+      const p = netTradePnl(t, t.exit, marketOf(t.sym));
       if (p > 0) wins++; else if (p < 0) losses++;
     }
     const decided = wins + losses;
@@ -639,6 +653,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
         <button type="button" onClick={() => setShowTrades((v) => !v)} className="tap" title="Tap to see the list of trades" style={{ flex: "0 0 auto", textAlign: "right", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>
           <div style={{ fontSize: 8.5, color: "var(--primary)", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3 }}>P&amp;L{mode === "real" && <span title="Estimated from live prices — broker-verified P&L is in Portfolio." style={{ opacity: .7 }}>·est.</span>} <span style={{ display: "inline-block", transform: showTrades ? "rotate(180deg)" : "none", transition: "transform .15s", fontSize: 8 }}>▾</span></div>
           <div className="mono" style={{ fontWeight: 800, fontSize: 16, color: chgColor(periodPnl), textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 3 }}>{(periodPnl >= 0 ? "+" : "") + fmt(Number(Number(periodPnl).toFixed(2)), market)}</div>
+          {periodCosts > 0 && <div style={{ fontSize: 8.5, color: "var(--muted)", fontWeight: 700, marginTop: 1 }} title="Net of funding, commission & liquidation fees">net · {fmtPnl(periodCosts, market)} costs</div>}
         </button>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginTop: 8 }}>
@@ -926,7 +941,7 @@ export function DashTradeTable({ rows = [], market, priceOf, onlyOpen = false, c
       const cur = isOpen ? (priceOf(t.sym) != null ? priceOf(t.sym) : t.entry) : t.exit;
       const dir = (t.side === "SELL" || t.short) ? -1 : 1;
       const qty = Number(t.qty || 0);
-      const pnl = positionPnl(t, cur, marketOf(t.sym) || market);
+      const pnl = netTradePnl(t, cur, marketOf(t.sym) || market);
       const retPct = Number(t.entry) ? ((Number(cur) / Number(t.entry)) - 1) * 100 * dir : 0;
       return { sym: t.sym, amount: Number(t.entry) * qty, entryAt: t.entryAt, entry: Number(t.entry), exit: isOpen ? null : Number(t.exit), exitAt: isOpen ? null : t.exitAt, exitType: isOpen ? "Open" : (t.exitType || "Closed"), pnl, retPct, open: isOpen };
     }).filter((r) => (onlyOpen ? r.open : true)).sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
@@ -993,7 +1008,7 @@ function ScreenerDashboard({ trades = [], market, mode = "virtual", portfolio = 
   // Use the SAME P&L engine as the Total dashboard / Automate / Portfolio (leverage-aware, margin cap + fees for
   // crypto perps; plain spot elsewhere; direction handled inside). The old plain (px−entry)×qty diverged from the
   // Total's number for the same crypto positions — this makes the Screener P&L reconcile with the Total's Screener box.
-  const pnlOf = (t, px) => positionPnl(t, px, marketOf(t.sym) || market);
+  const pnlOf = (t, px) => netTradePnl(t, px, marketOf(t.sym) || market);
   // Market + Screener order type + DATE RANGE. Market match uses the SAME rule as the Total dashboard: the trade's
   // own market OR the symbol's market (so a screener crypto trade with no explicit t.market isn't dropped here while
   // the Total still counts it). An OPEN position is always shown (live now); a closed trade only if its exit (or
@@ -1250,7 +1265,7 @@ function ScreenerPnLTab({ trades = [], market, mode = "virtual", liveTick = 0, o
       const closed = t.exitAt != null && t.exit != null;
       if (closed && (t.exitAt || t.entryAt || 0) < from) continue;      // closed inside window, or still open
       const cur = closed ? t.exit : (priceOf(t.sym) != null ? priceOf(t.sym) : t.entry);
-      const p = positionPnl(t, cur, marketOf(t.sym) || market);
+      const p = netTradePnl(t, cur, marketOf(t.sym) || market);
       const g = byKey.get(key) || { label: t.strategy || "Screener", screenerKey: (t.screenerKey != null ? t.screenerKey : null), pnl: 0, closed: 0, decided: 0, wins: 0 };
       if (g.screenerKey == null && t.screenerKey != null) g.screenerKey = t.screenerKey;
       g.pnl += p;

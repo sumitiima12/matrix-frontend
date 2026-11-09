@@ -2,7 +2,7 @@
  * domain/strategies.js — starter strategies and the instruments automations can trade.
  */
 import { ALL, marketOf } from "./universe";
-import { positionPnl } from "./leverage";
+import { positionPnl, netTradePnl, tradeCostOf } from "./leverage";
 
 /**
  * Sample strategies, across EVERY market — not just Indian indices.
@@ -427,10 +427,14 @@ export function stratPerf(strat, trades = [], rangeDays = 365, priceOf = null, w
      that form is off by a factor of the entry price.) Shorts profit when price falls. */
   const tradePnl = (t, exitPx) => {
     if (t.entry == null || exitPx == null) return 0;
-    // Delta-parity: crypto is a leveraged perp (margin cap + fees); other markets stay plain spot.
-    return positionPnl(t, exitPx, marketOf(t.sym));
+    // NET of real costs: crypto/US-token trades net Delta funding + commission + liquidation (attributed on the
+    // row as _cost); spot markets net broker brokerage; virtual perps keep the modeled taker fee. Delta-parity.
+    return netTradePnl(t, exitPx, marketOf(t.sym));
   };
   const realised = closed.reduce((a, t) => a + tradePnl(t, t.exit), 0);
+  // Total real cost (funding + commission + liquidation, or spot brokerage) already baked into `realised` above —
+  // surfaced separately so a card can show "net · incl. $X costs". tradeCostOf returns ≤ 0, so negate to a magnitude.
+  const costs = +(-closed.reduce((a, t) => a + tradeCostOf(t), 0)).toFixed(2);
   const unrealised = openPos.reduce((a, t) => {
     const cur = priceOf ? priceOf(t.sym) : null;
     return a + (cur != null ? tradePnl(t, cur) : 0);
@@ -462,6 +466,7 @@ export function stratPerf(strat, trades = [], rangeDays = 365, priceOf = null, w
     retPct: +retPct.toFixed(2),
     annual: +(retPct / years).toFixed(2),
     pnl: +pnl.toFixed(2),
+    costs,
     cap,
     open: openPos.length,
     hasData: true,

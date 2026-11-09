@@ -79,6 +79,20 @@ export async function getDeltaRealised(from, to) {
   } catch { return null; }
 }
 
+/** Per-symbol COST attribution (funding + commission + liquidation) for the caller's Delta account over a window,
+ *  from the wallet-transaction ledger. Used to show per-strategy / per-screener P&L NET of real costs. Returns
+ *  { bySymbol: { SYM: { funding, fees, liquidation, total, entries:[{ts,type,amount}] } }, ... } or null. */
+export async function getDeltaCosts(from, to) {
+  if (!BACKEND_URL) return null;
+  try {
+    const r = await fetch(`${BACKEND_URL}/api/broker/costs?from=${from || 0}&to=${to || Date.now()}`, { headers: authHeaders() });
+    handle401(r.status);
+    if (!r.ok) return null;
+    const j = await r.json();
+    return (j && j.ok) ? j : null;
+  } catch { return null; }
+}
+
 /** Delete ALL of the caller's virtual (paper) trades across every market. Real trades are kept. */
 export async function clearVirtualTrades() {
   if (!BACKEND_URL) return null;
