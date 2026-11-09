@@ -243,7 +243,7 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
   const exitColor = (et) => (et === "Stop loss" || et === "Trailing stop") ? "var(--down)" : et === "Exit trigger" ? "var(--up)" : et === "Open" ? "var(--primary)" : "var(--muted)";
   // Friendly, consistent exit vocabulary (matches the backtest's "TP hit / SL hit / Exit signal"). The stored
   // exitType values stay as-is for filtering; this is display only. A TP exit is "Exit trigger" internally.
-  const EXIT_LABEL = { "Exit trigger": "TP hit", "Stop loss": "SL hit", "Auto exit": "Exit signal", "Trailing stop": "Trailing SL hit", "Square-off": "Square-off", "Manual": "Manual close", "Open": "Open", "Closed": "Closed on broker", "Rejected": "Rejected" };
+  const EXIT_LABEL = { "Exit trigger": "TP hit", "Stop loss": "SL hit", "Auto exit": "Exit signal", "Trailing stop": "Trailing SL hit", "Square-off": "Square-off", "Manual": "Manual close", "Open": "Open", "Closed": "Closed on broker", "Closed (reconciled)": "Closed on broker", "Closed (unreconciled)": "Closed — P&L not reconstructable", "Rejected": "Rejected" };
   const exitLabel = (et) => EXIT_LABEL[et] || et;
   /* SOURCE (order origin) and STRATEGY (the strategy/screener NAME) are INDEPENDENT — never conflated. This is
      what kills "Strategy by: Manual" (Manual is an origin, not a strategy). Mirrors the backend provenance:
