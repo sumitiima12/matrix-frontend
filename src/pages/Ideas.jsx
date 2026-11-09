@@ -16,6 +16,7 @@ import BuyButton from "../components/common/BuyButton";
 import TagRow from "../components/common/TagRow";
 import MultiSelect from "../components/common/MultiSelect";
 import AutoOptionConfig from "../components/common/AutoOptionConfig";   // IN-only "trade the option instead of the stock" for Ideas auto-buy
+import TrailingStopConfig from "../components/common/TrailingStopConfig";   // per-market trailing stop (default on 1% except IN)
 
 /**
  * Ideas — trade ideas published by Matrix, scored against real candles.
@@ -92,8 +93,11 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
      hypothetical "every idea" set — so the count can never read 0 while the P&L is non-zero. An open position
      contributes to P&L and to the trade count (as open), but only CLOSED trades decide win/loss and win rate. */
   const ic = actualCats.catCounts.Ideas;
-  const actN = ic.trades, actClosed = ic.closed, actOpen = ic.open, actWins = ic.wins, actLosses = actClosed - actWins;
-  const actWinRate = actClosed ? (actWins / actClosed) * 100 : 0;
+  // Win rate over DECIDED closes only: computeCategories already splits wins (p>0) and losses (p<0) and leaves
+  // breakeven/unreconciled $0 closes out of both — so use ic.losses, NOT (closed − wins), which counted flats as losses.
+  const actN = ic.trades, actClosed = ic.closed, actOpen = ic.open, actWins = ic.wins, actLosses = ic.losses;
+  const actDecided = ic.wins + ic.losses;
+  const actWinRate = actDecided ? (actWins / actDecided) * 100 : 0;
   const actReturnPct = actualCats.invested.Ideas ? (actualIdeasPnl / actualCats.invested.Ideas) * 100 : 0;
 
   /* Period label: for an account younger than 3 months we show "Since Jul'26"; once it's
@@ -170,6 +174,7 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
           </div>
           {/* IN options: auto-buy the idea's CALL/PUT instead of the stock (real server path). */}
           <AutoOptionConfig market={market} />
+          <TrailingStopConfig market={market} />
         </div>
       )}
       {/* Filters sit directly under the title, above the numbers. Options are plain ids; symbols are
@@ -191,7 +196,7 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
         <Stat k="Returns %" v={actClosed || actOpen ? (actReturnPct >= 0 ? "+" : "") + actReturnPct.toFixed(2) + "%" : "—"} c={actReturnPct >= 0 ? "var(--up)" : "var(--down)"} />
-        <Stat k="Win rate" v={actClosed ? actWinRate.toFixed(0) + "%" : "—"} />
+        <Stat k="Win rate" v={actDecided ? actWinRate.toFixed(0) + "%" : "—"} />
         <Stat k="Win / Loss" v={actWins + " : " + actLosses} />
         <Stat k="Trades" v={actOpen ? `${actN} (${actOpen} open)` : actN} />
       </div>

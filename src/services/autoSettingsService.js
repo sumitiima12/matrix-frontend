@@ -80,7 +80,16 @@ export function collectAutoSettings({ autoOnMap = {}, deployCapMap = {} } = {}) 
       options[market] = { enabled: true, mny: o.mny || "ATM", expiry: o.expiry || "Current week", lots: Math.max(1, Number(o.lots) || 1) };
     }
   }
-  return { screeners: collectScreeners(), smartAutoBuy, ideas, options };
+  // Per-market TRAILING STOP: the server's exit monitor ratchets the stop up by `pct`% for every `pct`% the symbol
+  // moves in the position's favour. Default ON at 1% for every market except Indian (equities are noisier); a stored
+  // override wins. Sent as settings.trailing[market] = { enabled, pct } so the auto engines stamp it on new entries.
+  const trailing = {};
+  for (const market of MARKETS) {
+    const t = lsGet(`mx_auto_trailing_${market}`, null);
+    if (t && typeof t === "object") trailing[market] = { enabled: t.enabled !== false, pct: Number(t.pct) > 0 ? Number(t.pct) : 1 };
+    else trailing[market] = { enabled: market !== "IN", pct: 1 };
+  }
+  return { screeners: collectScreeners(), smartAutoBuy, ideas, options, trailing };
 }
 
 export async function pushAutoSettings(settings) {

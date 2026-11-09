@@ -424,14 +424,18 @@ export function stratPerf(strat, trades = [], rangeDays = 365, priceOf = null, w
   }
 
   const wins = closed.filter((t) => tradePnl(t, t.exit) > 0).length;
+  // DECIDED closes only: a broker-reconstructed breakeven/unreconciled $0 close is neither win nor loss, so the
+  // denominator is wins+losses, not every closed row (which counted flats as losses and crushed the rate).
+  const losses = closed.filter((t) => tradePnl(t, t.exit) < 0).length;
+  const decided = wins + losses;
   const retPct = cap ? (pnl / cap) * 100 : 0;
   const years = Math.max(rangeDays / 365, 1 / 365);
 
   return {
     trades: closed.length,
     positions: mine.length,
-    wins,
-    winRate: closed.length ? +((wins / closed.length) * 100).toFixed(1) : null,
+    wins, losses, decided,
+    winRate: decided ? +((wins / decided) * 100).toFixed(1) : null,
     retPct: +retPct.toFixed(2),
     annual: +(retPct / years).toFixed(2),
     pnl: +pnl.toFixed(2),

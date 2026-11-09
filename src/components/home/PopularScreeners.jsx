@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import AutoOptionConfig from "../common/AutoOptionConfig";   // IN-only "trade the option instead of the stock" for screener auto-buy
+import TrailingStopConfig from "../common/TrailingStopConfig";   // per-market trailing stop (default on 1% except IN)
 import { ALL, UNIVERSE, marketOf, yahooSymbol } from "../../domain/universe";
 import { positionPnl } from "../../domain/leverage";   // Delta-parity crypto P&L (margin cap + fees), same for paper & real
 import { CUR, DAY, MKT_NAME, chgColor, fmt, fmtPnl, lsGet, lsSet } from "../../lib/format";
@@ -997,9 +998,11 @@ function ScreenerDashboard({ trades = [], market, mode = "virtual", portfolio = 
   const realised = closed.reduce((a, t) => a + pnlOf(t, t.exit), 0);
   const unreal = open.reduce((a, t) => { const px = priceOf(t.sym); return a + (px != null ? pnlOf(t, px) : 0); }, 0);
   const pnl = realised + unreal;
+  // Win rate over DECIDED closes only: a broker-reconstructed breakeven/unreconciled close (exit booked at entry →
+  // P&L 0) is neither a win nor a loss, so counting it as a loss (closed − wins) crushed the rate. Matches Orders/Home.
   const wins = closed.filter((t) => pnlOf(t, t.exit) > 0).length;
-  const losses = Math.max(0, closed.length - wins);
-  const winRate = closed.length ? (wins / closed.length) * 100 : null;
+  const losses = closed.filter((t) => pnlOf(t, t.exit) < 0).length;
+  const winRate = (wins + losses) ? (wins / (wins + losses)) * 100 : null;
   const invested = mine.reduce((a, t) => a + Number(t.entry) * Number(t.qty || 0), 0);
   /* R31-P3-04: the return-% DENOMINATOR is the PEAK CONCURRENT reserved capital — the most this screener ever had at
      risk at one time — NOT the sum of every entry's notional. Summing all entries double-counts capital that was
@@ -1233,13 +1236,14 @@ function ScreenerPnLTab({ trades = [], market, mode = "virtual", liveTick = 0, o
       if (closed && (t.exitAt || t.entryAt || 0) < from) continue;      // closed inside window, or still open
       const cur = closed ? t.exit : (priceOf(t.sym) != null ? priceOf(t.sym) : t.entry);
       const p = positionPnl(t, cur, marketOf(t.sym) || market);
-      const g = byKey.get(key) || { label: t.strategy || "Screener", screenerKey: (t.screenerKey != null ? t.screenerKey : null), pnl: 0, closed: 0, wins: 0 };
+      const g = byKey.get(key) || { label: t.strategy || "Screener", screenerKey: (t.screenerKey != null ? t.screenerKey : null), pnl: 0, closed: 0, decided: 0, wins: 0 };
       if (g.screenerKey == null && t.screenerKey != null) g.screenerKey = t.screenerKey;
       g.pnl += p;
-      if (closed) { g.closed += 1; if (p >= 0) g.wins += 1; }
+      // DECIDED closes only for win rate (exclude breakeven/unreconciled $0 closes; a flat close is neither win nor loss).
+      if (closed) { g.closed += 1; if (p > 0) { g.wins += 1; g.decided += 1; } else if (p < 0) { g.decided += 1; } }
       byKey.set(key, g);
     }
-    const _wr = (g) => (g.closed ? g.wins / g.closed : -1);
+    const _wr = (g) => (g.decided ? g.wins / g.decided : -1);
     const val = { label: (g) => String(g.label || "").toLowerCase(), closed: (g) => g.closed, winRate: _wr, pnl: (g) => g.pnl };
     const f = val[sort.key] || val.pnl;
     return [...byKey.values()].sort((a, b) => { const av = f(a), bv = f(b); return (av < bv ? -1 : av > bv ? 1 : 0) * sort.dir; });
@@ -1277,7 +1281,7 @@ function ScreenerPnLTab({ trades = [], market, mode = "virtual", liveTick = 0, o
                   <tr key={i}>
                     <td onClick={() => canOpen && onRowOpen(r.screenerKey)} title={canOpen ? "Open this screener" : undefined} className={canOpen ? "tap" : undefined} style={{ ...td, textAlign: "left", fontWeight: 700, color: canOpen ? "var(--primary)" : "var(--ink)", cursor: canOpen ? "pointer" : "default", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.label}</td>
                     <td style={{ ...td, color: "var(--muted)" }}>{r.closed}</td>
-                    <td style={{ ...td, color: "var(--muted)" }}>{r.closed ? Math.round((r.wins / r.closed) * 100) + "%" : "—"}</td>
+                    <td style={{ ...td, color: "var(--muted)" }}>{r.decided ? Math.round((r.wins / r.decided) * 100) + "%" : "—"}</td>
                     <td className="mono" style={{ ...td, fontWeight: 800, color: chgColor(r.pnl) }}>{(r.pnl >= 0 ? "+" : "") + fmt(Number(r.pnl.toFixed(2)), market)}</td>
                     <td style={{ ...td, textAlign: "center" }}>{r.screenerKey == null ? <span style={{ color: "var(--muted)" }}>—</span> : (
                       <button onClick={() => toggleScreener(r.screenerKey)} className="tap" style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "4px 10px", fontSize: 10.5, fontWeight: 800, cursor: "pointer", background: on ? "var(--up)" : "var(--elev)", color: on ? "#fff" : "var(--ink)" }}>{on ? "Deactivate" : "Activate"}</button>
@@ -1356,6 +1360,7 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
       <ScreenerLivePositions trades={trades} market={market} mode={mode} portfolio={portfolio} realPortfolio={realPortfolio} onClosePosition={onClosePosition} onUpdatePosition={onUpdatePosition} />
       {/* IN options: when enabled, every screener match for this market buys the symbol's CALL/PUT instead of the stock. */}
       <AutoOptionConfig market={market} />
+      <TrailingStopConfig market={market} />
       {/* Build a screener | Popular Screeners | My Screeners */}
       <div className="hide-scroll" style={{ display: "flex", marginBottom: 4, overflowX: "auto" }}>
         <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3 }}>
