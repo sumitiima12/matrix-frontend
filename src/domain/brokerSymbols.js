@@ -79,6 +79,7 @@ export function brokerSymbol(sym, broker) {
     case "coindcx":
     case "binance":
     case "coinswitch":
+    case "coinbase":
       return mkt === "Crypto" ? sym : null;
 
     case "schwab":
@@ -126,6 +127,7 @@ export const BROKER_COVERAGE = {
   coindcx:   { markets: ["Crypto"],    name: "CoinDCX",        realtime: false, orders: true },
   binance:   { markets: ["Crypto"],    name: "Binance",        realtime: false, orders: true },
   coinswitch:{ markets: ["Crypto"],    name: "CoinSwitch",     realtime: false, orders: true },
+  coinbase:  { markets: ["Crypto"],    name: "Coinbase",       realtime: false, orders: false },   // connect + balances live; order routing is the next slice
   schwab:    { markets: ["US"],        name: "Charles Schwab", realtime: false, orders: false },
   robinhood: { markets: ["US"],        name: "Robinhood",      realtime: false, orders: false },
 };

@@ -431,15 +431,27 @@ export default function BrokerSheet({ userId, connectedIds = [], marketMap = {},
                   {(b.fields || []).map((f) => (
                     <div key={f.key} style={{ marginBottom: 10 }}>
                       <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 800, marginBottom: 4 }}>{f.label.toUpperCase()}</div>
-                      <input
-                        value={creds[f.key] || ""}
-                        onChange={(e) => setCreds((c) => ({ ...c, [f.key]: e.target.value }))}
-                        type={f.type === "password" ? "password" : "text"}
-                        placeholder={f.hint || ""}
-                        className="no-ring"
-                        autoComplete="off"
-                        style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 10, padding: "9px 11px", fontSize: 12.5, background: "var(--elev)", color: "var(--ink)" }}
-                      />
+                      {f.type === "textarea" ? (
+                        <textarea
+                          value={creds[f.key] || ""}
+                          onChange={(e) => setCreds((c) => ({ ...c, [f.key]: e.target.value }))}
+                          placeholder={f.hint || ""}
+                          className="no-ring"
+                          autoComplete="off"
+                          rows={5}
+                          style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 10, padding: "9px 11px", fontSize: 11, fontFamily: "monospace", resize: "vertical", background: "var(--elev)", color: "var(--ink)" }}
+                        />
+                      ) : (
+                        <input
+                          value={creds[f.key] || ""}
+                          onChange={(e) => setCreds((c) => ({ ...c, [f.key]: e.target.value }))}
+                          type={f.type === "password" ? "password" : "text"}
+                          placeholder={f.hint || ""}
+                          className="no-ring"
+                          autoComplete="off"
+                          style={{ width: "100%", border: "1px solid var(--line)", borderRadius: 10, padding: "9px 11px", fontSize: 12.5, background: "var(--elev)", color: "var(--ink)" }}
+                        />
+                      )}
                       {f.hint && <div style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 3, lineHeight: 1.4 }}>{f.hint}</div>}
                     </div>
                   ))}
