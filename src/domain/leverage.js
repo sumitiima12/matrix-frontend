@@ -87,7 +87,7 @@ export function attributeDeltaCosts(trades, costs) {
   // Fresh pools of unconsumed entries per base symbol (ms timestamps), sorted oldest→newest.
   const pool = {};
   for (const k of Object.keys(bySymbol)) {
-    const es = (bySymbol[k].entries || []).map((e, i) => ({ i, ts: (Number(e.ts) || 0) * 1000, amount: Number(e.amount) || 0, used: false }));
+    const es = (bySymbol[k].entries || []).map((e, i) => ({ i, ts: Number(e.ts) || 0, amount: Number(e.amount) || 0, used: false }));   // e.ts is ms since epoch
     es.sort((a, b) => a.ts - b.ts);
     pool[k] = es;
   }
