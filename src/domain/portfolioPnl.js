@@ -1,4 +1,4 @@
-import { positionPnl, marginFor } from "./leverage";   // the ONE P&L engine (Delta-parity crypto perps + spot); used everywhere
+import { netTradePnl, marginFor } from "./leverage";   // P&L engine (Delta-parity crypto perps + spot). netTradePnl nets real broker costs (funding+commission+liquidation) stamped on the row.
 import { marketOf } from "./universe";
 
 /**
@@ -84,7 +84,7 @@ export function computeCategories(trades, opts = {}) {
     const px = isO ? (priceOf ? priceOf(t.sym) : null) : Number(t.exit);
     if (px == null) continue;                                               // no mark yet ⇒ can't value; skip
 
-    const p = positionPnl(t, px, marketOf(t.sym) || market);
+    const p = netTradePnl(t, px, marketOf(t.sym) || market);
     const cat = sourceCategory(t);
     cats[cat] += p; total += p; tradesN += 1;
     const cc = catCounts[cat]; cc.trades += 1;
