@@ -9,6 +9,7 @@ import { scanScreener, marketOpen } from "../../domain/api";
 import { notifyAutoSettingsChanged } from "../../services/autoSettingsService";
 import { getHistory } from "../../services/marketService";
 import { backtest } from "../../domain/backtest";
+import { STRATEGY_SCREENERS } from "../../domain/strategies";   // every Automate strategy, as a screener (both sides via the Buy/Sell toggle)
 import Section from "../common/Section";
 import CustomScreener from "./CustomScreener";
 import MyScreeners from "./SavedScreeners";
@@ -141,6 +142,20 @@ const SCREENERS = [
     exit: [{ la: "PriceChange", op: "<", b: "-2", bType: "num" }],
   },
 ];
+
+/* Every Automate strategy is also a screener. Fold the strategy-derived catalog (domain/strategies →
+   STRATEGY_SCREENERS) in after the hand-curated screeners above, skipping any whose key duplicates one we
+   already ship (same slug) or is a known equivalent under a different name. Each added screener gets its Sell
+   side for free via the Buy/Sell toggle. This keeps the Screener catalog in lockstep with Automate. */
+const SCREENER_KEY_EQUIV = { "ema-sma-crossover": "ema-sma-cross", "opening-range-breakout": "orb", "support-and-resistance": "support-resistance" };
+(() => {
+  const have = new Set(SCREENERS.map((s) => s.key));
+  for (const s of STRATEGY_SCREENERS) {
+    const canon = SCREENER_KEY_EQUIV[s.key] || s.key;
+    if (have.has(canon) || have.has(s.key)) continue;
+    have.add(s.key); SCREENERS.push(s);
+  }
+})();
 
 /* R35-P4-01: display names that appear on MORE THAN ONE screener in the catalog. A legacy trade row with no stable
    screenerKey can't be safely attributed to either same-named screener, so per-screener totals quarantine it. */
@@ -1370,15 +1385,24 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
         </div>
       </div>
 
+      {/* Buy/Sell direction — section-level so it's visible on the default Active tab too (not buried in Popular).
+          Buy = long each match; Sell = short it (every screener works both ways). On Active it filters the list
+          by side; on Popular it flips the whole catalog to its Sell mirror. */}
+      {(tab === "active" || tab === "popular") && <>
+        <ScreenerDirToggle dir={dir} setDir={setDir} />
+        {dir === "sell" && <div style={{ fontSize: 10.5, color: "var(--muted)", lineHeight: 1.5, margin: "0 2px 8px" }}>Sell mode shorts each match instead of buying it. Shorting executes on crypto and Indian options; elsewhere it runs in paper.</div>}
+      </>}
+
       {tab === "active" && (() => {
+        const wantSell = dir === "sell";
         const activeRows = [];
         SCREENERS.forEach((s) => {
-          if (isScreenerActive(s.key, market, false)) activeRows.push({ s, side: "BUY" });
-          if (isScreenerActive(s.key, market, true)) activeRows.push({ s, side: "SELL" });
+          if (!wantSell && isScreenerActive(s.key, market, false)) activeRows.push({ s, side: "BUY" });
+          if (wantSell && isScreenerActive(s.key, market, true)) activeRows.push({ s, side: "SELL" });
         });
         if (activeRows.length === 0) return (
           <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.55, padding: "10px 2px 14px" }}>
-            No active screeners yet. Open <b>Popular Screeners</b> or <b>Build a screener</b> and turn on Auto-Buy — activated screeners show up here.
+            No active {wantSell ? "Sell" : "Buy"} screeners yet. Open <b>Popular Screeners</b> or <b>Build a screener</b>{wantSell ? ", flip to Sell," : ""} and turn on Auto-Buy — activated screeners show up here.
           </div>
         );
         return activeRows.map(({ s, side }) => (
@@ -1388,8 +1412,6 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
         ));
       })()}
       {tab === "popular" && <>
-        <ScreenerDirToggle dir={dir} setDir={setDir} />
-        {dir === "sell" && <div style={{ fontSize: 10.5, color: "var(--muted)", lineHeight: 1.5, margin: "0 2px 8px" }}>Sell mode shorts each match instead of buying it. Shorting executes on crypto and Indian options; elsewhere it runs in paper.</div>}
         {SCREENERS.map((s) => (
           <div key={s.key + dir + "|" + market} id={"scr-" + s.key} style={{ scrollMarginTop: 90, borderRadius: 16, outline: focusKey === s.key ? "2px solid var(--primary)" : "none", transition: "outline .2s" }}>
             <ScreenerRow screener={s} market={market} mode={mode} trades={trades} isAdmin={isAdmin} onOpen={onOpen} onBuy={onBuy} onAutoBuy={onAutoBuy} onScreenerBuy={onScreenerBuy} onClosePosition={onClosePosition} liveTick={liveTick} side={dir === "sell" ? "SELL" : "BUY"} />

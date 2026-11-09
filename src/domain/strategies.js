@@ -308,6 +308,29 @@ SEED_STRATS.forEach((s) => {
   if (PREMIUM_DESC[s.id]) { s.premium = true; s.desc = PREMIUM_DESC[s.id]; }
 });
 
+/* ── STRATEGY → SCREENER CATALOG ──────────────────────────────────────────────
+   Every Automate BUY strategy above is also a screener: same indicators + entry/exit chain,
+   evaluated live on candles by the backend screener-scan. This exports one screener per distinct
+   strategy so the Screener tab can offer the SAME catalog as Automate. The Sell side is produced by
+   the Screener UI's Buy/Sell toggle (which stamps `short:true` / the `_sell` cfg), exactly like the
+   SHORT_MIRRORS below — so these are the BUY definitions only and must be derived BEFORE the mirror
+   push. `slug` turns a name into a stable key ("Golden Cross + ADX" → "golden-cross-adx"); the
+   consumer (PopularScreeners) drops any whose slug matches a hand-curated screener it already ships. */
+export const slugify = (s) => String(s || "").toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+export const STRATEGY_SCREENERS = SEED_STRATS
+  .filter((s) => !String(s.id).endsWith("-sell") && s.cfg && Array.isArray(s.cfg.entry) && s.cfg.entry.length)
+  .map((s) => {
+    const c = s.cfg || {};
+    return {
+      key: slugify(s.name), name: s.name, tf: c.tf || "5m",
+      defs: (c.defs || []).map((d) => ({ ...d })),
+      entry: (c.entry || []).map((e) => ({ ...e })),
+      ...(Array.isArray(c.exit) && c.exit.length ? { exit: c.exit.map((e) => ({ ...e })) } : {}),
+      sl: c.sl != null ? String(c.sl) : "1", tp: c.tp != null ? String(c.tp) : "3",
+      fromStrategy: s.id,
+    };
+  });
+
 /* ── SHORT MIRRORS ────────────────────────────────────────────────────────────
    For every Buy strategy above, generate a mirror that trades the SAME setup in the
    OPPOSITE direction (a short). Same rules, indicators, symbols and market — only the
