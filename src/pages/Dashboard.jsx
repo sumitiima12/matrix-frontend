@@ -1989,7 +1989,10 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
           .filter((t) => (isReal ? !!t.real : !t.real) && t.exitAt == null && t.entry != null && t.status !== "rejected" && inMarket(t.sym, t.market) && !isPhantomOpen(t))
           .map((t) => { const cur = priceOf(t.sym) ?? t.entry; const dir = (t.side === "SELL" || t.short) ? -1 : 1; return { ...t, cur, pl: derivativePnl({ entry: t.entry, price: cur, quantity: t.qty || 0, contractMultiplier: t.contractMultiplier, side: dir < 0 ? "SELL" : "BUY" }) }; })
           .sort((a, b) => (b.entryAt || 0) - (a.entryAt || 0));
-        const deployed = (strategies || []).filter((s) => s && s.active);
+        // Active AND in THIS market — a strategy active on the Indian tab must not appear under Crypto's Active
+        // Strategies (it was showing every active strategy across every market on every tab).
+        const stratHere = (s) => { const sy = s && s.symbols && s.symbols[0]; return (sy ? marketOf(sy) : s && s.market) === market; };
+        const deployed = (strategies || []).filter((s) => s && s.active && stratHere(s));
         const stratRows = deployed.map((s) => {
           // Market-scoped: only this market's trades count toward the card shown under this market (a strategy's
           // crypto trades must not inflate its P&L on the Commodity tab). Matches the open-positions list above.

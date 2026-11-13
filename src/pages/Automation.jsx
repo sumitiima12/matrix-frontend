@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { defOperands, chainCode, IND_CATALOG, TEMPLATES, detectTf, detectAllTfs, tfMinutes } from "../domain/strategyLang";
 import { backtest, parseRules, getBtCosts, setBtCosts } from "../domain/backtest";
 import { stratPerf } from "../domain/strategies";
-import { positionPnl } from "../domain/leverage";   // Delta-parity crypto P&L (margin cap + fees), same for paper & real
+import { positionPnl, netTradePnl } from "../domain/leverage";   // positionPnl = gross; netTradePnl = net of Delta realised/funding/fees (matches Home's Automate box)
 import { derivativePnl } from "../domain/derivativePnl";   // contract-aware P&L (multiplier 1 for spot)
 import InstrumentTypePicker from "../components/common/InstrumentTypePicker";   // Stock/Future/Option choice (gated preview)
 import { Activity, AlertTriangle, Bell, Bolt, Check, ChevronDown, ChevronLeft, ChevronUp, Copy, Globe, ListChecks, Pause, Pencil, Play, Plus, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
@@ -2891,6 +2891,20 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
      each to a symbol relevant to the current market and carries its saved qty. */
   const bulkSetActive = async (items, on) => {
     const rows = (items || []).map((x) => (x && x.s) ? x.s : x);
+    // REAL mode: "active" means ARMED ON THE BROKER (isArmedReal), not the paper `s.active` flag. Deactivating
+    // must DISARM the server — otherwise the engine keeps placing real orders after the user "deactivated all"
+    // (the bug behind the lingering ● LIVE badge). Disarm every armed strategy in the set, with one confirm.
+    if (!on && appMode === "real") {
+      const armed = rows.filter((s) => isArmedReal(s));
+      if (!armed.length) { setToast("No strategies are live on your broker right now."); return; }
+      if (!(await confirmDialog(`Stop real trading for ${armed.length} strateg${armed.length > 1 ? "ies" : "y"}?\n\nThe engine stops placing new real orders for them. Open positions keep their SL/TP and are NOT closed here.`, { title: "Deactivate real strategies", confirmLabel: "Deactivate", danger: true }))) return;
+      let ok = 0;
+      for (const s of armed) { const rec = armedRecordFor(s); if (!rec) continue; try { await cancelAutoBuy(userId, rec.id); ok++; } catch { /* continue disarming the rest */ } }
+      setStrats((p) => p.map((s) => armed.some((a) => a.id === s.id) ? { ...s, active: false } : s));
+      refreshArmed();
+      setToast(`Deactivated ${ok} real strateg${ok === 1 ? "y" : "ies"}`);
+      return;
+    }
     // Only touch the strategies that ACTUALLY need to change: activating skips ones already live in
     // this market; deactivating skips ones already off. So "Activate All" over 4 strategies where 3
     // are already active only flips the 1 that's off — and the toast reports that real number.
@@ -3018,6 +3032,15 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const dashOpenPos = dashTrades.filter((t) => (t.exitAt == null || t.exit == null) && !isPhantomOpen(t, _dashHeld, appMode === "real"));
   const dPriceOf = (sym) => { const a = ALL.find((x) => x.sym === sym); return a && a.price != null ? a.price : null; };
   const dPnlOf = (t, px) => { const dir = (t.side === "SELL" || t.short) ? -1 : 1; return derivativePnl({ entry: t.entry, price: px, quantity: t.qty || 0, contractMultiplier: t.contractMultiplier, side: dir < 0 ? "SELL" : "BUY" }); };
+  /* Dashboard HEADLINE P&L = net P&L over EVERY Automate trade in this market/book/window — the SAME set and engine
+     as Home's "Automate" category box (computeCategories → netTradePnl). The per-strategy cards sum via stratPerf,
+     which only counts strategy-OWNED trades and so misses orphaned Automate rows (deleted strategy) — that gap was
+     the "+$9 here vs −$22 on Home" mismatch. Using the all-Automate net here makes the two agree. */
+  const dashNetPnl = +(dashTrades.reduce((a, t) => {
+    const closed = t.exitAt != null && t.exit != null;
+    const cur = closed ? t.exit : (dPriceOf(t.sym) != null ? dPriceOf(t.sym) : t.entry);
+    return a + netTradePnl(t, cur, marketOf(t.sym) || market);
+  }, 0)).toFixed(2);
 
   /* VIRTUAL PAPER AUTO-EXECUTION — the paper twin of the server's real-money auto-buy engine.
      In Virtual mode nothing else opens trades for a deployed Automate strategy, so 80 active
@@ -3288,7 +3311,13 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             type pill. The redundant "Alerts" tag is removed (the bell toggle in the action row already shows it). */}
         <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: "0 0 auto", alignItems: "flex-end" }}>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <span className="pill" style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".03em", padding: "3px 8px", background: s.active ? "var(--up-soft)" : "var(--elev)", color: s.active ? "var(--up)" : "var(--muted)", border: "1px solid var(--line)" }}>{s.active ? "ACTIVE" : "INACTIVE"}</span>
+            {(() => {
+              // In REAL mode the real-broker ARM (isArmedReal) is the activation — not the paper `s.active` flag.
+              // Deriving the badge from the paper flag made a real-armed strategy read "INACTIVE" right next to its
+              // "● LIVE" tag. Use the arm state in real mode so the badge and the LIVE tag agree.
+              const on = appMode === "real" ? isArmedReal(s) : !!s.active;
+              return <span className="pill" style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".03em", padding: "3px 8px", background: on ? "var(--up-soft)" : "var(--elev)", color: on ? "var(--up)" : "var(--muted)", border: "1px solid var(--line)" }}>{on ? "ACTIVE" : "INACTIVE"}</span>;
+            })()}
             {(() => {
               const t = s.premium ? "Premium" : s.by === "Matrix" ? "Sample" : s.publicId ? "Public" : "Mine";
               const c = { Premium: "var(--gold)", Sample: "var(--primary)", Public: "var(--up)", Mine: "var(--primary)" }[t];
@@ -3561,7 +3590,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
           </div>
           <div style={{ textAlign: "left" }}>
             <div style={{ fontSize: 10, opacity: .8, fontWeight: 700 }}>P&amp;L{appMode === "real" && <span title="Estimated from live prices — broker-verified P&L is in Portfolio."> · est.</span>}</div>
-            <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: agg.pnl >= 0 ? "var(--up)" : "var(--down)" }}>{agg.pnl >= 0 ? "+" : ""}{fmt(agg.pnl, market)}</div>
+            <div className="mono" style={{ fontWeight: 800, fontSize: 15, color: dashNetPnl >= 0 ? "var(--up)" : "var(--down)" }}>{dashNetPnl >= 0 ? "+" : ""}{fmt(dashNetPnl, market)}</div>
           </div>
           <span style={{ marginLeft: "auto", display: "grid", placeItems: "center" }}><ChevronDown size={16} /></span>
         </button>
@@ -3587,7 +3616,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             <input type="date" aria-label="To" value={dashTo} min={dashFrom || undefined} onChange={(e) => setDashTo(e.target.value)} className="no-ring mono" style={{ ...dsel, colorScheme: "light", flex: "0 1 auto" }} />
           </div>
         )}
-        <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 6, color: agg.pnl >= 0 ? "var(--up)" : "var(--down)" }}>{agg.pnl >= 0 ? "+" : ""}{fmt(agg.pnl, market)}</div>
+        <div className="mono" style={{ fontWeight: 800, fontSize: 26, marginTop: 6, color: dashNetPnl >= 0 ? "var(--up)" : "var(--down)" }}>{dashNetPnl >= 0 ? "+" : ""}{fmt(dashNetPnl, market)}</div>
         {/* "still open" counts the SAME set as the Live Positions table below (every open Automate position in this
             market/book) — not agg.open, which only counts positions still owned by a CURRENT seed strategy and so
             read 0 while 5 server-opened/legacy Automate positions sat in the list. */}
