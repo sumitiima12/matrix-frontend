@@ -45,11 +45,11 @@ export default function TrendGateConfig({ scope = "global" }) {
         <span className="disp" style={{ fontWeight: 800, fontSize: 12.5 }}>Trade with the trend <span style={{ color: "var(--muted)", fontWeight: 700, fontSize: 10.5 }}>· {lbl}</span></span>
         {saved && <span style={{ fontSize: 10.5, color: "var(--up)", fontWeight: 700 }}>✓ Saved</span>}
       </label>
-      <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 5, lineHeight: 1.5 }}>
-        {scope === "global"
-          ? <>Skips LONG auto-entries when the market is below its {cfg.emaPeriod}-EMA and down &gt;{cfg.momPct}% (and skips shorts in a clear uptrend). This is the master switch and sets the thresholds for every engine.</>
-          : <>On/off for {lbl} only — uses the overall EMA/momentum thresholds. Turning it off disables the gate for {lbl} even when the overall gate is on. (The overall master switch still wins: off there = off everywhere.)</>}
-      </div>
+      {scope === "global" && (
+        <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 5, lineHeight: 1.5 }}>
+          Skips LONG auto-entries in a clear downtrend (below the {cfg.emaPeriod}-EMA and down &gt;{cfg.momPct}%), and shorts in a clear uptrend. Master switch + thresholds for every engine.
+        </div>
+      )}
       {scope === "global" && cfg.enabled && (
         <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 8, flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7 }}>

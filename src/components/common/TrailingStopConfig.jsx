@@ -42,9 +42,6 @@ export default function TrailingStopConfig({ market }) {
         <span className="disp" style={{ fontWeight: 800, fontSize: 12.5 }}>Trailing stop-loss</span>
         {saved && <span style={{ fontSize: 10.5, color: "var(--up)", fontWeight: 700 }}>✓ Saved</span>}
       </label>
-      <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 5, lineHeight: 1.5 }}>
-        Moves the stop up by {cfg.pct}% for every {cfg.pct}% the symbol moves in your favour — locks in gains, never loosens.
-      </div>
       {cfg.enabled && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
           <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>Trail %</span>

@@ -977,7 +977,7 @@ function CardRange({ onDays }) {
   );
 }
 
-function PremiumStrategyCard({ s, active, onToggle, onEdit, onPersist, onClone, market = "IN", canBacktest = true, onConnect }) {
+function PremiumStrategyCard({ s, active, onToggle, onEdit, onPersist, onClone, market = "IN", canBacktest = true, onConnect, appMode = "virtual", armed = false, onGoLive, onStopLive }) {
   const [btDays, setBtDays] = useState(0);   // card date-range window (0 = full 6-month backtest)
   const { loading, stats } = useBacktestStats(s, { days: btDays });
   const [bt, setBt] = useState(false);
@@ -1086,13 +1086,19 @@ function PremiumStrategyCard({ s, active, onToggle, onEdit, onPersist, onClone, 
             <Pencil size={15} />
           </button>
         )}
-        <button
-          onClick={() => onToggle(symSel, size, { sl, tp, tf: tfSel })}
-          className="tap disp"
-          style={{ flex: "1 1 120px", minWidth: 110, border: "1px solid " + (active ? "var(--up)" : "var(--primary)"), background: active ? "var(--up-soft)" : "var(--primary)", color: active ? "var(--up)" : "var(--on-primary)", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" }}
-        >
-          {active ? "✓ Activated" : "Activate"}
-        </button>
+        {appMode === "real"
+          ? (armed
+              ? <button onClick={() => onStopLive && onStopLive(s)} className="tap disp" title="Stop trading this strategy with real money" style={{ flex: "1 1 120px", minWidth: 110, border: "1px solid var(--down)", background: "var(--surface)", color: "var(--down)", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Pause size={13} /> Stop</button>
+              : <button onClick={() => onGoLive && onGoLive(s, { symbol: symSel, size, sl, tp, tf: tfSel })} className="tap disp" title="Arm this strategy for REAL money" style={{ flex: "1 1 120px", minWidth: 110, border: "none", background: "linear-gradient(120deg,var(--up),#0EA968)", color: "#fff", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" }}>Go Live</button>)
+          : (
+            <button
+              onClick={() => onToggle(symSel, size, { sl, tp, tf: tfSel })}
+              className="tap disp"
+              style={{ flex: "1 1 120px", minWidth: 110, border: "1px solid " + (active ? "var(--up)" : "var(--primary)"), background: active ? "var(--up-soft)" : "var(--primary)", color: active ? "var(--up)" : "var(--on-primary)", borderRadius: 11, padding: 10, fontWeight: 800, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" }}
+            >
+              {active ? "✓ Activated" : "Activate"}
+            </button>
+          )}
       </div>
 
       {bt && (
@@ -2526,6 +2532,80 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     try { await cancelAutoBuy(userId, rec.id); refreshArmed(); setToast(`Deactivated ${label} (real)`); }
     catch (e) { await alertDialog(String(e.message || e), { title: "Couldn't deactivate" }); }
   }
+  /* Arm-core shared by the single-card Go Live, the Premium-card Go Live, and Go Live All. Validates the broker
+     route + certification + symbol mapping, then registers the real auto-buy. Returns {ok, reason} — callers show
+     their own confirm/toast. NEVER places an order itself; registerAutoBuy arms the server engine. */
+  async function armStrategyLive(s, { symbol, amt, product, sl, tp, tf, short } = {}) {
+    const sym = symbol || (s.symbols && s.symbols[0]) || null;
+    if (!sym) return { ok: false, reason: "add a symbol first" };
+    const mkt = marketOf(sym) || market;
+    const route = brokerFor ? brokerFor(mkt) : null;
+    if (!route || !route.session) return { ok: false, reason: `connect a broker for ${mkt}` };
+    if (!canAutoBuyBroker(route.id)) return { ok: false, reason: `auto-buy not certified for ${route.meta ? route.meta.name : route.id}` };
+    const bsym = brokerSymbol(sym, route.id);
+    if (!bsym) return { ok: false, reason: `${route.id} can't trade ${sym}` };
+    if (!(Number(amt) > 0)) return { ok: false, reason: "enter an amount per trade" };
+    const cfg = s.cfg && s.cfg.entry ? { defs: s.cfg.defs || [], entry: s.cfg.entry, exit: s.cfg.exit || [] } : null;
+    if (!cfg) return { ok: false, reason: "no builder entry rule to run on the server" };
+    const r = await registerAutoBuy(route.session, userId, {
+      name: s.name || null, symbol: sym, brokerSym: bsym, market: mkt, cfg,
+      notional: Number(amt), interval: tf || s.tf || "5m", product: product || liveProduct,
+      sl: (sl != null && sl !== "") ? sl : (s.cfg.sl || null),
+      tp: (tp != null && tp !== "") ? tp : (s.cfg.tp || null),
+      tsl: s.cfg.tsl || null,
+      orderType: s.cfg.orderType || "MARKET", limitPrice: s.cfg.limitPrice || 0,
+      short: short != null ? short : (s.side === "SELL" || (s.cfg && s.cfg.side === "SELL")),
+    });
+    return { ok: true, already: !!r.already, live: !!r.live };
+  }
+  /* GO LIVE ALL — arm every eligible (has a symbol, not already live) strategy in the section for REAL money, after
+     ONE confirm. Uses the amount in the inline Go Live form if set, else the crypto/US-token default; Indian needs an
+     explicit amount. Each failure is collected and reported; successes refresh the armed list. */
+  const bulkGoLive = async (items) => {
+    const rows = (items || []).map((x) => (x && x.s) ? x.s : x);
+    const eligible = rows.filter((s) => !isArmedReal(s) && s.symbols && s.symbols[0]);
+    if (!eligible.length) { setToast("No eligible strategies to go live (add a symbol, or they're already live)."); return; }
+    const amt = Number(liveAmt) || ((market === "Crypto" || market === "USStockTokens") ? 500 : 0);
+    if (!(amt > 0)) { setToast("Enter an amount per trade in any Go Live form first, then Go Live All."); return; }
+    const cur = (market === "Crypto" || market === "USStockTokens") ? "$" : "₹";
+    if (!(await confirmDialog(
+      `Go live with REAL money on ${eligible.length} strateg${eligible.length > 1 ? "ies" : "y"} in ${MKT_NAME[market] || market}.\n\nPer trade  ${cur}${amt}\nProduct    ${liveProduct}\n\nEach places REAL orders on your connected broker when its entry fires. You can Stop any of them anytime.`,
+      { title: "Go live for all?", confirmLabel: "Go live", danger: true }))) return;
+    setToast(`Arming ${eligible.length} strateg${eligible.length > 1 ? "ies" : "y"}…`);
+    let ok = 0; const fails = [];
+    for (const s of eligible) {
+      try { const r = await armStrategyLive(s, { amt, product: liveProduct }); if (r.ok) ok++; else fails.push(`${s.name || "?"}: ${r.reason}`); }
+      catch (e) { fails.push(`${s.name || "?"}: ${e.message || e}`); }
+    }
+    try { localStorage.setItem("mx_real_activation_ack_v1", "1"); } catch { /* ignore */ }
+    refreshArmed();
+    setToast(fails.length ? `Live: ${ok}. Skipped ${fails.length} — ${fails.slice(0, 2).join("; ")}${fails.length > 2 ? "…" : ""}` : `Armed ${ok} strateg${ok === 1 ? "y" : "ies"} for real money`);
+  };
+  /* Premium-card Go Live / Stop — the Premium card carries its OWN symbol + deploy size, so it arms with those
+     rather than the shared inline form. Armed state is matched by name (a premium armed under any symbol reads live). */
+  const premiumArmed = (s) => armedReal.some((a) => a && a.status !== "cancelled" && (a.name || "") === (s.name || ""));
+  const goLivePremium = async (s, opts = {}) => {
+    const amt = Number(opts.size) || ((market === "Crypto" || market === "USStockTokens") ? 500 : 0);
+    const sym = opts.symbol || (s.symbols && s.symbols[0]);
+    if (!sym) { await alertDialog("Pick a symbol for this market first.", { title: "Symbol needed" }); return; }
+    if (!(amt > 0)) { await alertDialog("Set a deploy size first.", { title: "Amount needed" }); return; }
+    const cur = (market === "Crypto" || market === "USStockTokens") ? "$" : "₹";
+    if (!(await confirmDialog(
+      `Go live with REAL money.\n\nStrategy   ${s.name}\nSymbol     ${sym}\nPer trade  ${cur}${amt}\nProduct    ${liveProduct}\n\nPlaces REAL orders on your broker when the entry fires. Stop anytime.`,
+      { title: "Go live with real money?", confirmLabel: "Go live", danger: true }))) return;
+    setToast(`Arming ${s.name}…`);
+    const r = await armStrategyLive(s, { symbol: sym, amt, sl: opts.sl, tp: opts.tp, tf: opts.tf });
+    if (r.ok) { try { localStorage.setItem("mx_real_activation_ack_v1", "1"); } catch { /* ignore */ } refreshArmed(); setToast(r.already ? `${s.name} already live` : `Armed ${s.name} (real)`); }
+    else await alertDialog(`Couldn't go live: ${r.reason}`, { title: "Go live failed" });
+  };
+  const stopLivePremium = async (s) => {
+    const rec = armedReal.find((a) => a && a.status !== "cancelled" && (a.name || "") === (s.name || ""));
+    if (!rec) { setToast("Not live right now."); return; }
+    if (!(await confirmDialog(`Stop real trading for "${s.name}"?\n\nThe engine stops placing new real orders. Any open position keeps its SL/TP.`, { title: "Stop real strategy", confirmLabel: "Stop" }))) return;
+    setToast(`Stopping ${s.name}…`);
+    try { await cancelAutoBuy(userId, rec.id); refreshArmed(); setToast(`Stopped ${s.name} (real)`); }
+    catch (e) { await alertDialog(String(e.message || e), { title: "Couldn't stop" }); }
+  };
   const creator = me || "You";   // the "created by" tag for anything this user makes
   const [mode, setMode] = useState("plain");   // plain English is the default entry point
   const [defs, setDefs] = useState([
@@ -2931,6 +3011,20 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
      Activate, active count for Deactivate — so the numbers match what happens. */
   const BulkBar = ({ items }) => {
     const rows = (items || []).map((x) => (x && x.s) ? x.s : x);
+    // REAL mode: "live" = armed on the broker (isArmedReal). Go Live All arms the eligible ones (has a symbol, not
+    // already live); Stop All disarms every armed one. VIRTUAL mode keeps the paper Activate/Deactivate semantics.
+    if (appMode === "real") {
+      const goCount = rows.filter((s) => !isArmedReal(s) && s.symbols && s.symbols[0]).length;
+      const stopCount = rows.filter((s) => isArmedReal(s)).length;
+      return (
+        <div style={{ margin: "4px 0 6px" }}>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => bulkGoLive(items)} disabled={!goCount} className="tap disp" title="Arm every eligible strategy for REAL money (one confirm)" style={{ flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11.5, border: "none", background: goCount ? "linear-gradient(120deg,var(--up),#0EA968)" : "var(--elev)", color: goCount ? "#fff" : "var(--muted)", cursor: goCount ? "pointer" : "not-allowed" }}>Go Live All{goCount ? ` (${goCount})` : ""}</button>
+            <button onClick={() => bulkSetActive(items, false)} disabled={!stopCount} className="tap disp" title="Stop real trading on every armed strategy" style={{ flex: 1, borderRadius: 10, padding: "8px 6px", fontWeight: 800, fontSize: 11.5, border: "1px solid " + (stopCount ? "var(--down)" : "var(--line)"), background: stopCount ? "var(--surface)" : "var(--elev)", color: stopCount ? "var(--down)" : "var(--muted)", cursor: stopCount ? "pointer" : "not-allowed" }}>Stop All{stopCount ? ` (${stopCount})` : ""}</button>
+          </div>
+        </div>
+      );
+    }
     const offCount = rows.filter((s) => !activeInMarket(s)).length;   // will be activated
     const onCount = rows.filter((s) => activeInMarket(s)).length;     // will be deactivated
     return (
@@ -4142,7 +4236,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
                     <div style={{ flex: "1 1 180px", minWidth: 0 }}><StatusToggle status={lsStatus} setStatus={setLsStatus} activeCount={sideList.filter((s) => activeInMarket(s)).length} inactiveCount={sideList.filter((s) => !activeInMarket(s)).length} /></div>
                   </div>
                   <BulkBar items={selRaw} />
-                  {selRaw.length ? selRaw.map((s) => <PremiumStrategyCard key={s.id} s={s} active={activeInMarket(s)} market={market} onToggle={(rs, size, opts) => togglePremiumHere(s.id, rs, size, opts)} onEdit={isAdmin ? loadForEdit : undefined} onPersist={persistCard} onClone={clonePremium} canBacktest={canBacktest} onConnect={onConnectBroker} />) : <div style={emptyNote}>No {lsSide}{lsStatus !== "all" ? " " + lsStatus : ""} strategies.</div>}
+                  {selRaw.length ? selRaw.map((s) => <PremiumStrategyCard key={s.id} s={s} active={activeInMarket(s)} market={market} onToggle={(rs, size, opts) => togglePremiumHere(s.id, rs, size, opts)} onEdit={isAdmin ? loadForEdit : undefined} onPersist={persistCard} onClone={clonePremium} canBacktest={canBacktest} onConnect={onConnectBroker} appMode={appMode} armed={appMode === "real" && premiumArmed(s)} onGoLive={goLivePremium} onStopLive={stopLivePremium} />) : <div style={emptyNote}>No {lsSide}{lsStatus !== "all" ? " " + lsStatus : ""} strategies.</div>}
                 </>);
               })()}
         </>

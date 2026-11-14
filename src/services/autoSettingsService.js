@@ -101,7 +101,10 @@ export function collectAutoSettings({ autoOnMap = {}, deployCapMap = {} } = {}) 
   for (const [scope, type] of [["automation", "automate"], ["screener", "screener"], ["ideas", "ideas"], ["smartbuy", "smartbuy"]]) {
     const v = readTG(`mx_auto_trendgate_${scope}`); if (v) trendGateByType[type] = v;
   }
-  return { screeners: collectScreeners(), smartAutoBuy, ideas, options, trailing, trendGate, trendGateByType };
+  // MASTER screener switch — when the user pauses it, the server skips ALL screener auto-entries (open positions and
+  // their exits keep running). Stored as a single global flag; default running.
+  const screenerMaster = lsGet("mx_scr_master", true) !== false;
+  return { screeners: collectScreeners(), smartAutoBuy, ideas, options, trailing, trendGate, trendGateByType, screenerMaster };
 }
 
 export async function pushAutoSettings(settings) {
@@ -159,6 +162,7 @@ export function autoReasonText(reason) {
     "fill-unverified-broker": "this broker isn't enabled for unattended auto",
     capability: "this broker isn't certified for unattended auto",
     "reconciliation-locked": "paused — reconcile with your broker",
+    "screener-paused": "screener engine paused — master switch off",
     "risk-read-failed": "couldn't read risk state this cycle",
     "account-unverifiable": "couldn't verify broker account this cycle",
     "daily-loss-limit": "daily-loss limit hit — paused for the session",

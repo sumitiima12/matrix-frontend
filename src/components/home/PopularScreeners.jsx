@@ -440,6 +440,26 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
     writeScrCfg(true); notifyAutoSettingsChanged();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoOn, market, eTf, defSL, defTP, capNum, eSel.length]);
+
+  /* BULK CONTROLS from the Screener section header (Auto-Buy All / Off All / Auto-select all). Each mounted card
+     applies the action to ITSELF when the market + side match, so its own config write (writeScrCfg) and auto-select
+     backtest stay correct. The real-money confirm is shown ONCE at the bulk level, so cards arm without re-prompting. */
+  useEffect(() => {
+    const onBulk = (e) => {
+      const d = (e && e.detail) || {};
+      if (d.market !== market || !!d.short !== !!short) return;
+      if (d.action === "autobuy-on") {
+        if (!autoOn) { setAutoOn(true); lsSet(autoKey, true); writeScrCfg(true); notifyAutoSettingsChanged(); }
+      } else if (d.action === "autobuy-off") {
+        if (autoOn) { setAutoOn(false); lsSet(autoKey, false); writeScrCfg(false); notifyAutoSettingsChanged(); }
+      } else if (d.action === "autoselect") {
+        runAutoSelect();
+      }
+    };
+    window.addEventListener("mx-scr-bulk", onBulk);
+    return () => window.removeEventListener("mx-scr-bulk", onBulk);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [market, short, autoOn, autoKey]);
   const cardQty = (sym) => (eOv[sym] && eOv[sym].qty != null) ? eOv[sym].qty : qtyDefaultFor(market);
   const useBasketQty = eSel.length > 0;   // curated basket → explicit per-symbol qty (not capital-split)
   const setCardOv = (sym, field, val) => setOv((o) => ({ ...o, [sym]: { ...(o[sym] || {}), [field]: val === "" ? undefined : +val } }));
@@ -555,6 +575,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
      mode), each with the card's SL/TP — mirroring Smart Auto-Buy. */
   useEffect(() => {
     if (!autoOn || !(onScreenerBuy || onAutoBuy || onBuy) || !matches.length) return;
+    if (lsGet("mx_scr_master", true) === false) return;   // master switch paused — fire no new entries
     // SERVER-SIDE now (Crypto / US Tokens / Indian / US / Commodity): the backend screener engine runs these 24/7
     // even when the app is closed, so the client must NOT also fire them — that would double-trade.
     if (["Crypto", "USStockTokens", "IN", "US", "Commodity"].includes(market)) return;
@@ -1357,6 +1378,28 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
   const [editing, setEditing] = useState(null);   // a saved screener loaded into the builder for editing
   const [showAllActive, setShowAllActive] = useState(false);   // homepage: collapse Active Screeners to 2 + "Show all"
   const [focusKey, setFocusKey] = useState(null);   // screener to scroll-to/highlight after a P&L row click
+  // MASTER pause switch — stops/resumes ALL screener auto-entries (client firing + server engine) in one toggle.
+  // Global (not per-market): a master switch pauses every screener regardless of which market tab is open.
+  const [scrMaster, setScrMaster] = useState(() => lsGet("mx_scr_master", true) !== false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const toggleMaster = () => { const v = !scrMaster; setScrMaster(v); lsSet("mx_scr_master", v); notifyAutoSettingsChanged(); };
+  const dispatchBulk = (action) => { try { window.dispatchEvent(new CustomEvent("mx-scr-bulk", { detail: { action, market, short: dir === "sell" } })); } catch { /* non-browser */ } };
+  const bulkAutoBuy = async (on) => {
+    if (on && mode === "real" && !(await confirmDialog(
+      `Turn on Auto-Buy for ALL ${dir === "sell" ? "Sell" : "Buy"} screeners in ${MKT_NAME[market] || market} (Real mode).\n\nEach active screener will place REAL orders on every symbol it matches, with its own SL/TP. You can turn any of them OFF individually afterwards.`,
+      { title: "Turn on real Auto-Buy for all?", confirmLabel: "Turn all on" }
+    ))) return;
+    dispatchBulk(on ? "autobuy-on" : "autobuy-off");
+  };
+  const bulkAutoSelect = async () => {
+    if (bulkBusy) return;
+    if (!(await confirmDialog(
+      `Run Auto-Select Symbols on EVERY ${dir === "sell" ? "Sell" : "Buy"} screener in ${MKT_NAME[market] || market}.\n\nThis backtests each screener's rules across the whole market and keeps only the symbols that pass — it can take a minute or two.`,
+      { title: "Auto-select for all screeners?", confirmLabel: "Run for all" }
+    ))) return;
+    setBulkBusy(true); dispatchBulk("autoselect");
+    setTimeout(() => setBulkBusy(false), 4000);   // re-enable the button shortly; each card shows its own progress
+  };
   // Clicking a row in the P&L table opens that screener's card: jump to the tab that renders it (Active if it's
   // on, else Popular which lists every screener), then scroll it into view and flash a highlight.
   const openScreenerCard = useCallback((key) => {
@@ -1410,6 +1453,24 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
       <AutoOptionConfig market={market} />
       <TrailingStopConfig market={market} />
       <TrendGateConfig scope="screener" />
+      {/* MASTER pause switch + bulk controls for every screener in this market. The master switch stops/resumes
+          ALL screener entries at once (handy to pause the engine without untoggling each card). The bulk buttons
+          turn Auto-Buy on/off for every screener of the current side, and run Auto-Select on all of them. */}
+      <div style={{ marginTop: 10, border: "1px solid var(--line)", borderRadius: 12, padding: "10px 12px", background: "var(--elev)" }}>
+        <label className="tap" style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer" }}>
+          <span onClick={toggleMaster} style={{ width: 36, height: 21, borderRadius: 999, background: scrMaster ? "#22C55E" : "var(--line)", position: "relative", flexShrink: 0, transition: "background .2s" }}>
+            <span style={{ position: "absolute", top: 2, left: scrMaster ? 17 : 2, width: 17, height: 17, borderRadius: 999, background: "#fff", transition: "left .2s" }} />
+          </span>
+          <span className="disp" style={{ fontWeight: 800, fontSize: 12.5 }}>Screener engine {scrMaster ? "running" : "paused"}</span>
+          {!scrMaster && <span style={{ fontSize: 10, color: "var(--down)", fontWeight: 800 }}>· no new entries</span>}
+        </label>
+        <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 4, lineHeight: 1.45 }}>Master switch — pauses or resumes new auto-entries for every screener. Open positions and their exits are unaffected.</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+          <button onClick={() => bulkAutoBuy(true)} className="tap disp" style={{ border: "none", background: "var(--primary)", color: "var(--on-primary)", borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: 11.5, cursor: "pointer" }}>Auto-Buy All</button>
+          <button onClick={() => bulkAutoBuy(false)} className="tap disp" style={{ border: "1px solid var(--line)", background: "transparent", color: "var(--ink)", borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: 11.5, cursor: "pointer" }}>Auto-Buy Off All</button>
+          <button onClick={bulkAutoSelect} disabled={bulkBusy} className="tap disp" style={{ border: "1px solid var(--line)", background: "transparent", color: bulkBusy ? "var(--muted)" : "var(--ink)", borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: 11.5, cursor: bulkBusy ? "default" : "pointer" }}>{bulkBusy ? "Auto-selecting…" : "Auto-Select All"}</button>
+        </div>
+      </div>
       {/* Build a screener | Popular Screeners | My Screeners */}
       <div className="hide-scroll" style={{ display: "flex", marginBottom: 4, overflowX: "auto" }}>
         <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3 }}>
