@@ -92,11 +92,15 @@ export function collectAutoSettings({ autoOnMap = {}, deployCapMap = {} } = {}) 
   }
   // Global TREND GATE (not per-market): in a clear market downtrend the server skips LONG auto-entries (shorts keep
   // running) and vice-versa. Default ON, 20-EMA / 1.5% momentum; user-overridable. Sent as settings.trendGate.
-  const tgRaw = lsGet("mx_auto_trendgate", null);
-  const trendGate = (tgRaw && typeof tgRaw === "object")
-    ? { enabled: tgRaw.enabled !== false, emaPeriod: Number(tgRaw.emaPeriod) > 1 ? Number(tgRaw.emaPeriod) : 20, momPct: Number(tgRaw.momPct) >= 0 ? Number(tgRaw.momPct) : 1.5 }
-    : { enabled: true, emaPeriod: 20, momPct: 1.5 };
-  return { screeners: collectScreeners(), smartAutoBuy, ideas, options, trailing, trendGate };
+  const readTG = (k) => { const v = lsGet(k, null); return (v && typeof v === "object") ? { enabled: v.enabled !== false, emaPeriod: Number(v.emaPeriod) > 1 ? Number(v.emaPeriod) : 20, momPct: Number(v.momPct) >= 0 ? Number(v.momPct) : 1.5 } : null; };
+  const trendGate = readTG("mx_auto_trendgate") || { enabled: true, emaPeriod: 20, momPct: 1.5 };   // overall default
+  // Per-trade-type overrides (null when the user hasn't touched that type → inherit the overall). Keys match the
+  // server's engine source names so it can resolve item → type → overall → default.
+  const trendGateByType = {};
+  for (const [scope, type] of [["automation", "automate"], ["screener", "screener"], ["ideas", "ideas"], ["smartbuy", "smartbuy"]]) {
+    const v = readTG(`mx_auto_trendgate_${scope}`); if (v) trendGateByType[type] = v;
+  }
+  return { screeners: collectScreeners(), smartAutoBuy, ideas, options, trailing, trendGate, trendGateByType };
 }
 
 export async function pushAutoSettings(settings) {

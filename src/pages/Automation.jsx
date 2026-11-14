@@ -3675,7 +3675,10 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             {/* Same per-market trailing stop (default ON 1%, customizable) that Ideas/Screener/Smart-Buy have — it
                 applies to strategies that don't set their own tsl. Plus the global trade-with-the-trend gate. */}
             <TrailingStopConfig market={market} />
-            <TrendGateConfig />
+            {/* Overall trend gate (default for every engine) + the Automation-specific override. A type override
+                wins over the overall, so you can turn the overall off and leave Automation on (or vice-versa). */}
+            <TrendGateConfig scope="global" />
+            <TrendGateConfig scope="automation" />
           </>
         )}
       </div>

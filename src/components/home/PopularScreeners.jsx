@@ -1399,7 +1399,7 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
       {/* IN options: when enabled, every screener match for this market buys the symbol's CALL/PUT instead of the stock. */}
       <AutoOptionConfig market={market} />
       <TrailingStopConfig market={market} />
-      <TrendGateConfig />
+      <TrendGateConfig scope="screener" />
       {/* Build a screener | Popular Screeners | My Screeners */}
       <div className="hide-scroll" style={{ display: "flex", marginBottom: 4, overflowX: "auto" }}>
         <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3 }}>

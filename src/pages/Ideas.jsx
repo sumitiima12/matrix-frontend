@@ -17,6 +17,7 @@ import TagRow from "../components/common/TagRow";
 import MultiSelect from "../components/common/MultiSelect";
 import AutoOptionConfig from "../components/common/AutoOptionConfig";   // IN-only "trade the option instead of the stock" for Ideas auto-buy
 import TrailingStopConfig from "../components/common/TrailingStopConfig";   // per-market trailing stop (default on 1% except IN)
+import TrendGateConfig from "../components/common/TrendGateConfig";   // trade-with-the-trend gate (Ideas scope)
 
 /**
  * Ideas — trade ideas published by Matrix, scored against real candles.
@@ -175,6 +176,7 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
           {/* IN options: auto-buy the idea's CALL/PUT instead of the stock (real server path). */}
           <AutoOptionConfig market={market} />
           <TrailingStopConfig market={market} />
+          <TrendGateConfig scope="ideas" />
         </div>
       )}
       {/* Filters sit directly under the title, above the numbers. Options are plain ids; symbols are

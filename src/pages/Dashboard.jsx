@@ -11,6 +11,7 @@ import { derivativePnl } from "../domain/derivativePnl";   // contract-aware P&L
 import InstrumentTypePicker from "../components/common/InstrumentTypePicker";   // Stock/Future/Option choice (gated preview)
 import AutoOptionConfig from "../components/common/AutoOptionConfig";   // IN-only "trade the option instead of the stock" config (real server option entries)
 import TrailingStopConfig from "../components/common/TrailingStopConfig";   // per-market trailing stop (default on 1% except IN)
+import TrendGateConfig from "../components/common/TrendGateConfig";   // trade-with-the-trend gate (Smart Auto-Buy scope)
 import { positionPnl } from "../domain/leverage";   // Delta-parity crypto P&L (margin cap + fees), same for paper & real
 import { computeCategories } from "../domain/portfolioPnl";   // the ONE per-category P&L fn every dashboard shares
 import { askMatrix, fetchNews, fetchNewsFeed, scanIdeas } from "../domain/api";
@@ -1638,6 +1639,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                     (no separate "Trade as options" checkbox). Smart Auto-Buy then buys the pick's CALL/PUT. */}
                 <AutoOptionConfig market={market} externalEnabled={instrument === "OPTION"} />
                 <TrailingStopConfig market={market} />
+                <TrendGateConfig scope="smartbuy" />
               </div>
               {/* Plain-English "how this works" so the behaviour and requirements are obvious. */}
               <div style={{ fontSize: 9.5, opacity: .6, marginTop: 3, lineHeight: 1.45 }}>
