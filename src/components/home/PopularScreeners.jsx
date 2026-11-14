@@ -274,6 +274,8 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
   const defTP = (ovr && ovr.tp != null) ? ovr.tp : (screener.tp != null ? +screener.tp : _defTP0);
   // Per-screener trailing stop %: admin override → screener def → default 1% ON. Blank/0 turns it off for this screener.
   const defTsl = (ovr && ovr.tsl != null && ovr.tsl !== "") ? Number(ovr.tsl) : (screener.tsl != null && screener.tsl !== "" ? Number(screener.tsl) : 1);
+  // Per-screener trend gate on/off (admin override → default on). Sent so the server cascade can disable just this screener.
+  const defTrendGate = { enabled: !(ovr && ovr.trendGate && ovr.trendGate.enabled === false) };
   // Effective scan config — admin's edited rules if present, else the built-in screener definition.
   const eDefs = (ovr && ovr.defs) || screener.defs;
   const eEntry = (ovr && ovr.entry) || screener.entry;
@@ -295,6 +297,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
       name: (edit.name || "").trim() || screener.name,
       sl: +edit.sl || 0.4, tp: +edit.tp || 1.0,
       tsl: (edit.tsl != null && edit.tsl !== "") ? Number(edit.tsl) : 1,   // per-screener trailing stop %, default 1
+      trendGate: { enabled: edit.trendGate !== false },   // per-screener trend gate on/off (default on)
       defs: edit.defs, entry: edit.entry, exit: edit.exit, tf: edit.tf || screener.tf,
       selSyms: edit.selSyms || [], ov: edit.ov || {}, published: edit.published !== false,
     };
@@ -426,7 +429,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
       const symbols = eSel.length ? eSel : (UNIVERSE[market] || []).map((s) => s.sym);
       const cfgSL = isDeltaMkt ? Math.max(defSL, DELTA_MIN_SL) : defSL;
       const cfgTP = (isDeltaMkt && defSL > 0) ? +(defTP * (Math.max(defSL, DELTA_MIN_SL) / defSL)).toFixed(2) : defTP;
-      lsSet(ck, { defs: eDefs, entry: eEntry, tf: eTf, sl: cfgSL, tp: cfgTP, tsl: defTsl, symbols, capital: capNum, short: !!short, mode, name: dispName });
+      lsSet(ck, { defs: eDefs, entry: eEntry, tf: eTf, sl: cfgSL, tp: cfgTP, tsl: defTsl, trendGate: defTrendGate, symbols, capital: capNum, short: !!short, mode, name: dispName });
     } catch { /* storage unavailable */ }
   };
   /* MIGRATION + keep-fresh: whenever this screener's auto-buy is ON, make sure its full config is persisted for
@@ -810,6 +813,13 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
             <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 800, marginLeft: 4 }}>TF</span>
             <select value={edit.tf || "5m"} onChange={(e) => setEdit((s) => ({ ...s, tf: e.target.value }))} style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "5px 6px", fontSize: 11.5, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }}>{TFS.map((t) => <option key={t} value={t}>{t}</option>)}</select>
           </div>
+          {/* Per-screener trend gate (on/off). ON by default; uses the overall EMA/momentum thresholds. The overall
+              and the Screener-type switches still win: off at either level = off here regardless. */}
+          <label className="tap" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, cursor: "pointer" }}>
+            <input type="checkbox" checked={edit.trendGate !== false} onChange={(e) => setEdit((s) => ({ ...s, trendGate: e.target.checked }))} style={{ width: 15, height: 15, accentColor: "var(--primary)" }} />
+            <span style={{ fontSize: 11.5, fontWeight: 800 }}>Trade with the trend</span>
+            <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600 }}>· skip entries against the market trend</span>
+          </label>
 
           <div className="disp" style={{ fontWeight: 800, fontSize: 12.5, margin: "6px 0 6px" }}>Indicators</div>
           <IndicatorDefs defs={edit.defs || []} setDefs={(u) => setEdit((s) => ({ ...s, defs: typeof u === "function" ? u(s.defs || []) : u }))} />

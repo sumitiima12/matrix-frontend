@@ -2549,6 +2549,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   const [sl, setSl] = useState(defSL(market));
   const [tp, setTp] = useState(defTP(market));
   const [tsl, setTsl] = useState("");   // trailing stop % (server-side, ratchets as price moves your way)
+  const [trendGateOn, setTrendGateOn] = useState(true);   // per-strategy trend gate on/off (default on; overall + type still win)
   // When you switch market (fresh builder context), reset SL/TP to that market's default.
   useEffect(() => { setSl(defSL(market)); setTp(defTP(market)); /* eslint-disable-next-line */ }, [market]);
   const [capital, setCapital] = useState((market === "Crypto" || market === "USStockTokens") ? "10" : "1");   // crypto: $ NOTIONAL amount/trade (default 10 ≈ $0.40 margin at 25×); else quantity (default 1)
@@ -2706,8 +2707,8 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
   };
   const plainDefs = useMemo(() => { const d = []; [...eParsed.defs, ...xParsed.defs].forEach((x) => { if (x && !d.find((y) => y.name === x.name)) d.push(x); }); return d; }, [eParsed, xParsed]);
   const cfg = mode === "builder"
-    ? { mode: "builder", tf, defs, entry: entryConds, exit: exitConds, sl, tp, ...(tsl !== "" ? { tsl } : {}) }
-    : { mode: "builder", tf, defs: plainDefs.map((d) => ({ ...d, tf: d.tf || tf })), entry: eParsed.conds, exit: xParsed.conds, sl, tp, ...(tsl !== "" ? { tsl } : {}) };
+    ? { mode: "builder", tf, defs, entry: entryConds, exit: exitConds, sl, tp, ...(tsl !== "" ? { tsl } : {}), trendGate: { enabled: trendGateOn } }
+    : { mode: "builder", tf, defs: plainDefs.map((d) => ({ ...d, tf: d.tf || tf })), entry: eParsed.conds, exit: xParsed.conds, sl, tp, ...(tsl !== "" ? { tsl } : {}), trendGate: { enabled: trendGateOn } };
   const condStr = (c) => `${c.la} ${c.op} ${c.b}`;
   const chain = (conds) => conds.map((c, i) => `${i ? " " + (c.gate || "AND") + " " : ""}${condStr(c)}`).join("");
   /* Render an indicator's ACTUAL settings so the code preview shows what Neo understood:
@@ -2766,6 +2767,7 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
     if (cfg.sl != null) setSl(String(cfg.sl));
     if (cfg.tp != null) setTp(String(cfg.tp));
     setTsl(cfg.tsl != null ? String(cfg.tsl) : "");
+    setTrendGateOn(cfg.trendGate ? cfg.trendGate.enabled !== false : true);
     setStratName(s.name || "");
     setDeploySyms(s.symbols && s.symbols.length ? [s.symbols[0]] : []);
     if (s.qty != null) setCapital(String(s.qty));
@@ -3903,6 +3905,11 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
               <NumF label="Stop loss %" v={sl} set={setSl} />
               <NumF label="Take profit %" v={tp} set={setTp} />
               <NumF label="Trailing SL %" v={tsl} set={setTsl} />
+              <label className="tap" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", marginTop: 8 }}>
+                <input type="checkbox" checked={trendGateOn} onChange={(e) => setTrendGateOn(e.target.checked)} style={{ width: 15, height: 15, accentColor: "var(--primary)" }} />
+                <span style={{ fontSize: 11.5, fontWeight: 800 }}>Trade with the trend</span>
+                <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600 }}>· skip entries against the market trend (overall/type still win)</span>
+              </label>
             </div>
             {/* SL/TP are PRICE moves; on leveraged crypto show the margin-equivalent (1% price ≈ 25% margin). */}
             {(market === "Crypto" || market === "USStockTokens") && (() => {
