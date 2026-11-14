@@ -272,6 +272,8 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
   const _defTP0 = _wideVol ? 3 : 2;
   const defSL = (ovr && ovr.sl != null) ? ovr.sl : (screener.sl != null ? +screener.sl : _defSL0);
   const defTP = (ovr && ovr.tp != null) ? ovr.tp : (screener.tp != null ? +screener.tp : _defTP0);
+  // Per-screener trailing stop %: admin override → screener def → default 1% ON. Blank/0 turns it off for this screener.
+  const defTsl = (ovr && ovr.tsl != null && ovr.tsl !== "") ? Number(ovr.tsl) : (screener.tsl != null && screener.tsl !== "" ? Number(screener.tsl) : 1);
   // Effective scan config — admin's edited rules if present, else the built-in screener definition.
   const eDefs = (ovr && ovr.defs) || screener.defs;
   const eEntry = (ovr && ovr.entry) || screener.entry;
@@ -292,6 +294,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
     const next = {
       name: (edit.name || "").trim() || screener.name,
       sl: +edit.sl || 0.4, tp: +edit.tp || 1.0,
+      tsl: (edit.tsl != null && edit.tsl !== "") ? Number(edit.tsl) : 1,   // per-screener trailing stop %, default 1
       defs: edit.defs, entry: edit.entry, exit: edit.exit, tf: edit.tf || screener.tf,
       selSyms: edit.selSyms || [], ov: edit.ov || {}, published: edit.published !== false,
     };
@@ -423,7 +426,7 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
       const symbols = eSel.length ? eSel : (UNIVERSE[market] || []).map((s) => s.sym);
       const cfgSL = isDeltaMkt ? Math.max(defSL, DELTA_MIN_SL) : defSL;
       const cfgTP = (isDeltaMkt && defSL > 0) ? +(defTP * (Math.max(defSL, DELTA_MIN_SL) / defSL)).toFixed(2) : defTP;
-      lsSet(ck, { defs: eDefs, entry: eEntry, tf: eTf, sl: cfgSL, tp: cfgTP, symbols, capital: capNum, short: !!short, mode, name: dispName });
+      lsSet(ck, { defs: eDefs, entry: eEntry, tf: eTf, sl: cfgSL, tp: cfgTP, tsl: defTsl, symbols, capital: capNum, short: !!short, mode, name: dispName });
     } catch { /* storage unavailable */ }
   };
   /* MIGRATION + keep-fresh: whenever this screener's auto-buy is ON, make sure its full config is persisted for
@@ -800,6 +803,10 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
             <input value={edit.sl} onChange={(e) => setEdit((s) => ({ ...s, sl: e.target.value.replace(/[^0-9.]/g, "") }))} inputMode="decimal" className="no-ring mono" style={inBox} />
             <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 800 }}>Default TP%</span>
             <input value={edit.tp} onChange={(e) => setEdit((s) => ({ ...s, tp: e.target.value.replace(/[^0-9.]/g, "") }))} inputMode="decimal" className="no-ring mono" style={inBox} />
+            {/* Per-screener trailing stop — ON by default at 1% (blank/0 = off). Ratchets the stop up as price moves
+                your way. Overrides the per-market default for this screener. */}
+            <span style={{ fontSize: 10, color: "var(--primary)", fontWeight: 800 }}>Trail%</span>
+            <input value={edit.tsl != null ? edit.tsl : "1"} onChange={(e) => setEdit((s) => ({ ...s, tsl: e.target.value.replace(/[^0-9.]/g, "") }))} inputMode="decimal" className="no-ring mono" style={inBox} title="Trailing stop %, 0 or blank to turn off" />
             <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 800, marginLeft: 4 }}>TF</span>
             <select value={edit.tf || "5m"} onChange={(e) => setEdit((s) => ({ ...s, tf: e.target.value }))} style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "5px 6px", fontSize: 11.5, fontWeight: 700, background: "var(--elev)", color: "var(--ink)" }}>{TFS.map((t) => <option key={t} value={t}>{t}</option>)}</select>
           </div>

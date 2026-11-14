@@ -34,6 +34,7 @@ function collectScreeners() {
       (out[market] = out[market] || {})[key + (sell ? ":sell" : "")] = {
         enabled: true, defs: cfg.defs || [], entry: cfg.entry, tf: cfg.tf || "5m",
         sl: cfg.sl != null ? Number(cfg.sl) : null, tp: cfg.tp != null ? Number(cfg.tp) : null,
+        tsl: (cfg.tsl != null && cfg.tsl !== "") ? Number(cfg.tsl) : null,   // per-screener trailing stop % (null → per-market default)
         symbols: Array.isArray(cfg.symbols) ? cfg.symbols : [], capital: Number(cfg.capital) || 0,
         short: !!(sell || cfg.short), modes: cfg.modes || (cfg.mode ? { [cfg.mode]: true } : {}), name: cfg.name || key,
       };
