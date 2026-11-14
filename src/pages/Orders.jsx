@@ -4,12 +4,12 @@ import { Bolt, Bot, Briefcase, Check, ChevronLeft, Home, Lightbulb, Moon, Search
 import { BACKEND_URL } from "../config";
 import { fmt, getUserId, lsGet, lsSet, orderStatusLabel } from "../lib/format";
 import { ALL, UNIVERSE, marketOf, yahooSymbol } from "../domain/universe";
-import { positionPnl } from "../domain/leverage";   // SAME leverage/fee-aware engine the Dashboard uses, so totals match
+import { positionPnl, netTradePnl, attributeDeltaCosts } from "../domain/leverage";   // netTradePnl = net of Delta's own realised/funding/fees (per-trade attribution)
 import { fetchIndicators, fetchLiveQuotes, fetchTrades, marketOpen, postTrade, resolveExitFromCandles } from "../domain/api";
 import { DEFAULT_LIMITS, validateOrder } from "../services/riskService";
 import FilterChip from "../components/common/FilterChip";
 import { analyzeJournal } from "../services/journalService";
-import { getDeltaRealised } from "../services/tradeService";
+import { getDeltaRealised, getDeltaCosts } from "../services/tradeService";
 
 /**
  * Orders — trade history and the trading journal.
@@ -133,6 +133,17 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
     return () => { stop = true; };
   }, [from, to, authEligible]);
 
+  /* Per-trade Delta cost + realised attribution (all-time, so each row carries its own number regardless of the
+     window), joined onto the trades below. This is what makes the headline and the per-row P&L use Delta's OWN
+     realised for the 90%+ of crypto closes booked flat ($0) — instead of the broken account-wide wallet endpoint
+     (getDeltaRealised) which ignores the market/symbol/period filters and was showing "+$0" on a filtered view. */
+  const [tradeCosts, setTradeCosts] = useState(null);
+  useEffect(() => {
+    let stop = false;
+    if (BACKEND_URL && realF !== "virtual") getDeltaCosts(0, Date.now()).then((c) => { if (!stop && c && c.bySymbol) setTradeCosts(c); }).catch(() => {});
+    return () => { stop = true; };
+  }, [realF]);
+
   // A trade is only OPEN if it actually FILLED (has an entry price) and hasn't exited. A rejected
   // or never-filled order (e.g. "amount too small") has no entry and is NOT an open position — it
   // was showing as "Exit: Open" and looking like a holding that the portfolio didn't have.
@@ -158,25 +169,27 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
   const withPnl = (t) => {
     const tMkt = marketOf(t.sym) || t.market || market;
     if (reconciledClosed(t) && !isRejected(t) && (t.exitAt == null || t.exitType === "Open")) {
-      return { ...t, livePnl: t.pnl || 0, open: false, reconciled: true };
+      // Use Delta's attributed realised when present (the row's own cashflow), else the journal pnl.
+      const lp = t._attrRealised != null ? +netTradePnl(t, Number(t.exit) || Number(t.entry) || 0, tMkt).toFixed(2) : (t.pnl || 0);
+      return { ...t, livePnl: lp, open: false, reconciled: true };
     }
     if (!isOpen(t)) {
-      // Closed: value with the SAME leverage/fee-aware engine the Dashboard uses (from the booked exit) so the
-      // Orders total reconciles with the Home Total, instead of the stored fee-less pnl.
+      // Closed: NET of Delta's own realised/funding/fees (per-trade attribution) — this gives the 90%+ of crypto
+      // closes booked flat ($0) their real P&L, so the headline no longer reads $0 on a filtered view.
       const exitPx = (t.exit != null && Number(t.exit) > 0) ? Number(t.exit) : null;
-      const lp = exitPx != null ? +positionPnl(t, exitPx, tMkt).toFixed(2) : (t.pnl || 0);
+      const lp = (t._attrRealised != null || exitPx != null) ? +netTradePnl(t, exitPx != null ? exitPx : (Number(t.entry) || 0), tMkt).toFixed(2) : (t.pnl || 0);
       return { ...t, livePnl: lp, open: false };
     }
     const s = ALL.find((a) => a.sym === t.sym);
     const cur = s ? s.price : t.entry;
-    return { ...t, open: true, cur, livePnl: +positionPnl(t, cur, tMkt).toFixed(2) };
+    return { ...t, open: true, cur, livePnl: +netTradePnl(t, cur, tMkt).toFixed(2) };
   };
   /* Date a trade by its EXIT if it's closed, its ENTRY if it's still open. A position
      opened in March and still running is "current", not a March trade — filtering an
      open position out of "last 7 days" because it was entered in March would hide a
      live position from the user. */
   const stamp = (t) => (isOpen(t) ? (t.entryAt || 0) : (t.exitAt || t.entryAt || 0));
-  const src = (remote || trades)
+  const src = attributeDeltaCosts((remote || trades) || [], tradeCosts || {})
     // OPEN positions count in EVERY window (their unrealised P&L is live "now") — matching the Home Total's rule,
     // so the two agree. A position opened before "today" was previously filtered out of Today here, which made the
     // Orders P&L differ from the Home dashboard. Closed trades stay scoped to the selected window by exit time.
@@ -380,20 +393,22 @@ export default function TradeHistory({ userId, trades, onClose, market = null, m
         {/* Summary dashboard — reflects the current filter selection above. */}
         <div className="card" style={{ padding: 12, marginBottom: 12 }}>
           {(() => {
-            // On REAL Delta markets the headline is Delta's OWN realised P&L (broker truth); the journal sum below
-            // it is best-effort per-trade detail that can drift where fills can't be reconstructed.
-            const headVal = (authReal && authReal.realised != null) ? +Number(authReal.realised).toFixed(2) : totalPnl;
-            const showAuth = authReal && authReal.realised != null;
+            // Headline = the sum of PER-TRADE P&L for the filtered rows, now NET of Delta's own realised/funding/
+            // fees via per-trade attribution. This respects the market/symbol/period filters (unlike the old
+            // account-wide wallet endpoint, which ignored them and showed "+$0" on a filtered view). The account-wide
+            // broker realised is kept only as a secondary cross-check when viewing ALL markets over the full window.
+            const headVal = totalPnl;
+            const showAuth = authReal && authReal.realised != null && mkt === "all" && range === "all";
             return (
               <>
                 <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: showAuth ? 4 : 10 }}>
-                  <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".04em" }}>{showAuth ? "Realised P&amp;L · broker" : "Total P&amp;L"}</span>
+                  <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".04em" }}>{realF !== "virtual" ? "Realised P&amp;L" : "Total P&amp;L"}</span>
                   <span className="mono" style={{ fontWeight: 800, fontSize: 22, color: headVal >= 0 ? "var(--up)" : "var(--down)" }}>{(headVal >= 0 ? "+" : "") + fmt(headVal, statMkt)}</span>
                 </div>
                 {showAuth && (
                   <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 10, fontSize: 11, color: "var(--muted)" }}>
-                    <span>Tracked trades (journal)</span>
-                    <span className="mono" style={{ fontWeight: 700 }}>{(totalPnl >= 0 ? "+" : "") + fmt(totalPnl, statMkt)}</span>
+                    <span>Broker wallet (all markets)</span>
+                    <span className="mono" style={{ fontWeight: 700 }}>{(authReal.realised >= 0 ? "+" : "") + fmt(+Number(authReal.realised).toFixed(2), statMkt)}</span>
                   </div>
                 )}
               </>
