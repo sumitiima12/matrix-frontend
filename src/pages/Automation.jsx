@@ -28,6 +28,8 @@ import { downloadCSV } from "../lib/csv";
 import { btPeriodStr, creatorOf, statCells } from "./automationHelpers";   // PERF-10: pure helpers extracted
 import { brokerSymbol } from "../domain/brokerSymbols";
 import { registerAutoBuy, loadAutoBuys, pauseAutoBuy, cancelAutoBuy, closeAutoBuy, updateAutoBuy, setAutoBuyLive, loadBrokerCapabilities, brokerCapOf } from "../services/brokerService";
+import TrailingStopConfig from "../components/common/TrailingStopConfig";   // per-market trailing stop (default on 1% except IN) — same control Ideas/Screener use
+import TrendGateConfig from "../components/common/TrendGateConfig";   // global trade-with-the-trend gate
 
 /* Broker-truth phantom guard (mirrors Screener/home). A REAL journalled-open row that the broker
    (Delta) no longer holds is a phantom — the position was closed on the broker but our journal still
@@ -3670,6 +3672,10 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             <div style={{ marginTop: 8 }}>
               <MultiSelect label="Symbol" options={DEPLOY_OPTIONS} value={symFilter} onChange={setSymFilter} />
             </div>
+            {/* Same per-market trailing stop (default ON 1%, customizable) that Ideas/Screener/Smart-Buy have — it
+                applies to strategies that don't set their own tsl. Plus the global trade-with-the-trend gate. */}
+            <TrailingStopConfig market={market} />
+            <TrendGateConfig />
           </>
         )}
       </div>
