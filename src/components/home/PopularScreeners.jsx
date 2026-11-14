@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import AutoOptionConfig from "../common/AutoOptionConfig";   // IN-only "trade the option instead of the stock" for screener auto-buy
 import TrailingStopConfig from "../common/TrailingStopConfig";   // per-market trailing stop (default on 1% except IN)
+import TrendGateConfig from "../common/TrendGateConfig";   // global "trade with the trend" gate (skips counter-trend auto-entries)
 import { ALL, UNIVERSE, marketOf, yahooSymbol } from "../../domain/universe";
 import { netTradePnl, tradeCostOf } from "../../domain/leverage";   // P&L NET of real costs (Delta funding+commission+liquidation / spot brokerage); Delta-parity crypto margin cap
 import { CUR, DAY, MKT_NAME, chgColor, fmt, fmtPnl, lsGet, lsSet } from "../../lib/format";
@@ -1391,6 +1392,7 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
       {/* IN options: when enabled, every screener match for this market buys the symbol's CALL/PUT instead of the stock. */}
       <AutoOptionConfig market={market} />
       <TrailingStopConfig market={market} />
+      <TrendGateConfig />
       {/* Build a screener | Popular Screeners | My Screeners */}
       <div className="hide-scroll" style={{ display: "flex", marginBottom: 4, overflowX: "auto" }}>
         <div className="pill" style={{ display: "inline-flex", background: "var(--elev)", border: "1px solid var(--line)", padding: 3 }}>

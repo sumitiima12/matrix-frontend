@@ -89,7 +89,13 @@ export function collectAutoSettings({ autoOnMap = {}, deployCapMap = {} } = {}) 
     if (t && typeof t === "object") trailing[market] = { enabled: t.enabled !== false, pct: Number(t.pct) > 0 ? Number(t.pct) : 1 };
     else trailing[market] = { enabled: market !== "IN", pct: 1 };
   }
-  return { screeners: collectScreeners(), smartAutoBuy, ideas, options, trailing };
+  // Global TREND GATE (not per-market): in a clear market downtrend the server skips LONG auto-entries (shorts keep
+  // running) and vice-versa. Default ON, 20-EMA / 1.5% momentum; user-overridable. Sent as settings.trendGate.
+  const tgRaw = lsGet("mx_auto_trendgate", null);
+  const trendGate = (tgRaw && typeof tgRaw === "object")
+    ? { enabled: tgRaw.enabled !== false, emaPeriod: Number(tgRaw.emaPeriod) > 1 ? Number(tgRaw.emaPeriod) : 20, momPct: Number(tgRaw.momPct) >= 0 ? Number(tgRaw.momPct) : 1.5 }
+    : { enabled: true, emaPeriod: 20, momPct: 1.5 };
+  return { screeners: collectScreeners(), smartAutoBuy, ideas, options, trailing, trendGate };
 }
 
 export async function pushAutoSettings(settings) {
