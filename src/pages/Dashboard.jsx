@@ -1327,6 +1327,15 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
      (headline === Σ boxes). Automate uses stratPerf (automatePnl); every other bucket comes from the shared
      computeCategories, so each box equals its feature dashboard for the same window. */
   const boxesSum = +(shared.categories.Manual + shared.categories["Smart Auto-Buy"] + automatePnl + shared.categories.Screener + shared.categories.Ideas + shared.categories["Unknown/Imported"]).toFixed(2);
+  /* FLICKER GUARD. For real Delta (leveraged) trades the headline is computed NET of funding/fees, but those costs
+     load async (Matrix fetches getDeltaCosts right after the trades). Until they land the rows carry no
+     `_costAttributed` stamp, so the figure would render GROSS and then jump down to NET a second later (the +$109 →
+     +$39 flicker). Detect that window and show a brief placeholder instead of flashing the wrong gross number. */
+  const costsPending = (() => {
+    if (!isReal) return false;
+    const rd = (trades || []).filter((t) => t && t.real && (marketOf(t.sym) === "Crypto" || marketOf(t.sym) === "USStockTokens"));
+    return rd.length > 0 && !rd.some((t) => t._costAttributed);
+  })();
 
   /* The OPEN positions that make up the Total — every trade type (Manual / Auto-Buy / Automate /
      Screener), still open, for this market + mode. Rejected orders are excluded (they live in Orders,
@@ -1469,6 +1478,15 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                   // performance — misleading on a real-money app. Below the floor we show just the absolute P&L.
                   const pctFloor = (market === "Crypto" || market === "US" || market === "USStockTokens") ? 25 : 2000;
                   const showPct = pctBase >= pctFloor && isFinite(hr);
+                  // While Delta costs are still loading, show a muted placeholder rather than the premature gross figure.
+                  if (costsPending) {
+                    return (
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div className="mono" style={{ fontWeight: 800, fontSize: 27, color: "var(--muted)", opacity: .5 }}>··········</div>
+                        <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>calculating net…</span>
+                      </div>
+                    );
+                  }
                   return (
                     <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
                       <div className="mono" style={{ fontWeight: 800, fontSize: 27, color: "var(--ink)" }}>{(hp >= 0 ? "+" : "") + (isReal ? money1(hp) : fmtPnl(hp, market))}</div>
@@ -1480,7 +1498,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 {/* P&L split — REALISED (booked on closed trades) vs UNREALISED (live mark-to-market on open
                     positions). Unrealised = Σ open-position live P&L; Realised = the headline Total minus that, so
                     the two always add up to the number shown above regardless of its source (wallet or tiles). */}
-                {(() => {
+                {!costsPending && (() => {
                   const unrealised = +totalOpenRows.reduce((a, t) => a + (t.livePnl || 0), 0).toFixed(2);
                   const realised = +(boxesSum - unrealised).toFixed(2);
                   const money = (v) => (v >= 0 ? "+" : "") + (isReal ? money1(v) : fmtPnl(v, market));

@@ -163,6 +163,7 @@ export function autoReasonText(reason) {
     capability: "this broker isn't certified for unattended auto",
     "reconciliation-locked": "paused — reconcile with your broker",
     "screener-paused": "screener engine paused — master switch off",
+    "illiquid-skip": "skipped — 24h volume too low (thin book, gaps through stops)",
     "risk-read-failed": "couldn't read risk state this cycle",
     "account-unverifiable": "couldn't verify broker account this cycle",
     "daily-loss-limit": "daily-loss limit hit — paused for the session",
