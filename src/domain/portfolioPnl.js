@@ -7,8 +7,9 @@ import { marketOf } from "./universe";
  * Every dashboard headline (Home Total, Screener, Automate, Ideas, Smart Auto-Buy) calls computeCategories()
  * with its own {mode, market, window} and reads the category it cares about. Because they all share this one
  * function — same P&L engine (positionPnl), same provenance bucketing (sourceCategory), same window rule
- * (open positions count "now"; closed trades scoped by exit time), same REAL/VIRTUAL wall — the feature
- * dashboards can never disagree with the Total's category box for the same filter.
+ * (closed trades scoped by exit time; open positions count "now" for the ALL-TIME view, but for a bounded window
+ * only if OPENED in-window — so "Today" isn't inflated by the lifetime unrealised of a long-held position), same
+ * REAL/VIRTUAL wall — the feature dashboards can never disagree with the Total's category box for the same filter.
  *
  * GUARANTEE (unit-tested): total === Σ categories, and every in-scope trade lands in exactly one category.
  */
@@ -44,7 +45,8 @@ const _hi = (v) => (v == null ? Infinity : (Number.isFinite(Number(v)) ? Number(
  * @param {object} opts
  *   mode:   "real"|"virtual"|"REAL"|"VIRTUAL"  — hard wall, never mixes books
  *   market: e.g. "Crypto" (optional; matches t.market OR the symbol's market)
- *   from,to: window bounds in ms (open positions ignore the window; closed scoped by exit time). null = unbounded
+ *   from,to: window bounds in ms. Closed scoped by exit time. Open positions: counted for the unbounded (all-time)
+ *            view, but for a bounded window only if opened in-window. null/null = unbounded (every open counts).
  *   priceOf: (sym) => number|null  — live mark for open positions' unrealised P&L
  *   heldSet: optional Set of normalised held symbols (real mode) → a real journalled-open the broker no longer
  *            holds is treated as CLOSED at its mark (phantom-open reconciliation), matching the Home dashboard.
@@ -79,6 +81,13 @@ export function computeCategories(trades, opts = {}) {
     if (!isO) {
       // closed by the book: scope by exit (fallback entry) time into the window
       const st = Number(t.exitAt || t.entryAt || 0);
+      if (!(st >= lo && st <= hi)) continue;
+    } else if (lo > -Infinity || hi < Infinity) {
+      // OPEN position with a BOUNDED window (Today / 7d / 30d / custom): its live unrealised is "now", but it only
+      // belongs in THIS window if it was OPENED in-window. Otherwise a position opened days ago dumps its full
+      // lifetime unrealised into "Today", overstating it (the +$44.79 Automate-vs-journal / Delta mismatch). The
+      // unbounded all-time view (lo=-Inf, hi=+Inf) still counts every open, as before.
+      const st = Number(t.entryAt || 0);
       if (!(st >= lo && st <= hi)) continue;
     }
     const px = isO ? (priceOf ? priceOf(t.sym) : null) : Number(t.exit);
