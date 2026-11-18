@@ -6,7 +6,7 @@ import { ALL, UNIVERSE, marketOf, yahooSymbol } from "../../domain/universe";
 import { netTradePnl, tradeCostOf } from "../../domain/leverage";   // P&L NET of real costs (Delta funding+commission+liquidation / spot brokerage); Delta-parity crypto margin cap
 import { CUR, DAY, MKT_NAME, chgColor, fmt, fmtPnl, lsGet, lsSet } from "../../lib/format";
 import { confirmDialog } from "../../lib/confirmDialog";
-import { scanScreener, marketOpen } from "../../domain/api";
+import { scanScreener, marketOpen, optimizeExits } from "../../domain/api";
 import { notifyAutoSettingsChanged } from "../../services/autoSettingsService";
 import { getHistory } from "../../services/marketService";
 import { backtest } from "../../domain/backtest";
@@ -349,6 +349,20 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
   // Optimize SL/TP on the SELECTED basket only (all of it, capped at 30 to protect the backend grid sweep). Only
   // when NO symbols are selected do we fall back to the top-n of the whole market.
   const optSyms = (n) => (eSel.length ? eSel.slice(0, 30) : (UNIVERSE[market] || []).map((s) => s.sym).slice(0, n));
+  const [optBusy, setOptBusy] = useState(false);
+  /* Optimize THIS screener's default SL/TP for the chosen objective (win rate / P&L), then write the best onto the
+     card (same path the per-card Optimize button uses). Driven per-card and by the bulk "Optimize All". */
+  const optimizeSelf = async (objective = "pnl") => {
+    const syms = optSyms(20);
+    if (!syms.length || optBusy) return;
+    setOptBusy(true);
+    try {
+      const rrMin = isDeltaMkt ? 3 : 1.5;
+      const res = await optimizeExits({ defs: eDefs, entry: eEntry, tf: eTf, appSyms: syms, currentSl: defSL, currentTp: defTP, objective, rrMin, maxSl: 0, short }).catch(() => null);
+      const best = res && res.best ? res.best : null;
+      if (best && best.sl != null && best.tp != null) applyExits(Number(best.sl), Number(best.tp));
+    } finally { setOptBusy(false); }
+  };
   const runAutoSelect = async (override = null) => {
     const syms = (UNIVERSE[market] || []).map((s) => s.sym);
     if (!syms.length || autoSel.running) return;
@@ -458,6 +472,8 @@ function ScreenerRow({ screener, market, mode = "virtual", trades = [], isAdmin 
         if (autoOn) { setAutoOn(false); lsSet(autoKey, false); writeScrCfg(false); notifyAutoSettingsChanged(); }
       } else if (d.action === "autoselect") {
         runAutoSelect((d.winMin != null || d.retMin != null) ? { win: d.winMin, ret: d.retMin } : null);
+      } else if (d.action === "optimize") {
+        optimizeSelf(d.objective || "pnl");
       }
     };
     window.addEventListener("mx-scr-bulk", onBulk);
@@ -1389,6 +1405,9 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
   // Master Auto-Select thresholds applied to EVERY screener when running "Auto-Select All" (persisted).
   const [bulkWin, setBulkWin] = useState(() => String(lsGet("mx_scrcrit_all_w", 45)));
   const [bulkRet, setBulkRet] = useState(() => String(lsGet("mx_scrcrit_all_r", 5)));
+  // Master Optimize SL&TP objective (win rate vs P&L) applied to every screener on "Optimize SL&TP All".
+  const [bulkOptObj, setBulkOptObj] = useState(() => lsGet("mx_scropt_all_obj", "pnl"));
+  const [bulkOptBusy, setBulkOptBusy] = useState(false);
   const toggleMaster = () => { const v = !scrMaster; setScrMaster(v); lsSet("mx_scr_master", v); notifyAutoSettingsChanged(); };
   const dispatchBulk = (action, extra = {}) => { try { window.dispatchEvent(new CustomEvent("mx-scr-bulk", { detail: { action, market, short: dir === "sell", ...extra } })); } catch { /* non-browser */ } };
   const bulkAutoBuy = async (on) => {
@@ -1409,6 +1428,17 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
     setBulkBusy(true); dispatchBulk("autoselect", { winMin: w, retMin: r });
     setTimeout(() => setBulkBusy(false), 4000);   // re-enable the button shortly; each card shows its own progress
   };
+  const bulkOptimize = async () => {
+    if (bulkOptBusy) return;
+    if (!(await confirmDialog(
+      `Optimize SL & TP on EVERY ${dir === "sell" ? "Sell" : "Buy"} screener in ${MKT_NAME[market] || market}, choosing the stop/target that maximizes ${bulkOptObj === "winrate" ? "WIN RATE" : "P&L"}.\n\nBacktests each screener's rules across its symbols and writes the best SL/TP onto each card — it can take a minute or two.`,
+      { title: "Optimize SL & TP for all?", confirmLabel: "Optimize all" }
+    ))) return;
+    lsSet("mx_scropt_all_obj", bulkOptObj);
+    setBulkOptBusy(true); dispatchBulk("optimize", { objective: bulkOptObj });
+    setTimeout(() => setBulkOptBusy(false), 5000);
+  };
+  const pickOptObj = (o) => { setBulkOptObj(o); lsSet("mx_scropt_all_obj", o); };
   // Clicking a row in the P&L table opens that screener's card: jump to the tab that renders it (Active if it's
   // on, else Popular which lists every screener), then scroll it into view and flash a highlight.
   const openScreenerCard = useCallback((key) => {
@@ -1486,6 +1516,16 @@ export default function PopularScreeners({ market, mode = "virtual", list = [], 
           <span style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 700 }}>% · return &gt;</span>
           <input value={bulkRet} onChange={(e) => setBulkRet(e.target.value.replace(/[^0-9.-]/g, ""))} inputMode="decimal" className="no-ring mono" style={{ width: 48, textAlign: "center", border: "1px solid var(--line)", background: "var(--surface)", borderRadius: 7, padding: "5px 4px", fontWeight: 800, fontSize: 11.5, color: "var(--primary)" }} />
           <span style={{ fontSize: 10.5, color: "var(--muted)", fontWeight: 700 }}>%</span>
+        </div>
+        {/* Master Optimize SL & TP — runs the SL/TP optimizer on every screener, maximizing the chosen objective. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+          <button onClick={bulkOptimize} disabled={bulkOptBusy} className="tap disp" style={{ border: "1px solid var(--line)", background: "transparent", color: bulkOptBusy ? "var(--muted)" : "var(--ink)", borderRadius: 10, padding: "8px 12px", fontWeight: 800, fontSize: 11.5, cursor: bulkOptBusy ? "default" : "pointer" }}>{bulkOptBusy ? "Optimizing…" : "Optimize SL&TP All"}</button>
+          <div style={{ display: "inline-flex", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: 2 }}>
+            {[["winrate", "Win rate"], ["pnl", "P&L"]].map(([k, l]) => (
+              <button key={k} onClick={() => pickOptObj(k)} className="tap" style={{ padding: "5px 11px", fontSize: 10.5, fontWeight: 800, border: "none", borderRadius: 6, cursor: "pointer", background: bulkOptObj === k ? "#7C3AED" : "transparent", color: bulkOptObj === k ? "#fff" : "var(--muted)" }}>{l}</button>
+            ))}
+          </div>
+          <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600 }}>maximize {bulkOptObj === "winrate" ? "win rate" : "P&L"}</span>
         </div>
       </div>
       {/* Build a screener | Popular Screeners | My Screeners */}
