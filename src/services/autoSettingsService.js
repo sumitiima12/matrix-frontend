@@ -91,6 +91,15 @@ export function collectAutoSettings({ autoOnMap = {}, deployCapMap = {} } = {}) 
     if (t && typeof t === "object") trailing[market] = { enabled: t.enabled !== false, pct: Number(t.pct) > 0 ? Number(t.pct) : 1 };
     else trailing[market] = { enabled: market !== "IN", pct: 1 };
   }
+  // Per-trade-type TRAILING overrides (mx_auto_trailing_<scope>_<market>). Null when the user never touched that
+  // type+market → the engine inherits the per-market default above. Keys match the server engine source names.
+  const trailingByType = {};
+  for (const [scope, type] of [["automation", "automate"], ["screener", "screener"], ["ideas", "ideas"], ["smartbuy", "smartbuy"]]) {
+    for (const market of MARKETS) {
+      const t = lsGet(`mx_auto_trailing_${scope}_${market}`, null);
+      if (t && typeof t === "object") (trailingByType[type] = trailingByType[type] || {})[market] = { enabled: t.enabled !== false, pct: Number(t.pct) > 0 ? Number(t.pct) : 1 };
+    }
+  }
   // Global TREND GATE (not per-market): in a clear market downtrend the server skips LONG auto-entries (shorts keep
   // running) and vice-versa. Default ON, 20-EMA / 1.5% momentum; user-overridable. Sent as settings.trendGate.
   const readTG = (k) => { const v = lsGet(k, null); return (v && typeof v === "object") ? { enabled: v.enabled !== false, emaPeriod: Number(v.emaPeriod) > 1 ? Number(v.emaPeriod) : 20, momPct: Number(v.momPct) >= 0 ? Number(v.momPct) : 1.5 } : null; };
@@ -101,10 +110,12 @@ export function collectAutoSettings({ autoOnMap = {}, deployCapMap = {} } = {}) 
   for (const [scope, type] of [["automation", "automate"], ["screener", "screener"], ["ideas", "ideas"], ["smartbuy", "smartbuy"]]) {
     const v = readTG(`mx_auto_trendgate_${scope}`); if (v) trendGateByType[type] = v;
   }
-  // MASTER screener switch — when the user pauses it, the server skips ALL screener auto-entries (open positions and
-  // their exits keep running). Stored as a single global flag; default running.
+  // MASTER switches — pause ALL entries for an engine without untoggling each item (open positions + exits keep
+  // running). Single global flags per engine; default running.
   const screenerMaster = lsGet("mx_scr_master", true) !== false;
-  return { screeners: collectScreeners(), smartAutoBuy, ideas, options, trailing, trendGate, trendGateByType, screenerMaster };
+  const automationMaster = lsGet("mx_auto_master", true) !== false;
+  const ideasMaster = lsGet("mx_ideas_master", true) !== false;
+  return { screeners: collectScreeners(), smartAutoBuy, ideas, options, trailing, trailingByType, trendGate, trendGateByType, screenerMaster, automationMaster, ideasMaster };
 }
 
 export async function pushAutoSettings(settings) {
@@ -163,6 +174,8 @@ export function autoReasonText(reason) {
     capability: "this broker isn't certified for unattended auto",
     "reconciliation-locked": "paused — reconcile with your broker",
     "screener-paused": "screener engine paused — master switch off",
+    "ideas-paused": "ideas engine paused — master switch off",
+    "automation-paused": "automation engine paused — master switch off",
     "illiquid-skip": "skipped — 24h volume too low (thin book, gaps through stops)",
     "risk-read-failed": "couldn't read risk state this cycle",
     "account-unverifiable": "couldn't verify broker account this cycle",

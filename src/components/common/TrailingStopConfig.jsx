@@ -11,8 +11,11 @@ import { notifyAutoSettingsChanged } from "../../services/autoSettingsService";
  * Default: ON at 1% for every market except Indian (equities are noisier intraday). On first mount with nothing
  * stored, the default is persisted so the server engine gets it even if the user never touches the control.
  */
-export default function TrailingStopConfig({ market }) {
-  const key = `mx_auto_trailing_${market}`;
+const SCOPE_LABEL = { global: "", automation: "Automation", screener: "Screener", ideas: "Ideas", smartbuy: "Smart Auto-Buy" };
+export default function TrailingStopConfig({ market, scope = "global" }) {
+  // Per-market default (scope "global") OR a per-trade-type override (scope automation/screener/ideas/smartbuy). A
+  // type override wins over the market default for that engine; left untouched, the type inherits the market default.
+  const key = scope === "global" ? `mx_auto_trailing_${market}` : `mx_auto_trailing_${scope}_${market}`;
   const [cfg, setCfg] = useState(() => {
     const v = lsGet(key, null);
     if (v && typeof v === "object") return { enabled: v.enabled !== false, pct: Number(v.pct) > 0 ? Number(v.pct) : 1 };
@@ -39,7 +42,7 @@ export default function TrailingStopConfig({ market }) {
     <div style={{ marginTop: 10, border: "1px solid var(--line)", borderRadius: 12, padding: "10px 12px", background: "var(--elev)" }}>
       <label style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer" }}>
         <input type="checkbox" checked={cfg.enabled} onChange={(e) => save({ ...cfg, enabled: e.target.checked })} style={{ width: 16, height: 16, accentColor: "var(--primary)" }} />
-        <span className="disp" style={{ fontWeight: 800, fontSize: 12.5 }}>Trailing stop-loss</span>
+        <span className="disp" style={{ fontWeight: 800, fontSize: 12.5 }}>Trailing stop-loss{SCOPE_LABEL[scope] ? <span style={{ color: "var(--muted)", fontWeight: 700, fontSize: 10.5 }}> · {SCOPE_LABEL[scope]}</span> : null}</span>
         {saved && <span style={{ fontSize: 10.5, color: "var(--up)", fontWeight: 700 }}>✓ Saved</span>}
       </label>
       {cfg.enabled && (

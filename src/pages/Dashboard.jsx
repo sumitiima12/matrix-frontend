@@ -1184,9 +1184,20 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
      position that was OPENED AFTER that snapshot — we have no broker truth for it yet, so hiding it
      would wrongly bury a genuine new position during an outage. With a fresh live read, _heldAt≈now
      so this guard is a no-op and behaviour is unchanged. */
-  const isPhantomOpen = (t) => !!(realHeld && t && t.real && t.exitAt == null && t.status !== "rejected"
-    && !realHeld.has(_normSym(t.sym))
-    && (t.entryAt == null || t.entryAt <= _heldAt));
+  /* VIRTUAL phantom-open reconciliation. The paper book's HOLDINGS (the `portfolio` prop — the same source the
+     Portfolio page shows) are the truth for what's actually open. An open journal row whose symbol isn't held is an
+     orphaned/duplicate paper open (opened in the journal, its paper position since closed) — show it closed so Home's
+     open count matches Portfolio (the "14 open vs 1 holding" bug). Only when holdings have LOADED (array present), so
+     a not-yet-fetched portfolio can't wrongly hide genuine paper positions. Same market by construction (callers
+     pre-filter inMarket), so a holding list scoped to this market reconciles cleanly. */
+  const _virtHeld = (!isReal && Array.isArray(portfolio))
+    ? new Set(portfolio.map((h) => _normSym(h && h.sym)))
+    : null;
+  const isPhantomOpen = (t) => {
+    if (!t || t.exitAt != null || t.status === "rejected") return false;
+    if (t.real) return !!(realHeld && !realHeld.has(_normSym(t.sym)) && (t.entryAt == null || t.entryAt <= _heldAt));
+    return !!(_virtHeld && !_virtHeld.has(_normSym(t.sym)));   // virtual: not actually held → orphaned paper open
+  };
   const autoRows = useMemo(() => (trades || [])
     // Must be scoped to the SAME real/virtual mode as the Total dashboard's Auto-Buy box — otherwise in
     // Real mode this card would also count VIRTUAL auto-buy trades, showing a non-zero P&L (e.g. -0.06)
@@ -1656,7 +1667,7 @@ export default function HomeView({ market, setMarket, segment, setSegment, list,
                 {/* IN options: the Option capsule above is the toggle; when it's selected we show the option params
                     (no separate "Trade as options" checkbox). Smart Auto-Buy then buys the pick's CALL/PUT. */}
                 <AutoOptionConfig market={market} externalEnabled={instrument === "OPTION"} />
-                <TrailingStopConfig market={market} />
+                <TrailingStopConfig market={market} scope="smartbuy" />
                 <TrendGateConfig scope="smartbuy" />
               </div>
               {/* Plain-English "how this works" so the behaviour and requirements are obvious. */}

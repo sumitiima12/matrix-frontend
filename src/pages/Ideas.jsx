@@ -18,6 +18,7 @@ import MultiSelect from "../components/common/MultiSelect";
 import AutoOptionConfig from "../components/common/AutoOptionConfig";   // IN-only "trade the option instead of the stock" for Ideas auto-buy
 import TrailingStopConfig from "../components/common/TrailingStopConfig";   // per-market trailing stop (default on 1% except IN)
 import TrendGateConfig from "../components/common/TrendGateConfig";   // trade-with-the-trend gate (Ideas scope)
+import EngineMasterSwitch from "../components/common/EngineMasterSwitch";   // master pause/resume for all Ideas auto-entries
 
 /**
  * Ideas — trade ideas published by Matrix, scored against real candles.
@@ -175,7 +176,8 @@ function IdeasDashboard({ ideas, collapsed = false, onExpand, signupAt = null, m
           </div>
           {/* IN options: auto-buy the idea's CALL/PUT instead of the stock (real server path). */}
           <AutoOptionConfig market={market} />
-          <TrailingStopConfig market={market} />
+          <EngineMasterSwitch storageKey="mx_ideas_master" label="Ideas engine" />
+          <TrailingStopConfig market={market} scope="ideas" />
           <TrendGateConfig scope="ideas" />
         </div>
       )}

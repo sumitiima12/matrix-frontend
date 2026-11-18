@@ -29,6 +29,7 @@ import { btPeriodStr, creatorOf, statCells } from "./automationHelpers";   // PE
 import { brokerSymbol } from "../domain/brokerSymbols";
 import { registerAutoBuy, loadAutoBuys, pauseAutoBuy, cancelAutoBuy, closeAutoBuy, updateAutoBuy, setAutoBuyLive, loadBrokerCapabilities, brokerCapOf } from "../services/brokerService";
 import TrailingStopConfig from "../components/common/TrailingStopConfig";   // per-market trailing stop (default on 1% except IN) — same control Ideas/Screener use
+import EngineMasterSwitch from "../components/common/EngineMasterSwitch";   // master pause/resume for all Automation auto-entries
 import TrendGateConfig from "../components/common/TrendGateConfig";   // global trade-with-the-trend gate
 
 /* Broker-truth phantom guard (mirrors Screener/home). A REAL journalled-open row that the broker
@@ -3770,7 +3771,8 @@ export default function Automation({ market = "IN", appMode = "virtual", onRecor
             </div>
             {/* Same per-market trailing stop (default ON 1%, customizable) that Ideas/Screener/Smart-Buy have — it
                 applies to strategies that don't set their own tsl. Plus the global trade-with-the-trend gate. */}
-            <TrailingStopConfig market={market} />
+            <EngineMasterSwitch storageKey="mx_auto_master" label="Automation engine" />
+            <TrailingStopConfig market={market} scope="automation" />
             {/* Overall trend gate (default for every engine) + the Automation-specific override. A type override
                 wins over the overall, so you can turn the overall off and leave Automation on (or vice-versa). */}
             <TrendGateConfig scope="global" />
